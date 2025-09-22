@@ -244,7 +244,7 @@ with st.container():
     cols = st.columns([1, 4, 1], gap="small")
     with cols[0]:
         st.markdown(
-            '<a href="http://157.253.69.67:8502" class="header-btn" target="_self" '
+            '<a href="https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/" class="header-btn" target="_self" '
             'style="text-decoration:none;color:white; cursor:pointer; float:left">⬅ Previous KPI</a>',
             unsafe_allow_html=True
         )
@@ -257,7 +257,7 @@ with st.container():
         st.markdown(f'<div class="header-title">{header_title}</div>', unsafe_allow_html=True)
     with cols[2]:
         st.markdown(
-            '<a href="http://157.253.69.67:8504" class="header-btn" target="_self" '
+            '<a href="https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/" class="header-btn" target="_self" '
             'style="text-decoration:none;color:white; cursor:pointer;">➡ Next KPI</a>',
             unsafe_allow_html=True
         )
@@ -517,4 +517,5 @@ st.dataframe(detail_out, use_container_width=True)
 # Descarga de la tabla de detalle
 fname_det = f"Detail_{'FT' if st.session_state.modo_faculty=='Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ','_')}.xlsx"
 _download_link("Descargar tabla (Excel)", detail_out, fname_det)
+
 
