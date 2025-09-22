@@ -138,15 +138,13 @@ options = {
     "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
     "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
     "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-    "Open main HTML menu": None  # pon aquí una URL pública si lo publicas (no rutas locales)
+    "Open main HTML menu": None
 }
 
+choices = [k for k,u in options.items() if u and (u.startswith("http://") or u.startswith("https://"))]
 st.sidebar.markdown("### 📊 Go to KPI:")
-for label, url in options.items():
-    if url and (url.startswith("http://") or url.startswith("https://")):
-        st.sidebar.link_button(label, url, use_container_width=True)
-    elif url:
-        st.sidebar.caption(f"({label}: usa una URL pública http/https)")
+sel = st.sidebar.selectbox("Select…", choices, index=0)
+st.sidebar.link_button("Open", options[sel], use_container_width=True)
 
 options = {
     "Select...": None,
@@ -531,6 +529,7 @@ st.dataframe(detail_df[show_cols], use_container_width=True)
 
 # Descarga (debajo de la tabla de detalle)
 _download_link("Descargar detalle (Excel)", detail_df[show_cols], f"FT_Composition_Detail_{sel_period_label}.xlsx")
+
 
 
 
