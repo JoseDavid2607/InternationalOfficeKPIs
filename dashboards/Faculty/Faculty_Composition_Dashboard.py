@@ -16,21 +16,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-import streamlit as st
 
-LINKS = {
-    "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-    "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
-    "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
-    "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
-    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
-    "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-    "Open main HTML menu": None
-}
-
-choices = [k for k,v in LINKS.items() if v]  # solo los que tienen URL
-sel = st.selectbox("Ir a KPI:", choices)
-st.link_button(f"Abrir: {sel}", LINKS[sel], use_container_width=True)
 # =============================
 # INSTITUTIONAL HEADER
 # =============================
@@ -144,6 +130,21 @@ def _download_link(label: str, df: pd.DataFrame, filename: str):
 # =============================
 # SIDE NAV
 # =============================
+
+LINKS = {
+    "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
+    "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+    "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
+    "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
+    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
+    "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
+    "Open main HTML menu": None
+}
+
+choices = [k for k,v in LINKS.items() if v]  # solo los que tienen URL
+sel = st.selectbox("Ir a KPI:", choices)
+st.link_button(f"Abrir: {sel}", LINKS[sel], use_container_width=True)
+
 options = {
     "Select...": None,
     "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
@@ -527,5 +528,6 @@ st.dataframe(detail_df[show_cols], use_container_width=True)
 
 # Descarga (debajo de la tabla de detalle)
 _download_link("Descargar detalle (Excel)", detail_df[show_cols], f"FT_Composition_Detail_{sel_period_label}.xlsx")
+
 
 
