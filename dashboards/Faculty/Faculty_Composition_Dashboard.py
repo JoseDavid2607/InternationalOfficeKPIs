@@ -146,26 +146,6 @@ st.sidebar.markdown("### 📊 Go to KPI:")
 sel = st.sidebar.selectbox("Select…", choices, index=0)
 st.sidebar.link_button("Open", options[sel], use_container_width=True)
 
-options = {
-    "Select...": None,
-    "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-    "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
-    "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
-    "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
-    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
-    "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-    "Open main HTML menu": "web/KPIs/Faculty/Web KPIs - Faculty.html"
-}
-choice = st.sidebar.selectbox("📊 Go to KPI:", list(options.keys()))
-target = options.get(choice)
-if target:
-    if target.endswith(".html"):
-        abs_path = os.path.abspath(target)
-        webbrowser.open(f"file:///{abs_path}")
-        st.success("The Faculty menu was opened in a new browser tab.")
-    else:
-        st.markdown(f'<meta http-equiv="refresh" content="0; url={target}" />', unsafe_allow_html=True)
-
 # =============================
 # TIMEFRAME + PERIODO (SIDEBAR)
 # =============================
@@ -529,6 +509,7 @@ st.dataframe(detail_df[show_cols], use_container_width=True)
 
 # Descarga (debajo de la tabla de detalle)
 _download_link("Descargar detalle (Excel)", detail_df[show_cols], f"FT_Composition_Detail_{sel_period_label}.xlsx")
+
 
 
 
