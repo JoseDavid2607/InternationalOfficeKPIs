@@ -131,19 +131,22 @@ def _download_link(label: str, df: pd.DataFrame, filename: str):
 # SIDE NAV
 # =============================
 
-LINKS = {
+options = {
     "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
     "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
     "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
     "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
     "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
     "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-    "Open main HTML menu": None
+    "Open main HTML menu": None  # pon aquí una URL pública si lo publicas (no rutas locales)
 }
 
-choices = [k for k,v in LINKS.items() if v]  # solo los que tienen URL
-sel = st.selectbox("Ir a KPI:", choices)
-st.link_button(f"Abrir: {sel}", LINKS[sel], use_container_width=True)
+st.sidebar.markdown("### 📊 Go to KPI:")
+for label, url in options.items():
+    if url and (url.startswith("http://") or url.startswith("https://")):
+        st.sidebar.link_button(label, url, use_container_width=True)
+    elif url:
+        st.sidebar.caption(f"({label}: usa una URL pública http/https)")
 
 options = {
     "Select...": None,
@@ -528,6 +531,7 @@ st.dataframe(detail_df[show_cols], use_container_width=True)
 
 # Descarga (debajo de la tabla de detalle)
 _download_link("Descargar detalle (Excel)", detail_df[show_cols], f"FT_Composition_Detail_{sel_period_label}.xlsx")
+
 
 
 
