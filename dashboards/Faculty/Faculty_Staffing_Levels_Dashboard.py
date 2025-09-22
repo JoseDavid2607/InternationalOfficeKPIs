@@ -69,12 +69,12 @@ with st.container():
 # =============================
 options = {
     "Select...": None,
-    "1 Full-time Composition": "http://157.253.69.67:8501",
-    "2 Full-time Staffing Levels": "http://157.253.69.67:8502",
-    "3 Distribution by Academic Area": "http://157.253.69.67:8503",
-    "4 Faculty Demographics": "http://157.253.69.67:8504",
-    "5 Full-time Faculty Questionnaire": "http://157.253.69.67:8505",
-    "6 Faculty Qualifications": "http://157.253.69.67:8506",
+    "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
+    "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+    "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
+    "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
+    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
+    "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
     "Open main HTML menu": "web/KPIs/Faculty/Web KPIs - Faculty.html"
 }
 
@@ -502,3 +502,4 @@ else:
 
         # ---- Botón de descarga minimalista (igual a los otros)
         _download_link("Descargar trayectoria (Excel)", out_df, f"Trajectory_{chosen_id}.xlsx")
+
