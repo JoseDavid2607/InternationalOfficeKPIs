@@ -58,11 +58,11 @@ a.dl-min:hover { opacity:.85; }
 with st.container():
     cols = st.columns([1, 3, 1], gap="small")
     with cols[0]:
-        st.markdown('<a href="http://157.253.69.67:8501" class="header-btn" target="_self">⬅ Previous KPI</a>', unsafe_allow_html=True)
+        st.markdown('<a href="https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/" class="header-btn" target="_self">⬅ Previous KPI</a>', unsafe_allow_html=True)
     with cols[1]:
         st.markdown('<div class="header-title">Full-time Faculty Staffing Levels</div>', unsafe_allow_html=True)
     with cols[2]:
-        st.markdown('<a href="http://157.253.69.67:8503" class="header-btn" target="_self">➡ Next KPI</a>', unsafe_allow_html=True)
+        st.markdown('<a href="https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/" class="header-btn" target="_self">➡ Next KPI</a>', unsafe_allow_html=True)
 
 # =============================
 # NAV EN SIDEBAR + SOLO SEMESTRE + DESCARGA BD
@@ -502,4 +502,5 @@ else:
 
         # ---- Botón de descarga minimalista (igual a los otros)
         _download_link("Descargar trayectoria (Excel)", out_df, f"Trajectory_{chosen_id}.xlsx")
+
 
