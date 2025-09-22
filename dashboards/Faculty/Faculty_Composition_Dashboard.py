@@ -59,14 +59,14 @@ with st.container():
     cols = st.columns([1, 3, 1], gap="small")
     with cols[0]:
         st.markdown(
-            '<a href="http://157.253.69.67:8506" class="header-btn" target="_self">⬅ Previous KPI</a>',
+            '<a href="https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/" class="header-btn" target="_self">⬅ Previous KPI</a>',
             unsafe_allow_html=True
         )
     with cols[1]:
         st.markdown('<div class="header-title">Full-time Faculty Composition</div>', unsafe_allow_html=True)
     with cols[2]:
         st.markdown(
-            '<a href="http://157.253.69.67:8502" class="header-btn" target="_self">➡ Next KPI</a>',
+            '<a href="https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/" class="header-btn" target="_self">➡ Next KPI</a>',
             unsafe_allow_html=True
         )
 # =============================
@@ -132,12 +132,12 @@ def _download_link(label: str, df: pd.DataFrame, filename: str):
 # =============================
 options = {
     "Select...": None,
-    "1 Full-time Composition": "http://157.253.69.67:8501",
-    "2 Full-time Staffing Levels": "http://157.253.69.67:8502",
-    "3 Distribution by Academic Area": "http://157.253.69.67:8503",
-    "4 Faculty Demographics": "http://157.253.69.67:8504",
-    "5 Full-time Faculty Questionnaire": "http://157.253.69.67:8505",
-    "6 Faculty Qualifications": "http://157.253.69.67:8506",
+    "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
+    "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+    "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
+    "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
+    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
+    "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
     "Open main HTML menu": "web/KPIs/Faculty/Web KPIs - Faculty.html"
 }
 choice = st.sidebar.selectbox("📊 Go to KPI:", list(options.keys()))
@@ -513,3 +513,4 @@ st.dataframe(detail_df[show_cols], use_container_width=True)
 
 # Descarga (debajo de la tabla de detalle)
 _download_link("Descargar detalle (Excel)", detail_df[show_cols], f"FT_Composition_Detail_{sel_period_label}.xlsx")
+
