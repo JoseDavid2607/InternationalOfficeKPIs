@@ -61,14 +61,14 @@ with st.container():
     cols = st.columns([1,3,1], gap="small")
     with cols[0]:
         st.markdown(
-            '<a href="http://157.253.69.67:8505" class="header-btn" target="_self">⬅ Previous KPI</a>',
+            '<a href="https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/" class="header-btn" target="_self">⬅ Previous KPI</a>',
             unsafe_allow_html=True
         )
     with cols[1]:
         st.markdown('<div class="header-title">Full-time Faculty Qualifications</div>', unsafe_allow_html=True)
     with cols[2]:
         st.markdown(
-            '<a href="http://157.253.69.67:8501" class="header-btn" target="_self">➡ Next KPI</a>',
+            '<a href="https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/" class="header-btn" target="_self">➡ Next KPI</a>',
             unsafe_allow_html=True
         )
 
@@ -1584,4 +1584,5 @@ if show_counts:
             key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
             label="Descargar datos (Excel)"
         )
+
 
