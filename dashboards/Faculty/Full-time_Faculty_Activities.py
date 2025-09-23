@@ -151,8 +151,6 @@ with st.sidebar:
     sel = st.selectbox("Select…", choices, index=default_idx)
     st.link_button("Open", options[sel], use_container_width=True)
 
-    st.markdown("---")
-
 # ================= HEADER (solo título) =========================
 st.markdown('<div class="header-title">Full-time Faculty Activities</div>', unsafe_allow_html=True)
 st.markdown("---")
@@ -543,4 +541,5 @@ with cTb:
                         df_noncredit_sheet,
 
                         f"{safe_name_noncr}_full.xlsx")
+
 
