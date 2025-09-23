@@ -38,7 +38,7 @@ with header:
             border:none;
             border-radius:8px;
             cursor:pointer;
-            font-size:14px;
+            font-size:18px;
             text-decoration:none !important;
             display:inline-block;
         }
@@ -498,6 +498,7 @@ st.dataframe(detail_df[show_cols], use_container_width=True)
 
 # Descarga (debajo de la tabla de detalle)
 _download_link("Descargar detalle (Excel)", detail_df[show_cols], f"FT_Composition_Detail_{sel_period_label}.xlsx")
+
 
 
 
