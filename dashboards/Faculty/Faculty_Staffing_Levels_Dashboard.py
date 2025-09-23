@@ -123,17 +123,6 @@ all_periods = sorted(df["Periodo"].astype(str).unique().tolist())          # YYY
 sem_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
 
 # Sidebar
-with st.sidebar:
-    choice = st.selectbox("📊 Go to KPI:", list(options.keys()))
-    target = options.get(choice)
-    if target:
-        if target.endswith(".html"):
-            abs_path = os.path.abspath(target)
-            webbrowser.open(f"file:///{abs_path}")
-            st.success("The Faculty menu was opened in a new browser tab.")
-        else:
-            st.markdown(f'<meta http-equiv="refresh" content="0; url={target}" />', unsafe_allow_html=True)
-
     # ---- Selector SOLO SEMESTRE (visible sin guion)
     st.markdown("---")
     st.markdown("#### Select Semester")
@@ -507,6 +496,7 @@ else:
 
         # ---- Botón de descarga minimalista (igual a los otros)
         _download_link("Descargar trayectoria (Excel)", out_df, f"Trajectory_{chosen_id}.xlsx")
+
 
 
 
