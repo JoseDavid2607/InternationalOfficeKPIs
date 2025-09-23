@@ -242,32 +242,35 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-#================= HEADER ===================
-with st.container():
-    cols = st.columns([1,3,1], gap="small")
-    with cols[0]:
-        st.markdown('<a href="http://157.253.69.67:8503" class="header-btn" target="_self">⬅ Previous KPI</a>', unsafe_allow_html=True)
-    with cols[1]:
-        st.markdown('<div class="header-title">UASM Faculty Demographics</div>', unsafe_allow_html=True)
-    with cols[2]:
-        st.markdown('<a href="http://157.253.69.67:8505" class="header-btn" target="_self">➡ Next KPI</a>', unsafe_allow_html=True)
+# =============== HEADER (solo título, grande) =================
+st.markdown('<div class="header-title">UASM Faculty Demographics</div>', unsafe_allow_html=True)
 
-#================= SIDEBAR: MODE + NAV ==========================
+# =============== SIDEBAR: selector + botón OPEN ===============
 options = {
-    "Select...": None,
-    "1 Full-time Composition": "http://157.253.69.67:8501",
-    "2 Full-time Staffing Levels": "http://157.253.69.67:8502",
-    "3 Distribution by Academic Area": "http://157.253.69.67:8503",
-    "4 Faculty Demographics": "http://157.253.69.67:8504",
-    "5 Full-time Faculty Questionnaire": "http://157.253.69.67:8505",
-    "6 Faculty Qualifications": "http://157.253.69.67:8506",
-    "Open main HTML menu": "web/KPIs/Faculty/Web KPIs - Faculty.html"
+    "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
+    "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+    "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
+    "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
+    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
+    "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
+    # Si publicas tu HTML principal en la web, pega aquí su URL pública:
+    "Open main HTML menu": None  # ej.: "https://tusitio.github.io/Web%20KPIs%20-%20Faculty.html"
 }
-with st.sidebar:
-    st.markdown('</div>', unsafe_allow_html=True)
-    choice = st.selectbox("📊 Go to KPI:", list(options.keys()))
 
-    st.markdown('---')
+with st.sidebar:
+    st.markdown("### 📊 Go to KPI:")
+    # Construye lista de opciones que sí tienen URL http(s)
+    choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
+    # Si quieres incluir "Open main HTML menu" cuando tenga URL pública:
+    if options.get("Open main HTML menu"):
+        choices.append("Open main HTML menu")
+
+    # Selector
+    sel = st.selectbox("Select…", choices, index=choices.index("4 Faculty Demographics") if "4 Faculty Demographics" in choices else 0)
+    # Botón OPEN
+    st.link_button("Open", options[sel], use_container_width=True)
+
+    st.markdown("---")
     st.markdown("#### Faculty Type")
     st.markdown('<div id="mode-pill">', unsafe_allow_html=True)
     mode_sidebar = st.radio(
@@ -944,6 +947,7 @@ with row2_right:
             pop2 = st.expander("🔎 Ver detalle de nacionalidad (profesores)")
         with pop2:
             st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True)
+
 
 
 
