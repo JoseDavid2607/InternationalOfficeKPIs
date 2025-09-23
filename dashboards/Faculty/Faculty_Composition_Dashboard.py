@@ -55,20 +55,9 @@ with header:
         unsafe_allow_html=True
     )
 
-with st.container():
-    cols = st.columns([1, 3, 1], gap="small")
-    with cols[0]:
-        st.markdown(
-            '<a href="https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/" class="header-btn" target="_self">⬅ Previous KPI</a>',
-            unsafe_allow_html=True
-        )
-    with cols[1]:
-        st.markdown('<div class="header-title">Full-time Faculty Composition</div>', unsafe_allow_html=True)
-    with cols[2]:
-        st.markdown(
-            '<a href="https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/" class="header-btn" target="_self">➡ Next KPI</a>',
-            unsafe_allow_html=True
-        )
+# ======= HEADER: solo título grande =======
+st.markdown('<div class="header-title">Full-time Faculty Composition</div>', unsafe_allow_html=True)
+
 # =============================
 # LOAD DATA (con soporte Intersemestral)
 # =============================
@@ -509,6 +498,7 @@ st.dataframe(detail_df[show_cols], use_container_width=True)
 
 # Descarga (debajo de la tabla de detalle)
 _download_link("Descargar detalle (Excel)", detail_df[show_cols], f"FT_Composition_Detail_{sel_period_label}.xlsx")
+
 
 
 
