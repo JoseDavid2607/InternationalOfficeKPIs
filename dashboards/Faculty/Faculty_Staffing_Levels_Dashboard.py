@@ -71,18 +71,6 @@ options = {
     # "Open main HTML menu": "https://tu-sitio/.../Web%20KPIs%20-%20Faculty.html",
 }
 
-with st.sidebar:
-    st.markdown("### 📊 Go to KPI:")
-    # Solo entradas con URL http(s)
-    choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
-
-    default_label = "2 Full-time Faculty Staffing Levels"
-    default_idx = choices.index(default_label) if default_label in choices else 0
-
-    choice = st.selectbox("Select…", choices, index=default_idx)
-    st.link_button("Open", options[choice], use_container_width=True)
-    st.markdown("---")
-
 # =============================
 # DATA LOAD
 # =============================
@@ -123,6 +111,17 @@ all_periods = sorted(df["Periodo"].astype(str).unique().tolist())          # YYY
 sem_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
 
 # Sidebar
+with st.sidebar:
+    st.markdown("### 📊 Go to KPI:")
+    # Solo entradas con URL http(s)
+    choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
+
+    default_label = "2 Full-time Faculty Staffing Levels"
+    default_idx = choices.index(default_label) if default_label in choices else 0
+
+    choice = st.selectbox("Select…", choices, index=default_idx)
+    st.link_button("Open", options[choice], use_container_width=True)
+    st.markdown("---")
     # ---- Selector SOLO SEMESTRE (visible sin guion)
     st.markdown("---")
     st.markdown("#### Select Semester")
@@ -496,6 +495,7 @@ else:
 
         # ---- Botón de descarga minimalista (igual a los otros)
         _download_link("Descargar trayectoria (Excel)", out_df, f"Trajectory_{chosen_id}.xlsx")
+
 
 
 
