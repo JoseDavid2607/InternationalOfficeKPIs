@@ -53,30 +53,35 @@ a.dl-min:hover { opacity:.85; }
 """, unsafe_allow_html=True)
 
 # =============================
-# INSTITUTIONAL HEADER
+# INSTITUTIONAL HEADER (solo título)
 # =============================
-with st.container():
-    cols = st.columns([1, 3, 1], gap="small")
-    with cols[0]:
-        st.markdown('<a href="https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/" class="header-btn" target="_self">⬅ Previous KPI</a>', unsafe_allow_html=True)
-    with cols[1]:
-        st.markdown('<div class="header-title">Full-time Faculty Staffing Levels</div>', unsafe_allow_html=True)
-    with cols[2]:
-        st.markdown('<a href="https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/" class="header-btn" target="_self">➡ Next KPI</a>', unsafe_allow_html=True)
+st.markdown('<div class="header-title">Full-time Faculty Staffing Levels</div>', unsafe_allow_html=True)
 
 # =============================
-# NAV EN SIDEBAR + SOLO SEMESTRE + DESCARGA BD
+# NAV EN SIDEBAR (selector + Open)
 # =============================
 options = {
-    "Select...": None,
     "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-    "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+    "2 Full-time Faculty Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
     "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
     "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
     "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
     "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-    "Open main HTML menu": "web/KPIs/Faculty/Web KPIs - Faculty.html"
+    # Si publicas tu HTML principal en la web, agrega aquí su URL pública (http/https):
+    # "Open main HTML menu": "https://tu-sitio/.../Web%20KPIs%20-%20Faculty.html",
 }
+
+with st.sidebar:
+    st.markdown("### 📊 Go to KPI:")
+    # Solo entradas con URL http(s)
+    choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
+
+    default_label = "2 Full-time Faculty Staffing Levels"
+    default_idx = choices.index(default_label) if default_label in choices else 0
+
+    choice = st.selectbox("Select…", choices, index=default_idx)
+    st.link_button("Open", options[choice], use_container_width=True)
+    st.markdown("---")
 
 # =============================
 # DATA LOAD
@@ -502,5 +507,6 @@ else:
 
         # ---- Botón de descarga minimalista (igual a los otros)
         _download_link("Descargar trayectoria (Excel)", out_df, f"Trajectory_{chosen_id}.xlsx")
+
 
 
