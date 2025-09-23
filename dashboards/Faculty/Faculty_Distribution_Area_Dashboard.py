@@ -155,22 +155,29 @@ df_part = load_parttime()
 
 # ========= SIDEBAR (KPI -> Faculty Type -> Timeframe -> Periodo -> Descarga BD) =========
 options = {
-    "Select...": None,
     "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
     "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
     "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
     "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
     "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
     "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-    "Open main HTML menu": "web/KPIs/Faculty/Web KPIs - Faculty.html"
+    # Si publicas tu menú HTML en la web, pega aquí su URL pública (http/https):
+    # "Open main HTML menu": "https://tu-sitio/.../Web%20KPIs%20-%20Faculty.html",
 }
 
 with st.sidebar:
-    # 1) KPI
-    choice = st.selectbox("📊 Go to KPI:", list(options.keys()))
+    st.markdown("### 📊 Go to KPI:")
+    # Solo entradas con URL http(s)
+    choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
 
-    # 2) Faculty Type (debajo del KPI)
-    st.markdown('---')
+    # Marca por defecto este KPI si existe
+    default_label = "3 Distribution by Academic Area"
+    default_idx = choices.index(default_label) if default_label in choices else 0
+
+    choice = st.selectbox("Select…", choices, index=default_idx)
+    st.link_button("Open", options[choice], use_container_width=True)
+    st.markdown("---")
+
     st.markdown("#### Faculty Type")
     st.markdown('<div id="mode-pill">', unsafe_allow_html=True)
     mode_sidebar = st.radio(
@@ -239,28 +246,13 @@ PALETTE = [
 ]
 df = df_full.copy() if st.session_state.modo_faculty == "Full-time" else df_part.copy()
 
-# ========= HEADER =========
-with st.container():
-    cols = st.columns([1, 4, 1], gap="small")
-    with cols[0]:
-        st.markdown(
-            '<a href="https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/" class="header-btn" target="_self" '
-            'style="text-decoration:none;color:white; cursor:pointer; float:left">⬅ Previous KPI</a>',
-            unsafe_allow_html=True
-        )
-    with cols[1]:
-        header_title = (
-            "Full-time Faculty Distribution by Academic Area"
-            if st.session_state.modo_faculty == "Full-time"
-            else "Part-time Faculty Distribution by Academic Area"
-        )
-        st.markdown(f'<div class="header-title">{header_title}</div>', unsafe_allow_html=True)
-    with cols[2]:
-        st.markdown(
-            '<a href="https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/" class="header-btn" target="_self" '
-            'style="text-decoration:none;color:white; cursor:pointer;">➡ Next KPI</a>',
-            unsafe_allow_html=True
-        )
+# ========= HEADER (solo título grande) =========
+header_title = (
+    "Full-time Faculty Distribution by Academic Area"
+    if st.session_state.get("modo_faculty", "Full-time") == "Full-time"
+    else "Part-time Faculty Distribution by Academic Area"
+)
+st.markdown(f'<div class="header-title">{header_title}</div>', unsafe_allow_html=True)
 
 # ========= TOP PIVOT TABLE (depende del timeframe) =========
 tmode_now   = st.session_state.get("sel_tf_mode", "Semestral")
@@ -517,5 +509,6 @@ st.dataframe(detail_out, use_container_width=True)
 # Descarga de la tabla de detalle
 fname_det = f"Detail_{'FT' if st.session_state.modo_faculty=='Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ','_')}.xlsx"
 _download_link("Descargar tabla (Excel)", detail_out, fname_det)
+
 
 
