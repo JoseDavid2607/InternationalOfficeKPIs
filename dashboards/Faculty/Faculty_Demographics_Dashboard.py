@@ -242,10 +242,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# =============== HEADER (solo título, grande) =================
+# ======= HEADER: solo título grande =======
 st.markdown('<div class="header-title">UASM Faculty Demographics</div>', unsafe_allow_html=True)
 
-# =============== SIDEBAR: selector + botón OPEN ===============
+# ======= SIDEBAR: selector + botón OPEN =======
 options = {
     "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
     "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
@@ -254,21 +254,22 @@ options = {
     "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
     "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
     # Si publicas tu HTML principal en la web, pega aquí su URL pública:
-    "Open main HTML menu": None  # ej.: "https://tusitio.github.io/Web%20KPIs%20-%20Faculty.html"
+    # "Open main HTML menu": "https://tu-sitio/tu-menu.html",
 }
 
 with st.sidebar:
     st.markdown("### 📊 Go to KPI:")
-    # Construye lista de opciones que sí tienen URL http(s)
+    # Solo opciones con URL http(s)
     choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
-    # Si quieres incluir "Open main HTML menu" cuando tenga URL pública:
-    if options.get("Open main HTML menu"):
-        choices.append("Open main HTML menu")
 
-    # Selector
-    sel = st.selectbox("Select…", choices, index=choices.index("4 Faculty Demographics") if "4 Faculty Demographics" in choices else 0)
-    # Botón OPEN
-    st.link_button("Open", options[sel], use_container_width=True)
+    # Selección (marca por defecto este KPI si existe)
+    default = "4 Faculty Demographics" if "4 Faculty Demographics" in choices else choices[0]
+    choice = st.selectbox("Select…", choices, index=choices.index(default))
+
+    # Botón OPEN (sin meta refresh, sin webbrowser)
+    url = options.get(choice)
+    if url:
+        st.link_button("Open", url, use_container_width=True)
 
     st.markdown("---")
     st.markdown("#### Faculty Type")
@@ -947,6 +948,7 @@ with row2_right:
             pop2 = st.expander("🔎 Ver detalle de nacionalidad (profesores)")
         with pop2:
             st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True)
+
 
 
 
