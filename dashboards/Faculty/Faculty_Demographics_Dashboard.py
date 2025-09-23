@@ -253,20 +253,20 @@ with st.container():
         st.markdown('<a href="http://157.253.69.67:8505" class="header-btn" target="_self">➡ Next KPI</a>', unsafe_allow_html=True)
 
 #================= SIDEBAR: MODE + NAV ==========================
-options = {
-    "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-    "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
-    "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
-    "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
-    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
-    "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-    "Open main HTML menu": None
-}
-
-choices = [k for k,u in options.items() if u and (u.startswith("http://") or u.startswith("https://"))]
-st.sidebar.markdown("### 📊 Go to KPI:")
-sel = st.sidebar.selectbox("Select…", choices, index=0)
-st.sidebar.link_button("Open", options[sel], use_container_width=True)
+    options = {
+        "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
+        "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+        "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
+        "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
+        "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
+        "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
+        "Open main HTML menu": None
+    }
+    
+    choices = [k for k,u in options.items() if u and (u.startswith("http://") or u.startswith("https://"))]
+    st.sidebar.markdown("### 📊 Go to KPI:")
+    sel = st.sidebar.selectbox("Select…", choices, index=0)
+    st.sidebar.link_button("Open", options[sel], use_container_width=True)
 
     st.markdown('---')
     st.markdown("#### Faculty Type")
@@ -945,6 +945,7 @@ with row2_right:
             pop2 = st.expander("🔎 Ver detalle de nacionalidad (profesores)")
         with pop2:
             st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True)
+
 
 
 
