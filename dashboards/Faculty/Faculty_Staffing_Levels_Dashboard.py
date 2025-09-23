@@ -121,7 +121,7 @@ with st.sidebar:
 
     choice = st.selectbox("Select…", choices, index=default_idx)
     st.link_button("Open", options[choice], use_container_width=True)
-    st.markdown("---")
+
     # ---- Selector SOLO SEMESTRE (visible sin guion)
     st.markdown("---")
     st.markdown("#### Select Semester")
@@ -495,6 +495,7 @@ else:
 
         # ---- Botón de descarga minimalista (igual a los otros)
         _download_link("Descargar trayectoria (Excel)", out_df, f"Trajectory_{chosen_id}.xlsx")
+
 
 
 
