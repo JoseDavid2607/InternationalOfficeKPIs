@@ -7,7 +7,7 @@ import plotly.express as px
 from io import BytesIO
 import base64
 
-# --- estilo para links minimalistas ---
+# --- CSS ---
 st.markdown("""
 <style>
 .dl-min a{
@@ -130,37 +130,31 @@ df_full = load_fulltime()
 df_q    = load_questionnaire()
 df_credit_sheet, df_noncredit_sheet, credit_sheet_name, noncredit_sheet_name = load_courses_sheets()
 
-#================= SIDEBAR: NAVIGATION ========================================
-options = {
-    "Select...": None,
-    "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-    "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
-    "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
-    "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
-    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
-    "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-    "Open main HTML menu": "web/KPIs/Faculty/Web KPIs - Faculty.html"
-}
-choice = st.sidebar.selectbox("📊 Go to KPI:", list(options.keys()))
-if options[choice]:
-    target = options[choice]
-    if target.endswith(".html"):
-        abs_path = os.path.abspath(target)
-        webbrowser.open(f"file:///{abs_path}")
-        st.success("The Faculty menu was opened in a new browser tab.")
-    else:
-        st.markdown(f'<meta http-equiv="refresh" content="0; url={target}" />', unsafe_allow_html=True)
+# ================= SIDEBAR: NAVIGATION (selector + Open) =================
+with st.sidebar:
+    st.markdown("### 📊 Go to KPI:")
+    options = {
+        "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
+        "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+        "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
+        "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
+        "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
+        "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
+        # Si publicas tu menú HTML en la web, añade aquí su URL pública (http/https):
+        # "Open main HTML menu": "https://tu-sitio/.../Web%20KPIs%20-%20Faculty.html",
+    }
 
-#================= HEADER (title + KPI buttons) ===============================
-with st.container():
-    cols = st.columns([1,3,1], gap="small")
-    with cols[0]:
-        st.markdown('<a href="https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/" class="header-btn" target="_self">⬅ Previous KPI</a>', unsafe_allow_html=True)
-    with cols[1]:
-        st.markdown('<div class="header-title">Full-time Faculty Activities</div>', unsafe_allow_html=True)
-    with cols[2]:
-        st.markdown('<a href="https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/" class="header-btn" target="_self">➡ Next KPI</a>', unsafe_allow_html=True)
+    choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
+    default_label = "5 Full-time Faculty Questionnaire"  # etiqueta de este KPI en tu lista
+    default_idx = choices.index(default_label) if default_label in choices else 0
 
+    sel = st.selectbox("Select…", choices, index=default_idx)
+    st.link_button("Open", options[sel], use_container_width=True)
+
+    st.markdown("---")
+
+# ================= HEADER (solo título) =========================
+st.markdown('<div class="header-title">Full-time Faculty Activities</div>', unsafe_allow_html=True)
 st.markdown("---")
 #================= YEARS (fixed 2020–2025) ====================================
 def _norm(s: pd.Series) -> pd.Series:
@@ -549,3 +543,4 @@ with cTb:
                         df_noncredit_sheet,
 
                         f"{safe_name_noncr}_full.xlsx")
+
