@@ -1,4 +1,3 @@
-# ================== IMPORTS & CONFIG ======================
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -351,7 +350,6 @@ def draw_history(title: str,
         fig.add_vline(x=sel_x, line_width=1, line_dash="dash")
 
     st.plotly_chart(fig, use_container_width=True)
-
 
 # ============== COLS NORMALIZADAS BÁSICAS (igual) ==============
 col_sem  = _get_any(df_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
@@ -1611,3 +1609,4 @@ if show_counts:
             key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
             label="Descargar datos (Excel)"
         )
+
