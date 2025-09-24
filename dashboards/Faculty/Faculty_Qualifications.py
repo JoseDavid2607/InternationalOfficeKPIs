@@ -244,7 +244,19 @@ def impact_column_generic(base_df: pd.DataFrame, mod_df: pd.DataFrame, target: s
         pct0 = (base_df[target] / den0 * 100).fillna(0.0)
         pct1 = (mod_df[target]  / den1 * 100).fillna(0.0)
         return (pct1 - pct0).round(2)
+# ---- Impact helpers (closed-form) ----
+def _delta_pct_ps(P, S, delta=3.0):
+    T = P + S
+    if T <= 0: 
+        return 0.0
+    return 100.0 * (delta * S) / (T * (T + delta))  # Δ%P al añadir +delta a P
 
+def _delta_pct_share(cat_val, total_Q, delta=3.0):
+    # genérico para SA / OTHER: Δ%cat al añadir +delta al numerador y al total
+    Q = total_Q
+    if Q <= 0:
+        return 0.0
+    return 100.0 * (delta * (Q - cat_val)) / (Q * (Q + delta))
 # ================== HISTORY (timeframe-aware) ==================
 def _period_sort_key(p: str) -> tuple[int,int]:
     y = extract_year_from_period(p) or -1
@@ -778,29 +790,74 @@ else:
             p_share  = (agg_ps["P"] / den_ps) * 100
             s_share  = 100 - p_share
             denom_q  = (agg_tipo.sum(axis=1)).replace(0, pd.NA)
+        
+            # Impactos por fila (área/field/program)
+            P_vals = agg_ps["P"].fillna(0.0)
+            S_vals = agg_ps["S"].fillna(0.0)
+            SA_vals = agg_tipo["SA"].fillna(0.0)
+            OT_vals = agg_tipo["OTHER"].fillna(0.0)
+            Q_vals  = agg_tipo[["SA","PA","SP","IP","OTHER"]].sum(axis=1).fillna(0.0)
+        
+            dP = [_delta_pct_ps(float(P_vals.iloc[i]), float(S_vals.iloc[i]), delta=3.0) for i in range(len(agg_ps))]
+            dSA = [_delta_pct_share(float(SA_vals.iloc[i]), float(Q_vals.iloc[i]), delta=3.0) for i in range(len(agg_tipo))]
+            dOT = [_delta_pct_share(float(OT_vals.iloc[i]), float(Q_vals.iloc[i]), delta=3.0) for i in range(len(agg_tipo))]
+        
             dfm = pd.DataFrame({
                 base_idx_name: agg_tipo.index,
-                "%P":  p_share,
-                "%S":  s_share,
-                "%SA": (agg_tipo["SA"] / denom_q) * 100,
-                "%OTHER": (agg_tipo["OTHER"] / denom_q) * 100,
+                "%P":       p_share,
+                "Δ%P (+3P)": dP,            # NUEVO
+                "%S":       s_share,
+                "%SA":      (agg_tipo["SA"] / denom_q) * 100,
+                "Δ%SA (+3SA)": dSA,         # NUEVO
+                "%OTHER":   (agg_tipo["OTHER"] / denom_q) * 100,
+                "Δ%OTHER (+3OTHER)": dOT,   # NUEVO
             }).fillna(0.0)
+        
+            # Fila TOTAL con los mismos impactos (aplicados al total del período)
             tot_P, tot_S = agg_ps["P"].sum(), agg_ps["S"].sum()
-            tot_den_ps   = tot_P + tot_S
-            p_tot = (tot_P / tot_den_ps * 100) if tot_den_ps else 0.0
+            T = tot_P + tot_S
+            p_tot = (tot_P / T * 100) if T else 0.0
             s_tot = 100 - p_tot
             tipo_sums = agg_tipo[["SA","PA","SP","IP","OTHER"]].sum(axis=0)
-            denom_q_tot = float(tipo_sums.sum())
+            Q_tot = float(tipo_sums.sum())
+            sa_tot = float(tipo_sums["SA"])
+            ot_tot = float(tipo_sums["OTHER"])
+        
             total_row = {
                 base_idx_name: "TOTAL",
-                "%P":  round(p_tot, 1),
-                "%S":  round(s_tot, 1),
-                "%SA": round((tipo_sums["SA"] / denom_q_tot * 100) if denom_q_tot else 0.0, 1),
-                "%OTHER": round((tipo_sums["OTHER"] / denom_q_tot * 100) if denom_q_tot else 0.0, 1),
+                "%P":       round(p_tot, 1),
+                "Δ%P (+3P)": round(_delta_pct_ps(tot_P, tot_S, 3.0), 2),
+                "%S":       round(s_tot, 1),
+                "%SA":      round((sa_tot / Q_tot * 100) if Q_tot else 0.0, 1),
+                "Δ%SA (+3SA)": round(_delta_pct_share(sa_tot, Q_tot, 3.0), 2) if Q_tot else 0.0,
+                "%OTHER":   round((ot_tot / Q_tot * 100) if Q_tot else 0.0, 1),
+                "Δ%OTHER (+3OTHER)": round(_delta_pct_share(ot_tot, Q_tot, 3.0), 2) if Q_tot else 0.0,
             }
-            dfm[["%P","%S","%SA","%OTHER"]] = dfm[["%P","%S","%SA","%OTHER"]].round(1)
+        
+            # Redondeo y concatenación
+            perc_cols = ["%P","%S","%SA","%OTHER"]
+            dfm[perc_cols] = dfm[perc_cols].round(1)
+            dfm[["Δ%P (+3P)","Δ%SA (+3SA)","Δ%OTHER (+3OTHER)"]] = dfm[["Δ%P (+3P)","Δ%SA (+3SA)","Δ%OTHER (+3OTHER)"]].round(2)
             dfm = pd.concat([dfm, pd.DataFrame([total_row])], ignore_index=True)
-            return dfm[[base_idx_name, "%P", "%S", "%SA", "%OTHER"]]
+        
+            # Tooltips via título HTML en el header (se renderiza porque usas to_html(escape=False))
+            dfm = dfm.rename(columns={
+                "%P": '%P',
+                "Δ%P (+3P)": 'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>',
+                "%S": '%S',
+                "%SA": '%SA',
+                "Δ%SA (+3SA)": 'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>',
+                "%OTHER": '%OTHER',
+                "Δ%OTHER (+3OTHER)": 'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>',
+            })
+        
+            return dfm[[base_idx_name, '%P',
+                        'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>',
+                        '%S', '%SA',
+                        'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>',
+                        '%OTHER',
+                        'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>']]
+
 
         # ------------------- BY ACADEMIC AREA -------------------
         if view_mode == "By Academic Area":
@@ -829,16 +886,22 @@ else:
             
                 # La tabla SIEMPRE se calcula con los agregados del timeframe seleccionado (fil)
                 metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
-            
-                _download_xlsx_button(
-                    metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
-                    key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)"
-                )
-            
+
+                _download_xlsx_button(...)
+                
+                # ⬇️ Sustituye tu styled_tbl actual por este:
                 styled_tbl = (
                     metrics_tbl.style
-                    .format({"%P": "{:.1f}%", "%S": "{:.1f}%", "%SA": "{:.1f}%", "%OTHER": "{:.1f}%"})
+                    .format({
+                        '%P':'{:.1f}%', '%S':'{:.1f}%', '%SA':'{:.1f}%', '%OTHER':'{:.1f}%',
+                        'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
+                        'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
+                        'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
+                    })
                     .apply(style_percent_tables, id_col="Academic Area", axis=None)
+                    .apply(lambda df_: style_diverging_simple(df_, 'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>'), axis=None)
+                    .apply(lambda df_: style_diverging_simple(df_, 'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>'), axis=None)
+                    .apply(lambda df_: style_diverging_simple(df_, 'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>'), axis=None)
                     .hide(axis="index")
                 )
                 st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
@@ -933,18 +996,22 @@ else:
                         mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
                 
                     metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
+
+                    _download_xlsx_button(...)
                 
-                    _download_xlsx_button(
-                        metrics_tbl_f,
-                        f"table_ByField_{_slugify(sel_label)}.xlsx",
-                        key=f"dl_tbl_field_{_slugify(sel_label)}",
-                        label="⬇️ Download table (Excel)"
-                    )
-                
+                    # ⬇️ Sustituye tu styled_tbl_f actual:
                     styled_tbl_f = (
                         metrics_tbl_f.style
-                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
+                        .format({
+                            '%P':'{:.1f}%', '%S':'{:.1f}%', '%SA':'{:.1f}%', '%OTHER':'{:.1f}%',
+                            'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
+                            'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
+                            'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
+                        })
                         .apply(style_percent_tables, id_col="Field", axis=None)
+                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>'), axis=None)
+                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>'), axis=None)
+                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>'), axis=None)
                         .hide(axis="index")
                     )
                     st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
@@ -1034,25 +1101,25 @@ else:
                         mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
                 
                     metrics_tbl_m = build_percent_table("Program", mod_agg_tipo, mod_agg_ps)
+
+                    _download_xlsx_button(...)
                 
-                    _download_xlsx_button(
-                        metrics_tbl_m,
-                        f"table_ByProgram_{_slugify(sel_label)}.xlsx",
-                        key=f"dl_tbl_prog_{_slugify(sel_label)}",
-                        label="⬇️ Download table (Excel)"
-                    )
-                
+                    # ⬇️ Sustituye tu styled_tbl_m actual:
                     styled_tbl_m = (
                         metrics_tbl_m.style
-                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
+                        .format({
+                            '%P':'{:.1f}%', '%S':'{:.1f}%', '%SA':'{:.1f}%', '%OTHER':'{:.1f}%',
+                            'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
+                            'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
+                            'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
+                        })
                         .apply(style_percent_tables, id_col="Program", axis=None)
+                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>'), axis=None)
+                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>'), axis=None)
+                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>'), axis=None)
                         .hide(axis="index")
                     )
-                    st.markdown(
-                        f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>",
-                        unsafe_allow_html=True
-                    )
-
+                    st.markdown(f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>", unsafe_allow_html=True)
 
                 # ---- HISTÓRICOS por Programa (timeframe-aware)
                 df_hist_m = df_car_global.copy()
@@ -1500,6 +1567,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
                               label="Descargar datos (Excel)")
+
 
 
 
