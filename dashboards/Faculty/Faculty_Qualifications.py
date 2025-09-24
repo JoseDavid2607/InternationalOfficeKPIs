@@ -507,6 +507,25 @@ def style_percent_tables(df_, id_col):
         sty.loc[is_total, c] = (sty.loc[is_total, c].astype(str) + 'font-weight:700;').str.replace(';;',';', regex=False)
     return sty
 
+def style_diverging_simple(df_: pd.DataFrame, colname: str):
+    """
+    Colorea una columna 'Impact' sin matplotlib:
+    rojo si <0, verde si >0, sin color si =0.
+    """
+    sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+    if colname not in df_.columns:
+        return sty
+    vals = pd.to_numeric(df_[colname], errors='coerce').fillna(0.0)
+    sty.loc[vals < 0, colname] = 'background-color:#FDE2E2;'
+    sty.loc[vals > 0, colname] = 'background-color:#E6F4EA;'
+    # Opcional: negrita para TOTAL si aplica
+    if df_.columns[0] in df_.columns:
+        first_col = df_.columns[0]
+        mask_total = df_[first_col].astype(str).str.upper().eq("TOTAL")
+        for c in df_.columns:
+            sty.loc[mask_total, c] = (sty.loc[mask_total, c].astype(str) + 'font-weight:700;').str.replace(';;',';', regex=False)
+    return sty
+    
 # ================== SECCIÓN PRINCIPAL ==================
 st.markdown("---")
 st.subheader(f"Faculty Sufficiency and Qualifications — {sel_label}")
@@ -850,119 +869,132 @@ else:
         # ======================== BY ACADEMIC AREA ========================
         if view_mode == "By Academic Area":
             colT, colG = st.columns([6,6], gap="large")
-
+        
             # --- Agregaciones por Área (para tabla del timeframe seleccionado) ---
             agg_tipo = (fil.groupby(["_AREA","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["SA","PA","SP","IP","OTHER"]:
                 if k not in agg_tipo.columns: agg_tipo[k] = 0.0
             agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
+        
             agg_ps = (fil.groupby(["_AREA","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["P","S"]:
                 if k not in agg_ps.columns: agg_ps[k] = 0.0
             agg_ps = agg_ps[["P","S"]]
-
+        
             with colT:
                 # ---------- SENSIBILIDAD / HISTÓRICO (Academic Area) ----------
                 base_agg_ps = agg_ps.copy()
                 base_agg_tipo = agg_tipo.copy()
-
+        
                 if SENS["on"]:
-                    # Aplica TODAS las operaciones acumuladas (Add) sobre P/S o SA/SP/IP/PA/OTHER
-                    mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(
-                        base_agg_ps, base_agg_tipo, SENS.get("ops", []),
-                        member_all_label="All", index_name="Academic Area"
-                    )
-                    last_op = SENS["ops"][-1] if SENS.get("ops") else None
-
-                    if last_op and last_op["scope"] == "PS":
-                        # ------ Modo PS (P o S) ------
-                        target_cat = last_op["cat"]  # "P" o "S"
-                        impact = impact_column_generic(base_agg_ps, mod_agg_ps, target_cat, mode="PS")
-
+                    if SENS["kind"] == "P/S":
+                        # ---- Sensibilidad P/S ----
+                        mod_agg_ps = apply_agg_sensitivity_ps(
+                            base_agg_ps,
+                            target=SENS["target_cat"],              # "P" or "S" (we use only for Δ direction)
+                            member=SENS["member"],                  # "Todas" or specific area
+                            delta_cred=SENS["delta_cred"],          # credits = n_prof * cred_prof
+                        )
+                        impact = add_impact_column_ps(base_agg_ps, mod_agg_ps)  # Δ%P
+        
                         den = (mod_agg_ps["P"] + mod_agg_ps["S"]).replace(0, pd.NA)
-                        tbl = pd.DataFrame({
+                        metrics_tbl = pd.DataFrame({
                             "Academic Area": mod_agg_ps.index,
-                            f"%{target_cat}": (mod_agg_ps[target_cat] / den * 100).round(1).fillna(0.0),
-                            f"Impact (Δ%{target_cat})": impact.values
+                            "%P": (mod_agg_ps["P"] / den * 100).round(1).fillna(0.0),
+                            "%S": (mod_agg_ps["S"] / den * 100).round(1).fillna(0.0),
+                            "Impact (Δ%P)": impact.values
                         })
-
+        
                         # TOTAL
-                        totP, totS = float(mod_agg_ps["P"].sum()), float(mod_agg_ps["S"].sum())
-                        tot_den = totP + totS
-                        pct_tot = ((totP if target_cat == "P" else totS) / tot_den * 100) if tot_den else 0.0
-
-                        base_den = float(base_agg_ps["P"].sum() + base_agg_ps["S"].sum()) or 1.0
-                        base_pct_tot = float(base_agg_ps[target_cat].sum()) / base_den * 100
-
+                        p_tot, s_tot = float(mod_agg_ps["P"].sum()), float(mod_agg_ps["S"].sum())
+                        den_tot = p_tot + s_tot
+                        pctP_tot = (p_tot / den_tot * 100) if den_tot else 0.0
+                        pctP_tot_base = (
+                            float(base_agg_ps["P"].sum()) /
+                            max(1.0, float(base_agg_ps["P"].sum() + base_agg_ps["S"].sum())) * 100
+                        )
                         total_row = {
                             "Academic Area": "TOTAL",
-                            f"%{target_cat}": round(pct_tot, 1),
-                            f"Impact (Δ%{target_cat})": round(pct_tot - base_pct_tot, 2)
+                            "%P": round(pctP_tot, 1),
+                            "%S": round(100 - pctP_tot, 1),
+                            "Impact (Δ%P)": round(pctP_tot - pctP_tot_base, 2)
                         }
-                        metrics_tbl = pd.concat([tbl, pd.DataFrame([total_row])], ignore_index=True)
-
+                        metrics_tbl = pd.concat([metrics_tbl, pd.DataFrame([total_row])], ignore_index=True)
+        
                         _download_xlsx_button(
                             metrics_tbl,
                             f"table_ByArea_PS_{_slugify(sel_label)}.xlsx",
                             key=f"dl_tbl_area_ps_{_slugify(sel_label)}",
                             label="⬇️ Download table (Excel)"
                         )
-
+        
+                        # <<< sin matplotlib >>>
                         styled_tbl = (
                             metrics_tbl.style
-                            .format({f"%{target_cat}": "{:.1f}%", f"Impact (Δ%{target_cat})": "{:+.2f}"})
-                            .background_gradient(subset=[f"Impact (Δ%{target_cat})"], cmap="RdYlGn")
+                            .format({"%P":"{:.1f}%","%S":"{:.1f}%","Impact (Δ%P)":"{:+.2f}"})
+                            .apply(lambda df_: style_diverging_simple(df_, "Impact (Δ%P)"), axis=None)
                             .hide(axis="index")
                         )
                         st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
-
+        
                     else:
-                        # ------ Modo Qualifications (SA/SP/IP/PA/OTHER) ------
-                        target_cat = (last_op["cat"] if last_op else "SA")
-                        impact = impact_column_generic(base_agg_tipo, mod_agg_tipo, target_cat, mode="QUAL")
-
-                        cats = ["SA", "SP", "IP", "PA", "OTHER"]
-                        for c in cats:
-                            if c not in mod_agg_tipo.columns:
-                                mod_agg_tipo[c] = 0.0
-
+                        # ---- Sensibilidad Qualifications (SA/OTHER) ----
+                        # Nota: para sensibilidad QUAL solo ajustamos SA vs OTHER (PA/SP/IP quedan iguales)
+                        mod_agg_tipo = apply_agg_sensitivity_qual(
+                            base_agg_tipo,
+                            target=SENS["target_cat"],              # "SA" o "OTHER"
+                            member=SENS["member"],                  # "Todas" o área específica
+                            delta_cred=SENS["delta_cred"],
+                        )
+                        target_is_sa = (SENS["target_cat"] == "SA")
+                        impact = add_impact_column_qual(
+                            base_agg_tipo, mod_agg_tipo, target=("SA" if target_is_sa else "OTHER")
+                        )
+        
+                        cats = ["SA","PA","SP","IP","OTHER"]
                         den = (mod_agg_tipo[cats].sum(axis=1)).replace(0, pd.NA)
-                        tbl = pd.DataFrame({
+                        show_col = "%SA" if target_is_sa else "%OTHER"
+                        val_col = "SA" if target_is_sa else "OTHER"
+        
+                        metrics_tbl = pd.DataFrame({
                             "Academic Area": mod_agg_tipo.index,
-                            f"%{target_cat}": (mod_agg_tipo[target_cat] / den * 100).round(1).fillna(0.0),
-                            f"Impact (Δ%{target_cat})": impact.values
+                            show_col: (mod_agg_tipo[val_col] / den * 100).round(1).fillna(0.0),
+                            f"Impact (Δ{show_col})": impact.values
                         })
-
+        
                         sums = mod_agg_tipo[cats].sum(axis=0)
-                        den_tot = float(sums.sum()) or 1.0
-                        pct_tot = float(sums[target_cat]) / den_tot * 100
-
+                        den_tot = float(sums.sum())
+                        tot_val = float(sums[val_col])
+                        pct_tot = (tot_val / den_tot * 100) if den_tot else 0.0
+        
                         sums_base = base_agg_tipo[cats].sum(axis=0)
-                        den_tot_base = float(sums_base.sum()) or 1.0
-                        base_pct_tot = float(sums_base[target_cat]) / den_tot_base * 100
-
+                        den_tot_base = float(sums_base.sum()) if float(sums_base.sum()) != 0 else 1.0
+                        pct_tot_base = float(sums_base[val_col]) / den_tot_base * 100
+        
                         total_row = {
                             "Academic Area": "TOTAL",
-                            f"%{target_cat}": round(pct_tot, 1),
-                            f"Impact (Δ%{target_cat})": round(pct_tot - base_pct_tot, 2)
+                            show_col: round(pct_tot, 1),
+                            f"Impact (Δ{show_col})": round(pct_tot - pct_tot_base, 2)
                         }
-                        metrics_tbl = pd.concat([tbl, pd.DataFrame([total_row])], ignore_index=True)
-
+                        metrics_tbl = pd.concat([metrics_tbl, pd.DataFrame([total_row])], ignore_index=True)
+        
                         _download_xlsx_button(
                             metrics_tbl,
                             f"table_ByArea_QUAL_{_slugify(sel_label)}.xlsx",
                             key=f"dl_tbl_area_qual_{_slugify(sel_label)}",
                             label="⬇️ Download table (Excel)"
                         )
-
+        
+                        # <<< sin matplotlib >>>
+                        impact_col = f"Impact (Δ{show_col})"
                         styled_tbl = (
                             metrics_tbl.style
-                            .format({f"%{target_cat}": "{:.1f}%", f"Impact (Δ%{target_cat})": "{:+.2f}"})
-                            .background_gradient(subset=[f"Impact (Δ%{target_cat})"], cmap="RdYlGn")
+                            .format({show_col:"{:.1f}%", impact_col: "{:+.2f}"})
+                            .apply(lambda df_: style_diverging_simple(df_, impact_col), axis=None)
                             .hide(axis="index")
                         )
                         st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
-
+        
                 else:
                     # ======= MODO HISTÓRICO (sin sensibilidad) =======
                     metrics_tbl = build_percent_table("Academic Area", base_agg_tipo, base_agg_ps)
@@ -979,7 +1011,6 @@ else:
                         .hide(axis="index")
                     )
                     st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
-
 
 
             # históricos por Área
@@ -1056,102 +1087,142 @@ else:
             else:
                 fil_field = fil.copy()
                 fil_field["_FIELD"] = fil_field[col_field].astype(str).str.strip()
-
+        
                 colF_L, colF_R = st.columns([6,6], gap="large")
-
-                # Tabla timeframe
+        
+                # --- Agregaciones del período seleccionado ---
                 agg_tipo_f = (fil_field.groupby(["_FIELD","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["SA","PA","SP","IP","OTHER"]:
                     if k not in agg_tipo_f.columns: agg_tipo_f[k] = 0.0
                 agg_tipo_f = agg_tipo_f[["SA","PA","SP","IP","OTHER"]]
-
+        
                 agg_ps_f = (fil_field.groupby(["_FIELD","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["P","S"]:
                     if k not in agg_ps_f.columns: agg_ps_f[k] = 0.0
                 agg_ps_f = agg_ps_f[["P","S"]]
-
+        
                 with colF_L:
                     base_agg_ps = agg_ps_f.copy()
                     base_agg_tipo = agg_tipo_f.copy()
-
+        
                     if SENS["on"]:
-                        mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(
-                            base_agg_ps, base_agg_tipo, SENS.get("ops", []),
-                            member_all_label="All", index_name="Field"
-                        )
-                        # Determinar la última op para decidir qué mostrar
-                        last_op = SENS["ops"][-1] if SENS.get("ops") else None
-
-                        if last_op and last_op["scope"] == "PS":
-                            target_cat = last_op["cat"]  # "P" o "S"
-                            impact = impact_column_generic(base_agg_ps, mod_agg_ps, target_cat, mode="PS")
+                        if SENS["kind"] == "P/S":
+                            # ---- Sensibilidad P/S ----
+                            mod_agg_ps = apply_agg_sensitivity_ps(
+                                base_agg_ps,
+                                target=SENS["target_cat"],           # "P" o "S"
+                                member=SENS["member"],               # "Todas" o Field específico
+                                delta_cred=SENS["delta_cred"],
+                            )
+                            impact = add_impact_column_ps(base_agg_ps, mod_agg_ps)  # Δ%P
+        
                             den = (mod_agg_ps["P"] + mod_agg_ps["S"]).replace(0, pd.NA)
-                            tbl = pd.DataFrame({
+                            metrics_tbl_f = pd.DataFrame({
                                 "Field": mod_agg_ps.index,
-                                f"%{target_cat}": (mod_agg_ps[target_cat] / den * 100).round(1).fillna(0.0),
-                                f"Impact (Δ%{target_cat})": impact.values
+                                "%P": (mod_agg_ps["P"] / den * 100).round(1).fillna(0.0),
+                                "%S": (mod_agg_ps["S"] / den * 100).round(1).fillna(0.0),
+                                "Impact (Δ%P)": impact.values
                             })
                             # TOTAL
-                            totP, totS = float(mod_agg_ps["P"].sum()), float(mod_agg_ps["S"].sum())
-                            tot_den = totP + totS
-                            pct_tot = ((totP if target_cat=="P" else totS) / tot_den * 100) if tot_den else 0.0
-                            base_den = float(base_agg_ps["P"].sum() + base_agg_ps["S"].sum()) or 1.0
-                            base_pct_tot = float(base_agg_ps[target_cat].sum()) / base_den * 100
-                            total_row = {"Field":"TOTAL", f"%{target_cat}": round(pct_tot,1), f"Impact (Δ%{target_cat})": round(pct_tot - base_pct_tot, 2)}
-                            metrics_tbl_f = pd.concat([tbl, pd.DataFrame([total_row])], ignore_index=True)
-
-                            _download_xlsx_button(metrics_tbl_f, f"table_ByField_PS_{_slugify(sel_label)}.xlsx",
-                                                key=f"dl_tbl_field_ps_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                            styled_tbl_f = (metrics_tbl_f.style
-                                            .format({f"%{target_cat}":"{:.1f}%", f"Impact (Δ%{target_cat})":"{:+.2f}"})
-                                            .background_gradient(subset=[f"Impact (Δ%{target_cat})"], cmap="RdYlGn")
-                                            .hide(axis="index"))
+                            p_tot, s_tot = float(mod_agg_ps["P"].sum()), float(mod_agg_ps["S"].sum())
+                            den_tot = p_tot + s_tot
+                            pctP_tot = (p_tot / den_tot * 100) if den_tot else 0.0
+                            pctP_tot_base = (
+                                float(base_agg_ps["P"].sum()) /
+                                max(1.0, float(base_agg_ps["P"].sum() + base_agg_ps["S"].sum())) * 100
+                            )
+                            total_row = {
+                                "Field": "TOTAL",
+                                "%P": round(pctP_tot, 1),
+                                "%S": round(100 - pctP_tot, 1),
+                                "Impact (Δ%P)": round(pctP_tot - pctP_tot_base, 2)
+                            }
+                            metrics_tbl_f = pd.concat([metrics_tbl_f, pd.DataFrame([total_row])], ignore_index=True)
+        
+                            _download_xlsx_button(
+                                metrics_tbl_f,
+                                f"table_ByField_PS_{_slugify(sel_label)}.xlsx",
+                                key=f"dl_tbl_field_ps_{_slugify(sel_label)}",
+                                label="⬇️ Download table (Excel)"
+                            )
+                            styled_tbl_f = (
+                                metrics_tbl_f.style
+                                .format({"%P":"{:.1f}%","%S":"{:.1f}%","Impact (Δ%P)":"{:+.2f}"})
+                                .apply(lambda df_: style_diverging_simple(df_, "Impact (Δ%P)"), axis=None)
+                                .hide(axis="index")
+                            )
                             st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
-
+        
                         else:
-                            # Qualifications (SA/SP/IP/PA/OTHER)
-                            target_cat = last_op["cat"] if last_op else "SA"
-                            impact = impact_column_generic(base_agg_tipo, mod_agg_tipo, target_cat, mode="QUAL")
-                            cats = ["SA","SP","IP","PA","OTHER"]
-                            for c in cats:
-                                if c not in mod_agg_tipo.columns: mod_agg_tipo[c] = 0.0
+                            # ---- Sensibilidad Qualifications (SA/OTHER) ----
+                            mod_agg_tipo = apply_agg_sensitivity_qual(
+                                base_agg_tipo,
+                                target=SENS["target_cat"],           # "SA" o "OTHER"
+                                member=SENS["member"],               # "Todas" o Field específico
+                                delta_cred=SENS["delta_cred"],
+                            )
+                            target_is_sa = (SENS["target_cat"] == "SA")
+                            impact = add_impact_column_qual(
+                                base_agg_tipo, mod_agg_tipo, target=("SA" if target_is_sa else "OTHER")
+                            )
+        
+                            cats = ["SA","PA","SP","IP","OTHER"]
                             den = (mod_agg_tipo[cats].sum(axis=1)).replace(0, pd.NA)
-                            tbl = pd.DataFrame({
+                            show_col = "%SA" if target_is_sa else "%OTHER"
+                            val_col = "SA" if target_is_sa else "OTHER"
+        
+                            metrics_tbl_f = pd.DataFrame({
                                 "Field": mod_agg_tipo.index,
-                                f"%{target_cat}": (mod_agg_tipo[target_cat] / den * 100).round(1).fillna(0.0),
-                                f"Impact (Δ%{target_cat})": impact.values
+                                show_col: (mod_agg_tipo[val_col] / den * 100).round(1).fillna(0.0),
+                                f"Impact (Δ{show_col})": impact.values
                             })
+        
                             sums = mod_agg_tipo[cats].sum(axis=0)
-                            den_tot = float(sums.sum()) or 1.0
-                            pct_tot = float(sums[target_cat]) / den_tot * 100
-
+                            den_tot = float(sums.sum())
+                            tot_val = float(sums[val_col])
+                            pct_tot = (tot_val / den_tot * 100) if den_tot else 0.0
+        
                             sums_base = base_agg_tipo[cats].sum(axis=0)
-                            den_tot_base = float(sums_base.sum()) or 1.0
-                            base_pct_tot = float(sums_base[target_cat]) / den_tot_base * 100
-
-                            total_row = {"Field":"TOTAL", f"%{target_cat}": round(pct_tot,1), f"Impact (Δ%{target_cat})": round(pct_tot - base_pct_tot, 2)}
-                            metrics_tbl_f = pd.concat([tbl, pd.DataFrame([total_row])], ignore_index=True)
-
-                            _download_xlsx_button(metrics_tbl_f, f"table_ByField_QUAL_{_slugify(sel_label)}.xlsx",
-                                                key=f"dl_tbl_field_qual_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                            styled_tbl_f = (metrics_tbl_f.style
-                                            .format({f"%{target_cat}":"{:.1f}%", f"Impact (Δ%{target_cat})":"{:+.2f}"})
-                                            .background_gradient(subset=[f"Impact (Δ%{target_cat})"], cmap="RdYlGn")
-                                            .hide(axis="index"))
+                            den_tot_base = float(sums_base.sum()) if float(sums_base.sum()) != 0 else 1.0
+                            pct_tot_base = float(sums_base[val_col]) / den_tot_base * 100
+        
+                            total_row = {
+                                "Field": "TOTAL",
+                                show_col: round(pct_tot, 1),
+                                f"Impact (Δ{show_col})": round(pct_tot - pct_tot_base, 2)
+                            }
+                            metrics_tbl_f = pd.concat([metrics_tbl_f, pd.DataFrame([total_row])], ignore_index=True)
+        
+                            _download_xlsx_button(
+                                metrics_tbl_f,
+                                f"table_ByField_QUAL_{_slugify(sel_label)}.xlsx",
+                                key=f"dl_tbl_field_qual_{_slugify(sel_label)}",
+                                label="⬇️ Download table (Excel)"
+                            )
+                            styled_tbl_f = (
+                                metrics_tbl_f.style
+                                .format({show_col:"{:.1f}%", f"Impact (Δ{show_col})": "{:+.2f}"})
+                                .apply(lambda df_: style_diverging_simple(df_, f"Impact (Δ{show_col})"), axis=None)
+                                .hide(axis="index")
+                            )
                             st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
-
+        
                     else:
-                        # ===== HISTÓRICO (como lo tenías) =====
+                        # ===== HISTÓRICO (sin sensibilidad) =====
                         metrics_tbl_f = build_percent_table("Field", base_agg_tipo, base_agg_ps)
-                        _download_xlsx_button(metrics_tbl_f, f"table_ByField_{_slugify(sel_label)}.xlsx",
-                                            key=f"dl_tbl_field_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                        styled_tbl_f = (metrics_tbl_f.style
-                                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
-                                        .apply(style_percent_tables, id_col="Field", axis=None)
-                                        .hide(axis="index"))
+                        _download_xlsx_button(
+                            metrics_tbl_f,
+                            f"table_ByField_{_slugify(sel_label)}.xlsx",
+                            key=f"dl_tbl_field_{_slugify(sel_label)}",
+                            label="⬇️ Download table (Excel)"
+                        )
+                        styled_tbl_f = (
+                            metrics_tbl_f.style
+                            .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
+                            .apply(style_percent_tables, id_col="Field", axis=None)
+                            .hide(axis="index")
+                        )
                         st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
-
-
 
                 # Históricos Field
                 df_hist_f = df_car_global.copy()
@@ -1226,99 +1297,142 @@ else:
             else:
                 fil_mat = fil.copy()
                 fil_mat["_MAT"] = fil_mat[program_col].astype(str).str.strip()
-
+        
                 colM_L, colM_R = st.columns([6,6], gap="large")
-
-                # Tabla timeframe
+        
+                # --- Agregaciones del período seleccionado ---
                 agg_tipo_m = (fil_mat.groupby(["_MAT","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["SA","PA","SP","IP","OTHER"]:
                     if k not in agg_tipo_m.columns: agg_tipo_m[k] = 0.0
                 agg_tipo_m = agg_tipo_m[["SA","PA","SP","IP","OTHER"]]
-
+        
                 agg_ps_m = (fil_mat.groupby(["_MAT","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["P","S"]:
                     if k not in agg_ps_m.columns: agg_ps_m[k] = 0.0
                 agg_ps_m = agg_ps_m[["P","S"]]
-
+        
                 with colM_L:
                     base_agg_ps = agg_ps_m.copy()
                     base_agg_tipo = agg_tipo_m.copy()
-
+        
                     if SENS["on"]:
-                        mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(
-                            base_agg_ps, base_agg_tipo, SENS.get("ops", []),
-                            member_all_label="All", index_name="Program"
-                        )
-                        last_op = SENS["ops"][-1] if SENS.get("ops") else None
-
-                        if last_op and last_op["scope"] == "PS":
-                            target_cat = last_op["cat"]
-                            impact = impact_column_generic(base_agg_ps, mod_agg_ps, target_cat, mode="PS")
+                        if SENS["kind"] == "P/S":
+                            # ---- Sensibilidad P/S ----
+                            mod_agg_ps = apply_agg_sensitivity_ps(
+                                base_agg_ps,
+                                target=SENS["target_cat"],            # "P" o "S"
+                                member=SENS["member"],                # "Todas" o Program específico
+                                delta_cred=SENS["delta_cred"],
+                            )
+                            impact = add_impact_column_ps(base_agg_ps, mod_agg_ps)  # Δ%P
+        
                             den = (mod_agg_ps["P"] + mod_agg_ps["S"]).replace(0, pd.NA)
-                            tbl = pd.DataFrame({
+                            metrics_tbl_m = pd.DataFrame({
                                 "Program": mod_agg_ps.index,
-                                f"%{target_cat}": (mod_agg_ps[target_cat] / den * 100).round(1).fillna(0.0),
-                                f"Impact (Δ%{target_cat})": impact.values
+                                "%P": (mod_agg_ps["P"] / den * 100).round(1).fillna(0.0),
+                                "%S": (mod_agg_ps["S"] / den * 100).round(1).fillna(0.0),
+                                "Impact (Δ%P)": impact.values
                             })
-                            totP, totS = float(mod_agg_ps["P"].sum()), float(mod_agg_ps["S"].sum())
-                            tot_den = totP + totS
-                            pct_tot = ((totP if target_cat=="P" else totS) / tot_den * 100) if tot_den else 0.0
-                            base_den = float(base_agg_ps["P"].sum() + base_agg_ps["S"].sum()) or 1.0
-                            base_pct_tot = float(base_agg_ps[target_cat].sum()) / base_den * 100
-                            total_row = {"Program":"TOTAL", f"%{target_cat}": round(pct_tot,1), f"Impact (Δ%{target_cat})": round(pct_tot - base_pct_tot, 2)}
-                            metrics_tbl_m = pd.concat([tbl, pd.DataFrame([total_row])], ignore_index=True)
-
-                            _download_xlsx_button(metrics_tbl_m, f"table_ByProgram_PS_{_slugify(sel_label)}.xlsx",
-                                                key=f"dl_tbl_prog_ps_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                            styled_tbl_m = (metrics_tbl_m.style
-                                            .format({f"%{target_cat}":"{:.1f}%", f"Impact (Δ%{target_cat})":"{:+.2f}"})
-                                            .background_gradient(subset=[f"Impact (Δ%{target_cat})"], cmap="RdYlGn")
-                                            .hide(axis="index"))
+                            # TOTAL
+                            p_tot, s_tot = float(mod_agg_ps["P"].sum()), float(mod_agg_ps["S"].sum())
+                            den_tot = p_tot + s_tot
+                            pctP_tot = (p_tot / den_tot * 100) if den_tot else 0.0
+                            pctP_tot_base = (
+                                float(base_agg_ps["P"].sum()) /
+                                max(1.0, float(base_agg_ps["P"].sum() + base_agg_ps["S"].sum())) * 100
+                            )
+                            total_row = {
+                                "Program": "TOTAL",
+                                "%P": round(pctP_tot, 1),
+                                "%S": round(100 - pctP_tot, 1),
+                                "Impact (Δ%P)": round(pctP_tot - pctP_tot_base, 2)
+                            }
+                            metrics_tbl_m = pd.concat([metrics_tbl_m, pd.DataFrame([total_row])], ignore_index=True)
+        
+                            _download_xlsx_button(
+                                metrics_tbl_m,
+                                f"table_ByProgram_PS_{_slugify(sel_label)}.xlsx",
+                                key=f"dl_tbl_prog_ps_{_slugify(sel_label)}",
+                                label="⬇️ Download table (Excel)"
+                            )
+                            styled_tbl_m = (
+                                metrics_tbl_m.style
+                                .format({"%P":"{:.1f}%","%S":"{:.1f}%","Impact (Δ%P)":"{:+.2f}"})
+                                .apply(lambda df_: style_diverging_simple(df_, "Impact (Δ%P)"), axis=None)
+                                .hide(axis="index")
+                            )
                             st.markdown(f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>", unsafe_allow_html=True)
-
+        
                         else:
-                            target_cat = last_op["cat"] if last_op else "SA"
-                            impact = impact_column_generic(base_agg_tipo, mod_agg_tipo, target_cat, mode="QUAL")
-                            cats = ["SA","SP","IP","PA","OTHER"]
-                            for c in cats:
-                                if c not in mod_agg_tipo.columns: mod_agg_tipo[c] = 0.0
+                            # ---- Sensibilidad Qualifications (SA/OTHER) ----
+                            mod_agg_tipo = apply_agg_sensitivity_qual(
+                                base_agg_tipo,
+                                target=SENS["target_cat"],            # "SA" o "OTHER"
+                                member=SENS["member"],                # "Todas" o Program específico
+                                delta_cred=SENS["delta_cred"],
+                            )
+                            target_is_sa = (SENS["target_cat"] == "SA")
+                            impact = add_impact_column_qual(
+                                base_agg_tipo, mod_agg_tipo, target=("SA" if target_is_sa else "OTHER")
+                            )
+        
+                            cats = ["SA","PA","SP","IP","OTHER"]
                             den = (mod_agg_tipo[cats].sum(axis=1)).replace(0, pd.NA)
-                            tbl = pd.DataFrame({
+                            show_col = "%SA" if target_is_sa else "%OTHER"
+                            val_col = "SA" if target_is_sa else "OTHER"
+        
+                            metrics_tbl_m = pd.DataFrame({
                                 "Program": mod_agg_tipo.index,
-                                f"%{target_cat}": (mod_agg_tipo[target_cat] / den * 100).round(1).fillna(0.0),
-                                f"Impact (Δ%{target_cat})": impact.values
+                                show_col: (mod_agg_tipo[val_col] / den * 100).round(1).fillna(0.0),
+                                f"Impact (Δ{show_col})": impact.values
                             })
+        
                             sums = mod_agg_tipo[cats].sum(axis=0)
-                            den_tot = float(sums.sum()) or 1.0
-                            pct_tot = float(sums[target_cat]) / den_tot * 100
-
+                            den_tot = float(sums.sum())
+                            tot_val = float(sums[val_col])
+                            pct_tot = (tot_val / den_tot * 100) if den_tot else 0.0
+        
                             sums_base = base_agg_tipo[cats].sum(axis=0)
-                            den_tot_base = float(sums_base.sum()) or 1.0
-                            base_pct_tot = float(sums_base[target_cat]) / den_tot_base * 100
-
-                            total_row = {"Program":"TOTAL", f"%{target_cat}": round(pct_tot,1), f"Impact (Δ%{target_cat})": round(pct_tot - base_pct_tot, 2)}
-                            metrics_tbl_m = pd.concat([tbl, pd.DataFrame([total_row])], ignore_index=True)
-
-                            _download_xlsx_button(metrics_tbl_m, f"table_ByProgram_QUAL_{_slugify(sel_label)}.xlsx",
-                                                key=f"dl_tbl_prog_qual_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                            styled_tbl_m = (metrics_tbl_m.style
-                                            .format({f"%{target_cat}":"{:.1f}%", f"Impact (Δ%{target_cat})":"{:+.2f}"})
-                                            .background_gradient(subset=[f"Impact (Δ%{target_cat})"], cmap="RdYlGn")
-                                            .hide(axis="index"))
+                            den_tot_base = float(sums_base.sum()) if float(sums_base.sum()) != 0 else 1.0
+                            pct_tot_base = float(sums_base[val_col]) / den_tot_base * 100
+        
+                            total_row = {
+                                "Program": "TOTAL",
+                                show_col: round(pct_tot, 1),
+                                f"Impact (Δ{show_col})": round(pct_tot - pct_tot_base, 2)
+                            }
+                            metrics_tbl_m = pd.concat([metrics_tbl_m, pd.DataFrame([total_row])], ignore_index=True)
+        
+                            _download_xlsx_button(
+                                metrics_tbl_m,
+                                f"table_ByProgram_QUAL_{_slugify(sel_label)}.xlsx",
+                                key=f"dl_tbl_prog_qual_{_slugify(sel_label)}",
+                                label="⬇️ Download table (Excel)"
+                            )
+                            styled_tbl_m = (
+                                metrics_tbl_m.style
+                                .format({show_col:"{:.1f}%", f"Impact (Δ{show_col})": "{:+.2f}"})
+                                .apply(lambda df_: style_diverging_simple(df_, f"Impact (Δ{show_col})"), axis=None)
+                                .hide(axis="index")
+                            )
                             st.markdown(f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>", unsafe_allow_html=True)
-
+        
                     else:
-                        # ===== HISTÓRICO (como lo tenías) =====
+                        # ===== HISTÓRICO (sin sensibilidad) =====
                         metrics_tbl_m = build_percent_table("Program", base_agg_tipo, base_agg_ps)
-                        _download_xlsx_button(metrics_tbl_m, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
-                                            key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                        styled_tbl_m = (metrics_tbl_m.style
-                                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
-                                        .apply(style_percent_tables, id_col="Program", axis=None)
-                                        .hide(axis="index"))
+                        _download_xlsx_button(
+                            metrics_tbl_m,
+                            f"table_ByProgram_{_slugify(sel_label)}.xlsx",
+                            key=f"dl_tbl_prog_{_slugify(sel_label)}",
+                            label="⬇️ Download table (Excel)"
+                        )
+                        styled_tbl_m = (
+                            metrics_tbl_m.style
+                            .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
+                            .apply(style_percent_tables, id_col="Program", axis=None)
+                            .hide(axis="index")
+                        )
                         st.markdown(f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>", unsafe_allow_html=True)
-
-
 
                 # Históricos Program
                 df_hist_m = df_car_global.copy()
@@ -1954,6 +2068,7 @@ if show_counts:
             key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
             label="Descargar datos (Excel)"
         )
+
 
 
 
