@@ -418,15 +418,15 @@ df_fd_base  = df_fd.copy()
 df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
 df_fd_f          = filter_df_fd(df_fd_base, time_mode, sel_year, sel_sem)
 
-# Sidebar: botón de descarga de la BD filtrada según el período seleccionado
+# Sidebar: botón de descarga de la BD filtrada
 if 'dl_bd_placeholder' in locals():
     safe = _sanitize_for_export(df_car_filt_all)
     dl_bd_placeholder.download_button(
-        "Descargar BD (Excel)",
+        "Download DB (Excel)",
         data=_xlsx_bytes(safe),
         file_name=f"BD_Cartelera_{_slugify(sel_label)}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key=f"dl_bd_{_slugify(sel_label)}"
+        key=f"dl_bd_sidebar_main_{_slugify(sel_label)}_{st.session_state.get('time_mode','NA')}_{'sens' if sens_mode else 'hist'}"
     )
 
 # ================== PRE-FILTROS ==================
@@ -1955,3 +1955,4 @@ if show_counts:
             key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
             label="Descargar datos (Excel)"
         )
+
