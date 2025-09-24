@@ -15,47 +15,45 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ====== INSTITUTIONAL HEADER ======
-
-with st.sidebar:
-    # --- contenedor "arriba de todo" para KPIs ---
-    kpi_top = st.container()
-
-    st.subheader("Vista")
-    sens_mode = st.toggle("Análisis de sensibilidad", value=False,
-                          help="Activa para simular subir/bajar profesores y ver impacto")
-
-    # --- Timeframe, View, etc. (lo que ya tienes) ---
-    # ... (igual)
-
-    # --- export placeholder ---
-    dl_bd_placeholder = st.empty()
-
-    # ===== Controles de Sensibilidad =====
-    if sens_mode:
-        st.markdown('---')
-        st.markdown("#### Sensitivity setup")
-        # ... (tu setup de sensibilidad)
-    # NO else aquí
-
-# >>> Después del bloque anterior, vuelve a usar el contenedor kpi_top:
-with kpi_top:
-    if not sens_mode:
-        st.markdown('---')
-        st.markdown("### 📊 Go to KPI:")
-        options = {
-            "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-            "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
-            "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
-            "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
-            "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
-            "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
+with st.container():
+    st.markdown(
+        """
+        <style>
+        .header-title {
+            color:#21877D; font-weight:700; text-align:center; font-size:32px;
         }
-        choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
-        default_label = "6 Faculty Qualifications"
-        default_idx = choices.index(default_label) if default_label in choices else 0
-        choice = st.selectbox("Select…", choices, index=default_idx, key="kpi_nav_top")
-        st.link_button("Open", options[choice], use_container_width=True)
+        .header-btn {
+            background-color:#21877D; padding:8px 16px; border:none;
+            border-radius:8px; cursor:pointer; font-size:14px;
+            display:inline-block;
+        }
+        a.header-btn, a.header-btn:link, a.header-btn:visited, a.header-btn:hover, a.header-btn:active {
+            color:#ffffff !important; text-decoration:none !important;
+        }
+        .scroll-wrap-600 { max-height:600px; overflow-y:auto; }
+        .scroll-wrap-400 { max-height:400px; overflow-y:auto; }
+        .scroll-wrap-program { max-height:520px; overflow-y:auto; }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+# ====== DOWNLOAD BUTTONS — MINIMAL STYLE ======
+st.markdown("""
+<style>
+div.stDownloadButton > button {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #21877D !important;
+  font-size: 13px !important;
+  padding: 0 !important;
+  text-decoration: underline !important;
+}
+div.stDownloadButton { margin: 2px 0 8px 0; }
+div.stDownloadButton > button:hover { opacity: 0.9; }
+</style>
+""", unsafe_allow_html=True)
 
 # ================== HEADER (solo título, sin prev/next) ==================
 st.markdown('<div class="header-title">Full-time Faculty Qualifications</div>', unsafe_allow_html=True)
@@ -1956,5 +1954,6 @@ if show_counts:
             key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
             label="Descargar datos (Excel)"
         )
+
 
 
