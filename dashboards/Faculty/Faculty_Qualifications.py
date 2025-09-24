@@ -415,26 +415,53 @@ def filter_df_fd(df: pd.DataFrame, mode: str, selected_year: int | None, selecte
         # Export placeholder
         dl_bd_placeholder = st.empty()
     
-    # ================== DESPUÉS DEL SIDEBAR: filtrar período y poblar "Apply to" ==================
+    # ================== DESPUÉS DEL SIDEBAR: resolver timeframe + poblar "Apply to" ==================
+    # Releer del session_state con valores por defecto seguros (en caso de orden de ejecución/rerun)
+    time_mode = st.session_state.get("time_mode", "Semestral")
+    
+    if time_mode == "Semestral":
+        _def_sem = SEMESTRAL_PERIODS[-1] if SEMESTRAL_PERIODS else "202510"
+        sel_sem  = st.session_state.get("sel_sem", _def_sem)
+        sel_year = extract_year_from_period(sel_sem) or (YEARS_ALL[-1] if YEARS_ALL else 2025)
+        sel_label = str(sel_sem)
+    elif time_mode == "Anual":
+        _def_year = YEARS_ALL[-1] if YEARS_ALL else 2025
+        sel_year  = int(st.session_state.get("sel_year", _def_year))
+        sel_sem   = None
+        sel_label = f"{sel_year} (Annual)"
+    else:  # Intersemestral
+        _def_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
+        sel_year = int(st.session_state.get("sel_inter_year", _def_i))
+        sel_sem  = None
+        sel_label = f"{sel_year} Intersemestral"
+    
+    # También re-leemos la vista para que esté disponible fuera del sidebar
+    view_mode = st.session_state.get("view_mode", "By Academic Area")
+    
+    # Filtrar data del período seleccionado
     df_car_base = df_car.copy()
     df_fd_base  = df_fd.copy()
     df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
     
-    # Poblar "Apply to" con la lista correcta según la vista y la data filtrada
+    # Poblar "Apply to" con la lista correcta según la vista y la data filtrada (solo si sensitivity ON)
     if st.session_state.get("sens_mode", False):
         col_areaCourse = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
         col_field      = _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
         program_col    = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
+    
         members = build_member_list_for_view(df_car_filt_all, view_mode, col_areaCourse, col_field, program_col)
+    
+        # Volvemos a entrar al sidebar para reemplazar el select del placeholder con los miembros reales
         with st.sidebar:
-            # Re-crear el select con los miembros reales (mismo key)
+            st.session_state.setdefault("sens_member", "All")
             sens_member_placeholder.selectbox("Apply to", members, key="sens_member")
     
-    # SENS dict para el resto del dashboard
+    # Construir estructura SENS a usar en todo el dashboard
     SENS = {
         "on": bool(st.session_state.get("sens_mode", False)),
         "ops": st.session_state.get("sens_ops", []),
     }
+
 
     # --- CONTROLES DE SENSITIVITY (debajo del timeframe) ---
     if sens_mode:
@@ -1530,6 +1557,7 @@ if show_counts:
             key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
             label="Descargar datos (Excel)"
         )
+
 
 
 
