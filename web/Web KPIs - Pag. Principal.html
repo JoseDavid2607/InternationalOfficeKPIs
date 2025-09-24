@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>KPIs Oficina Internacional</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --purple:#8025A0;
+      --purple-h:#6d1f87;
+      --ring: rgba(86,214,201,.45);
+      --card:160px;
+      --cardH:140px;
+    }
+
+    body{
+      font-family: Arial, sans-serif;
+      margin:0;
+      color:#1f2a44;
+      text-align:center;
+    }
+
+    /* ===== HERO ===== */
+    header.hero{
+      color:#fff;
+      position:relative;
+      min-height:200px;
+      padding:56px 24px 104px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:hidden;
+      background:url("imagenes/oficinas.jpg") center/cover no-repeat;
+    }
+    header.hero .hero-inner{max-width:1100px;width:100%;}
+    header.hero h1{
+      margin:0;
+      font-weight:800;
+      line-height:1.1;
+      font-size:clamp(2.2rem,3.6vw + .5rem,3.5rem);
+      letter-spacing:.3px;
+      text-shadow:0 8px 24px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.45);
+    }
+    header.hero h2{
+      margin:0;
+      font-weight:800;
+      line-height:1.1;
+      font-size:larger;
+      letter-spacing:.3px;
+      text-shadow:0 8px 24px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.45);
+    }
+
+    /* ===== Wrapper del recuadro para ubicar a Séneca a la izquierda ===== */
+    .instructions-wrap{
+      position:relative;           /* referencia para Séneca */
+      max-width:760px;             /* coincide con el ancho del recuadro */
+      margin:-62px auto 26px;      /* conserva tu layout */
+    }
+
+    /* ===== Recuadro instrucciones ===== */
+    .instructions{
+      position:relative;
+      z-index:5;
+      padding:20px 22px;
+      background:#fff;
+      border-radius:14px;
+      box-shadow:0 18px 40px rgba(0,0,0,.20);
+      font-size:1.08em;
+      text-align:left;
+    }
+    .instructions p{margin:0 0 10px;}
+
+    /* ===== Seneca pegada a la izquierda del recuadro (afuera) ===== */
+    .instructions-seneca{
+      position:absolute;
+      top:50%;
+      left:-150px;                 /* separa la imagen hacia afuera, a la izquierda */
+      transform:translateY(-50%);
+      text-align:center;
+      width:130px;                 /* ancho de la "columna" de séneca */
+      pointer-events:none;         /* no bloquea clics sobre el recuadro */
+    }
+    .instructions-seneca img{
+      max-width:120px;
+      height:auto;
+      display:block;
+      margin:8px auto 0;
+    }
+
+    /* Globo de diálogo (apunta hacia el recuadro a la derecha) */
+    .speech-bubble{
+      position:absolute;
+      top:-44px;
+      left:100%;
+      margin-left:8px;             /* separa el globo de la imagen hacia el recuadro */
+      background:#56d6c9;
+      color:#fff;
+      padding:10px 14px;
+      border-radius:12px;
+      font-size:.85em;
+      font-weight:bold;
+      box-shadow:0 4px 12px rgba(0,0,0,.2);
+      white-space:nowrap;
+    }
+    .speech-bubble::after{
+      content:"";
+      position:absolute;
+      top:50%;
+      transform:translateY(-50%);
+      right:-10px;                 /* triángulo en el borde derecho, apuntando al recuadro */
+      border-width:10px;
+      border-style:solid;
+      border-color:transparent transparent transparent #56d6c9;
+    }
+
+    /* ===== Layout ===== */
+    .main{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      max-width:1280px;
+      margin:0 auto 48px;
+      padding:0 24px;
+    }
+
+    /* ===== Grid principal ===== */
+    .button-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(var(--card), auto));
+      gap:32px;
+      justify-content:center;
+      width:100%;
+    }
+    @media (min-width:1200px){
+      .button-grid{grid-template-columns:repeat(7, var(--card));}
+    }
+
+    /* ===== Botón/Tarjeta ===== */
+    .btn{
+      --bg:#555; --bg-h:#777;
+      background:var(--bg);
+      color:#fff;
+      text-decoration:none;
+      border:0;
+      border-radius:12px;
+      width:var(--card);
+      min-height:var(--cardH);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      padding:18px 10px;
+      margin:4px;
+      box-shadow:0 3px 8px rgba(0,0,0,.12);
+      transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
+      position:relative;
+    }
+    .btn:hover{
+      transform:translateY(-3px);
+      box-shadow:0 8px 16px rgba(0,0,0,.18);
+      background:var(--bg-h);
+      z-index:10;
+    }
+    .btn:focus-visible{
+      box-shadow:0 0 0 3px var(--ring), 0 6px 12px rgba(0,0,0,.16);
+      z-index:10;
+      outline:none;
+    }
+    .btn .icon{width:30px;height:30px;}
+    .btn span{
+      font-size:.9rem;
+      font-weight:700;
+      text-align:center;
+      text-shadow:0 1px 3px rgba(0,0,0,.25);
+    }
+
+    .chev-down{width:18px;height:18px;opacity:.9;}
+
+    /* Colores */
+    .gray-btn   {--bg:#555;    --bg-h:#777;}
+    .green-btn  {--bg:#56d6c9; --bg-h:#3bb7aa;}
+    .orange-btn {--bg:#f87c56; --bg-h:#e96a40;}
+    .purple-btn {--bg:var(--purple); --bg-h:var(--purple-h);}
+
+    /* ===== Tooltip ===== */
+    .btn::after{
+      content:attr(data-tip);
+      position:absolute;
+      left:50%;
+      bottom:-10px;
+      transform:translate(-50%,100%);
+      width:calc(var(--card) - 20px);
+      max-width:260px;
+      background:#0f172a;
+      color:#fff;
+      padding:8px 10px;
+      border-radius:8px;
+      font-size:.8rem;
+      line-height:1.3;
+      box-shadow:0 6px 16px rgba(0,0,0,.22);
+      opacity:0;
+      pointer-events:none;
+      transition:opacity .18s ease, transform .18s ease;
+      white-space:normal;
+      z-index:9999;
+    }
+    .btn:hover::after,
+    .btn:focus-visible::after{
+      opacity:1;
+      transform:translate(-50%,110%);
+    }
+    @media (max-width:768px){
+      .btn::after{bottom:auto;top:100%;transform:translate(-50%,10%);}
+    }
+
+    /* ===== Dashboards ===== */
+    .dashboard-grid{
+      display:grid;
+      grid-template-columns:repeat(2, var(--card));
+      gap:32px;
+      justify-content:center;
+      width:100%;
+      margin-top:26px;
+    }
+    @media (max-width:560px){
+      .dashboard-grid{grid-template-columns:1fr;}
+    }
+
+    /* ====== Modal de autenticación (FACULTY) ====== */
+    .modal-backdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.45);
+      display:none; align-items:center; justify-content:center; z-index:9999;
+    }
+    .modal{
+      background:#fff; border-radius:12px; width:clamp(300px, 90vw, 420px);
+      width:clamp(300px, 190vw, 420px);
+      box-shadow:0 20px 60px rgba(0,0,0,.35); padding:20px 22px;
+      font-family:Arial, sans-serif; text-align:left;
+    }
+    .modal h3{margin:0 0 .6rem; color:#003366}
+    .modal label{display:block; font-size:.9rem; margin:.5rem 0 .25rem; color:#1f2a44}
+    .modal input{
+      width:90%; padding:10px 12px; border:1px solid #d0d4d9; border-radius:8px;
+      font-size:1rem;
+    }
+    .modal .actions{display:flex; gap:10px; margin-top:16px}
+    .modal button{
+      padding:10px 14px; border:none; border-radius:8px; cursor:pointer; font-weight:600;
+    }
+    .btn-primary{ background:#21877D; color:#fff }
+    .btn-secondary{ background:#e5e7eb; color:#111 }
+    .error{ color:#b91c1c; font-size:.9rem; margin-top:8px; display:none }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <h1>KPIs for International Accreditations</h1>
+      <h2>International Office UASM</h2>
+    </div>
+  </header>
+
+  <!-- Wrapper para poder pegar a Séneca a la izquierda del recuadro -->
+  <div class="instructions-wrap">
+    <!-- Séneca afuera y a la izquierda -->
+    <div class="instructions-seneca" aria-hidden="true">
+      <img src="imagenes/seneca.png" alt="Seneca seneca" />
+    </div>
+
+    <!-- Tu recuadro de instrucciones sin cambios de contenido -->
+    <div class="instructions">
+      <p>
+        Dynamic BaseRoom with key information from the different areas of the School of Management, to report in international rankings and accreditations.
+        The repository will be updated based on the connected Excel files from each unit.
+      </p>
+      <p> 
+        <strong>Click on each section to review the KPIs.</strong>
+      </p>
+    </div>
+  </div>
+
+  <div class="button-grid">
+    <a href="#alumni" class="btn gray-btn" data-tip="Employment distribution by sector and program, salary distribution with average annual salary, and placement by functional area.">
+      <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M9 7V6a3 3 0 0 1 3-3 3 3 0 0 1 3 3v1" stroke="white" stroke-width="1.7"/><rect x="3" y="7" width="18" height="12" rx="2" stroke="white" stroke-width="1.7"/><path d="M3 12h18" stroke="white" stroke-width="1.7"/></svg>
+      <span>Alumni & Career Services</span>
+      <svg class="chev-down" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+
+    <a href="#executive" class="btn gray-btn" data-tip="ExEd Portfolio, financial results, faculty profile, international weeks offered, and UASM Executive Education students attending international weeks.">
+      <svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="10" height="18" rx="2" stroke="white" stroke-width="1.7"/><path d="M18 9v12" stroke="white" stroke-width="1.7"/><path d="M7 7h4M7 11h4M7 15h4" stroke="white" stroke-width="1.7"/></svg>
+      <span>Executive Education</span>
+      <svg class="chev-down" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+
+    <a href="#programas" class="btn gray-btn" data-tip="Admissions by cohort, student demographics (by semester, cohort, and graduation date), faculty deployment, internationalization, academic KPIs (average GPA, average class size), and financial information.">
+      <svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="14" rx="2" stroke="white" stroke-width="1.7"/><path d="M7 11l3 3 6-6" stroke="white" stroke-width="1.7"/></svg>
+      <span>Academic Programs</span>
+      <svg class="chev-down" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+
+    <a href="#research" class="btn gray-btn" data-tip="Core faculty output: ISI articles, publications by year/authorship, research & consulting projects, HBP cases, practitioner books, AACSB contributions & impact, seminars, and conference papers.">
+      <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M9 3v5l-4.5 8A3 3 0 0 0 7.3 20h9.4a3 3 0 0 0 2.8-4L15 8V3" stroke="white" stroke-width="1.7"/></svg>
+      <span>Research and Development</span>
+      <svg class="chev-down" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+
+    <a href="#resources" class="btn gray-btn" data-tip="Budget (revenue & expenses), performance indicators, Uniandes funding allocation, and staff/administrators, reported in local currency, Euros, and US dollars.">
+      <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M14 6l4 4m-1-5l2 2m-8 7l-4 4H5v-2l4-4m7-7a3 3 0 1 0-4.24 4.24L16.76 5" stroke="white" stroke-width="1.7"/></svg>
+      <span>Resources and Admin</span>
+      <svg class="chev-down" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+
+    <!-- Faculty: ponemos id para interceptar el click -->
+    <a id="facultyLink" href="KPIs/Faculty/Web KPIs - Faculty.html" class="btn green-btn" data-tip="Full-time composition, staffing, demographics, doctoral degrees, Facullty activities, AACSB deployment, part-time distribution & demographics, faculty deployment by program & academic area, and qualification indicators.">
+      <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M16 11a4 4 0 1 0-8 0" stroke="white" stroke-width="1.7"/><path d="M3 20a7 7 0 0 1 18 0" stroke="white" stroke-width="1.7"/></svg>
+      <span>Faculty</span>
+      <svg class="chev-down" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+
+    <a href="#internationalization" class="btn green-btn" data-tip="International Faculty, dual nationality, visiting Faculty, international publications, conferences, teaching activities, seminars, campus & graduation requirement, international weeks/activities, student mobility, and new signed agreements.">
+      <svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="white" stroke-width="1.7"/><path d="M3 12h18M12 3c3.5 4 3.5 14 0 18M12 3c-3.5 4-3.5 14 0 18" stroke="white" stroke-width="1.3"/></svg>
+      <span>Internationalization</span>
+      <svg class="chev-down" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+  </div>
+
+  <div class="dashboard-grid" aria-label="Dashboards">
+    <a href="http://157.253.248.7:8507" class="btn orange-btn" data-tip="Seminar statistics: seminar information, speakers, and participants.">
+      <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M4 20V6m0 14h16M8 15v5m4-10v10m4-7v7" stroke="white" stroke-width="1.7"/></svg>
+      <span>International Seminars Dashboard</span>
+      <svg class="chev-down" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+
+    <a href="agreements-dashboard.html" class="btn purple-btn" data-tip="Agreement information UASM: new agreements, upcoming expirations, distribution, and alerts.">
+      <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M7 12l3 3 7-7" stroke="white" stroke-width="1.7"/><rect x="3" y="4" width="18" height="14" rx="2" stroke="white" stroke-width="1.7"/></svg>
+      <span>International Agreements Dashboard</span>
+      <svg class="chev-down" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+  </div>
+
+  <!-- ===== Modal de autenticación (solo Faculty) ===== -->
+  <div class="modal-backdrop" id="authBackdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <h3 id="authTitle">Acceso — KPIs Faculty</h3>
+      <p>Ingresa tu <strong>correo Uniandes</strong> y contraseña para continuar.</p>
+      <label for="authUser">Correo Uniandes</label>
+      <input id="authUser" type="email" autocomplete="username" placeholder="usuario@uniandes.edu.co" />
+      <label for="authPass">Contraseña</label>
+      <input id="authPass" type="password" autocomplete="current-password" />
+      <label style="display:flex;align-items:center;gap:8px;margin-top:.6rem;">
+        <input id="rememberMe" type="checkbox" /> Recordar en este navegador
+      </label>
+      <div class="error" id="authError">Correo o contraseña incorrectos (debe ser @uniandes.edu.co).</div>
+      <div class="actions">
+        <button class="btn-primary" id="authConfirm">Ingresar</button>
+        <button class="btn-secondary" id="authCancel">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Script de control de acceso (solo Faculty) ===== -->
+  <script>
+  (function(){
+    // ===== Config: solo correos @uniandes.edu.co =====
+    const UNI_DOMAIN = "@uniandes.edu.co";
+
+    // ===== Usuarios permitidos para FACULTY (correo completo -> contraseña) =====
+    // Pon aquí los que tendrán acceso a "Faculty"
+    const ALLOWED_FACULTY = {
+      "cadavila@uniandes.edu.co": "12345678",
+      "jd.martinezo@uniandes.edu.co": "1004959706",
+      // agrega más...
+    };
+
+    // ===== Sesión temporal por unidad (FACULTY) =====
+    const KEY = "auth_FACULTY_until"; // clave de sessionStorage para Faculty
+    function setSession(hours){
+      const until = Date.now() + hours*60*60*1000;
+      sessionStorage.setItem(KEY, String(until));
+    }
+    function hasSession(){
+      const v = sessionStorage.getItem(KEY);
+      return v && Date.now() < Number(v);
+    }
+
+    // ===== UI refs =====
+    const facultyLink = document.getElementById("facultyLink");
+    const backdrop = document.getElementById("authBackdrop");
+    const iUser = document.getElementById("authUser");
+    const iPass = document.getElementById("authPass");
+    const chkRemember = document.getElementById("rememberMe");
+    const btnOK = document.getElementById("authConfirm");
+    const btnCancel = document.getElementById("authCancel");
+    const err = document.getElementById("authError");
+
+    let targetUrl = facultyLink ? facultyLink.getAttribute("href") : null;
+
+    function openModal(){
+      if(!targetUrl) return;
+      err.style.display = "none";
+      iUser.value = ""; iPass.value = ""; chkRemember.checked = false;
+      backdrop.style.display = "flex";
+      iUser.focus();
+    }
+    function closeModal(){
+      backdrop.style.display = "none";
+    }
+    function validUniEmail(email){
+      email = String(email || "").trim().toLowerCase();
+      return email.endsWith(UNI_DOMAIN);
+    }
+    function validate(){
+      const email = String(iUser.value || "").trim().toLowerCase();
+      const pass = String(iPass.value || "");
+      if(!validUniEmail(email)) { err.style.display = "block"; return; }
+      if(ALLOWED_FACULTY[email] && ALLOWED_FACULTY[email] === pass){
+        if(chkRemember.checked) setSession(6); // 6 horas
+        window.location.href = targetUrl;
+      } else {
+        err.style.display = "block";
+      }
+    }
+
+    // Intercepta SOLO el botón "Faculty"
+    if(facultyLink){
+      facultyLink.addEventListener("click", function(ev){
+        if(!hasSession()){
+          ev.preventDefault();
+          openModal();
+        }
+      });
+    }
+
+    // Eventos del modal
+    btnOK.addEventListener("click", validate);
+    btnCancel.addEventListener("click", closeModal);
+    iPass.addEventListener("keydown", e => { if(e.key === "Enter") validate(); });
+    backdrop.addEventListener("click", e => { if(e.target === backdrop) closeModal(); });
+  })();
+  </script>
+</body>
+</html>
+
+
