@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import webbrowser
-import os
 import re
 from io import BytesIO
 
@@ -2005,6 +2003,3 @@ if show_counts:
             key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
             label="Descargar datos (Excel)"
         )
-
-
-
