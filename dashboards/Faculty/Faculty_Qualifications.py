@@ -1,3 +1,6 @@
+# ==========================
+# Faculty Qualifications — Streamlit App
+# ==========================
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -5,6 +8,9 @@ import plotly.graph_objects as go
 import re
 from io import BytesIO
 
+# --------------------------
+# PAGE CONFIG & STYLES
+# --------------------------
 st.set_page_config(
     page_title="Faculty Qualifications",
     page_icon=":bar_chart:",
@@ -27,7 +33,7 @@ with st.container():
         unsafe_allow_html=True
     )
 
-# ====== DOWNLOAD BUTTONS — MINIMAL STYLE (igual) ======
+# Descargar botones — estilo minimal
 st.markdown("""
 <style>
 div.stDownloadButton > button {
@@ -44,11 +50,14 @@ div.stDownloadButton > button:hover { opacity: 0.9; }
 </style>
 """, unsafe_allow_html=True)
 
-# ================== HEADER (igual) ==================
-st.markdown('<div class="header-title">Full-time Faculty Qalifications</div>', unsafe_allow_html=True)
+# --------------------------
+# HEADER
+# --------------------------
+st.markdown('<div class="header-title">Full-time Faculty Qualifications</div>', unsafe_allow_html=True)
 
-
-# ================== DATA LOAD (igual) ======================
+# --------------------------
+# DATA LOAD
+# --------------------------
 @st.cache_data(ttl=0)
 def load_faculty_distribution():
     xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
@@ -66,8 +75,9 @@ def load_cartelera():
 df_fd  = load_faculty_distribution()
 df_car = load_cartelera()
 
-
-# ================== HELPERS (igual) =============================
+# --------------------------
+# HELPERS
+# --------------------------
 MINT = "#1FA89B"
 SUPPORTING = "#7FD3FF"
 TOTAL_SERIES_COLOR = "#D09E33"
@@ -160,7 +170,7 @@ def years_with_inter():
 def _slugify(s: str) -> str:
     return re.sub(r'[^A-Za-z0-9]+', '_', str(s)).strip('_')
 
-# —— utilidades de descarga (igual) ——
+# —— descarga ——
 def _sanitize_for_export(df: pd.DataFrame) -> pd.DataFrame:
     return df[[c for c in df.columns if not str(c).startswith("_")]].copy()
 
@@ -175,15 +185,14 @@ def _download_xlsx_button(df: pd.DataFrame, fname: str, key: str, label: str = "
     safe = _sanitize_for_export(df)
     clean = re.sub(r"[^\w\sÁÉÍÓÚÜÑáéíóúüñ().%/-]+", "", label).strip()
     st.download_button(
-        clean,
-        data=_xlsx_bytes(safe),
-        file_name=fname,
+        clean, data=_xlsx_bytes(safe), file_name=fname,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key=key,
-        use_container_width=False
+        key=key, use_container_width=False
     )
 
-# ================== SENSITIVITY HELPERS (reutilizables) ==================
+# --------------------------
+# SENSITIVITY HELPERS
+# --------------------------
 def build_member_list_for_view(df_period: pd.DataFrame, view_mode: str, col_areaCourse, col_field, program_col) -> list[str]:
     if view_mode == "By Academic Area" and col_areaCourse:
         items = sorted(df_period[col_areaCourse].astype(str).str.strip().dropna().unique().tolist())
@@ -196,7 +205,6 @@ def build_member_list_for_view(df_period: pd.DataFrame, view_mode: str, col_area
     return ["All"] + items
 
 def apply_ops_to_aggs(agg_ps: pd.DataFrame, agg_tipo: pd.DataFrame, ops: list, member_all_label="All") -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Aplica ops a agregados (filas = miembro de la vista), sumando créditos en P/S o QUAL."""
     mod_ps = agg_ps.copy()
     mod_tipo = agg_tipo.copy()
     for op in ops or []:
@@ -214,9 +222,8 @@ def apply_ops_to_aggs(agg_ps: pd.DataFrame, agg_tipo: pd.DataFrame, ops: list, m
                 mod_ps[cat] = 0.0
             if member == member_all_label:
                 mod_ps[cat] = (mod_ps[cat] + delta).clip(lower=0.0)
-            else:
-                if member in mod_ps.index:
-                    mod_ps.at[member, cat] = max(0.0, float(mod_ps.at[member, cat]) + delta)
+            elif member in mod_ps.index:
+                mod_ps.at[member, cat] = max(0.0, float(mod_ps.at[member, cat]) + delta)
 
         elif scope == "QUAL":
             cats = ["SA","SP","IP","PA","OTHER"]
@@ -226,13 +233,11 @@ def apply_ops_to_aggs(agg_ps: pd.DataFrame, agg_tipo: pd.DataFrame, ops: list, m
                 mod_tipo[cat] = 0.0
             if member == member_all_label:
                 mod_tipo[cat] = (mod_tipo[cat] + delta).clip(lower=0.0)
-            else:
-                if member in mod_tipo.index:
-                    mod_tipo.at[member, cat] = max(0.0, float(mod_tipo.at[member, cat]) + delta)
+            elif member in mod_tipo.index:
+                mod_tipo.at[member, cat] = max(0.0, float(mod_tipo.at[member, cat]) + delta)
     return mod_ps, mod_tipo
 
 def impact_column_generic(base_df: pd.DataFrame, mod_df: pd.DataFrame, target: str, mode: str) -> pd.Series:
-    """Impacto como Δ%target por fila. mode="PS" o "QUAL"."""
     if mode == "PS":
         den0 = (base_df.get("P",0) + base_df.get("S",0)).replace(0, pd.NA)
         den1 = (mod_df.get("P",0) + mod_df.get("S",0)).replace(0, pd.NA)
@@ -250,7 +255,9 @@ def impact_column_generic(base_df: pd.DataFrame, mod_df: pd.DataFrame, target: s
         pct1 = (mod_df[target]  / den1 * 100).fillna(0.0)
         return (pct1 - pct0).round(2)
 
-# ================== HISTORY HELPERS (restored & simple) ==================
+# --------------------------
+# HISTORY HELPERS (restored)
+# --------------------------
 def _period_sort_key(p: str) -> tuple[int,int]:
     y = extract_year_from_period(p) or -1
     suf = period_suffix(p)
@@ -261,12 +268,6 @@ def _period_sort_key(p: str) -> tuple[int,int]:
     return (y, suf_i)
 
 def build_time_axis_for_history(df_hist: pd.DataFrame):
-    """
-    Devuelve:
-      key_col: siempre "_SEM"
-      x_labels: lista ordenada de períodos (semestres o etiquetas que ya tengas)
-      x_map: dict label -> posición (0..n-1)
-    """
     if "_SEM" not in df_hist.columns:
         sc = _get_any(df_hist, "Semestre","Periodo","Periodo Académico","Periodo academico")
         if sc:
@@ -291,24 +292,15 @@ def draw_history(title: str,
                  x_labels: list[str],
                  x_map: dict[str,int],
                  sel_x: int | None):
-    """
-    Versión simple: soporta %P (lo que usa tu dashboard).
-    Espera que agg_ps_all tenga columnas: ["_SEM", level_name, "P","S","P_share"].
-    Para la serie TOTAL usa total_series_builders["P"] con columnas ["_SEM","P","S","P_share"].
-    """
     import numpy as np
-    if metric_kind != "%P":
-        metric_kind = "%P"  # manténlo simple (el dashboard lo llama con %P)
-
-    # Selector como ANTES: un select plano (sin cards)
+    # selector (plano)
     default_opt = "(TOTAL)"
     opts = [default_opt] + sorted([v for v in map(str, level_values) if v and v != "TOTAL"])
-    sel_opt = st.selectbox(f"{title} — select", opts, index=0, key=f"hist_sel_{title}_{level_name}")
+    sel_opt = st.selectbox(f"{title} — select", opts, index=0, key=f"hist_sel_{level_name}")
 
-    # Serie TOTAL (%P) para la línea de referencia
+    # Serie TOTAL (%P)
     tot_df = total_series_builders.get("P", pd.DataFrame()).copy()
     if not tot_df.empty:
-        tot_df = tot_df.copy()
         if "P_share" not in tot_df.columns:
             den = (tot_df.get("P",0) + tot_df.get("S",0)).replace(0, pd.NA)
             tot_df["P_share"] = (tot_df.get("P",0) / den * 100).fillna(0.0)
@@ -329,14 +321,13 @@ def draw_history(title: str,
         y_vals = [row_map.get(l, np.nan) for l in x_labels]
         name = sel_opt
 
-    # Construir figura
+    # Gráfica
     fig = go.Figure()
-    # Línea seleccionada
     fig.add_trace(go.Scatter(x=x_labels, y=y_vals, mode="lines+markers", name=name))
-    # Línea TOTAL (si no es la misma)
     if name != "TOTAL":
         y_tot = [tot_ser.get(l, np.nan) for l in x_labels]
         fig.add_trace(go.Scatter(x=x_labels, y=y_tot, mode="lines", name="TOTAL"))
+
     fig.update_layout(
         title=title,
         height=360,
@@ -345,13 +336,16 @@ def draw_history(title: str,
         xaxis_title=None,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
     )
-    # Línea vertical en el seleccionado (si aplica)
+
+    # Línea vertical en el seleccionado (usar VALOR de eje, no índice)
     if sel_x is not None and 0 <= sel_x < len(x_labels):
-        fig.add_vline(x=sel_x, line_width=1, line_dash="dash")
+        fig.add_vline(x=x_labels[sel_x], line_width=1, line_dash="dash")
 
     st.plotly_chart(fig, use_container_width=True)
 
-# ============== COLS NORMALIZADAS BÁSICAS (igual) ==============
+# --------------------------
+# BASE COLS NORMALIZADAS
+# --------------------------
 col_sem  = _get_any(df_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
 if "_SEM" not in df_car.columns and col_sem:
     df_car["_SEM"] = df_car[col_sem].astype(str).str.strip()
@@ -360,7 +354,9 @@ else:
 df_car["_YEAR"] = df_car["_SEM"].map(extract_year_from_period)
 df_car["_IS_INTER"] = df_car["_SEM"].str.lower().str.contains("inter", na=False)
 
-# ================== TIMEFRAME MASKS (igual) ==================
+# --------------------------
+# TIMEFRAME FILTERS
+# --------------------------
 def mask_timeframe(series_sem: pd.Series, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.Series:
     s = series_sem.astype(str)
     if mode == "Semestral" and selected_sem:
@@ -391,37 +387,35 @@ def filter_df_fd(df: pd.DataFrame, mode: str, selected_year: int | None, selecte
         out = out[pd.to_numeric(out[ycol], errors="coerce").astype("Int64") == int(selected_year)].copy()
     return out
 
-# ================== SIDEBAR (sensitivity on top) ==================
+# --------------------------
+# SIDEBAR
+# --------------------------
 SEMESTRAL_PERIODS = list_periods_semestral()
 YEARS_ALL        = list_years_from_sem()
 INTER_YEARS      = years_with_inter()
 
 with st.sidebar:
-    # --- Sensitivity FIRST ---
     st.markdown("#### Sensitivity analysis")
-    sens_mode = st.checkbox("Enable sensitivity mode", value=st.session_state.get("sens_mode", False), key="sens_mode")
 
-    # Contenedor para "Apply to" (se pobla luego del filtrado del período)
-    sens_member_placeholder = st.empty()  # selectbox dinámico "Apply to"
+    # Toggle ON/OFF (switch visual)
+    sens_mode = st.toggle("Enable sensitivity mode", value=st.session_state.get("sens_mode", False), key="sens_mode")
 
-    # Estado interno de operaciones
-    if "sens_ops" not in st.session_state:
-        st.session_state.sens_ops = []   # cada op: {"scope":"PS"/"QUAL","cat":"P"/"S"/"SA"...,"member":"...", "credits":float, "count":int}
+    # Placeholder para "Apply to": se llena UNA sola vez después del filtrado
+    sens_member_placeholder = st.empty()
+
+    # Estado de operaciones
+    st.session_state.setdefault("sens_ops", [])
+    st.session_state.setdefault("sens_cat_ps", "None")
+    st.session_state.setdefault("sens_cat_qual", "None")
+    st.session_state.setdefault("sens_count", 1)
+    st.session_state.setdefault("sens_credits", 3.0)
 
     if sens_mode:
-        # Selecciones SIEMPRE visibles cuando sensitivity está activo
-        st.session_state.setdefault("sens_cat_ps", "None")
-        st.session_state.setdefault("sens_cat_qual", "None")
-
         st.selectbox("P/S category", ["None", "P", "S"], key="sens_cat_ps")
         st.selectbox("Qualification", ["None", "SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
+        st.number_input("Professors", min_value=1, step=1, key="sens_count")
+        st.number_input("Credits per professor", min_value=0.0, step=0.5, key="sens_credits")
 
-        # Defaults pedidos: créditos 3.0
-        st.number_input("Professors", min_value=1, step=1, value=1, key="sens_count")
-        st.number_input("Credits per professor", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
-
-        # "Apply to" irá AQUÍ (arriba de los botones) mediante el placeholder (lo llenamos más abajo)
-        # Botones
         c_add, c_reset = st.columns(2)
         with c_add:
             if st.button("Add", use_container_width=True, key="sens_add"):
@@ -429,16 +423,10 @@ with st.sidebar:
                 member_val = st.session_state.get("sens_member", "All")
                 cnt   = int(st.session_state.get("sens_count", 1))
                 cred  = float(st.session_state.get("sens_credits", 3.0))
-                if st.session_state.get("sens_cat_ps") and st.session_state["sens_cat_ps"] != "None":
-                    ops_to_add.append({
-                        "scope": "PS", "cat": st.session_state["sens_cat_ps"],
-                        "member": member_val, "credits": cred, "count": cnt
-                    })
-                if st.session_state.get("sens_cat_qual") and st.session_state["sens_cat_qual"] != "None":
-                    ops_to_add.append({
-                        "scope": "QUAL", "cat": st.session_state["sens_cat_qual"],
-                        "member": member_val, "credits": cred, "count": cnt
-                    })
+                if st.session_state["sens_cat_ps"] != "None":
+                    ops_to_add.append({"scope":"PS","cat":st.session_state["sens_cat_ps"],"member":member_val,"credits":cred,"count":cnt})
+                if st.session_state["sens_cat_qual"] != "None":
+                    ops_to_add.append({"scope":"QUAL","cat":st.session_state["sens_cat_qual"],"member":member_val,"credits":cred,"count":cnt})
                 if ops_to_add:
                     st.session_state.sens_ops.extend(ops_to_add)
                     st.success("Added.")
@@ -446,9 +434,8 @@ with st.sidebar:
             if st.button("Reset to original", use_container_width=True, key="sens_reset"):
                 st.session_state.sens_ops = []
                 st.success("Reset.")
-    # --- FIN sensibilidad arriba ---
 
-    # Si sensitivity está activo, ocultamos el selector de KPIs
+    # Navegación KPI (oculta si sensitivity ON)
     if not sens_mode:
         st.markdown("### Go to KPI")
         options = {
@@ -459,17 +446,17 @@ with st.sidebar:
             "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
             "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
         }
-        choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
+        choices = list(options.keys())
         default_label = "6 Faculty Qualifications"
         default_idx = choices.index(default_label) if default_label in choices else 0
         choice = st.selectbox("Select…", choices, index=default_idx, key="kpi_nav_top")
         st.link_button("Open", options[choice], use_container_width=True)
 
-    # ----- Timeframe & View (siempre visible) -----
+    # Timeframe & View
     st.markdown('---')
     st.markdown("#### Timeframe")
     st.session_state.setdefault("time_mode", "Semestral")
-    time_mode = st.radio("Timeframe", ["Semestral", "Anual", "Intersemestral"], key="time_mode", label_visibility="collapsed", horizontal=False)
+    time_mode = st.radio("Timeframe", ["Semestral", "Anual", "Intersemestral"], key="time_mode", label_visibility="collapsed")
 
     if time_mode == "Semestral":
         default_sem = SEMESTRAL_PERIODS[-1] if SEMESTRAL_PERIODS else "202510"
@@ -493,35 +480,29 @@ with st.sidebar:
     st.session_state.setdefault("view_mode", "By Academic Area")
     view_mode = st.selectbox("View", ["By Program", "By Academic Area", "By Field"], key="view_mode")
 
-    # Export placeholder (no mover)
+    # Export placeholder
     dl_bd_placeholder = st.empty()
 
-# ---- Después del sidebar: export y sensibilidad ----
-# Filtrado de data del período (esto ya lo tienes en tu código; se deja igual)
+# --------------------------
+# FILTROS & SENS STATE
+# --------------------------
 df_car_base = df_car.copy()
 df_fd_base  = df_fd.copy()
-df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
-
-# Poblar "Apply to" con los miembros correctos según el view y la data filtrada
-if st.session_state.get("sens_mode", False):
-    col_areaCourse = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
-    col_field      = _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
-    program_col    = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
-    members = build_member_list_for_view(df_car_filt_all, st.session_state.get("view_mode","By Academic Area"), col_areaCourse, col_field, program_col)
-    with st.sidebar:
-        st.selectbox("Apply to", members, key="sens_member")
-# SENS dict simple para el resto del dashboard
-SENS = {"on": bool(st.session_state.get("sens_mode", False)), "ops": st.session_state.get("sens_ops", [])}
-
-
-# ================== PRE-FILTROS (igual) ==================
-df_car_base = df_car.copy()
-df_fd_base  = df_fd.copy()
-
 df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
 df_fd_f         = filter_df_fd(df_fd_base, time_mode, sel_year, sel_sem)
 
-# Sidebar: botón de descarga de la BD filtrada según el período seleccionado
+# Rellenar "Apply to" UNA SOLA VEZ (evita claves duplicadas)
+if st.session_state.get("sens_mode", False):
+    col_areaCourse_sb = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
+    col_field_sb      = _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
+    program_col_sb    = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
+    members = build_member_list_for_view(df_car_filt_all, view_mode, col_areaCourse_sb, col_field_sb, program_col_sb)
+    with st.sidebar:
+        sens_member_placeholder.selectbox("Apply to", members, key="sens_member")
+
+SENS = {"on": bool(st.session_state.get("sens_mode", False)), "ops": st.session_state.get("sens_ops", [])}
+
+# Export BD filtrada
 if 'dl_bd_placeholder' in locals():
     safe = _sanitize_for_export(df_car_filt_all)
     dl_bd_placeholder.download_button(
@@ -532,16 +513,9 @@ if 'dl_bd_placeholder' in locals():
         key=f"dl_bd_{_slugify(sel_label)}"
     )
 
-# ====== SENSITIVITY: poblar "Apply to" AHORA que ya se filtró (backup) ======
-if st.session_state.get("sens_mode", False):
-    col_areaCourse = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
-    col_field      = _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
-    program_col    = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
-    members = build_member_list_for_view(df_car_filt_all.copy(), view_mode, col_areaCourse, col_field, program_col)
-    with st.sidebar:
-        st.selectbox("Apply to", members, key="sens_member")
-
-# ================== RELEVANT COLUMNS (igual) ==================
+# --------------------------
+# COLUMN MAPPINGS
+# --------------------------
 col_ps_fd   = _get_any(df_fd_f, "P/S", "P - S", "Participating/Supporting")
 col_area_fd = _get_any(df_fd_f, "AREA_PROFESOR", "Area_Profesor", "Area Profesor", "Área", "Area")
 col_tipo_fd = _get_any(df_fd_f, "TIPO", "Tipo", "Ranking", "Tipo Ranking")
@@ -557,15 +531,12 @@ col_name = _get_any(df_car, "Nombre largo curso","Nombre Curso","Nombre del curs
 col_field = _get_any(df_car, "Field","FIELD","Campo","Área de conocimiento")
 col_prog = _get_any(df_car, "Program","PROGRAM","program","Materia")
 
-# ========== NORMALIZATION (igual) ==========
-if col_ps_fd:
-    df_fd_f["_PS"] = _norm_str(df_fd_f[col_ps_fd]).map(normalize_ps)
-if col_area_fd:
-    df_fd_f["_AREA"] = df_fd_f[col_area_fd].astype(str).str.strip()
-if col_tipo_fd:
-    df_fd_f["_TIPO"] = _norm_str(df_fd_f[col_tipo_fd]).map(normalize_tipo)
+# Normalización FD
+if col_ps_fd:   df_fd_f["_PS"]   = _norm_str(df_fd_f[col_ps_fd]).map(normalize_ps)
+if col_area_fd: df_fd_f["_AREA"] = df_fd_f[col_area_fd].astype(str).str.strip()
+if col_tipo_fd: df_fd_f["_TIPO"] = _norm_str(df_fd_f[col_tipo_fd]).map(normalize_tipo)
 
-# ---------- Stylers (igual) ----------
+# Stylers
 def style_percent_tables(df_, id_col):
     sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
     colP = "%P"; colSA = "%SA"; colOTHER = "%OTHER"
@@ -595,7 +566,7 @@ def style_diverging_simple(df_: pd.DataFrame, colname: str):
             sty.loc[mask_total, c] = (sty.loc[mask_total, c].astype(str) + 'font-weight:700;').str.replace(';;',';', regex=False)
     return sty
 
-# --- Safe guards (por si faltaran las funciones de time-mode) ---
+# Safe-guards (si no defines transformadores de timeframe en otro módulo)
 if 'transform_for_time_mode_ps' not in globals():
     def transform_for_time_mode_ps(df): 
         return df
@@ -603,12 +574,13 @@ if 'transform_for_time_mode_tipo' not in globals():
     def transform_for_time_mode_tipo(df, share_col_name):
         return df
 
-
-# ================== PRINCIPAL ==================
+# --------------------------
+# MAIN
+# --------------------------
 st.markdown("---")
 st.subheader(f"Faculty Sufficiency and Qualifications — {sel_label}")
 
-# ====== NORMALIZACIÓN BASE PARA CARTELERA (igual) ======
+# Base normalizada para Cartelera
 if not all([col_cred, col_tipoC, col_areaCourse]):
     st.error("Missing columns in 'BD Cartelera 2020-2025': 'Credits', 'TIPO', and/or 'Academic Area (course)'.")
 else:
@@ -624,7 +596,7 @@ else:
     col_ps_C_local     = _get_any(df_car_n, "P/S","P - S","Participating/Supporting")
     df_car_n["_PS"]    = _norm_str(df_car_n[col_ps_C_local]).map(normalize_ps) if col_ps_C_local else ""
 
-    # Excluir materias específicas (igual)
+    # Excluir materias específicas (si aplica)
     program_col = _get_any(df_car_n, "program")
     EXCLUDE_SUBJ = {"CONT", "E-IMER", "E-ENEG", "E-AFIN"}
     if program_col:
@@ -633,17 +605,13 @@ else:
     else:
         df_car_global = df_car_n.copy()
 
-    # ---------- Filtro por timeframe seleccionado ----------
+    # Filtro por timeframe
     fil = filter_df_car(df_car_global, time_mode, sel_year, sel_sem)
 
     if fil.empty:
         st.info(f"No records for the selected timeframe: {sel_label}.")
     else:
-        # ============================================================
-        #        VISTAS (By Academic Area / Field / Program)
-        #        **Ajustadas a Sensitivity usando apply_ops_to_aggs**
-        # ============================================================
-
+        # ------------------- UTIL PARA TABLAS % -------------------
         def build_percent_table(base_idx_name, agg_tipo, agg_ps):
             den_ps   = (agg_ps["P"] + agg_ps["S"]).replace(0, pd.NA)
             p_share  = (agg_ps["P"] / den_ps) * 100
@@ -677,7 +645,6 @@ else:
         if view_mode == "By Academic Area":
             colT, colG = st.columns([6,6], gap="large")
 
-            # Agregaciones base (período seleccionado)
             agg_tipo = (fil.groupby(["_AREA","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["SA","PA","SP","IP","OTHER"]:
                 if k not in agg_tipo.columns: agg_tipo[k] = 0.0
@@ -692,24 +659,20 @@ else:
                 base_agg_ps = agg_ps.copy()
                 base_agg_tipo = agg_tipo.copy()
 
-                # === aplicar sensibilidad (si la hay) ===
                 if SENS["on"] and SENS["ops"]:
                     mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
                 else:
                     mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
 
-                # Tabla principal (mismas columnas siempre)
                 metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
 
-                # Columnas de impacto (Δ%P, Δ%SA, Δ%OTHER) — solo si sensitivity ON
                 if SENS["on"] and SENS["ops"]:
-                    # Δ%P
                     den0 = (base_agg_ps["P"] + base_agg_ps["S"]).replace(0, pd.NA)
                     den1 = (mod_agg_ps["P"] + mod_agg_ps["S"]).replace(0, pd.NA)
                     pct0 = (base_agg_ps["P"] / den0 * 100).fillna(0.0)
                     pct1 = (mod_agg_ps["P"]  / den1 * 100).fillna(0.0)
                     impP = (pct1 - pct0).reindex(mod_agg_ps.index).round(2)
-                    # Δ%SA y Δ%OTHER
+
                     cats = ["SA","PA","SP","IP","OTHER"]
                     d0 = base_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
                     d1 = mod_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
@@ -723,17 +686,15 @@ else:
                     mt["Impact (Δ%P)"] = impP
                     mt["Impact (Δ%SA)"] = impSA
                     mt["Impact (Δ%OTHER)"] = impOT
-                    # TOTAL impacts
+
                     bt = build_percent_table("Academic Area", base_agg_tipo, base_agg_ps).set_index("Academic Area")
-                    mt.loc["TOTAL","Impact (Δ%P)"] = (mt.loc["TOTAL","%P"] - bt.loc["TOTAL","%P"]).round(2)
-                    mt.loc["TOTAL","Impact (Δ%SA)"] = (mt.loc["TOTAL","%SA"] - bt.loc["TOTAL","%SA"]).round(2)
+                    mt.loc["TOTAL","Impact (Δ%P)"]     = (mt.loc["TOTAL","%P"]     - bt.loc["TOTAL","%P"]).round(2)
+                    mt.loc["TOTAL","Impact (Δ%SA)"]    = (mt.loc["TOTAL","%SA"]    - bt.loc["TOTAL","%SA"]).round(2)
                     mt.loc["TOTAL","Impact (Δ%OTHER)"] = (mt.loc["TOTAL","%OTHER"] - bt.loc["TOTAL","%OTHER"]).round(2)
                     metrics_tbl = mt.reset_index()
 
-                _download_xlsx_button(
-                    metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
-                    key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)"
-                )
+                _download_xlsx_button(metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
+                                      key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
 
                 if SENS["on"] and SENS["ops"]:
                     styled_tbl = (
@@ -751,42 +712,23 @@ else:
                     )
                 st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
 
-            # --- HISTÓRICOS por Área (no afectados por sensibilidad) ---
+            # HISTÓRICO — Área
             df_hist = df_car_global.copy()
             agg_ps_all = (df_hist.groupby(["_SEM","_AREA","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["P","S"]:
                 if k not in agg_ps_all.columns: agg_ps_all[k] = 0.0
             agg_ps_all["P_share"] = (agg_ps_all["P"] / (agg_ps_all["P"] + agg_ps_all["S"]).replace(0, pd.NA)) * 100
             agg_ps_all = agg_ps_all.reset_index()
-            agg_tipo_all = (df_hist.groupby(["_SEM","_AREA","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
-            for k in ["SA","PA","SP","IP","OTHER"]:
-                if k not in agg_tipo_all.columns: agg_tipo_all[k] = 0.0
-            den_all = (agg_tipo_all[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
-            agg_tipo_all["SA_share"]    = (agg_tipo_all["SA"]    / den_all) * 100
-            agg_tipo_all["OTHER_share"] = (agg_tipo_all["OTHER"] / den_all) * 100
-            agg_tipo_all = agg_tipo_all.reset_index()
+
             tot_by_sem_P = (df_hist.groupby(["_SEM","_PS"])["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["P","S"]:
                 if k not in tot_by_sem_P.columns: tot_by_sem_P[k] = 0.0
             tot_by_sem_P["P_share"] = (tot_by_sem_P["P"] / (tot_by_sem_P["P"] + tot_by_sem_P["S"]).replace(0, pd.NA)) * 100
             tot_by_sem_P = tot_by_sem_P.reset_index()
-            tot_by_sem_tipo = (df_hist.groupby(["_SEM","_TIPO"])["_CRED"].sum().unstack(fill_value=0.0))
-            for k in ["SA","PA","SP","IP","OTHER"]:
-                if k not in tot_by_sem_tipo.columns: tot_by_sem_tipo[k] = 0.0
-            den_tot = (tot_by_sem_tipo[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
-            tot_by_sem_tipo["SA_share"]    = (tot_by_sem_tipo["SA"]    / den_tot) * 100
-            tot_by_sem_tipo["OTHER_share"] = (tot_by_sem_tipo["OTHER"] / den_tot) * 100
-            tot_by_sem_tipo = tot_by_sem_tipo.reset_index()
+
             agg_ps_all_tm   = transform_for_time_mode_ps(agg_ps_all.rename(columns={"_AREA":"__LEVEL__"})).rename(columns={"__LEVEL__":"_AREA"})
-            agg_tipo_all_tm = transform_for_time_mode_tipo(agg_tipo_all.rename(columns={"_AREA":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_AREA"})
-            agg_tipo_all_tm_other = transform_for_time_mode_tipo(agg_tipo_all.rename(columns={"_AREA":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_AREA"})
-            agg_tipo_all_tm = agg_tipo_all_tm.drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_all_tm], errors="ignore")\
-                                             .merge(agg_tipo_all_tm_other[["_SEM","_AREA","OTHER","SA","PA","SP","IP","OTHER_share"]], on=["_SEM","_AREA","SA","PA","SP","IP","OTHER"], how="outer")
             tot_by_sem_P_tm = transform_for_time_mode_ps(tot_by_sem_P.copy())
-            tot_by_sem_tipo_sa_tm = transform_for_time_mode_tipo(tot_by_sem_tipo.copy(), "SA_share")
-            tot_by_sem_tipo_ot_tm = transform_for_time_mode_tipo(tot_by_sem_tipo.copy(), "OTHER_share")
-            tot_by_sem_tipo_tm = tot_by_sem_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in tot_by_sem_tipo_sa_tm], errors="ignore")\
-                                                      .merge(tot_by_sem_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]], on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer")
+
             key_col, x_labels, x_map = build_time_axis_for_history(df_hist)
             sel_x = None
             if time_mode == "Semestral" and sel_sem and str(sel_sem) in x_map: sel_x = x_map[str(sel_sem)]
@@ -794,17 +736,18 @@ else:
             if time_mode == "Intersemestral":
                 lab = f"{sel_year} Intersemestral"
                 if lab in x_map: sel_x = x_map[lab]
-            areas_all = sorted(set(agg_ps_all_tm["_AREA"].unique()) | set(agg_tipo_all_tm["_AREA"].unique()))
+            areas_all = sorted(set(agg_ps_all_tm["_AREA"].unique()))
+
             with colG:
                 draw_history("Evolution by Academic Area",
                              level_name="_AREA",
                              level_values=areas_all,
                              metric_kind="%P",
-                             total_series_builders={"P": tot_by_sem_P_tm, "SA": tot_by_sem_tipo_tm, "OTHER": tot_by_sem_tipo_tm},
-                             agg_ps_all=agg_ps_all_tm, agg_tipo_all=agg_tipo_all_tm,
+                             total_series_builders={"P": tot_by_sem_P_tm},
+                             agg_ps_all=agg_ps_all_tm, agg_tipo_all=None,
                              x_labels=x_labels, x_map=x_map, sel_x=sel_x)
 
-        # ============================== BY FIELD ==============================
+        # ----------------------------- BY FIELD -----------------------------
         elif view_mode == "By Field":
             if not col_field:
                 st.info("Column 'Field' was not found.")
@@ -814,7 +757,6 @@ else:
 
                 colF_L, colF_R = st.columns([6,6], gap="large")
 
-                # --- Agregaciones del período seleccionado ---
                 agg_tipo_f = (fil_field.groupby(["_FIELD","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["SA","PA","SP","IP","OTHER"]:
                     if k not in agg_tipo_f.columns: agg_tipo_f[k] = 0.0
@@ -828,51 +770,39 @@ else:
                 with colF_L:
                     base_agg_ps = agg_ps_f.copy()
                     base_agg_tipo = agg_tipo_f.copy()
-
-                    # === aplicar sensibilidad (si la hay) ===
                     if SENS["on"] and SENS["ops"]:
                         mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
                     else:
                         mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
 
-                    # Tabla principal (mismas columnas siempre)
                     metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
 
-                    # Columnas de impacto (Δ%P, Δ%SA, Δ%OTHER) — solo si sensitivity ON
                     if SENS["on"] and SENS["ops"]:
-                        # Δ%P
                         den0 = (base_agg_ps["P"] + base_agg_ps["S"]).replace(0, pd.NA)
                         den1 = (mod_agg_ps["P"] + mod_agg_ps["S"]).replace(0, pd.NA)
                         pct0 = (base_agg_ps["P"] / den0 * 100).fillna(0.0)
                         pct1 = (mod_agg_ps["P"]  / den1 * 100).fillna(0.0)
                         impP = (pct1 - pct0).reindex(mod_agg_ps.index).round(2)
-                        # Δ%SA y Δ%OTHER
+
                         cats = ["SA","PA","SP","IP","OTHER"]
                         d0 = base_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
                         d1 = mod_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
                         sa0 = (base_agg_tipo["SA"]/d0*100).fillna(0.0)
-                        sa1 = (mod_agg_tipo["SA"] /d1*100).fillna(0.0)
+                        sa1 = (mod_agg_tipo["SA"]/d1*100).fillna(0.0)
                         ot0 = (base_agg_tipo["OTHER"]/d0*100).fillna(0.0)
                         ot1 = (mod_agg_tipo["OTHER"]/d1*100).fillna(0.0)
-                        impSA = (sa1 - sa0).reindex(mod_agg_tipo.index).round(2)
-                        impOT = (ot1 - ot0).reindex(mod_agg_tipo.index).round(2)
                         mt = metrics_tbl_f.set_index("Field")
                         mt["Impact (Δ%P)"] = impP
-                        mt["Impact (Δ%SA)"] = impSA
-                        mt["Impact (Δ%OTHER)"] = impOT
-                        # TOTAL impacts
+                        mt["Impact (Δ%SA)"] = (sa1 - sa0).reindex(mod_agg_tipo.index).round(2)
+                        mt["Impact (Δ%OTHER)"] = (ot1 - ot0).reindex(mod_agg_tipo.index).round(2)
                         bt = build_percent_table("Field", base_agg_tipo, base_agg_ps).set_index("Field")
                         mt.loc["TOTAL","Impact (Δ%P)"] = (mt.loc["TOTAL","%P"] - bt.loc["TOTAL","%P"]).round(2)
                         mt.loc["TOTAL","Impact (Δ%SA)"] = (mt.loc["TOTAL","%SA"] - bt.loc["TOTAL","%SA"]).round(2)
                         mt.loc["TOTAL","Impact (Δ%OTHER)"] = (mt.loc["TOTAL","%OTHER"] - bt.loc["TOTAL","%OTHER"]).round(2)
                         metrics_tbl_f = mt.reset_index()
 
-                    _download_xlsx_button(
-                        metrics_tbl_f,
-                        f"table_ByField_{_slugify(sel_label)}.xlsx",
-                        key=f"dl_tbl_field_{_slugify(sel_label)}",
-                        label="⬇️ Download table (Excel)"
-                    )
+                    _download_xlsx_button(metrics_tbl_f, f"table_ByField_{_slugify(sel_label)}.xlsx",
+                                          key=f"dl_tbl_field_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
 
                     if SENS["on"] and SENS["ops"]:
                         styled_tbl_f = (
@@ -890,7 +820,7 @@ else:
                         )
                     st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
 
-                # ===== Históricos Field — SIGUE IGUAL QUE ANTES =====
+                # HISTÓRICO — Field
                 df_hist_f = df_car_global.copy()
                 df_hist_f["_FIELD"] = df_hist_f[col_field].astype(str).str.strip()
                 agg_ps_all_f = (df_hist_f.groupby(["_SEM","_FIELD","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
@@ -898,26 +828,16 @@ else:
                     if k not in agg_ps_all_f.columns: agg_ps_all_f[k] = 0.0
                 agg_ps_all_f["P_share"] = (agg_ps_all_f["P"] / (agg_ps_all_f["P"] + agg_ps_all_f["S"]).replace(0, pd.NA)) * 100
                 agg_ps_all_f = agg_ps_all_f.reset_index()
-                agg_tipo_all_f = (df_hist_f.groupby(["_SEM","_FIELD","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
-                for k in ["SA","PA","SP","IP","OTHER"]:
-                    if k not in agg_tipo_all_f.columns: agg_tipo_all_f[k] = 0.0
-                den_all_f = (agg_tipo_all_f[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
-                agg_tipo_all_f["SA_share"]    = (agg_tipo_all_f["SA"]    / den_all_f) * 100
-                agg_tipo_all_f["OTHER_share"] = (agg_tipo_all_f["OTHER"] / den_all_f) * 100
-                agg_tipo_all_f = agg_tipo_all_f.reset_index()
-                # Adaptar a modo temporal (igual)
-                agg_ps_all_tm   = transform_for_time_mode_ps(agg_ps_all_f.rename(columns={"_FIELD":"__LEVEL__"})).rename(columns={"__LEVEL__":"_FIELD"})
-                agg_tipo_all_tm = transform_for_time_mode_tipo(agg_tipo_all_f.rename(columns={"_FIELD":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_FIELD"})
-                agg_tipo_all_tm_other = transform_for_time_mode_tipo(agg_tipo_all_f.rename(columns={"_FIELD":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_FIELD"})
-                agg_tipo_all_tm = agg_tipo_all_tm.drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_all_tm], errors="ignore")\
-                                                 .merge(agg_tipo_all_tm_other[["_SEM","_FIELD","OTHER","SA","PA","SP","IP","OTHER_share"]], on=["_SEM","_FIELD","SA","PA","SP","IP","OTHER"], how="outer")
-                # Series totales (igual)
+
                 tot_by_sem_f = (df_hist_f.groupby(["_SEM","_PS"])["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["P","S"]:
                     if k not in tot_by_sem_f.columns: tot_by_sem_f[k] = 0.0
                 tot_by_sem_f["P_share"] = (tot_by_sem_f["P"] / (tot_by_sem_f["P"] + tot_by_sem_f["S"]).replace(0, pd.NA)) * 100
                 tot_by_sem_f = tot_by_sem_f.reset_index()
-                # Eje X y selección (igual)
+
+                agg_ps_all_tm   = transform_for_time_mode_ps(agg_ps_all_f.rename(columns={"_FIELD":"__LEVEL__"})).rename(columns={"__LEVEL__":"_FIELD"})
+                tot_by_sem_f_tm = transform_for_time_mode_ps(tot_by_sem_f.copy())
+
                 key_col, x_labels, x_map = build_time_axis_for_history(df_hist_f)
                 sel_x = None
                 if time_mode == "Semestral" and sel_sem and str(sel_sem) in x_map: sel_x = x_map[str(sel_sem)]
@@ -925,17 +845,18 @@ else:
                 if time_mode == "Intersemestral":
                     lab = f"{sel_year} Intersemestral"
                     if lab in x_map: sel_x = x_map[lab]
-                fields_all = sorted(set(agg_ps_all_tm["_FIELD"].astype(str).unique()) | set(agg_tipo_all_tm["_FIELD"].astype(str).unique()))
+                fields_all = sorted(set(agg_ps_all_tm["_FIELD"].astype(str).unique()))
+
                 with colF_R:
                     draw_history("Evolution by Academic Field",
                                  level_name="_FIELD",
                                  level_values=fields_all,
                                  metric_kind="%P",
-                                 total_series_builders={"P": tot_by_sem_f.rename(columns={"_SEM":"_SEM"}), "SA": agg_tipo_all_tm, "OTHER": agg_tipo_all_tm},
-                                 agg_ps_all=agg_ps_all_tm, agg_tipo_all=agg_tipo_all_tm,
+                                 total_series_builders={"P": tot_by_sem_f_tm},
+                                 agg_ps_all=agg_ps_all_tm, agg_tipo_all=None,
                                  x_labels=x_labels, x_map=x_map, sel_x=sel_x)
 
-        # ============================= BY PROGRAM =============================
+        # ----------------------------- BY PROGRAM -----------------------------
         else:  # "By Program"
             if not program_col:
                 st.info("Column 'program' was not found.")
@@ -945,7 +866,6 @@ else:
 
                 colM_L, colM_R = st.columns([6,6], gap="large")
 
-                # --- Agregaciones del período seleccionado ---
                 agg_tipo_m = (fil_mat.groupby(["_MAT","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["SA","PA","SP","IP","OTHER"]:
                     if k not in agg_tipo_m.columns: agg_tipo_m[k] = 0.0
@@ -959,51 +879,40 @@ else:
                 with colM_L:
                     base_agg_ps = agg_ps_m.copy()
                     base_agg_tipo = agg_tipo_m.copy()
-
-                    # === aplicar sensibilidad (si la hay) ===
                     if SENS["on"] and SENS["ops"]:
                         mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
                     else:
                         mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
 
-                    # Tabla principal (mismas columnas siempre)
                     metrics_tbl_m = build_percent_table("Program", mod_agg_tipo, mod_agg_ps)
 
-                    # Columnas de impacto (Δ%P, Δ%SA, Δ%OTHER) — solo si sensitivity ON
                     if SENS["on"] and SENS["ops"]:
-                        # Δ%P
+
                         den0 = (base_agg_ps["P"] + base_agg_ps["S"]).replace(0, pd.NA)
                         den1 = (mod_agg_ps["P"] + mod_agg_ps["S"]).replace(0, pd.NA)
                         pct0 = (base_agg_ps["P"] / den0 * 100).fillna(0.0)
                         pct1 = (mod_agg_ps["P"]  / den1 * 100).fillna(0.0)
                         impP = (pct1 - pct0).reindex(mod_agg_ps.index).round(2)
-                        # Δ%SA y Δ%OTHER
+
                         cats = ["SA","PA","SP","IP","OTHER"]
                         d0 = base_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
                         d1 = mod_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
                         sa0 = (base_agg_tipo["SA"]/d0*100).fillna(0.0)
-                        sa1 = (mod_agg_tipo["SA"] /d1*100).fillna(0.0)
+                        sa1 = (mod_agg_tipo["SA"]/d1*100).fillna(0.0)
                         ot0 = (base_agg_tipo["OTHER"]/d0*100).fillna(0.0)
                         ot1 = (mod_agg_tipo["OTHER"]/d1*100).fillna(0.0)
-                        impSA = (sa1 - sa0).reindex(mod_agg_tipo.index).round(2)
-                        impOT = (ot1 - ot0).reindex(mod_agg_tipo.index).round(2)
                         mt = metrics_tbl_m.set_index("Program")
                         mt["Impact (Δ%P)"] = impP
-                        mt["Impact (Δ%SA)"] = impSA
-                        mt["Impact (Δ%OTHER)"] = impOT
-                        # TOTAL impacts
+                        mt["Impact (Δ%SA)"] = (sa1 - sa0).reindex(mod_agg_tipo.index).round(2)
+                        mt["Impact (Δ%OTHER)"] = (ot1 - ot0).reindex(mod_agg_tipo.index).round(2)
                         bt = build_percent_table("Program", base_agg_tipo, base_agg_ps).set_index("Program")
                         mt.loc["TOTAL","Impact (Δ%P)"] = (mt.loc["TOTAL","%P"] - bt.loc["TOTAL","%P"]).round(2)
                         mt.loc["TOTAL","Impact (Δ%SA)"] = (mt.loc["TOTAL","%SA"] - bt.loc["TOTAL","%SA"]).round(2)
                         mt.loc["TOTAL","Impact (Δ%OTHER)"] = (mt.loc["TOTAL","%OTHER"] - bt.loc["TOTAL","%OTHER"]).round(2)
                         metrics_tbl_m = mt.reset_index()
 
-                    _download_xlsx_button(
-                        metrics_tbl_m,
-                        f"table_ByProgram_{_slugify(sel_label)}.xlsx",
-                        key=f"dl_tbl_prog_{_slugify(sel_label)}",
-                        label="⬇️ Download table (Excel)"
-                    )
+                    _download_xlsx_button(metrics_tbl_m, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
+                                          key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
 
                     if SENS["on"] and SENS["ops"]:
                         styled_tbl_m = (
@@ -1021,7 +930,7 @@ else:
                         )
                     st.markdown(f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>", unsafe_allow_html=True)
 
-                # ===== Históricos Program — SIGUE IGUAL QUE ANTES =====
+                # HISTÓRICO — Program
                 df_hist_m = df_car_global.copy()
                 df_hist_m["_MAT"] = df_hist_m[program_col].astype(str).str.strip()
                 agg_ps_all_m = (df_hist_m.groupby(["_SEM","_MAT","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
@@ -1029,26 +938,16 @@ else:
                     if k not in agg_ps_all_m.columns: agg_ps_all_m[k] = 0.0
                 agg_ps_all_m["P_share"] = (agg_ps_all_m["P"] / (agg_ps_all_m["P"] + agg_ps_all_m["S"]).replace(0, pd.NA)) * 100
                 agg_ps_all_m = agg_ps_all_m.reset_index()
-                agg_tipo_all_m = (df_hist_m.groupby(["_SEM","_MAT","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
-                for k in ["SA","PA","SP","IP","OTHER"]:
-                    if k not in agg_tipo_all_m.columns: agg_tipo_all_m[k] = 0.0
-                den_all_m = (agg_tipo_all_m[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
-                agg_tipo_all_m["SA_share"]    = (agg_tipo_all_m["SA"]    / den_all_m) * 100
-                agg_tipo_all_m["OTHER_share"] = (agg_tipo_all_m["OTHER"] / den_all_m) * 100
-                agg_tipo_all_m = agg_tipo_all_m.reset_index()
-                # Adaptar a modo temporal (igual)
-                agg_ps_all_tm   = transform_for_time_mode_ps(agg_ps_all_m.rename(columns={"_MAT":"__LEVEL__"})).rename(columns={"__LEVEL__":"_MAT"})
-                agg_tipo_all_tm = transform_for_time_mode_tipo(agg_tipo_all_m.rename(columns={"_MAT":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_MAT"})
-                agg_tipo_all_tm_other = transform_for_time_mode_tipo(agg_tipo_all_m.rename(columns={"_MAT":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_MAT"})
-                agg_tipo_all_tm = agg_tipo_all_tm.drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_all_tm], errors="ignore")\
-                                                 .merge(agg_tipo_all_tm_other[["_SEM","_MAT","OTHER","SA","PA","SP","IP","OTHER_share"]], on=["_SEM","_MAT","SA","PA","SP","IP","OTHER"], how="outer")
-                # Series totales (igual)
+
                 tot_by_sem_m = (df_hist_m.groupby(["_SEM","_PS"])["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["P","S"]:
                     if k not in tot_by_sem_m.columns: tot_by_sem_m[k] = 0.0
                 tot_by_sem_m["P_share"] = (tot_by_sem_m["P"] / (tot_by_sem_m["P"] + tot_by_sem_m["S"]).replace(0, pd.NA)) * 100
                 tot_by_sem_m = tot_by_sem_m.reset_index()
-                # Eje X y selección (igual)
+
+                agg_ps_all_tm   = transform_for_time_mode_ps(agg_ps_all_m.rename(columns={"_MAT":"__LEVEL__"})).rename(columns={"__LEVEL__":"_MAT"})
+                tot_by_sem_m_tm = transform_for_time_mode_ps(tot_by_sem_m.copy())
+
                 key_col, x_labels, x_map = build_time_axis_for_history(df_hist_m)
                 sel_x = None
                 if time_mode == "Semestral" and sel_sem and str(sel_sem) in x_map: sel_x = x_map[str(sel_sem)]
@@ -1056,34 +955,29 @@ else:
                 if time_mode == "Intersemestral":
                     lab = f"{sel_year} Intersemestral"
                     if lab in x_map: sel_x = x_map[lab]
-                programs_all = sorted(set(agg_ps_all_tm["_MAT"].astype(str).unique()) | set(agg_tipo_all_tm["_MAT"].astype(str).unique()))
+                programs_all = sorted(set(agg_ps_all_tm["_MAT"].astype(str).unique()))
+
                 with colM_R:
                     draw_history("Evolution by Academic Program",
                                  level_name="_MAT",
                                  level_values=programs_all,
                                  metric_kind="%P",
-                                 total_series_builders={"P": tot_by_sem_m.rename(columns={"_SEM":"_SEM"}), "SA": agg_tipo_all_tm, "OTHER": agg_tipo_all_tm},
-                                 agg_ps_all=agg_ps_all_tm, agg_tipo_all=agg_tipo_all_tm,
+                                 total_series_builders={"P": tot_by_sem_m_tm},
+                                 agg_ps_all=agg_ps_all_tm, agg_tipo_all=None,
                                  x_labels=x_labels, x_map=x_map, sel_x=sel_x)
-                    
-# ====== (FULL-WIDTH) CREDIT SUMS BY DIMENSION (EXPANDER) ======
+
+# --------------------------
+# CREDIT SUMS (EXPANDER)
+# --------------------------
 try:
     period_df = df_car_filt_all.copy()
-    # Normalizaciones mínimas
-    if "_CRED" not in period_df.columns and col_cred:
-        period_df["_CRED"] = pd.to_numeric(period_df[col_cred], errors="coerce").fillna(0.0)
-    if "_PS" not in period_df.columns and col_ps_C:
-        period_df["_PS"] = _norm_str(period_df[col_ps_C]).map(normalize_ps)
-    if "_TIPO" not in period_df.columns and col_tipoC:
-        period_df["_TIPO"] = _norm_str(period_df[col_tipoC]).map(normalize_tipo)
-    if "_AREA" not in period_df.columns and col_areaCourse:
-        period_df["_AREA"] = period_df[col_areaCourse].astype(str).str.strip()
-    if "_FIELD" not in period_df.columns and col_field:
-        period_df["_FIELD"] = period_df[col_field].astype(str).str.strip()
-    if "_MAT" not in period_df.columns and col_prog:
-        period_df["_MAT"] = period_df[col_prog].astype(str).str.strip()
+    if "_CRED"  not in period_df.columns and col_cred:  period_df["_CRED"]  = pd.to_numeric(period_df[col_cred], errors="coerce").fillna(0.0)
+    if "_PS"    not in period_df.columns and col_ps_C:  period_df["_PS"]    = _norm_str(period_df[col_ps_C]).map(normalize_ps)
+    if "_TIPO"  not in period_df.columns and col_tipoC: period_df["_TIPO"]  = _norm_str(period_df[col_tipoC]).map(normalize_tipo)
+    if "_AREA"  not in period_df.columns and col_areaCourse: period_df["_AREA"] = period_df[col_areaCourse].astype(str).str.strip()
+    if "_FIELD" not in period_df.columns and col_field:      period_df["_FIELD"] = period_df[col_field].astype(str).str.strip()
+    if "_MAT"   not in period_df.columns and col_prog:       period_df["_MAT"] = period_df[col_prog].astype(str).str.strip()
 
-    # Dimensión según vista
     view = st.session_state.view_mode if "view_mode" in st.session_state else "By Academic Area"
     if view == "By Academic Area":
         dim_col, dim_label = "_AREA", "Academic Area"
@@ -1092,9 +986,7 @@ try:
     else:
         dim_col, dim_label = "_MAT", "Program"
 
-    # Construcción de tabla
     if dim_col in period_df.columns:
-        # Agregados base para sums
         base_index = period_df.groupby(dim_col)["_CRED"].sum().sort_values(ascending=False)
         idx = base_index.index
 
@@ -1109,9 +1001,7 @@ try:
 
         tbl = pd.concat([sum_total, sum_P, sum_S, sum_SA, sum_PA, sum_SP, sum_IP, sum_OT], axis=1).fillna(0.0)
 
-        # (Opcional) Ajuste por sensibilidad SOLO en totales (misma estructura)
         if SENS.get("on"):
-            # Reconstruir agregados por miembro y aplicar ops, luego sustituir sums
             agg_tipo = (period_df.groupby([dim_col,"_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["SA","PA","SP","IP","OTHER"]:
                 if k not in agg_tipo.columns: agg_tipo[k] = 0.0
@@ -1120,9 +1010,7 @@ try:
                 if k not in agg_ps.columns: agg_ps[k] = 0.0
             agg_ps = agg_ps[["P","S"]]; agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
 
-            mod_ps, mod_tipo = apply_ops_to_aggs(agg_ps, agg_tipo, SENS.get("ops", []),
-                                                 member_all_label="All")
-            # Reemplazar columnas de sums por las ajustadas
+            mod_ps, mod_tipo = apply_ops_to_aggs(agg_ps, agg_tipo, SENS.get("ops", []), member_all_label="All")
             tbl["P Sum"]     = mod_ps["P"].reindex(tbl.index, fill_value=0.0)
             tbl["S Sum"]     = mod_ps["S"].reindex(tbl.index, fill_value=0.0)
             tbl["SA Sum"]    = mod_tipo["SA"].reindex(tbl.index, fill_value=0.0)
@@ -1155,7 +1043,9 @@ try:
 except Exception:
     pass
 
-# ================== TABLA + DONA + TOP PROFES Y BUSCADOR ==================
+# --------------------------
+# DETAIL TABLE + DONUT + SEARCH
+# --------------------------
 try:
     cfg = {
         "By Academic Area": {"key": "_AREA_filter",  "col": "_AREA", "label": "area",    "metric_key": "metric__AREA"},
@@ -1168,51 +1058,35 @@ try:
         key = cfg[view]["key"]
         col_tag = cfg[view]["col"]
         label = cfg[view]["label"]
-        metric_choice = st.session_state.get(cfg[view]["metric_key"], "%P")  # "%P" | "%SA" | "%OTHER"
+        metric_choice = st.session_state.get(cfg[view]["metric_key"], "%P")
         opt_val = st.session_state.get(key, "(All)")
 
-        # Base periodo (sin expandir sensibilidad en filas)
         base = df_car_filt_all.copy()
-        # Normalizaciones mínimas
-        if "_AREA" not in base.columns and col_areaCourse:
-            base["_AREA"] = base[col_areaCourse].astype(str).str.strip()
-        if "_FIELD" not in base.columns and col_field:
-            base["_FIELD"] = base[col_field].astype(str).str.strip()
-        if "_MAT" not in base.columns and col_prog:
-            base["_MAT"] = base[col_prog].astype(str).str.strip()
-        if "_TIPO" not in base.columns and col_tipoC:
-            base["_TIPO"] = _norm_str(base[col_tipoC]).map(normalize_tipo)
-        if "_PS" not in base.columns and col_ps_C:
-            base["_PS"] = _norm_str(base[col_ps_C]).map(normalize_ps)
-        if "_CRED" not in base.columns and col_cred:
-            base["_CRED"] = pd.to_numeric(base[col_cred], errors="coerce").fillna(0.0)
+        if "_AREA"  not in base.columns and col_areaCourse: base["_AREA"]  = base[col_areaCourse].astype(str).str.strip()
+        if "_FIELD" not in base.columns and col_field:      base["_FIELD"] = base[col_field].astype(str).str.strip()
+        if "_MAT"   not in base.columns and col_prog:       base["_MAT"]   = base[col_prog].astype(str).str.strip()
+        if "_TIPO"  not in base.columns and col_tipoC:      base["_TIPO"]  = _norm_str(base[col_tipoC]).map(normalize_tipo)
+        if "_PS"    not in base.columns and col_ps_C:       base["_PS"]    = _norm_str(base[col_ps_C]).map(normalize_ps)
+        if "_CRED"  not in base.columns and col_cred:       base["_CRED"]  = pd.to_numeric(base[col_cred], errors="coerce").fillna(0.0)
 
-        # ====== Layout: Tabla (izq) + Dona (der) ======
         cL, cR = st.columns([7,5], gap="large")
 
-        # -------------------- TABLA DETALLE (izquierda) --------------------
         with cL:
-            # Filtro de filas solo para visualización (no inventamos cursos por sensibilidad)
             if metric_choice == "%P":
                 table_filter = st.radio("", ["All", "Only P", "Only S"], index=0, horizontal=True, key=f"table_filt_ps_{view}_{opt_val}")
                 base_tbl = base.copy()
-                if opt_val != "(All)" and opt_val != "(TOTAL)" and col_tag in base_tbl.columns:
+                if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
                     base_tbl = base_tbl[base_tbl[col_tag] == opt_val].copy()
-                if table_filter == "Only P":
-                    base_tbl = base_tbl[base_tbl["_PS"] == "P"]
-                elif table_filter == "Only S":
-                    base_tbl = base_tbl[base_tbl["_PS"] == "S"]
+                if table_filter == "Only P": base_tbl = base_tbl[base_tbl["_PS"] == "P"]
+                elif table_filter == "Only S": base_tbl = base_tbl[base_tbl["_PS"] == "S"]
             else:
                 table_filter = st.radio("", ["All", "Only SA", "Only OTHER"], index=0, horizontal=True, key=f"table_filt_tipo_{view}_{opt_val}")
                 base_tbl = base.copy()
-                if opt_val != "(All)" and opt_val != "(TOTAL)" and col_tag in base_tbl.columns:
+                if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
                     base_tbl = base_tbl[base_tbl[col_tag] == opt_val].copy()
-                if table_filter == "Only SA":
-                    base_tbl = base_tbl[base_tbl["_TIPO"] == "SA"]
-                elif table_filter == "Only OTHER":
-                    base_tbl = base_tbl[base_tbl["_TIPO"] == "OTHER"]
+                if table_filter == "Only SA": base_tbl = base_tbl[base_tbl["_TIPO"] == "SA"]
+                elif table_filter == "Only OTHER": base_tbl = base_tbl[base_tbl["_TIPO"] == "OTHER"]
 
-            # Columnas visibles
             wanted_map = {
                 "Semestre": col_sem,
                 "Código Materia": col_code,
@@ -1250,17 +1124,12 @@ try:
 
             st.markdown(f"### {title}")
 
-            _download_xlsx_button(
-                out,
-                f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
-                key=f"dl_tbl_detail_{_slugify(opt_val)}_{_slugify(display_label)}",
-                label="⬇️ Descargar tabla (Excel)"
-            )
+            _download_xlsx_button(out, f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
+                                  key=f"dl_tbl_detail_{_slugify(opt_val)}_{_slugify(display_label)}",
+                                  label="⬇️ Descargar tabla (Excel)")
             st.dataframe(out, use_container_width=True, hide_index=True)
 
-        # -------------------- DONA (derecha) — ajustada por sensibilidad --------------------
         with cR:
-            # Agregados por miembro de la vista, ajustados por SENS si corresponde
             agg_tipo = (base.groupby([col_tag,"_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0)) if col_tag in base.columns else pd.DataFrame()
             for k in ["SA","PA","SP","IP","OTHER"]:
                 if k not in agg_tipo.columns: agg_tipo[k] = 0.0
@@ -1270,31 +1139,27 @@ try:
             agg_ps = agg_ps[["P","S"]]; agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
 
             if SENS.get("on"):
-                mod_ps, mod_tipo = apply_ops_to_aggs(agg_ps, agg_tipo, SENS.get("ops", []),
-                                                     member_all_label="All")
+                mod_ps, mod_tipo = apply_ops_to_aggs(agg_ps, agg_tipo, SENS.get("ops", []), member_all_label="All")
             else:
                 mod_ps, mod_tipo = agg_ps, agg_tipo
 
-            # Selección de miembro: TOTAL / ALL / específico
             if opt_val in {"(TOTAL)", "(All)"} or col_tag not in base.columns:
-                p_val  = float(mod_ps["P"].sum()) if not mod_ps.empty else 0.0
-                s_val  = float(mod_ps["S"].sum()) if not mod_ps.empty else 0.0
-                sa = float(mod_tipo["SA"].sum()) if not mod_tipo.empty else 0.0
-                pa = float(mod_tipo["PA"].sum()) if not mod_tipo.empty else 0.0
-                sp = float(mod_tipo["SP"].sum()) if not mod_tipo.empty else 0.0
-                ip = float(mod_tipo["IP"].sum()) if not mod_tipo.empty else 0.0
-                other = float(mod_tipo["OTHER"].sum()) if not mod_tipo.empty else 0.0
+                p_val, s_val = float(mod_ps["P"].sum() if not mod_ps.empty else 0.0), float(mod_ps["S"].sum() if not mod_ps.empty else 0.0)
+                sa = float(mod_tipo["SA"].sum() if not mod_tipo.empty else 0.0)
+                pa = float(mod_tipo["PA"].sum() if not mod_tipo.empty else 0.0)
+                sp = float(mod_tipo["SP"].sum() if not mod_tipo.empty else 0.0)
+                ip = float(mod_tipo["IP"].sum() if not mod_tipo.empty else 0.0)
+                other = float(mod_tipo["OTHER"].sum() if not mod_tipo.empty else 0.0)
                 title_suffix = "TOTAL"
             else:
                 row_ps = mod_ps.loc[[opt_val]] if opt_val in mod_ps.index else pd.DataFrame(columns=["P","S"])
                 row_q  = mod_tipo.loc[[opt_val]] if opt_val in mod_tipo.index else pd.DataFrame(columns=["SA","PA","SP","IP","OTHER"])
-                p_val  = float(row_ps["P"].sum()) if not row_ps.empty else 0.0
-                s_val  = float(row_ps["S"].sum()) if not row_ps.empty else 0.0
-                sa = float(row_q["SA"].sum()) if not row_q.empty else 0.0
-                pa = float(row_q["PA"].sum()) if not row_q.empty else 0.0
-                sp = float(row_q["SP"].sum()) if not row_q.empty else 0.0
-                ip = float(row_q["IP"].sum()) if not row_q.empty else 0.0
-                other = float(row_q["OTHER"].sum()) if not row_q.empty else 0.0
+                p_val, s_val = float(row_ps["P"].sum() if not row_ps.empty else 0.0), float(row_ps["S"].sum() if not row_ps.empty else 0.0)
+                sa = float(row_q["SA"].sum() if not row_q.empty else 0.0)
+                pa = float(row_q["PA"].sum() if not row_q.empty else 0.0)
+                sp = float(row_q["SP"].sum() if not row_q.empty else 0.0)
+                ip = float(row_q["IP"].sum() if not row_q.empty else 0.0)
+                other = float(row_q["OTHER"].sum() if not row_q.empty else 0.0)
                 title_suffix = opt_val
 
             donut_h   = 360
@@ -1305,9 +1170,7 @@ try:
                 p_share = (p_val/den*100) if den else 0.0
                 alert = (p_share < thrP)
                 color_map = {"P": ("#F5A3A3" if alert else MINT), "S": "#B0B0B0"}
-
-                fig = px.pie(names=["P","S"], values=[p_val, s_val],
-                             color=["P","S"], color_discrete_map=color_map, hole=0.55)
+                fig = px.pie(names=["P","S"], values=[p_val, s_val], color=["P","S"], color_discrete_map=color_map, hole=0.55)
                 fig.update_traces(textinfo="percent+label", hovertemplate="%{label}: %{percent:.1%}<extra></extra>")
                 fig.update_layout(
                     title=f"% Participating Distribution — {title_suffix}",
@@ -1318,11 +1181,8 @@ try:
 
                 donut_df = pd.DataFrame({"Group": ["P","S"], "Credits": [p_val, s_val]})
                 donut_df["Percent"] = (donut_df["Credits"] / max(1e-9, donut_df["Credits"].sum()))*100
-                _download_xlsx_button(
-                    donut_df, f"chart_donut_PS_{_slugify(title_suffix)}_{_slugify(display_label)}.xlsx",
-                    key=f"dl_donut_ps_{_slugify(title_suffix)}_{_slugify(display_label)}", label="⬇️ Datos de la gráfica (Excel)"
-                )
-
+                _download_xlsx_button(donut_df, f"chart_donut_PS_{_slugify(title_suffix)}_{_slugify(display_label)}.xlsx",
+                                      key=f"dl_donut_ps_{_slugify(title_suffix)}_{_slugify(display_label)}", label="⬇️ Datos de la gráfica (Excel)")
             else:
                 labels_all  = ["SA", "PA", "SP", "IP", "OTHER"]
                 values_all  = [sa, pa, sp, ip, other]
@@ -1335,15 +1195,11 @@ try:
                     other_share = other/den*100
                     color_map = {}
                     for l in labels:
-                        if l == "SA":
-                            color_map[l] = ("#F5A3A3" if sa_share < 40.0 else MINT)
-                        elif l == "OTHER":
-                            color_map[l] = ("#F5A3A3" if other_share > 10.0 else "#6B7280")
-                        else:
-                            color_map[l] = "#B0B0B0"
+                        if l == "SA": color_map[l] = ("#F5A3A3" if sa_share < 40.0 else MINT)
+                        elif l == "OTHER": color_map[l] = ("#F5A3A3" if other_share > 10.0 else "#6B7280")
+                        else: color_map[l] = "#B0B0B0"
 
-                    fig = px.pie(names=labels, values=values, color=labels,
-                                 color_discrete_map=color_map, hole=0.55)
+                    fig = px.pie(names=labels, values=values, color=labels, color_discrete_map=color_map, hole=0.55)
                     fig.update_traces(textinfo="percent+label", sort=False, hovertemplate="%{label}: %{percent:.1%}<extra></extra>")
                     title_txt = "%SA Distribution" if metric_choice == "%SA" else "%OTHER Distribution"
                     fig.update_layout(
@@ -1355,106 +1211,24 @@ try:
 
                     donut_df = pd.DataFrame({"Type": labels_all, "Credits": values_all})
                     donut_df["Percent"] = (donut_df["Credits"] / max(1e-9, donut_df["Credits"].sum()))*100
-                    _download_xlsx_button(
-                        donut_df, f"chart_donut_TIPO_{_slugify(title_suffix)}_{_slugify(display_label)}.xlsx",
-                        key=f"dl_donut_tipo_{_slugify(title_suffix)}_{_slugify(display_label)}", label="⬇️ Datos de la gráfica (Excel)"
-                    )
+                    _download_xlsx_button(donut_df, f"chart_donut_TIPO_{_slugify(title_suffix)}_{_slugify(display_label)}.xlsx",
+                                          key=f"dl_donut_tipo_{_slugify(title_suffix)}_{_slugify(display_label)}", label="⬇️ Datos de la gráfica (Excel)")
                 else:
                     st.caption("No hay registros de TIPO para esta métrica en este período.")
-
-    # -------------------- Top 5 Profes + Buscador (sin “inventar” filas) --------------------
-    st.markdown("---")
-    st.markdown("### Detail — Top Professors & Search")
-    period_df = df_car_filt_all.copy()
-    col_periodo = _get_any(period_df, "periodo", "Periodo", "PERIODO", "Semestre", "SEMESTRE")
-
-    colTop, colInputs = st.columns([6, 6], gap="large")
-    with colTop:
-        if col_prof and col_prof in period_df.columns:
-            tmp = period_df.copy()
-            if "_CRED" not in tmp.columns and col_cred: tmp["_CRED"] = pd.to_numeric(tmp[col_cred], errors="coerce").fillna(0.0)
-            tmp["_PROF"] = tmp[col_prof].astype(str).str.strip()
-            if col_code and col_code in tmp.columns:
-                agg_courses = (col_code, "count")
-            else:
-                agg_courses = ("_PROF", "size")
-
-            top = (
-                tmp.groupby("_PROF", dropna=False)
-                .agg(Courses=agg_courses, Credits=("_CRED", "sum"))
-                .reset_index().rename(columns={"_PROF": "Profesor"})
-                .sort_values(["Courses", "Credits"], ascending=[False, False]).head(5)
-            )
-            top.insert(0, "#", range(1, len(top) + 1))
-            _download_xlsx_button(top, f"top_professors_{_slugify(sel_label)}.xlsx",
-                                  key=f"dl_top_prof_{_slugify(sel_label)}", label="⬇️ Descargar tabla (Excel)")
-            st.dataframe(top.style.format({"Credits": "{:,.1f}"}), use_container_width=True, hide_index=True)
-        else:
-            st.info("No 'Profesor' column to build Top 5.")
-
-    with colInputs:
-        st.write("**Search**")
-        q_prof   = st.text_input("Professor name contains:", value="", key="q_prof")
-        q_course = st.text_input("Course name / code contains:", value="", key="q_course")
-
-    if q_prof.strip() or q_course.strip():
-        st.markdown("#### Search results")
-        search_df = period_df.copy()
-        show_cols_map = {
-            "Periodo": col_periodo,
-            "Profesor": col_prof,
-            "Código Materia": col_code,
-            "Nombre largo curso": col_name,
-            "Area del curso": col_areaCourse,
-            "Field": col_field,
-            "Program": col_prog,
-        }
-        have = {k: v for k, v in show_cols_map.items() if v in search_df.columns}
-
-        mask = pd.Series(True, index=search_df.index)
-        if q_prof.strip() and col_prof in search_df.columns:
-            patp = q_prof.strip().lower()
-            mask = mask & search_df[col_prof].astype(str).str.lower().str.contains(patp, na=False)
-
-        if q_course.strip():
-            patc = q_course.strip().lower()
-            m_name = (search_df[col_name].astype(str).str.lower().str.contains(patc, na=False)
-                      if col_name in search_df.columns else False)
-            m_code = (search_df[col_code].astype(str).str.lower().str.contains(patc, na=False)
-                      if col_code in search_df.columns else False)
-            m_any = (m_name | m_code) if isinstance(m_name, pd.Series) or isinstance(m_code, pd.Series) else False
-            mask = mask & (m_any if isinstance(m_any, pd.Series) else True)
-
-        search_df = search_df[mask].copy()
-        out_search = search_df[list(have.values())].rename(columns={v: k for k, v in have.items()})
-        if out_search.empty:
-            st.caption("No results found for the given query.")
-        else:
-            col_order = [c for c in ["Periodo", "Profesor", "Código Materia", "Nombre largo curso", "Area del curso", "Field", "Program"] if c in out_search.columns]
-            out_search = out_search[col_order]
-            _download_xlsx_button(out_search, f"search_results_{_slugify(sel_label)}.xlsx",
-                                  key=f"dl_search_{_slugify(sel_label)}", label="⬇️ Datos de la búsqueda (Excel)")
-            st.dataframe(out_search, use_container_width=True, hide_index=True)
-
 except Exception:
     pass
 
-# ==================== (BOTTOM) COUNTS SECTION — PIVOT ====================
+# --------------------------
+# COUNTS — PIVOT
+# --------------------------
 st.markdown("---")
 show_counts = st.checkbox("Show P/S counts", value=False)
 if show_counts:
     st.subheader(f"Participating vs Supporting — {sel_label} (Counts & %)")
 
-    col_ps_fd   = _get_any(df_fd_f, "P/S", "P - S", "Participating/Supporting")
-    col_area_fd = _get_any(df_fd_f, "AREA_PROFESOR", "Area_Profesor", "Area Profesor", "Área", "Area")
-    col_tipo_fd = _get_any(df_fd_f, "TIPO", "Tipo", "Ranking", "Tipo Ranking")
-
-    if col_ps_fd:
-        df_fd_f["_PS"] = _norm_str(df_fd_f[col_ps_fd]).map(normalize_ps)
-    if col_area_fd:
-        df_fd_f["_AREA"] = df_fd_f[col_area_fd].astype(str).str.strip()
-    if col_tipo_fd:
-        df_fd_f["_TIPO"] = _norm_str(df_fd_f[col_tipo_fd]).map(normalize_tipo)
+    if col_ps_fd:   df_fd_f["_PS"]   = _norm_str(df_fd_f[col_ps_fd]).map(normalize_ps)
+    if col_area_fd: df_fd_f["_AREA"] = df_fd_f[col_area_fd].astype(str).str.strip()
+    if col_tipo_fd: df_fd_f["_TIPO"] = _norm_str(df_fd_f[col_tipo_fd]).map(normalize_tipo)
 
     pivot_rows = st.radio("Pivot by", ["AREA", "Qualification Type"], index=0, horizontal=True)
 
@@ -1476,11 +1250,10 @@ if show_counts:
         if k not in table.columns:
             table[k] = 0
 
-    # === Ajuste simple de sensitivity para conteos (sólo a TOTAL) ===
+    # Ajuste simple por sensitivity (solo TOTAL)
     if SENS["on"] and SENS["ops"]:
         add_P = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="P")
         add_S = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="S")
-        # sumarlos a un "TOTAL" lógico
         table_totals_increase = {"Participating": int(add_P), "Supporting": int(add_S)}
     else:
         table_totals_increase = {"Participating": 0, "Supporting": 0}
@@ -1488,9 +1261,7 @@ if show_counts:
     table["__Total__"] = table["Participating"] + table["Supporting"]
 
     df_counts = (
-        table[["Participating", "Supporting"]]
-        .astype(int)
-        .reset_index()
+        table[["Participating", "Supporting"]].astype(int).reset_index()
     )
     total_row = pd.DataFrame([{
         row_name: "TOTAL",
@@ -1508,7 +1279,6 @@ if show_counts:
 
     left, right = st.columns([6,6], gap="large")
 
-    # % para la gráfica
     denom = table["__Total__"].replace(0, pd.NA)
     perc_df = pd.DataFrame({
         row_name: table.index,
@@ -1527,12 +1297,9 @@ if show_counts:
                                 var_name="Group", value_name="Percent")
 
     with left:
-        _download_xlsx_button(
-            df_counts_out,
-            f"ps_counts_{_slugify(row_name)}_{_slugify(sel_label)}.xlsx",
-            key=f"dl_ps_counts_{_slugify(row_name)}_{_slugify(sel_label)}",
-            label="Descargar tabla (Excel)"
-        )
+        _download_xlsx_button(df_counts_out, f"ps_counts_{_slugify(row_name)}_{_slugify(sel_label)}.xlsx",
+                              key=f"dl_ps_counts_{_slugify(row_name)}_{_slugify(sel_label)}",
+                              label="Descargar tabla (Excel)")
         styled_counts = (df_counts_out.style
                          .format({"Participating": "{:,.0f}", "Supporting": "{:,.0f}"})
                          .apply(_bold_total, axis=None))
@@ -1555,14 +1322,6 @@ if show_counts:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        _download_xlsx_button(
-            chart_export,
-            f"chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}.xlsx",
-            key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
-            label="Descargar datos (Excel)"
-        )
-
-
-
-
-
+        _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}.xlsx",
+                              key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
+                              label="Descargar datos (Excel)")
