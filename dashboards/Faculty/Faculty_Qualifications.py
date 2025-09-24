@@ -291,225 +291,183 @@ def filter_df_fd(df: pd.DataFrame, mode: str, selected_year: int | None, selecte
         out = out[pd.to_numeric(out[ycol], errors="coerce").astype("Int64") == int(selected_year)].copy()
     return out
 
-    # ================== SIDEBAR (Sensitivity primero) ==================
-    SEMESTRAL_PERIODS = list_periods_semestral()
-    YEARS_ALL        = list_years_from_sem()
-    INTER_YEARS      = years_with_inter()
-    
-    with st.sidebar:
-        # Sensitivity arriba
-        st.markdown("#### Sensitivity analysis")
-        sens_mode = st.checkbox(
-            "Enable sensitivity mode",
-            value=st.session_state.get("sens_mode", False),
-            key="sens_mode"
-        )
-    
-        # Placeholder para "Apply to" (lo rellenamos luego del filtrado)
-        sens_member_placeholder = st.empty()
-    
-        # Estado interno de operaciones
-        if "sens_ops" not in st.session_state:
-            st.session_state.sens_ops = []  # cada op: {"scope":"PS"/"QUAL","cat":"P"/"S"/"SA"...,"member":"...", "credits":float, "count":int}
-    
-        if sens_mode:
-            # Selectores SIEMPRE visibles cuando sensitivity está activo
-            st.session_state.setdefault("sens_cat_ps", "None")
-            st.session_state.setdefault("sens_cat_qual", "None")
-    
-            st.selectbox("P/S category", ["None", "P", "S"], key="sens_cat_ps")
-            st.selectbox("Qualification", ["None", "SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
-    
-            # Defaults: créditos 3.0
-            st.number_input("Professors", min_value=1, step=1, value=1, key="sens_count")
-            st.number_input("Credits per professor", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
-    
-            # "Apply to" (placeholder) — arriba de botones
-            sens_member_placeholder.selectbox("Apply to", ["All"], key="sens_member")
-    
-            # Botones
-            col_add, col_reset = st.columns(2)
-            with col_add:
-                if st.button("Add", use_container_width=True, key="sens_add"):
-                    ops_to_add = []
-                    member_val = st.session_state.get("sens_member", "All")
-                    cnt  = int(st.session_state.get("sens_count", 1))
-                    cred = float(st.session_state.get("sens_credits", 3.0))
-    
-                    if st.session_state.get("sens_cat_ps") and st.session_state["sens_cat_ps"] != "None":
-                        ops_to_add.append({
-                            "scope": "PS",
-                            "cat": st.session_state["sens_cat_ps"],
-                            "member": member_val,
-                            "credits": cred,
-                            "count": cnt,
-                        })
-                    if st.session_state.get("sens_cat_qual") and st.session_state["sens_cat_qual"] != "None":
-                        ops_to_add.append({
-                            "scope": "QUAL",
-                            "cat": st.session_state["sens_cat_qual"],
-                            "member": member_val,
-                            "credits": cred,
-                            "count": cnt,
-                        })
-    
-                    if ops_to_add:
-                        st.session_state.sens_ops.extend(ops_to_add)
-                        st.success("Added.")
-    
-            with col_reset:
-                if st.button("Reset to original", use_container_width=True, key="sens_reset"):
-                    st.session_state.sens_ops = []
-                    st.success("Reset.")
-        else:
-            # Solo mostrar KPIs cuando NO está activo sensitivity
-            st.markdown("### Go to KPI")
-            options = {
-                "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-                "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
-                "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
-                "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
-                "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
-                "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-            }
-            choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
-            default_label = "6 Faculty Qualifications"
-            default_idx = choices.index(default_label) if default_label in choices else 0
-            choice = st.selectbox("Select…", choices, index=default_idx, key="kpi_nav_top")
-            st.link_button("Open", options[choice], use_container_width=True)
-    
-        # Timeframe & View (siempre visible)
-        st.markdown('---')
-        st.markdown("#### Timeframe")
-        st.session_state.setdefault("time_mode", "Semestral")
-        time_mode = st.radio(
-            "Timeframe",
-            ["Semestral", "Anual", "Intersemestral"],
-            key="time_mode",
-            label_visibility="collapsed",
-            horizontal=False
-        )
-    
-        if time_mode == "Semestral":
-            default_sem = SEMESTRAL_PERIODS[-1] if SEMESTRAL_PERIODS else "202510"
-            st.session_state.setdefault("sel_sem", default_sem)
-            sel_sem = st.selectbox("Semester", SEMESTRAL_PERIODS or [default_sem], key="sel_sem")
-            sel_year = extract_year_from_period(sel_sem) or (YEARS_ALL[-1] if YEARS_ALL else 2025)
-            sel_label = str(sel_sem)
-        elif time_mode == "Anual":
-            default_year = YEARS_ALL[-1] if YEARS_ALL else 2025
-            st.session_state.setdefault("sel_year", default_year)
-            sel_year = st.selectbox("Year", YEARS_ALL or [default_year], key="sel_year")
-            sel_sem = None
-            sel_label = f"{sel_year} (Annual)"
-        else:
-            default_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
-            st.session_state.setdefault("sel_inter_year", default_i)
-            sel_year = st.selectbox("Year (Intersemestral)", INTER_YEARS or YEARS_ALL or [default_i], key="sel_inter_year")
-            sel_sem = None
-            sel_label = f"{sel_year} Intersemestral"
-    
-        st.session_state.setdefault("view_mode", "By Academic Area")
-        view_mode = st.selectbox("View", ["By Program", "By Academic Area", "By Field"], key="view_mode")
-    
-        # Export placeholder
-        dl_bd_placeholder = st.empty()
-    
-    # ================== DESPUÉS DEL SIDEBAR: resolver timeframe + poblar "Apply to" ==================
-    # Releer del session_state con valores por defecto seguros (en caso de orden de ejecución/rerun)
-    time_mode = st.session_state.get("time_mode", "Semestral")
-    
-    if time_mode == "Semestral":
-        _def_sem = SEMESTRAL_PERIODS[-1] if SEMESTRAL_PERIODS else "202510"
-        sel_sem  = st.session_state.get("sel_sem", _def_sem)
-        sel_year = extract_year_from_period(sel_sem) or (YEARS_ALL[-1] if YEARS_ALL else 2025)
-        sel_label = str(sel_sem)
-    elif time_mode == "Anual":
-        _def_year = YEARS_ALL[-1] if YEARS_ALL else 2025
-        sel_year  = int(st.session_state.get("sel_year", _def_year))
-        sel_sem   = None
-        sel_label = f"{sel_year} (Annual)"
-    else:  # Intersemestral
-        _def_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
-        sel_year = int(st.session_state.get("sel_inter_year", _def_i))
-        sel_sem  = None
-        sel_label = f"{sel_year} Intersemestral"
-    
-    # También re-leemos la vista para que esté disponible fuera del sidebar
-    view_mode = st.session_state.get("view_mode", "By Academic Area")
-    
-    # Filtrar data del período seleccionado
-    df_car_base = df_car.copy()
-    df_fd_base  = df_fd.copy()
-    df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
-    
-    # Poblar "Apply to" con la lista correcta según la vista y la data filtrada (solo si sensitivity ON)
-    if st.session_state.get("sens_mode", False):
-        col_areaCourse = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
-        col_field      = _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
-        program_col    = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
-    
-        members = build_member_list_for_view(df_car_filt_all, view_mode, col_areaCourse, col_field, program_col)
-    
-        # Volvemos a entrar al sidebar para reemplazar el select del placeholder con los miembros reales
-        with st.sidebar:
-            st.session_state.setdefault("sens_member", "All")
-            sens_member_placeholder.selectbox("Apply to", members, key="sens_member")
-    
-    # Construir estructura SENS a usar en todo el dashboard
-    SENS = {
-        "on": bool(st.session_state.get("sens_mode", False)),
-        "ops": st.session_state.get("sens_ops", []),
-    }
+# ================== SIDEBAR (Sensitivity primero) ==================
+SEMESTRAL_PERIODS = list_periods_semestral()
+YEARS_ALL        = list_years_from_sem()
+INTER_YEARS      = years_with_inter()
 
+with st.sidebar:
+    # ---- Sensitivity arriba de todo ----
+    st.markdown("#### Sensitivity analysis")
+    sens_mode = st.checkbox(
+        "Enable sensitivity mode",
+        value=st.session_state.get("sens_mode", False),
+        key="sens_mode"
+    )
 
-    # --- CONTROLES DE SENSITIVITY (debajo del timeframe) ---
+    # Placeholder para "Apply to" (rellenamos después de filtrar período)
+    sens_member_placeholder = st.empty()
+
+    # Estado de operaciones
+    st.session_state.setdefault("sens_ops", [])
+
     if sens_mode:
-        st.caption("Add hypothetical professors to see the impact by Area/Field/Program.")
+        # Selectores SIEMPRE visibles cuando sensitivity está activo
+        st.session_state.setdefault("sens_cat_ps", "None")
+        st.session_state.setdefault("sens_cat_qual", "None")
 
-        # Init de operaciones
-        if "sens_ops" not in st.session_state:
-            st.session_state.sens_ops = []  # {"scope":"PS"|"QUAL", "cat":"...", "member":"...", "credits":float, "count":int}
+        st.selectbox("P/S category", ["None", "P", "S"], key="sens_cat_ps")
+        st.selectbox("Qualification", ["None", "SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
 
-        # Grupo objetivo
-        target_group = st.radio("Target group", ["P/S", "Qualifications"], horizontal=True, key="sens_target_group")
-        if target_group == "P/S":
-            cat = st.selectbox("Category", ["P", "S"], key="sens_cat_ps")
-        else:
-            cat = st.selectbox("Category", ["SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
+        # Entradas de cantidad y créditos (por defecto 3.0)
+        st.number_input("Professors", min_value=1, step=1, value=1, key="sens_count")
+        st.number_input("Credits per professor", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
 
-        # Placeholder para "Apply to" (se poblará DESPUÉS del filtrado real del período)
-        sens_member_placeholder = st.empty()
-
-        # Parámetros de adición
-        count = st.number_input("Professors to add", min_value=1, step=1, value=1, key="sens_count")
-        credits = st.number_input("Credits per professor", min_value=0.0, step=0.5, value=8.0, key="sens_credits")
+        # "Apply to" (placeholder) — se poblará tras filtrar — aparece arriba de los botones
+        sens_member_placeholder.selectbox("Apply to", ["All"], key="sens_member")
 
         # Botones
         col_add, col_reset = st.columns(2)
         with col_add:
-            if st.button("Add", type="primary", use_container_width=True):
-                scope = "PS" if target_group == "P/S" else "QUAL"
-                member = st.session_state.get("sens_member", "All")
-                st.session_state.sens_ops.append({
-                    "scope": scope,
-                    "cat": cat,
-                    "member": member,
-                    "credits": float(credits),
-                    "count": int(count),
-                })
-                st.rerun()  # evita el error de experimental_rerun
+            if st.button("Add", use_container_width=True, key="sens_add"):
+                ops_to_add = []
+                member_val = st.session_state.get("sens_member", "All")
+                cnt  = int(st.session_state.get("sens_count", 1))
+                cred = float(st.session_state.get("sens_credits", 3.0))
+
+                # Si el usuario eligió P/S, agregamos esa op
+                if st.session_state.get("sens_cat_ps") and st.session_state["sens_cat_ps"] != "None":
+                    ops_to_add.append({
+                        "scope": "PS",
+                        "cat": st.session_state["sens_cat_ps"],
+                        "member": member_val,
+                        "credits": cred,
+                        "count": cnt,
+                    })
+                # Si eligió Qualification, agregamos esa op
+                if st.session_state.get("sens_cat_qual") and st.session_state["sens_cat_qual"] != "None":
+                    ops_to_add.append({
+                        "scope": "QUAL",
+                        "cat": st.session_state["sens_cat_qual"],
+                        "member": member_val,
+                        "credits": cred,
+                        "count": cnt,
+                    })
+
+                if ops_to_add:
+                    st.session_state.sens_ops.extend(ops_to_add)
+                    st.rerun()  # aplicar inmediatamente
+
         with col_reset:
-            if st.button("Reset to original", use_container_width=True):
+            if st.button("Reset to original", use_container_width=True, key="sens_reset"):
                 st.session_state.sens_ops = []
                 st.rerun()
+    else:
+        # ---- Ocultar selector de KPIs cuando sensitivity está activo; mostrarlo si NO está activo ----
+        st.markdown("### Go to KPI")
+        options = {
+            "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
+            "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+            "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
+            "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
+            "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
+            "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
+        }
+        choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
+        default_label = "6 Faculty Qualifications"
+        default_idx = choices.index(default_label) if default_label in choices else 0
+        choice = st.selectbox("Select…", choices, index=default_idx, key="kpi_nav_top")
+        st.link_button("Open", options[choice], use_container_width=True)
+
+    # ---- Timeframe & View (siempre visibles) ----
+    st.markdown('---')
+    st.markdown("#### Timeframe")
+    st.session_state.setdefault("time_mode", "Semestral")
+    time_mode = st.radio(
+        "Timeframe",
+        ["Semestral", "Anual", "Intersemestral"],
+        key="time_mode",
+        label_visibility="collapsed",
+        horizontal=False
+    )
+
+    if time_mode == "Semestral":
+        default_sem = SEMESTRAL_PERIODS[-1] if SEMESTRAL_PERIODS else "202510"
+        st.session_state.setdefault("sel_sem", default_sem)
+        sel_sem = st.selectbox("Semester", SEMESTRAL_PERIODS or [default_sem], key="sel_sem")
+        sel_year = extract_year_from_period(sel_sem) or (YEARS_ALL[-1] if YEARS_ALL else 2025)
+        sel_label = str(sel_sem)
+    elif time_mode == "Anual":
+        default_year = YEARS_ALL[-1] if YEARS_ALL else 2025
+        st.session_state.setdefault("sel_year", default_year)
+        sel_year = st.selectbox("Year", YEARS_ALL or [default_year], key="sel_year")
+        sel_sem = None
+        sel_label = f"{sel_year} (Annual)"
+    else:
+        default_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
+        st.session_state.setdefault("sel_inter_year", default_i)
+        sel_year = st.selectbox("Year (Intersemestral)", INTER_YEARS or YEARS_ALL or [default_i], key="sel_inter_year")
+        sel_sem = None
+        sel_label = f"{sel_year} Intersemestral"
+
+    st.session_state.setdefault("view_mode", "By Academic Area")
+    view_mode = st.selectbox("View", ["By Program", "By Academic Area", "By Field"], key="view_mode")
+
+    # Export placeholder
+    dl_bd_placeholder = st.empty()
+
+# ================== DESPUÉS DEL SIDEBAR: resolver timeframe + poblar "Apply to" ==================
+# Releer del session_state con valores por defecto seguros (en caso de reruns)
+time_mode = st.session_state.get("time_mode", "Semestral")
+if time_mode == "Semestral":
+    _def_sem = SEMESTRAL_PERIODS[-1] if SEMESTRAL_PERIODS else "202510"
+    sel_sem  = st.session_state.get("sel_sem", _def_sem)
+    sel_year = extract_year_from_period(sel_sem) or (YEARS_ALL[-1] if YEARS_ALL else 2025)
+    sel_label = str(sel_sem)
+elif time_mode == "Anual":
+    _def_year = YEARS_ALL[-1] if YEARS_ALL else 2025
+    sel_year  = int(st.session_state.get("sel_year", _def_year))
+    sel_sem   = None
+    sel_label = f"{sel_year} (Annual)"
+else:  # Intersemestral
+    _def_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
+    sel_year = int(st.session_state.get("sel_inter_year", _def_i))
+    sel_sem  = None
+    sel_label = f"{sel_year} Intersemestral"
+
+view_mode = st.session_state.get("view_mode", "By Academic Area")
+
+# Filtrar data del período seleccionado
+df_car_base = df_car.copy()
+df_fd_base  = df_fd.copy()
+df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
+df_fd_f         = filter_df_fd(df_fd_base, time_mode, sel_year, sel_sem)
+
+# Poblar "Apply to" con la lista correcta según la vista (solo si sensitivity ON)
+if st.session_state.get("sens_mode", False):
+    col_areaCourse = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
+    col_field      = _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
+    program_col    = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
+
+    members = build_member_list_for_view(df_car_filt_all, view_mode, col_areaCourse, col_field, program_col)
+
+    # Volver al sidebar para reemplazar el placeholder con la lista real
+    with st.sidebar:
+        st.session_state.setdefault("sens_member", "All")
+        sens_member_placeholder.selectbox("Apply to", members, key="sens_member")
+
+# Construir estructura SENS
+SENS = {
+    "on": bool(st.session_state.get("sens_mode", False)),
+    "ops": st.session_state.get("sens_ops", []),
+}
 
 # ================== PRE-FILTROS (igual) ==================
 df_car_base = df_car.copy()
 df_fd_base  = df_fd.copy()
 
 df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
-df_fd_f          = filter_df_fd(df_fd_base, time_mode, sel_year, sel_sem)
+df_fd_f         = filter_df_fd(df_fd_base, time_mode, sel_year, sel_sem)
 
 # Sidebar: botón de descarga de la BD filtrada según el período seleccionado
 if 'dl_bd_placeholder' in locals():
@@ -522,20 +480,14 @@ if 'dl_bd_placeholder' in locals():
         key=f"dl_bd_{_slugify(sel_label)}"
     )
 
-# ====== SENSITIVITY: poblar "Apply to" AHORA que ya se filtró ======
-if 'sens_mode' in locals() and sens_mode:
+# ====== SENSITIVITY: poblar "Apply to" AHORA que ya se filtró (backup) ======
+if st.session_state.get("sens_mode", False):
     col_areaCourse = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
-    col_field = _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
-    program_col = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
-
+    col_field      = _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
+    program_col    = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
     members = build_member_list_for_view(df_car_filt_all.copy(), view_mode, col_areaCourse, col_field, program_col)
     with st.sidebar:
         st.selectbox("Apply to", members, key="sens_member")
-
-    SENS = {"on": True, "ops": st.session_state.get("sens_ops", [])}
-else:
-    SENS = {"on": False, "ops": []}
-
 
 # ================== RELEVANT COLUMNS (igual) ==================
 col_ps_fd   = _get_any(df_fd_f, "P/S", "P - S", "Participating/Supporting")
@@ -1557,6 +1509,7 @@ if show_counts:
             key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
             label="Descargar datos (Excel)"
         )
+
 
 
 
