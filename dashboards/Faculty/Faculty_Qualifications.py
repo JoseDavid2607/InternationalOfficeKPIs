@@ -23,6 +23,7 @@ with st.container():
         .scroll-wrap-600 { max-height:600px; overflow-y:auto; }
         .scroll-wrap-400 { max-height:400px; overflow-y:auto; }
         .scroll-wrap-program { max-height:520px; overflow-y:auto; }
+        .impact-note { font-size:12px; color:#6B7280; margin:6px 0 -6px 0; }
         </style>
         """,
         unsafe_allow_html=True
@@ -70,6 +71,7 @@ df_car = load_cartelera()
 MINT = "#1FA89B"
 SUPPORTING = "#7FD3FF"
 TOTAL_SERIES_COLOR = "#D09E33"
+IMPACT_DELTA = 3.0  # créditos para el impacto +3cr
 
 def _resolve(df: pd.DataFrame, target: str):
     t = target.strip().casefold()
@@ -244,19 +246,30 @@ def impact_column_generic(base_df: pd.DataFrame, mod_df: pd.DataFrame, target: s
         pct0 = (base_df[target] / den0 * 100).fillna(0.0)
         pct1 = (mod_df[target]  / den1 * 100).fillna(0.0)
         return (pct1 - pct0).round(2)
-# ---- Impact helpers (closed-form) ----
-def _delta_pct_ps(P, S, delta=3.0):
-    T = P + S
-    if T <= 0: 
-        return 0.0
-    return 100.0 * (delta * S) / (T * (T + delta))  # Δ%P al añadir +delta a P
 
-def _delta_pct_share(cat_val, total_Q, delta=3.0):
-    # genérico para SA / OTHER: Δ%cat al añadir +delta al numerador y al total
-    Q = total_Q
-    if Q <= 0:
-        return 0.0
-    return 100.0 * (delta * (Q - cat_val)) / (Q * (Q + delta))
+# ===== Impact calc “+3cr” helpers (no cambian estructura de datos) =====
+def _impact_plus3_P(rowP: pd.Series) -> float:
+    P = float(rowP.get("P", 0.0)); S = float(rowP.get("S", 0.0)); T = P + S
+    d = IMPACT_DELTA
+    if T <= 0: return 0.0
+    return round(100.0 * (d * S) / (T * (T + d)), 2)
+
+def _impact_plus3_SA(rowQ: pd.Series) -> float:
+    SA = float(rowQ.get("SA", 0.0))
+    PA = float(rowQ.get("PA", 0.0)); SP = float(rowQ.get("SP", 0.0)); IP = float(rowQ.get("IP", 0.0)); OT = float(rowQ.get("OTHER", 0.0))
+    Q = SA + PA + SP + IP + OT
+    d = IMPACT_DELTA
+    if Q <= 0: return 0.0
+    return round(100.0 * (d * (Q - SA)) / (Q * (Q + d)), 2)
+
+def _impact_plus3_OTHER(rowQ: pd.Series) -> float:
+    OT = float(rowQ.get("OTHER", 0.0))
+    SA = float(rowQ.get("SA", 0.0)); PA = float(rowQ.get("PA", 0.0)); SP = float(rowQ.get("SP", 0.0)); IP = float(rowQ.get("IP", 0.0))
+    Q = SA + PA + SP + IP + OT
+    d = IMPACT_DELTA
+    if Q <= 0: return 0.0
+    return round(100.0 * (d * (Q - OT)) / (Q * (Q + d)), 2)
+
 # ================== HISTORY (timeframe-aware) ==================
 def _period_sort_key(p: str) -> tuple[int,int]:
     y = extract_year_from_period(p) or -1
@@ -268,7 +281,6 @@ def _period_sort_key(p: str) -> tuple[int,int]:
     return (y, suf_i)
 
 def build_time_axis_for_history(df_hist: pd.DataFrame):
-    # Se apoya en st.session_state["time_mode"]
     time_mode = st.session_state.get("time_mode", "Semestral")
 
     if "_SEM" not in df_hist.columns:
@@ -278,19 +290,15 @@ def build_time_axis_for_history(df_hist: pd.DataFrame):
         sem = df_hist["_SEM"].astype(str).str.strip()
 
     if time_mode == "Semestral":
-        regs = sorted(
-            {s for s in sem.dropna().unique() if period_suffix(s) in {"10","20"}},
-            key=_period_sort_key
-        )
+        regs = sorted({s for s in sem.dropna().unique() if period_suffix(s) in {"10","20"}}, key=_period_sort_key)
         x_labels = regs
     elif time_mode == "Anual":
         years = sorted({extract_year_from_period(s) for s in sem if extract_year_from_period(s)}, key=int)
         x_labels = years
-    else:  # Intersemestral
-        inter = sorted(
-            {f"{extract_year_from_period(s)} Intersemestral" for s in sem if "inter" in str(s).lower() and extract_year_from_period(s)},
-            key=lambda x: int(str(x).split()[0])
-        )
+    else:
+        inter = sorted({f"{extract_year_from_period(s)} Intersemestral"
+                        for s in sem if "inter" in str(s).lower() and extract_year_from_period(s)},
+                       key=lambda x: int(str(x).split()[0]))
         x_labels = inter
 
     x_map = {lab: i for i, lab in enumerate(x_labels)}
@@ -310,7 +318,6 @@ def transform_for_time_mode_ps(df_ps: pd.DataFrame):
         if "P" in g and "S" in g:
             g["P_share"] = (g["P"] / (g["P"] + g["S"]).replace(0, pd.NA)) * 100
         return g.rename(columns={"_YEAR":"_SEM"})
-    # Intersemestral
     base = base[~base["_INTER_LABEL"].isna()].copy()
     g = base.groupby(["_INTER_LABEL"] + [c for c in base.columns if c.startswith("_") and c not in {"_SEM","_YEAR","_INTER_LABEL"}], dropna=False).sum(numeric_only=True).reset_index()
     if "P" in g and "S" in g:
@@ -335,7 +342,6 @@ def transform_for_time_mode_tipo(df_tipo: pd.DataFrame, share_col_name: str):
         else:
             g["OTHER_share"] = (g["OTHER"] / den) * 100
         return g.rename(columns={"_YEAR":"_SEM"})
-    # Intersemestral
     base = base[~base["_INTER_LABEL"].isna()].copy()
     keys = ["_INTER_LABEL"] + [c for c in base.columns if c.startswith("_") and c not in {"_SEM","_YEAR","_INTER_LABEL"}]
     g = base.groupby(keys, dropna=False)[cats].sum().reset_index()
@@ -345,6 +351,77 @@ def transform_for_time_mode_tipo(df_tipo: pd.DataFrame, share_col_name: str):
     else:
         g["OTHER_share"] = (g["OTHER"] / den) * 100
     return g.rename(columns={"_INTER_LABEL":"_SEM"})
+
+# === Ajuste del punto del periodo seleccionado en las series históricas (aplica sensibilidad) ===
+def _selected_label_for_time_mode(sel_sem, sel_year):
+    tm = st.session_state.get("time_mode", "Semestral")
+    if tm == "Semestral" and sel_sem: return str(sel_sem)
+    if tm == "Anual" and sel_year is not None: return int(sel_year)
+    if tm == "Intersemestral" and sel_year is not None: return f"{sel_year} Intersemestral"
+    return None
+
+def adjust_time_series_for_ops(agg_ps_tm, agg_tipo_tm, totP_tm, totTipo_tm, level_name, sel_label, ops):
+    if not ops or sel_label is None:
+        return agg_ps_tm, agg_tipo_tm, totP_tm, totTipo_tm
+
+    ps = agg_ps_tm.copy()
+    qt = agg_tipo_tm.copy()
+    tp = totP_tm.copy()
+    tt = totTipo_tm.copy()
+
+    # helpers to recompute shares
+    def recompute_ps_share(df):
+        if all(k in df.columns for k in ["P","S"]):
+            den = (df["P"] + df["S"]).replace(0, pd.NA)
+            df["P_share"] = (df["P"] / den * 100).fillna(0.0)
+        return df
+
+    def recompute_tipo_shares(df):
+        for k in ["SA","PA","SP","IP","OTHER"]:
+            if k not in df.columns: df[k] = 0.0
+        den = (df[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
+        df["SA_share"] = (df["SA"] / den * 100).fillna(0.0)
+        df["OTHER_share"] = (df["OTHER"] / den * 100).fillna(0.0)
+        return df
+
+    for op in ops:
+        member = op.get("member", "All")
+        scope  = op.get("scope")
+        cat    = op.get("cat")
+        delta  = float(op.get("credits", 0.0)) * int(op.get("count", 0))
+
+        if delta == 0: 
+            continue
+
+        if scope == "PS" and cat in ["P","S"]:
+            m = ps["_SEM"].eq(sel_label)
+            if member == "All":
+                ps.loc[m, cat] = ps.loc[m, cat].astype(float) + delta
+            else:
+                m = m & ps[level_name].astype(str).eq(str(member))
+                ps.loc[m, cat] = ps.loc[m, cat].astype(float) + delta
+            ps = recompute_ps_share(ps)
+
+            # TOTAL
+            mt = tp["_SEM"].eq(sel_label)
+            tp.loc[mt, cat] = tp.loc[mt, cat].astype(float) + delta
+            tp = recompute_ps_share(tp)
+
+        if scope == "QUAL" and cat in ["SA","PA","SP","IP","OTHER"]:
+            m = qt["_SEM"].eq(sel_label)
+            if member == "All":
+                qt.loc[m, cat] = qt.loc[m, cat].astype(float) + delta
+            else:
+                m = m & qt[level_name].astype(str).eq(str(member))
+                qt.loc[m, cat] = qt.loc[m, cat].astype(float) + delta
+            qt = recompute_tipo_shares(qt)
+
+            # TOTAL
+            mt = tt["_SEM"].eq(sel_label)
+            tt.loc[mt, cat] = tt.loc[mt, cat].astype(float) + delta
+            tt = recompute_tipo_shares(tt)
+
+    return ps, qt, tp, tt
 
 def draw_history(fig_title, level_name, level_values, metric_kind, total_series_builders, agg_ps_all, agg_tipo_all, x_labels, x_map, sel_x):
     palette = px.colors.qualitative.Safe + px.colors.qualitative.Bold + px.colors.qualitative.Pastel
@@ -466,7 +543,6 @@ def draw_history(fig_title, level_name, level_values, metric_kind, total_series_
         y_min, bad_high = 0, True
         y_max = 40
 
-    # Zonas “malas” y líneas de referencia
     if bad_high:
         fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=thr, y1=100, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
         fig.add_hline(y=thr, line_color="#F5A3A3", line_dash="dash")
@@ -474,11 +550,9 @@ def draw_history(fig_title, level_name, level_values, metric_kind, total_series_
         fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=thr, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
         fig.add_hline(y=thr, line_color="red", line_dash="dash")
 
-    # Barra vertical del período seleccionado
     if sel_x is not None:
         fig.add_vrect(x0=sel_x-0.5, x1=sel_x+0.5, fillcolor="#E8FAF7", opacity=0.5, layer="below", line_width=0)
 
-    # Ejes y render
     tickvals = list(range(len(x_labels)))
     ticktext = [str(x) for x in x_labels]
     if metric_choice == "%OTHER":
@@ -735,6 +809,20 @@ def style_percent_tables(df_, id_col):
         sty.loc[is_total, c] = (sty.loc[is_total, c].astype(str) + 'font-weight:700;').str.replace(';;',';', regex=False)
     return sty
 
+# Heatmap sencillo por bins para columnas de impacto (verde fuerte = más impacto positivo)
+def style_impact_bins(df_: pd.DataFrame, impact_cols: list[str]):
+    sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+    bins = [0, 0.5, 1, 2, 4, 9999]
+    colors = ['#FDE2E2', '#EAF7F3', '#D6F0E6', '#BDE5D6', '#93D4C0', '#59BFA6']
+    for col in impact_cols:
+        if col not in df_.columns: continue
+        vals = pd.to_numeric(df_[col], errors='coerce').fillna(0.0)
+        for i in range(len(bins)-1):
+            lo, hi = bins[i], bins[i+1]
+            mask = (vals > lo) & (vals <= hi) if i>0 else (vals <= hi)
+            sty.loc[mask, col] = f'background-color:{colors[i]};'
+    return sty
+
 def style_diverging_simple(df_: pd.DataFrame, colname: str):
     sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
     if colname not in df_.columns:
@@ -790,74 +878,46 @@ else:
             p_share  = (agg_ps["P"] / den_ps) * 100
             s_share  = 100 - p_share
             denom_q  = (agg_tipo.sum(axis=1)).replace(0, pd.NA)
-        
-            # Impactos por fila (área/field/program)
-            P_vals = agg_ps["P"].fillna(0.0)
-            S_vals = agg_ps["S"].fillna(0.0)
-            SA_vals = agg_tipo["SA"].fillna(0.0)
-            OT_vals = agg_tipo["OTHER"].fillna(0.0)
-            Q_vals  = agg_tipo[["SA","PA","SP","IP","OTHER"]].sum(axis=1).fillna(0.0)
-        
-            dP = [_delta_pct_ps(float(P_vals.iloc[i]), float(S_vals.iloc[i]), delta=3.0) for i in range(len(agg_ps))]
-            dSA = [_delta_pct_share(float(SA_vals.iloc[i]), float(Q_vals.iloc[i]), delta=3.0) for i in range(len(agg_tipo))]
-            dOT = [_delta_pct_share(float(OT_vals.iloc[i]), float(Q_vals.iloc[i]), delta=3.0) for i in range(len(agg_tipo))]
-        
             dfm = pd.DataFrame({
                 base_idx_name: agg_tipo.index,
-                "%P":       p_share,
-                "Δ%P (+3P)": dP,            # NUEVO
-                "%S":       s_share,
-                "%SA":      (agg_tipo["SA"] / denom_q) * 100,
-                "Δ%SA (+3SA)": dSA,         # NUEVO
-                "%OTHER":   (agg_tipo["OTHER"] / denom_q) * 100,
-                "Δ%OTHER (+3OTHER)": dOT,   # NUEVO
+                "%P":  p_share,
+                "%S":  s_share,
+                "%SA": (agg_tipo["SA"] / denom_q) * 100,
+                "%OTHER": (agg_tipo["OTHER"] / denom_q) * 100,
             }).fillna(0.0)
-        
-            # Fila TOTAL con los mismos impactos (aplicados al total del período)
+
+            # columnas de IMPACTO (+3cr) — por fila
+            # Para calcular impacto necesitamos también los absolutos:
+            ps_abs = agg_ps[["P","S"]].copy()
+            tipo_abs = agg_tipo[["SA","PA","SP","IP","OTHER"]].copy()
+
+            dfm["Impact +3cr (P)"]     = ps_abs.apply(_impact_plus3_P, axis=1)
+            dfm["Impact +3cr (SA)"]    = tipo_abs.apply(_impact_plus3_SA, axis=1)
+            dfm["Impact +3cr (OTHER)"] = tipo_abs.apply(_impact_plus3_OTHER, axis=1)
+
+            # fila TOTAL
             tot_P, tot_S = agg_ps["P"].sum(), agg_ps["S"].sum()
-            T = tot_P + tot_S
-            p_tot = (tot_P / T * 100) if T else 0.0
+            tot_den_ps   = tot_P + tot_S
+            p_tot = (tot_P / tot_den_ps * 100) if tot_den_ps else 0.0
             s_tot = 100 - p_tot
             tipo_sums = agg_tipo[["SA","PA","SP","IP","OTHER"]].sum(axis=0)
-            Q_tot = float(tipo_sums.sum())
-            sa_tot = float(tipo_sums["SA"])
-            ot_tot = float(tipo_sums["OTHER"])
-        
+            denom_q_tot = float(tipo_sums.sum())
+
             total_row = {
                 base_idx_name: "TOTAL",
-                "%P":       round(p_tot, 1),
-                "Δ%P (+3P)": round(_delta_pct_ps(tot_P, tot_S, 3.0), 2),
-                "%S":       round(s_tot, 1),
-                "%SA":      round((sa_tot / Q_tot * 100) if Q_tot else 0.0, 1),
-                "Δ%SA (+3SA)": round(_delta_pct_share(sa_tot, Q_tot, 3.0), 2) if Q_tot else 0.0,
-                "%OTHER":   round((ot_tot / Q_tot * 100) if Q_tot else 0.0, 1),
-                "Δ%OTHER (+3OTHER)": round(_delta_pct_share(ot_tot, Q_tot, 3.0), 2) if Q_tot else 0.0,
+                "%P":  round(p_tot, 1),
+                "%S":  round(s_tot, 1),
+                "%SA": round((tipo_sums["SA"] / denom_q_tot * 100) if denom_q_tot else 0.0, 1),
+                "%OTHER": round((tipo_sums["OTHER"] / denom_q_tot * 100) if denom_q_tot else 0.0, 1),
+                "Impact +3cr (P)":     _impact_plus3_P(pd.Series({"P": tot_P, "S": tot_S})),
+                "Impact +3cr (SA)":    _impact_plus3_SA(tipo_sums),
+                "Impact +3cr (OTHER)": _impact_plus3_OTHER(tipo_sums),
             }
-        
-            # Redondeo y concatenación
-            perc_cols = ["%P","%S","%SA","%OTHER"]
-            dfm[perc_cols] = dfm[perc_cols].round(1)
-            dfm[["Δ%P (+3P)","Δ%SA (+3SA)","Δ%OTHER (+3OTHER)"]] = dfm[["Δ%P (+3P)","Δ%SA (+3SA)","Δ%OTHER (+3OTHER)"]].round(2)
-            dfm = pd.concat([dfm, pd.DataFrame([total_row])], ignore_index=True)
-        
-            # Tooltips via título HTML en el header (se renderiza porque usas to_html(escape=False))
-            dfm = dfm.rename(columns={
-                "%P": '%P',
-                "Δ%P (+3P)": 'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>',
-                "%S": '%S',
-                "%SA": '%SA',
-                "Δ%SA (+3SA)": 'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>',
-                "%OTHER": '%OTHER',
-                "Δ%OTHER (+3OTHER)": 'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>',
-            })
-        
-            return dfm[[base_idx_name, '%P',
-                        'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>',
-                        '%S', '%SA',
-                        'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>',
-                        '%OTHER',
-                        'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>']]
 
+            dfm[["%P","%S","%SA","%OTHER"]] = dfm[["%P","%S","%SA","%OTHER"]].round(1)
+            dfm = pd.concat([dfm, pd.DataFrame([total_row])], ignore_index=True)
+            # Orden: %P, ImpactP, %S, %SA, ImpactSA, %OTHER, ImpactOTHER
+            return dfm[[base_idx_name, "%P", "Impact +3cr (P)", "%S", "%SA", "Impact +3cr (SA)", "%OTHER", "Impact +3cr (OTHER)"]]
 
         # ------------------- BY ACADEMIC AREA -------------------
         if view_mode == "By Academic Area":
@@ -877,35 +937,29 @@ else:
             with colT:
                 base_agg_ps = agg_ps.copy()
                 base_agg_tipo = agg_tipo.copy()
-            
-                # Sensibilidad (sin columnas extra)
                 if SENS["on"] and SENS["ops"]:
                     mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
                 else:
                     mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
-            
-                # La tabla SIEMPRE se calcula con los agregados del timeframe seleccionado (fil)
+
+                st.markdown("<div class='impact-note'>Impacto = aumento esperado en puntos porcentuales al añadir +3cr del tipo correspondiente en esa fila.</div>", unsafe_allow_html=True)
                 metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
 
-                _download_xlsx_button(...)
-                
-                # ⬇️ Sustituye tu styled_tbl actual por este:
+                _download_xlsx_button(
+                    metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
+                    key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)"
+                )
+
+                # Estilos: % thresholds + heatmap de impactos
                 styled_tbl = (
                     metrics_tbl.style
-                    .format({
-                        '%P':'{:.1f}%', '%S':'{:.1f}%', '%SA':'{:.1f}%', '%OTHER':'{:.1f}%',
-                        'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
-                        'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
-                        'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
-                    })
+                    .format({"%P": "{:.1f}%", "%S": "{:.1f}%", "%SA": "{:.1f}%", "%OTHER": "{:.1f}%",
+                             "Impact +3cr (P)":"{:.2f}", "Impact +3cr (SA)":"{:.2f}", "Impact +3cr (OTHER)":"{:.2f}"})
                     .apply(style_percent_tables, id_col="Academic Area", axis=None)
-                    .apply(lambda df_: style_diverging_simple(df_, 'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>'), axis=None)
-                    .apply(lambda df_: style_diverging_simple(df_, 'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>'), axis=None)
-                    .apply(lambda df_: style_diverging_simple(df_, 'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>'), axis=None)
+                    .apply(style_impact_bins, impact_cols=["Impact +3cr (P)", "Impact +3cr (SA)", "Impact +3cr (OTHER)"], axis=None)
                     .hide(axis="index")
                 )
                 st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
-
 
             # --- HISTÓRICOS por Área (timeframe-aware) ---
             df_hist = df_car_global.copy()
@@ -948,12 +1002,19 @@ else:
             tot_by_sem_tipo_tm = tot_by_sem_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in tot_by_sem_tipo_sa_tm], errors="ignore")\
                                                       .merge(tot_by_sem_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]], on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer")
 
+            # ===== Sensibilidad también en la serie histórica (sólo punto del periodo seleccionado) =====
+            sel_hist_label = _selected_label_for_time_mode(sel_sem, extract_year_from_period(sel_label))
+            agg_ps_all_tm, agg_tipo_all_tm, tot_by_sem_P_tm, tot_by_sem_tipo_tm = adjust_time_series_for_ops(
+                agg_ps_all_tm, agg_tipo_all_tm, tot_by_sem_P_tm, tot_by_sem_tipo_tm,
+                level_name="_AREA", sel_label= _selected_label_for_time_mode(sel_sem, extract_year_from_period(sel_label)), ops=SENS.get("ops", [])
+            )
+
             key_col, x_labels, x_map = build_time_axis_for_history(df_hist)
             sel_x = None
             if time_mode == "Semestral" and sel_sem and str(sel_sem) in x_map: sel_x = x_map[str(sel_sem)]
-            if time_mode == "Anual" and sel_year in x_map: sel_x = x_map[sel_year]
+            if time_mode == "Anual" and extract_year_from_period(sel_label) in x_map: sel_x = x_map[extract_year_from_period(sel_label)]
             if time_mode == "Intersemestral":
-                lab = f"{sel_year} Intersemestral"
+                lab = f"{extract_year_from_period(sel_label)} Intersemestral"
                 if lab in x_map: sel_x = x_map[lab]
 
             areas_all = sorted(set(agg_ps_all_tm["_AREA"].astype(str).unique()) | set(agg_tipo_all_tm["_AREA"].astype(str).unique()))
@@ -989,33 +1050,30 @@ else:
                 with colF_L:
                     base_agg_ps = agg_ps_f.copy()
                     base_agg_tipo = agg_tipo_f.copy()
-                
                     if SENS["on"] and SENS["ops"]:
                         mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
                     else:
                         mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
-                
+
+                    st.markdown("<div class='impact-note'>Impacto = aumento esperado en pp al añadir +3cr del tipo correspondiente.</div>", unsafe_allow_html=True)
                     metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
 
-                    _download_xlsx_button(...)
-                
-                    # ⬇️ Sustituye tu styled_tbl_f actual:
+                    _download_xlsx_button(
+                        metrics_tbl_f,
+                        f"table_ByField_{_slugify(sel_label)}.xlsx",
+                        key=f"dl_tbl_field_{_slugify(sel_label)}",
+                        label="⬇️ Download table (Excel)"
+                    )
+
                     styled_tbl_f = (
                         metrics_tbl_f.style
-                        .format({
-                            '%P':'{:.1f}%', '%S':'{:.1f}%', '%SA':'{:.1f}%', '%OTHER':'{:.1f}%',
-                            'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
-                            'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
-                            'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
-                        })
+                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%",
+                                 "Impact +3cr (P)":"{:.2f}", "Impact +3cr (SA)":"{:.2f}", "Impact +3cr (OTHER)":"{:.2f}"})
                         .apply(style_percent_tables, id_col="Field", axis=None)
-                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>'), axis=None)
-                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>'), axis=None)
-                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>'), axis=None)
+                        .apply(style_impact_bins, impact_cols=["Impact +3cr (P)", "Impact +3cr (SA)", "Impact +3cr (OTHER)"], axis=None)
                         .hide(axis="index")
                     )
                     st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
-
 
                 # HISTÓRICOS Field (timeframe-aware)
                 df_hist_f = df_car_global.copy()
@@ -1046,15 +1104,22 @@ else:
                                                  .merge(agg_tipo_all_tm_other[["_SEM","_FIELD","OTHER","SA","PA","SP","IP","OTHER_share"]], on=["_SEM","_FIELD","SA","PA","SP","IP","OTHER"], how="outer")
 
                 tot_by_sem_P_tm = transform_for_time_mode_ps(tot_by_sem_f.copy())
-                tot_by_sem_tipo_sa_tm = transform_for_time_mode_tipo(tot_by_sem_f.copy(), "SA_share")  # (no se usa, mantenido por simetría)
-                tot_by_sem_tipo_tm = tot_by_sem_tipo_sa_tm  # alias
+                tot_by_sem_tipo_sa_tm = transform_for_time_mode_tipo(tot_by_sem_f.copy(), "SA_share")  # (alias simple)
+                tot_by_sem_tipo_tm = tot_by_sem_tipo_sa_tm
+
+                # Sensibilidad en el punto seleccionado
+                agg_ps_all_tm, agg_tipo_all_tm, tot_by_sem_P_tm, tot_by_sem_tipo_tm = adjust_time_series_for_ops(
+                    agg_ps_all_tm, agg_tipo_all_tm, tot_by_sem_P_tm, tot_by_sem_tipo_tm,
+                    level_name="_FIELD", sel_label=_selected_label_for_time_mode(sel_sem, extract_year_from_period(sel_label)),
+                    ops=SENS.get("ops", [])
+                )
 
                 key_col, x_labels, x_map = build_time_axis_for_history(df_hist_f)
                 sel_x = None
                 if time_mode == "Semestral" and sel_sem and str(sel_sem) in x_map: sel_x = x_map[str(sel_sem)]
-                if time_mode == "Anual" and sel_year in x_map: sel_x = x_map[sel_year]
+                if time_mode == "Anual" and extract_year_from_period(sel_label) in x_map: sel_x = x_map[extract_year_from_period(sel_label)]
                 if time_mode == "Intersemestral":
-                    lab = f"{sel_year} Intersemestral"
+                    lab = f"{extract_year_from_period(sel_label)} Intersemestral"
                     if lab in x_map: sel_x = x_map[lab]
 
                 fields_all = sorted(set(agg_ps_all_tm["_FIELD"].astype(str).unique()) | set(agg_tipo_all_tm["_FIELD"].astype(str).unique()))
@@ -1069,7 +1134,7 @@ else:
 
         # ============================= BY PROGRAM =============================
         elif view_mode == "By Program":
-            program_col = col_prog  # ya resuelto arriba
+            program_col = col_prog
             if not program_col:
                 st.info("Column 'Program' was not found.")
             else:
@@ -1078,15 +1143,12 @@ else:
 
                 colM_L, colM_R = st.columns([6,6], gap="large")
 
-                # ---- Agregaciones del timeframe seleccionado
-                agg_tipo_m = (fil_mat.groupby(["_MAT","_TIPO"], dropna=False)["_CRED"]
-                              .sum().unstack(fill_value=0.0))
+                agg_tipo_m = (fil_mat.groupby(["_MAT","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["SA","PA","SP","IP","OTHER"]:
                     if k not in agg_tipo_m.columns: agg_tipo_m[k] = 0.0
                 agg_tipo_m = agg_tipo_m[["SA","PA","SP","IP","OTHER"]]
 
-                agg_ps_m = (fil_mat.groupby(["_MAT","_PS"], dropna=False)["_CRED"]
-                            .sum().unstack(fill_value=0.0))
+                agg_ps_m = (fil_mat.groupby(["_MAT","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["P","S"]:
                     if k not in agg_ps_m.columns: agg_ps_m[k] = 0.0
                 agg_ps_m = agg_ps_m[["P","S"]]
@@ -1094,48 +1156,45 @@ else:
                 with colM_L:
                     base_agg_ps   = agg_ps_m.copy()
                     base_agg_tipo = agg_tipo_m.copy()
-                
                     if SENS["on"] and SENS["ops"]:
                         mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
                     else:
                         mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
-                
+
+                    st.markdown("<div class='impact-note'>Impacto = aumento esperado en pp al añadir +3cr del tipo correspondiente.</div>", unsafe_allow_html=True)
                     metrics_tbl_m = build_percent_table("Program", mod_agg_tipo, mod_agg_ps)
 
-                    _download_xlsx_button(...)
-                
-                    # ⬇️ Sustituye tu styled_tbl_m actual:
+                    _download_xlsx_button(
+                        metrics_tbl_m,
+                        f"table_ByProgram_{_slugify(sel_label)}.xlsx",
+                        key=f"dl_tbl_prog_{_slugify(sel_label)}",
+                        label="⬇️ Download table (Excel)"
+                    )
+
                     styled_tbl_m = (
                         metrics_tbl_m.style
-                        .format({
-                            '%P':'{:.1f}%', '%S':'{:.1f}%', '%SA':'{:.1f}%', '%OTHER':'{:.1f}%',
-                            'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
-                            'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
-                            'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>':'{:+.2f} pp',
-                        })
+                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%",
+                                 "Impact +3cr (P)":"{:.2f}", "Impact +3cr (SA)":"{:.2f}", "Impact +3cr (OTHER)":"{:.2f}"})
                         .apply(style_percent_tables, id_col="Program", axis=None)
-                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%P (+3P) <span title="Efecto de agregar 3 créditos P en el área/field/program para el período seleccionado.">ⓘ</span>'), axis=None)
-                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%SA (+3SA) <span title="Efecto de agregar 3 créditos SA (Scholarly Academic) en el período seleccionado.">ⓘ</span>'), axis=None)
-                        .apply(lambda df_: style_diverging_simple(df_, 'Δ%OTHER (+3OTHER) <span title="Efecto de agregar 3 créditos OTHER en el período seleccionado.">ⓘ</span>'), axis=None)
+                        .apply(style_impact_bins, impact_cols=["Impact +3cr (P)", "Impact +3cr (SA)", "Impact +3cr (OTHER)"], axis=None)
                         .hide(axis="index")
                     )
-                    st.markdown(f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>",
+                        unsafe_allow_html=True
+                    )
 
-                # ---- HISTÓRICOS por Programa (timeframe-aware)
+                # HISTÓRICOS por Programa (timeframe-aware)
                 df_hist_m = df_car_global.copy()
                 df_hist_m["_MAT"] = df_hist_m[program_col].astype(str).str.strip()
 
-                # P/S shares
-                agg_ps_all_m = (df_hist_m.groupby(["_SEM","_MAT","_PS"], dropna=False)["_CRED"]
-                                .sum().unstack(fill_value=0.0))
+                agg_ps_all_m = (df_hist_m.groupby(["_SEM","_MAT","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["P","S"]:
                     if k not in agg_ps_all_m.columns: agg_ps_all_m[k] = 0.0
                 agg_ps_all_m["P_share"] = (agg_ps_all_m["P"] / (agg_ps_all_m["P"] + agg_ps_all_m["S"]).replace(0, pd.NA)) * 100
                 agg_ps_all_m = agg_ps_all_m.reset_index()
 
-                # Tipo shares
-                agg_tipo_all_m = (df_hist_m.groupby(["_SEM","_MAT","_TIPO"], dropna=False)["_CRED"]
-                                  .sum().unstack(fill_value=0.0))
+                agg_tipo_all_m = (df_hist_m.groupby(["_SEM","_MAT","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["SA","PA","SP","IP","OTHER"]:
                     if k not in agg_tipo_all_m.columns: agg_tipo_all_m[k] = 0.0
                 den_all_m = (agg_tipo_all_m[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
@@ -1143,16 +1202,13 @@ else:
                 agg_tipo_all_m["OTHER_share"] = (agg_tipo_all_m["OTHER"] / den_all_m) * 100
                 agg_tipo_all_m = agg_tipo_all_m.reset_index()
 
-                # Series TOTAL
-                tot_by_sem_m = (df_hist_m.groupby(["_SEM","_PS"])["_CRED"]
-                                .sum().unstack(fill_value=0.0))
+                tot_by_sem_m = (df_hist_m.groupby(["_SEM","_PS"])["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["P","S"]:
                     if k not in tot_by_sem_m.columns: tot_by_sem_m[k] = 0.0
                 tot_by_sem_m["P_share"] = (tot_by_sem_m["P"] / (tot_by_sem_m["P"] + tot_by_sem_m["S"]).replace(0, pd.NA)) * 100
                 tot_by_sem_m = tot_by_sem_m.reset_index()
 
-                tot_by_sem_tipo_m = (df_hist_m.groupby(["_SEM","_TIPO"])["_CRED"]
-                                     .sum().unstack(fill_value=0.0))
+                tot_by_sem_tipo_m = (df_hist_m.groupby(["_SEM","_TIPO"])["_CRED"].sum().unstack(fill_value=0.0))
                 for k in ["SA","PA","SP","IP","OTHER"]:
                     if k not in tot_by_sem_tipo_m.columns: tot_by_sem_tipo_m[k] = 0.0
                 den_m = (tot_by_sem_tipo_m[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
@@ -1160,7 +1216,6 @@ else:
                 tot_by_sem_tipo_m["OTHER_share"] = (tot_by_sem_tipo_m["OTHER"] / den_m) * 100
                 tot_by_sem_tipo_m = tot_by_sem_tipo_m.reset_index()
 
-                # Adaptación a modo temporal
                 agg_ps_all_tm_m   = transform_for_time_mode_ps(agg_ps_all_m.rename(columns={"_MAT":"__LEVEL__"})).rename(columns={"__LEVEL__":"_MAT"})
                 agg_tipo_all_tm_m = transform_for_time_mode_tipo(agg_tipo_all_m.rename(columns={"_MAT":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_MAT"})
                 agg_tipo_all_tm_m_other = transform_for_time_mode_tipo(agg_tipo_all_m.rename(columns={"_MAT":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_MAT"})
@@ -1185,19 +1240,22 @@ else:
                     )
                 )
 
-                # Eje X + barra de selección
+                # Sensibilidad en el punto seleccionado
+                agg_ps_all_tm_m, agg_tipo_all_tm_m, tot_by_sem_P_tm_m, tot_by_sem_tipo_tm_m = adjust_time_series_for_ops(
+                    agg_ps_all_tm_m, agg_tipo_all_tm_m, tot_by_sem_P_tm_m, tot_by_sem_tipo_tm_m,
+                    level_name="_MAT", sel_label=_selected_label_for_time_mode(sel_sem, extract_year_from_period(sel_label)),
+                    ops=SENS.get("ops", [])
+                )
+
                 key_col, x_labels, x_map = build_time_axis_for_history(df_hist_m)
                 sel_x = None
                 if time_mode == "Semestral" and sel_sem and str(sel_sem) in x_map: sel_x = x_map[str(sel_sem)]
-                if time_mode == "Anual" and sel_year in x_map: sel_x = x_map[sel_year]
+                if time_mode == "Anual" and extract_year_from_period(sel_label) in x_map: sel_x = x_map[extract_year_from_period(sel_label)]
                 if time_mode == "Intersemestral":
-                    lab = f"{sel_year} Intersemestral"
+                    lab = f"{extract_year_from_period(sel_label)} Intersemestral"
                     if lab in x_map: sel_x = x_map[lab]
 
-                programs_all = sorted(
-                    set(agg_ps_all_tm_m["_MAT"].astype(str).unique()) |
-                    set(agg_tipo_all_tm_m["_MAT"].astype(str).unique())
-                )
+                programs_all = sorted(set(agg_ps_all_tm_m["_MAT"].astype(str).unique()) | set(agg_tipo_all_tm_m["_MAT"].astype(str).unique()))
 
                 with colM_R:
                     draw_history("Evolution by Academic Program",
@@ -1372,6 +1430,9 @@ try:
             st.dataframe(out, use_container_width=True, hide_index=True)
 
         with cR:
+            # Spacer para bajar la dona y alinearla con la tabla izquierda
+            st.markdown("<div style='height: 110px'></div>", unsafe_allow_html=True)
+
             agg_tipo = (base.groupby([col_tag,"_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0)) if col_tag in base.columns else pd.DataFrame()
             for k in ["SA","PA","SP","IP","OTHER"]:
                 if k not in agg_tipo.columns: agg_tipo[k] = 0.0
@@ -1492,7 +1553,6 @@ if show_counts:
         if k not in table.columns:
             table[k] = 0
 
-    # Ajuste simple por sensitivity (solo TOTAL)
     if SENS["on"] and SENS["ops"]:
         add_P = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="P")
         add_S = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="S")
@@ -1567,7 +1627,3 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
                               label="Descargar datos (Excel)")
-
-
-
-
