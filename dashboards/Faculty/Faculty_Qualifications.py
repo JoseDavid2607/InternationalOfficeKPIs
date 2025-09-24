@@ -45,7 +45,7 @@ div.stDownloadButton > button:hover { opacity: 0.9; }
 """, unsafe_allow_html=True)
 
 # ================== HEADER (igual) ==================
-st.markdown('<div class="header-title">Full-time Faculty Qualifications</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-title">Full-time Faculty Qalifications</div>', unsafe_allow_html=True)
 
 
 # ================== DATA LOAD (igual) ======================
@@ -1561,5 +1561,6 @@ if show_counts:
             key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
             label="Descargar datos (Excel)"
         )
+
 
 
