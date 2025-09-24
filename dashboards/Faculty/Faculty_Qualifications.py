@@ -820,59 +820,29 @@ else:
             with colT:
                 base_agg_ps = agg_ps.copy()
                 base_agg_tipo = agg_tipo.copy()
-
+            
+                # Sensibilidad (sin columnas extra)
                 if SENS["on"] and SENS["ops"]:
                     mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
                 else:
                     mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
-
+            
+                # La tabla SIEMPRE se calcula con los agregados del timeframe seleccionado (fil)
                 metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
-
-                if SENS["on"] and SENS["ops"]:
-                    den0 = (base_agg_ps["P"] + base_agg_ps["S"]).replace(0, pd.NA)
-                    den1 = (mod_agg_ps["P"] + mod_agg_ps["S"]).replace(0, pd.NA)
-                    pct0 = (base_agg_ps["P"] / den0 * 100).fillna(0.0)
-                    pct1 = (mod_agg_ps["P"]  / den1 * 100).fillna(0.0)
-                    impP = (pct1 - pct0).reindex(mod_agg_ps.index).round(2)
-                    cats = ["SA","PA","SP","IP","OTHER"]
-                    d0 = base_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
-                    d1 = mod_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
-                    sa0 = (base_agg_tipo["SA"]/d0*100).fillna(0.0)
-                    sa1 = (mod_agg_tipo["SA"] /d1*100).fillna(0.0)
-                    ot0 = (base_agg_tipo["OTHER"]/d0*100).fillna(0.0)
-                    ot1 = (mod_agg_tipo["OTHER"]/d1*100).fillna(0.0)
-                    impSA = (sa1 - sa0).reindex(mod_agg_tipo.index).round(2)
-                    impOT = (ot1 - ot0).reindex(mod_agg_tipo.index).round(2)
-                    mt = metrics_tbl.set_index("Academic Area")
-                    mt["Impact (Δ%P)"] = impP
-                    mt["Impact (Δ%SA)"] = impSA
-                    mt["Impact (Δ%OTHER)"] = impOT
-                    bt = build_percent_table("Academic Area", base_agg_tipo, base_agg_ps).set_index("Academic Area")
-                    mt.loc["TOTAL","Impact (Δ%P)"] = (mt.loc["TOTAL","%P"] - bt.loc["TOTAL","%P"]).round(2)
-                    mt.loc["TOTAL","Impact (Δ%SA)"] = (mt.loc["TOTAL","%SA"] - bt.loc["TOTAL","%SA"]).round(2)
-                    mt.loc["TOTAL","Impact (Δ%OTHER)"] = (mt.loc["TOTAL","%OTHER"] - bt.loc["TOTAL","%OTHER"]).round(2)
-                    metrics_tbl = mt.reset_index()
-
+            
                 _download_xlsx_button(
                     metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
                     key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)"
                 )
-
-                if SENS["on"] and SENS["ops"]:
-                    styled_tbl = (
-                        metrics_tbl.style
-                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%","Impact (Δ%P)":"{:+.2f}","Impact (Δ%SA)":"{:+.2f}","Impact (Δ%OTHER)":"{:+.2f}"})
-                        .apply(lambda df_: style_diverging_simple(df_, "Impact (Δ%P)"), axis=None)
-                        .hide(axis="index")
-                    )
-                else:
-                    styled_tbl = (
-                        metrics_tbl.style
-                        .format({"%P": "{:.1f}%", "%S": "{:.1f}%", "%SA": "{:.1f}%", "%OTHER": "{:.1f}%"})
-                        .apply(style_percent_tables, id_col="Academic Area", axis=None)
-                        .hide(axis="index")
-                    )
+            
+                styled_tbl = (
+                    metrics_tbl.style
+                    .format({"%P": "{:.1f}%", "%S": "{:.1f}%", "%SA": "{:.1f}%", "%OTHER": "{:.1f}%"})
+                    .apply(style_percent_tables, id_col="Academic Area", axis=None)
+                    .hide(axis="index")
+                )
                 st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
+
 
             # --- HISTÓRICOS por Área (timeframe-aware) ---
             df_hist = df_car_global.copy()
@@ -956,61 +926,29 @@ else:
                 with colF_L:
                     base_agg_ps = agg_ps_f.copy()
                     base_agg_tipo = agg_tipo_f.copy()
-
+                
                     if SENS["on"] and SENS["ops"]:
                         mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
                     else:
                         mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
-
+                
                     metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
-
-                    if SENS["on"] and SENS["ops"]:
-                        den0 = (base_agg_ps["P"] + base_agg_ps["S"]).replace(0, pd.NA)
-                        den1 = (mod_agg_ps["P"] + mod_agg_ps["S"]).replace(0, pd.NA)
-                        pct0 = (base_agg_ps["P"] / den0 * 100).fillna(0.0)
-                        pct1 = (mod_agg_ps["P"]  / den1 * 100).fillna(0.0)
-                        impP = (pct1 - pct0).reindex(mod_agg_ps.index).round(2)
-                        cats = ["SA","PA","SP","IP","OTHER"]
-                        d0 = base_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
-                        d1 = mod_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
-                        sa0 = (base_agg_tipo["SA"]/d0*100).fillna(0.0)
-                        sa1 = (mod_agg_tipo["SA"] /d1*100).fillna(0.0)
-                        ot0 = (base_agg_tipo["OTHER"]/d0*100).fillna(0.0)
-                        ot1 = (mod_agg_tipo["OTHER"]/d1*100).fillna(0.0)
-                        impSA = (sa1 - sa0).reindex(mod_agg_tipo.index).round(2)
-                        impOT = (ot1 - ot0).reindex(mod_agg_tipo.index).round(2)
-                        mt = metrics_tbl_f.set_index("Field")
-                        mt["Impact (Δ%P)"] = impP
-                        mt["Impact (Δ%SA)"] = impSA
-                        mt["Impact (Δ%OTHER)"] = impOT
-                        bt = build_percent_table("Field", base_agg_tipo, base_agg_ps).set_index("Field")
-                        mt.loc["TOTAL","Impact (Δ%P)"] = (mt.loc["TOTAL","%P"] - bt.loc["TOTAL","%P"]).round(2)
-                        mt.loc["TOTAL","Impact (Δ%SA)"] = (mt.loc["TOTAL","%SA"] - bt.loc["TOTAL","%SA"]).round(2)
-                        mt.loc["TOTAL","Impact (Δ%OTHER)"] = (mt.loc["TOTAL","%OTHER"] - bt.loc["TOTAL","%OTHER"]).round(2)
-                        metrics_tbl_f = mt.reset_index()
-
+                
                     _download_xlsx_button(
                         metrics_tbl_f,
                         f"table_ByField_{_slugify(sel_label)}.xlsx",
                         key=f"dl_tbl_field_{_slugify(sel_label)}",
                         label="⬇️ Download table (Excel)"
                     )
-
-                    if SENS["on"] and SENS["ops"]:
-                        styled_tbl_f = (
-                            metrics_tbl_f.style
-                            .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%","Impact (Δ%P)":"{:+.2f}","Impact (Δ%SA)":"{:+.2f}","Impact (Δ%OTHER)":"{:+.2f}"})
-                            .apply(lambda df_: style_diverging_simple(df_, "Impact (Δ%P)"), axis=None)
-                            .hide(axis="index")
-                        )
-                    else:
-                        styled_tbl_f = (
-                            metrics_tbl_f.style
-                            .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
-                            .apply(style_percent_tables, id_col="Field", axis=None)
-                            .hide(axis="index")
-                        )
+                
+                    styled_tbl_f = (
+                        metrics_tbl_f.style
+                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
+                        .apply(style_percent_tables, id_col="Field", axis=None)
+                        .hide(axis="index")
+                    )
                     st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
+
 
                 # HISTÓRICOS Field (timeframe-aware)
                 df_hist_f = df_car_global.copy()
@@ -1089,61 +1027,32 @@ else:
                 with colM_L:
                     base_agg_ps   = agg_ps_m.copy()
                     base_agg_tipo = agg_tipo_m.copy()
-
-                    # Sensibilidad (si aplica)
+                
                     if SENS["on"] and SENS["ops"]:
                         mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
                     else:
                         mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
-
+                
                     metrics_tbl_m = build_percent_table("Program", mod_agg_tipo, mod_agg_ps)
-
-                    # Columnas de impacto cuando hay sensibilidad
-                    if SENS["on"] and SENS["ops"]:
-                        impP   = impact_column_generic(base_agg_ps,   mod_agg_ps,   "P",     mode="PS")
-                        impSA  = impact_column_generic(base_agg_tipo, mod_agg_tipo, "SA",    mode="QUAL")
-                        impOTH = impact_column_generic(base_agg_tipo, mod_agg_tipo, "OTHER", mode="QUAL")
-
-                        mt = metrics_tbl_m.set_index("Program")
-                        mt["Impact (Δ%P)"]     = impP.reindex(mt.index)
-                        mt["Impact (Δ%SA)"]    = impSA.reindex(mt.index)
-                        mt["Impact (Δ%OTHER)"] = impOTH.reindex(mt.index)
-
-                        # Ajuste de la fila TOTAL
-                        bt = build_percent_table("Program", base_agg_tipo, base_agg_ps).set_index("Program")
-                        mt.loc["TOTAL","Impact (Δ%P)"]     = (mt.loc["TOTAL","%P"]     - bt.loc["TOTAL","%P"]).round(2)
-                        mt.loc["TOTAL","Impact (Δ%SA)"]    = (mt.loc["TOTAL","%SA"]    - bt.loc["TOTAL","%SA"]).round(2)
-                        mt.loc["TOTAL","Impact (Δ%OTHER)"] = (mt.loc["TOTAL","%OTHER"] - bt.loc["TOTAL","%OTHER"]).round(2)
-                        metrics_tbl_m = mt.reset_index()
-
+                
                     _download_xlsx_button(
                         metrics_tbl_m,
                         f"table_ByProgram_{_slugify(sel_label)}.xlsx",
                         key=f"dl_tbl_prog_{_slugify(sel_label)}",
                         label="⬇️ Download table (Excel)"
                     )
-
-                    if SENS["on"] and SENS["ops"]:
-                        styled_tbl_m = (
-                            metrics_tbl_m.style
-                            .format({
-                                "%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%",
-                                "Impact (Δ%P)":"{:+.2f}","Impact (Δ%SA)":"{:+.2f}","Impact (Δ%OTHER)":"{:+.2f}"
-                            })
-                            .apply(lambda df_: style_diverging_simple(df_, "Impact (Δ%P)"), axis=None)
-                            .hide(axis="index")
-                        )
-                    else:
-                        styled_tbl_m = (
-                            metrics_tbl_m.style
-                            .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
-                            .apply(style_percent_tables, id_col="Program", axis=None)
-                            .hide(axis="index")
-                        )
+                
+                    styled_tbl_m = (
+                        metrics_tbl_m.style
+                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
+                        .apply(style_percent_tables, id_col="Program", axis=None)
+                        .hide(axis="index")
+                    )
                     st.markdown(
                         f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>",
                         unsafe_allow_html=True
                     )
+
 
                 # ---- HISTÓRICOS por Programa (timeframe-aware)
                 df_hist_m = df_car_global.copy()
@@ -1591,5 +1500,6 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
                               label="Descargar datos (Excel)")
+
 
 
