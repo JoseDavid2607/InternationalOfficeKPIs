@@ -1,3 +1,4 @@
+# ================== IMPORTS & CONFIG ======================
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -5,7 +6,6 @@ import plotly.graph_objects as go
 import re
 from io import BytesIO
 
-# ================== GENERAL CONFIG ======================
 st.set_page_config(
     page_title="Faculty Qualifications",
     page_icon=":bar_chart:",
@@ -28,7 +28,7 @@ with st.container():
         unsafe_allow_html=True
     )
 
-# ====== DOWNLOAD BUTTONS — MINIMAL STYLE ======
+# ====== DOWNLOAD BUTTONS — MINIMAL STYLE (igual) ======
 st.markdown("""
 <style>
 div.stDownloadButton > button {
@@ -45,10 +45,11 @@ div.stDownloadButton > button:hover { opacity: 0.9; }
 </style>
 """, unsafe_allow_html=True)
 
-# ================== HEADER ==================
+# ================== HEADER (igual) ==================
 st.markdown('<div class="header-title">Full-time Faculty Qualifications</div>', unsafe_allow_html=True)
 
-# ================== DATA LOAD ======================
+
+# ================== DATA LOAD (igual) ======================
 @st.cache_data(ttl=0)
 def load_faculty_distribution():
     xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
@@ -66,9 +67,10 @@ def load_cartelera():
 df_fd  = load_faculty_distribution()
 df_car = load_cartelera()
 
-# ================== HELPERS =============================
-MINT = "#1FA89B"        # Participating
-SUPPORTING = "#7FD3FF"  # Supporting
+
+# ================== HELPERS (igual) =============================
+MINT = "#1FA89B"
+SUPPORTING = "#7FD3FF"
 TOTAL_SERIES_COLOR = "#D09E33"
 
 def _resolve(df: pd.DataFrame, target: str):
@@ -159,7 +161,7 @@ def years_with_inter():
 def _slugify(s: str) -> str:
     return re.sub(r'[^A-Za-z0-9]+', '_', str(s)).strip('_')
 
-# —— utilidades de descarga (Excel en memoria) ——
+# —— utilidades de descarga (igual) ——
 def _sanitize_for_export(df: pd.DataFrame) -> pd.DataFrame:
     return df[[c for c in df.columns if not str(c).startswith("_")]].copy()
 
@@ -182,7 +184,7 @@ def _download_xlsx_button(df: pd.DataFrame, fname: str, key: str, label: str = "
         use_container_width=False
     )
 
-# ================== SENSITIVITY HELPERS (multi-ops) ==================
+# ================== SENSITIVITY HELPERS (reutilizables) ==================
 def build_member_list_for_view(df_period: pd.DataFrame, view_mode: str, col_areaCourse, col_field, program_col) -> list[str]:
     if view_mode == "By Academic Area" and col_areaCourse:
         items = sorted(df_period[col_areaCourse].astype(str).str.strip().dropna().unique().tolist())
@@ -194,12 +196,8 @@ def build_member_list_for_view(df_period: pd.DataFrame, view_mode: str, col_area
         items = []
     return ["All"] + items
 
-def apply_ops_to_aggs(agg_ps: pd.DataFrame, agg_tipo: pd.DataFrame, ops: list, member_all_label="All", index_name="member") -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Aplica una lista de operaciones sobre agregados por miembro (fila = área/field/program).
-    - scope 'PS': afecta columnas 'P'/'S' sumando créditos (no redistribuye).
-    - scope 'QUAL': afecta una de ['SA','SP','IP','PA','OTHER'] sumando créditos.
-    """
+def apply_ops_to_aggs(agg_ps: pd.DataFrame, agg_tipo: pd.DataFrame, ops: list, member_all_label="All") -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Aplica ops a agregados (filas = miembro de la vista), sumando créditos en P/S o QUAL."""
     mod_ps = agg_ps.copy()
     mod_tipo = agg_tipo.copy()
     for op in ops or []:
@@ -235,11 +233,7 @@ def apply_ops_to_aggs(agg_ps: pd.DataFrame, agg_tipo: pd.DataFrame, ops: list, m
     return mod_ps, mod_tipo
 
 def impact_column_generic(base_df: pd.DataFrame, mod_df: pd.DataFrame, target: str, mode: str) -> pd.Series:
-    """
-    Impacto como Δ%target por fila.
-    - mode="PS": target in {"P","S"}; % sobre (P+S).
-    - mode="QUAL": target in {"SA","SP","IP","PA","OTHER"}; % sobre suma QUAL.
-    """
+    """Impacto como Δ%target por fila. mode="PS" o "QUAL"."""
     if mode == "PS":
         den0 = (base_df.get("P",0) + base_df.get("S",0)).replace(0, pd.NA)
         den1 = (mod_df.get("P",0) + mod_df.get("S",0)).replace(0, pd.NA)
@@ -257,139 +251,7 @@ def impact_column_generic(base_df: pd.DataFrame, mod_df: pd.DataFrame, target: s
         pct1 = (mod_df[target]  / den1 * 100).fillna(0.0)
         return (pct1 - pct0).round(2)
 
-def style_percent_tables(df_, id_col):
-    sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
-    colP = "%P"; colSA = "%SA"; colOTHER = "%OTHER"
-
-    p_vals     = pd.to_numeric(df_[colP], errors="coerce")
-    sa_vals    = pd.to_numeric(df_[colSA], errors="coerce")
-    other_vals = pd.to_numeric(df_[colOTHER], errors="coerce")
-    is_total   = df_[id_col].astype(str).str.upper().eq("TOTAL")
-
-    sty.loc[(~is_total) & (p_vals < 60), colP] = 'background-color:#FDE2E2;'
-    sty.loc[is_total & (p_vals < 75), colP]    = 'background-color:#FDE2E2; font-weight:700;'
-    sty.loc[sa_vals < 40, colSA]               = 'background-color:#FDE2E2;'
-    sty.loc[other_vals > 10, colOTHER]         = 'background-color:#FDE2E2;'
-
-    for c in sty.columns:
-        sty.loc[is_total, c] = (sty.loc[is_total, c].astype(str) + 'font-weight:700;').str.replace(';;',';', regex=False)
-    return sty
-
-def style_diverging_simple(df_: pd.DataFrame, colname: str):
-    sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
-    if colname not in df_.columns:
-        return sty
-    vals = pd.to_numeric(df_[colname], errors='coerce').fillna(0.0)
-    sty.loc[vals < 0, colname] = 'background-color:#FDE2E2;'
-    sty.loc[vals > 0, colname] = 'background-color:#E6F4EA;'
-    if df_.columns[0] in df_.columns:
-        first_col = df_.columns[0]
-        mask_total = df_[first_col].astype(str).str.upper().eq("TOTAL")
-        for c in df_.columns:
-            sty.loc[mask_total, c] = (sty.loc[mask_total, c].astype(str) + 'font-weight:700;').str.replace(';;',';', regex=False)
-    return sty
-
-# ================== SIDEBAR ==================
-SEMESTRAL_PERIODS = list_periods_semestral()
-YEARS_ALL = list_years_from_sem()
-INTER_YEARS = years_with_inter()
-
-with st.sidebar:
-    # TOP: KPI selector
-    st.markdown("### 📊 Go to KPI")
-    options = {
-        "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-        "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
-        "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
-        "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
-        "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
-        "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-    }
-    choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
-    default_label = "6 Faculty Qualifications"
-    default_idx = choices.index(default_label) if default_label in choices else 0
-    choice = st.selectbox("Select…", choices, index=default_idx, key="kpi_nav_top")
-    st.link_button("Open", options[choice], use_container_width=True)
-
-    # Timeframe & View
-    st.markdown('---')
-    st.markdown("#### Timeframe")
-    st.session_state.setdefault("time_mode", "Semestral")
-    time_mode = st.radio(
-        "Timeframe",
-        ["Semestral", "Anual", "Intersemestral"],
-        key="time_mode",
-        label_visibility="collapsed",
-        horizontal=False
-    )
-
-    if time_mode == "Semestral":
-        default_sem = SEMESTRAL_PERIODS[-1] if SEMESTRAL_PERIODS else "202510"
-        st.session_state.setdefault("sel_sem", default_sem)
-        sel_sem = st.selectbox("Semester", SEMESTRAL_PERIODS or [default_sem], key="sel_sem")
-        sel_year = extract_year_from_period(sel_sem) or (YEARS_ALL[-1] if YEARS_ALL else 2025)
-        sel_label = str(sel_sem)
-    elif time_mode == "Anual":
-        default_year = YEARS_ALL[-1] if YEARS_ALL else 2025
-        st.session_state.setdefault("sel_year", default_year)
-        sel_year = st.selectbox("Year", YEARS_ALL or [default_year], key="sel_year")
-        sel_sem = None
-        sel_label = f"{sel_year} (Annual)"
-    else:
-        default_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
-        st.session_state.setdefault("sel_inter_year", default_i)
-        sel_year = st.selectbox("Year (Intersemestral)", INTER_YEARS or YEARS_ALL or [default_i], key="sel_inter_year")
-        sel_sem = None
-        sel_label = f"{sel_year} Intersemestral"
-
-    st.session_state.setdefault("view_mode", "By Academic Area")
-    view_mode = st.selectbox("View", ["By Program", "By Academic Area", "By Field"], key="view_mode")
-
-    # Export placeholder
-    dl_bd_placeholder = st.empty()
-
-    # BOTTOM: Sensitivity (toggle + setup)
-    st.markdown('---')
-    st.markdown("#### Sensitivity analysis")
-    sens_mode = st.toggle("Enable sensitivity mode", value=False, help="Switch dashboard to sensitivity view")
-
-    if sens_mode:
-        st.caption("Add hypothetical professors to see the impact by Area/Field/Program.")
-
-        if "sens_ops" not in st.session_state:
-            st.session_state.sens_ops = []  # cada op: {"scope":"PS"/"QUAL","cat":"...","member":"...","credits":float,"count":int}
-
-        target_group = st.radio("Target group", ["P/S", "Qualifications"], horizontal=True, key="sens_target_group")
-        if target_group == "P/S":
-            cat = st.selectbox("Category", ["P", "S"], key="sens_cat_ps")
-        else:
-            cat = st.selectbox("Category", ["SA", "SP", "IP", "PA", "OTHER"], key="sens_cat_qual")
-
-        st.session_state.setdefault("sens_member", "All")
-        sens_member_placeholder = st.empty()  # se pobla luego del filtrado
-
-        count = st.number_input("Professors to add", min_value=1, step=1, value=1, key="sens_count")
-        credits = st.number_input("Credits per professor", min_value=0.0, step=0.5, value=8.0, key="sens_credits")
-
-        col_add, col_reset = st.columns(2)
-        with col_add:
-            if st.button("Add", type="primary", use_container_width=True):
-                scope = "PS" if target_group == "P/S" else "QUAL"
-                member = st.session_state.get("sens_member", "All")
-                st.session_state.sens_ops.append({
-                    "scope": scope,
-                    "cat": cat,
-                    "member": member,
-                    "credits": float(credits),
-                    "count": int(count),
-                })
-                st.experimental_rerun()
-        with col_reset:
-            if st.button("Reset to original", use_container_width=True):
-                st.session_state.sens_ops = []
-                st.experimental_rerun()
-
-# ------------- Normalizadores de columnas básicas -------------
+# ============== COLS NORMALIZADAS BÁSICAS (igual) ==============
 col_sem  = _get_any(df_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
 if "_SEM" not in df_car.columns and col_sem:
     df_car["_SEM"] = df_car[col_sem].astype(str).str.strip()
@@ -398,7 +260,7 @@ else:
 df_car["_YEAR"] = df_car["_SEM"].map(extract_year_from_period)
 df_car["_IS_INTER"] = df_car["_SEM"].str.lower().str.contains("inter", na=False)
 
-# ================== FUNCIONES DE FILTRO ==================
+# ================== TIMEFRAME MASKS (igual) ==================
 def mask_timeframe(series_sem: pd.Series, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.Series:
     s = series_sem.astype(str)
     if mode == "Semestral" and selected_sem:
@@ -429,11 +291,114 @@ def filter_df_fd(df: pd.DataFrame, mode: str, selected_year: int | None, selecte
         out = out[pd.to_numeric(out[ycol], errors="coerce").astype("Int64") == int(selected_year)].copy()
     return out
 
-# ================== PRE-FILTROS ==================
-df_car_filt_all = filter_df_car(df_car.copy(), time_mode, sel_year, sel_sem)
-df_fd_f          = filter_df_fd(df_fd.copy(), time_mode, sel_year, sel_sem)
+# ================== SIDEBAR ==================
+SEMESTRAL_PERIODS = list_periods_semestral()
+YEARS_ALL = list_years_from_sem()
+INTER_YEARS = years_with_inter()
 
-# Sidebar: botón de descarga BD filtrada (key único)
+with st.sidebar:
+    # --- SENSITIVITY ARRIBA DE TODO ---
+    st.markdown("### 🔧 Sensitivity analysis")
+    sens_mode = st.toggle("Enable sensitivity mode", value=False, help="Switch dashboard to sensitivity view")
+
+    # KPI NAV — SE OCULTA CUANDO HAY SENSITIVITY
+    if not sens_mode:
+        st.markdown("### 📊 Go to KPI")
+        options = {
+            "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
+            "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+            "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
+            "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
+            "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
+            "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
+        }
+        choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
+        default_label = "6 Faculty Qualifications"
+        default_idx = choices.index(default_label) if default_label in choices else 0
+        choice = st.selectbox("Select…", choices, index=default_idx, key="kpi_nav_top")
+        st.link_button("Open", options[choice], use_container_width=True)
+
+    # --- TIMEFRAME & VIEW (igual) ---
+    st.markdown('---')
+    st.markdown("#### Timeframe")
+    st.session_state.setdefault("time_mode", "Semestral")
+    time_mode = st.radio("Timeframe", ["Semestral", "Anual", "Intersemestral"], key="time_mode",
+                         label_visibility="collapsed")
+
+    if time_mode == "Semestral":
+        default_sem = SEMESTRAL_PERIODS[-1] if SEMESTRAL_PERIODS else "202510"
+        st.session_state.setdefault("sel_sem", default_sem)
+        sel_sem = st.selectbox("Semester", SEMESTRAL_PERIODS or [default_sem], key="sel_sem")
+        sel_year = extract_year_from_period(sel_sem) or (YEARS_ALL[-1] if YEARS_ALL else 2025)
+        sel_label = str(sel_sem)
+    elif time_mode == "Anual":
+        default_year = YEARS_ALL[-1] if YEARS_ALL else 2025
+        st.session_state.setdefault("sel_year", default_year)
+        sel_year = st.selectbox("Year", YEARS_ALL or [default_year], key="sel_year")
+        sel_sem = None
+        sel_label = f"{sel_year} (Annual)"
+    else:
+        default_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
+        st.session_state.setdefault("sel_inter_year", default_i)
+        sel_year = st.selectbox("Year (Intersemestral)", INTER_YEARS or YEARS_ALL or [default_i], key="sel_inter_year")
+        sel_sem = None
+        sel_label = f"{sel_year} Intersemestral"
+
+    st.session_state.setdefault("view_mode", "By Academic Area")
+    view_mode = st.selectbox("View", ["By Program", "By Academic Area", "By Field"], key="view_mode")
+
+    # Export placeholder
+    dl_bd_placeholder = st.empty()
+
+    # --- CONTROLES DE SENSITIVITY (debajo del timeframe) ---
+    if sens_mode:
+        st.caption("Add hypothetical professors to see the impact by Area/Field/Program.")
+
+        # Init de operaciones
+        if "sens_ops" not in st.session_state:
+            st.session_state.sens_ops = []  # {"scope":"PS"|"QUAL", "cat":"...", "member":"...", "credits":float, "count":int}
+
+        # Grupo objetivo
+        target_group = st.radio("Target group", ["P/S", "Qualifications"], horizontal=True, key="sens_target_group")
+        if target_group == "P/S":
+            cat = st.selectbox("Category", ["P", "S"], key="sens_cat_ps")
+        else:
+            cat = st.selectbox("Category", ["SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
+
+        # Placeholder para "Apply to" (se poblará DESPUÉS del filtrado real del período)
+        sens_member_placeholder = st.empty()
+
+        # Parámetros de adición
+        count = st.number_input("Professors to add", min_value=1, step=1, value=1, key="sens_count")
+        credits = st.number_input("Credits per professor", min_value=0.0, step=0.5, value=8.0, key="sens_credits")
+
+        # Botones
+        col_add, col_reset = st.columns(2)
+        with col_add:
+            if st.button("Add", type="primary", use_container_width=True):
+                scope = "PS" if target_group == "P/S" else "QUAL"
+                member = st.session_state.get("sens_member", "All")
+                st.session_state.sens_ops.append({
+                    "scope": scope,
+                    "cat": cat,
+                    "member": member,
+                    "credits": float(credits),
+                    "count": int(count),
+                })
+                st.rerun()  # evita el error de experimental_rerun
+        with col_reset:
+            if st.button("Reset to original", use_container_width=True):
+                st.session_state.sens_ops = []
+                st.rerun()
+
+# ================== PRE-FILTROS (igual) ==================
+df_car_base = df_car.copy()
+df_fd_base  = df_fd.copy()
+
+df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
+df_fd_f          = filter_df_fd(df_fd_base, time_mode, sel_year, sel_sem)
+
+# Sidebar: botón de descarga de la BD filtrada según el período seleccionado
 if 'dl_bd_placeholder' in locals():
     safe = _sanitize_for_export(df_car_filt_all)
     dl_bd_placeholder.download_button(
@@ -441,418 +406,232 @@ if 'dl_bd_placeholder' in locals():
         data=_xlsx_bytes(safe),
         file_name=f"BD_Cartelera_{_slugify(sel_label)}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key=f"dl_bd_{_slugify(sel_label)}_{'sens' if st.session_state.get('sens_ops') else 'hist'}"
+        key=f"dl_bd_{_slugify(sel_label)}"
     )
 
-# ====== SENS: lista de miembros para el selector "Apply to" ======
-col_areaCourse = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
-col_field = _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
-program_col = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
+# ====== SENSITIVITY: poblar "Apply to" AHORA que ya se filtró ======
 if 'sens_mode' in locals() and sens_mode:
+    col_areaCourse = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
+    col_field = _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
+    program_col = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
+
     members = build_member_list_for_view(df_car_filt_all.copy(), view_mode, col_areaCourse, col_field, program_col)
     with st.sidebar:
         st.selectbox("Apply to", members, key="sens_member")
+
     SENS = {"on": True, "ops": st.session_state.get("sens_ops", [])}
 else:
     SENS = {"on": False, "ops": []}
 
-# ================== RELEVANT COLUMNS (global) ==================
+
+# ================== RELEVANT COLUMNS (igual) ==================
+col_ps_fd   = _get_any(df_fd_f, "P/S", "P - S", "Participating/Supporting")
+col_area_fd = _get_any(df_fd_f, "AREA_PROFESOR", "Area_Profesor", "Area Profesor", "Área", "Area")
+col_tipo_fd = _get_any(df_fd_f, "TIPO", "Tipo", "Ranking", "Tipo Ranking")
+
 col_cred  = _get_any(df_car, "Créditos", "Creditos", "Credits")
 col_tipoC = _get_any(df_car, "TIPO", "Tipo", "Tipo Ranking")
+col_areaC = _get_any(df_car, "AREA_PROFESOR", "Area_Profesor", "Area Profesor", "Área", "Area")
 col_ps_C  = _get_any(df_car, "P/S", "P - S", "Participating/Supporting")
-col_prof  = _get_any(df_car, "Profesor","PROFESOR","Docente")
-col_code  = _get_any(df_car, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
-col_name  = _get_any(df_car, "Nombre largo curso","Nombre Curso","Nombre del curso","Course Name")
-col_prog  = _get_any(df_car, "Program","PROGRAM","program","Materia")
+col_areaCourse = _get_any(df_car, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
+col_prof = _get_any(df_car, "Profesor","PROFESOR","Docente")
+col_code = _get_any(df_car, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
+col_name = _get_any(df_car, "Nombre largo curso","Nombre Curso","Nombre del curso","Course Name")
+col_field = _get_any(df_car, "Field","FIELD","Campo","Área de conocimiento")
+col_prog = _get_any(df_car, "Program","PROGRAM","program","Materia")
 
-# ========= NORMALIZACIÓN & LIMPIEZA BASE =========
-df_car_n = df_car.copy()
-df_car_n["_CRED"]  = pd.to_numeric(df_car_n[col_cred], errors="coerce").fillna(0.0) if col_cred else 0.0
-df_car_n["_TIPO"]  = _norm_str(df_car_n[col_tipoC]).map(normalize_tipo) if col_tipoC else "OTHER"
-if "_SEM" not in df_car_n.columns:
-    sc = _get_any(df_car_n, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    df_car_n["_SEM"] = df_car_n[sc].astype(str).str.strip() if sc else ""
-df_car_n["_YEAR"] = df_car_n["_SEM"].map(extract_year_from_period)
-df_car_n["_IS_INTER"] = df_car_n["_SEM"].str.lower().str.contains("inter", na=False)
-if col_areaCourse:
-    df_car_n["_AREA"] = df_car_n[col_areaCourse].astype(str).str.strip()
-if col_field:
-    df_car_n["_FIELD"] = df_car_n[col_field].astype(str).str.strip()
-if col_prog:
-    df_car_n["_MAT"] = df_car_n[col_prog].astype(str).str.strip()
-if col_ps_C:
-    df_car_n["_PS"] = _norm_str(df_car_n[col_ps_C]).map(normalize_ps)
-else:
-    df_car_n["_PS"] = ""
+# ========== NORMALIZATION (igual) ==========
+if col_ps_fd:
+    df_fd_f["_PS"] = _norm_str(df_fd_f[col_ps_fd]).map(normalize_ps)
+if col_area_fd:
+    df_fd_f["_AREA"] = df_fd_f[col_area_fd].astype(str).str.strip()
+if col_tipo_fd:
+    df_fd_f["_TIPO"] = _norm_str(df_fd_f[col_tipo_fd]).map(normalize_tipo)
 
-# Excluir materias específicas (global)
-EXCLUDE_SUBJ = {"CONT", "E-IMER", "E-ENEG", "E-AFIN"}
-if col_prog:
-    mask_ok = ~df_car_n[col_prog].astype(str).str.strip().str.upper().isin(EXCLUDE_SUBJ)
-    df_car_global = df_car_n[mask_ok].copy()
-else:
-    df_car_global = df_car_n.copy()
+# ---------- Stylers (igual) ----------
+def style_percent_tables(df_, id_col):
+    sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+    colP = "%P"; colSA = "%SA"; colOTHER = "%OTHER"
+    p_vals     = pd.to_numeric(df_[colP], errors="coerce")
+    sa_vals    = pd.to_numeric(df_[colSA], errors="coerce")
+    other_vals = pd.to_numeric(df_[colOTHER], errors="coerce")
+    is_total   = df_[id_col].astype(str).str.upper().eq("TOTAL")
+    sty.loc[(~is_total) & (p_vals < 60), colP] = 'background-color:#FDE2E2;'
+    sty.loc[is_total & (p_vals < 75), colP]    = 'background-color:#FDE2E2; font-weight:700;'
+    sty.loc[sa_vals < 40, colSA]               = 'background-color:#FDE2E2;'
+    sty.loc[other_vals > 10, colOTHER]         = 'background-color:#FDE2E2;'
+    for c in sty.columns:
+        sty.loc[is_total, c] = (sty.loc[is_total, c].astype(str) + 'font-weight:700;').str.replace(';;',';', regex=False)
+    return sty
 
-# ---------- Filtro por timeframe seleccionado ----------
-fil = filter_df_car(df_car_global, time_mode, sel_year, sel_sem)
+def style_diverging_simple(df_: pd.DataFrame, colname: str):
+    sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+    if colname not in df_.columns:
+        return sty
+    vals = pd.to_numeric(df_[colname], errors='coerce').fillna(0.0)
+    sty.loc[vals < 0, colname] = 'background-color:#FDE2E2;'
+    sty.loc[vals > 0, colname] = 'background-color:#E6F4EA;'
+    if df_.columns[0] in df_.columns:
+        first_col = df_.columns[0]
+        mask_total = df_[first_col].astype(str).str.upper().eq("TOTAL")
+        for c in df_.columns:
+            sty.loc[mask_total, c] = (sty.loc[mask_total, c].astype(str) + 'font-weight:700;').str.replace(';;',';', regex=False)
+    return sty
 
-# ---------- Utilities para estilo ----------
-def style_impact_col(tbl: pd.DataFrame, impact_col: str):
-    return tbl.style.apply(lambda d: style_diverging_simple(d, impact_col), axis=None)
 
-# ================== TÍTULO SECCIÓN ==================
+# ================== PRINCIPAL ==================
 st.markdown("---")
 st.subheader(f"Faculty Sufficiency and Qualifications — {sel_label}")
 
-if fil.empty or not all([col_cred, col_tipoC, col_areaCourse]):
-    st.error("Missing data/columns or no records for the selected timeframe.")
+# ====== NORMALIZACIÓN BASE PARA CARTELERA (igual) ======
+if not all([col_cred, col_tipoC, col_areaCourse]):
+    st.error("Missing columns in 'BD Cartelera 2020-2025': 'Credits', 'TIPO', and/or 'Academic Area (course)'.")
 else:
-    # --------- helpers tabla % estándar (sin quitar columnas) ---------
-    def build_percent_table(base_idx_name, agg_tipo, agg_ps):
-        den_ps   = (agg_ps.get("P",0) + agg_ps.get("S",0)).replace(0, pd.NA)
-        p_share  = (agg_ps.get("P",0) / den_ps) * 100
-        s_share  = 100 - p_share
-        cats = ["SA","PA","SP","IP","OTHER"]
-        for c in cats:
-            if c not in agg_tipo.columns: agg_tipo[c] = 0.0
-        denom_q  = (agg_tipo[cats].sum(axis=1)).replace(0, pd.NA)
+    df_car_n = df_car.copy()
+    df_car_n["_CRED"]  = pd.to_numeric(df_car_n[col_cred], errors="coerce").fillna(0.0)
+    df_car_n["_TIPO"]  = _norm_str(df_car_n[col_tipoC]).map(normalize_tipo)
+    if "_SEM" not in df_car_n.columns:
+        sc = _get_any(df_car_n, "Semestre","Periodo","Periodo Académico","Periodo academico")
+        df_car_n["_SEM"] = df_car_n[sc].astype(str).str.strip() if sc else ""
+    df_car_n["_YEAR"] = df_car_n["_SEM"].map(extract_year_from_period)
+    df_car_n["_IS_INTER"] = df_car_n["_SEM"].str.lower().str.contains("inter", na=False)
+    df_car_n["_AREA"]  = df_car_n[col_areaCourse].astype(str).str.strip()
+    col_ps_C_local     = _get_any(df_car_n, "P/S","P - S","Participating/Supporting")
+    df_car_n["_PS"]    = _norm_str(df_car_n[col_ps_C_local]).map(normalize_ps) if col_ps_C_local else ""
 
-        dfm = pd.DataFrame({
-            base_idx_name: agg_tipo.index,
-            "%P":  p_share,
-            "%S":  s_share,
-            "%SA": (agg_tipo["SA"] / denom_q) * 100,
-            "%OTHER": (agg_tipo["OTHER"] / denom_q) * 100,
-        }).fillna(0.0)
+    # Excluir materias específicas (igual)
+    program_col = _get_any(df_car_n, "program")
+    EXCLUDE_SUBJ = {"CONT", "E-IMER", "E-ENEG", "E-AFIN"}
+    if program_col:
+        mask_ok = ~df_car_n[program_col].astype(str).str.strip().str.upper().isin(EXCLUDE_SUBJ)
+        df_car_global = df_car_n[mask_ok].copy()
+    else:
+        df_car_global = df_car_n.copy()
 
-        tot_P, tot_S = agg_ps.get("P",0).sum(), agg_ps.get("S",0).sum()
-        tot_den_ps   = tot_P + tot_S
-        p_tot = (tot_P / tot_den_ps * 100) if tot_den_ps else 0.0
-        s_tot = 100 - p_tot
-        tipo_sums = agg_tipo[cats].sum(axis=0)
-        denom_q_tot = float(tipo_sums.sum())
+    # ---------- Filtro por timeframe seleccionado ----------
+    fil = filter_df_car(df_car_global, time_mode, sel_year, sel_sem)
 
-        total_row = {
-            base_idx_name: "TOTAL",
-            "%P":  round(p_tot, 1),
-            "%S":  round(s_tot, 1),
-            "%SA": round((tipo_sums["SA"] / denom_q_tot * 100) if denom_q_tot else 0.0, 1),
-            "%OTHER": round((tipo_sums["OTHER"] / denom_q_tot * 100) if denom_q_tot else 0.0, 1),
-        }
-        dfm[["%P","%S","%SA","%OTHER"]] = dfm[["%P","%S","%SA","%OTHER"]].round(1)
-        dfm = pd.concat([dfm, pd.DataFrame([total_row])], ignore_index=True)
-        return dfm[[base_idx_name, "%P", "%S", "%SA", "%OTHER"]]
+    if fil.empty:
+        st.info(f"No records for the selected timeframe: {sel_label}.")
+    else:
+        # ============================================================
+        #        VISTAS (By Academic Area / Field / Program)
+        #        **Ajustadas a Sensitivity usando apply_ops_to_aggs**
+        # ============================================================
 
-    # --------- helpers para eje temporal ---------
-    def extract_key_cols_for_time(df_hist: pd.DataFrame):
-        dfh = df_hist.copy()
-        dfh["_YEAR"] = dfh["_SEM"].map(extract_year_from_period)
-        dfh["_INTER_LABEL"] = dfh["_SEM"].map(lambda s: f"{extract_year_from_period(s)} Intersemestral" if "inter" in str(s).lower() else None)
-        return dfh
+        def build_percent_table(base_idx_name, agg_tipo, agg_ps):
+            den_ps   = (agg_ps["P"] + agg_ps["S"]).replace(0, pd.NA)
+            p_share  = (agg_ps["P"] / den_ps) * 100
+            s_share  = 100 - p_share
+            denom_q  = (agg_tipo.sum(axis=1)).replace(0, pd.NA)
 
-    def transform_for_time_mode_ps(df_ps: pd.DataFrame):
-        base = extract_key_cols_for_time(df_ps)
-        if time_mode == "Semestral":
-            return base
-        if time_mode == "Anual":
-            keys = ["_YEAR"] + [c for c in base.columns if c.startswith("_") and c not in {"_SEM","_YEAR","_INTER_LABEL"}]
-            g = base.groupby(keys, dropna=False).sum(numeric_only=True).reset_index()
-            if "P" in g and "S" in g:
-                g["P_share"] = (g["P"] / (g["P"] + g["S"]).replace(0, pd.NA)) * 100
-            return g.rename(columns={"_YEAR":"_SEM"})
-        base = base[~base["_INTER_LABEL"].isna()].copy()
-        keys = ["_INTER_LABEL"] + [c for c in base.columns if c.startswith("_") and c not in {"_SEM","_YEAR","_INTER_LABEL"}]
-        g = base.groupby(keys, dropna=False).sum(numeric_only=True).reset_index()
-        if "P" in g and "S" in g:
-            g["P_share"] = (g["P"] / (g["P"] + g["S"]).replace(0, pd.NA)) * 100
-        return g.rename(columns={"_INTER_LABEL":"_SEM"})
+            dfm = pd.DataFrame({
+                base_idx_name: agg_tipo.index,
+                "%P":  p_share,
+                "%S":  s_share,
+                "%SA": (agg_tipo["SA"] / denom_q) * 100,
+                "%OTHER": (agg_tipo["OTHER"] / denom_q) * 100,
+            }).fillna(0.0)
 
-    def transform_for_time_mode_tipo(df_tipo: pd.DataFrame, share_col_name: str):
-        base = extract_key_cols_for_time(df_tipo)
-        cats = ["SA","PA","SP","IP","OTHER"]
-        if time_mode == "Semestral":
-            return base
-        if time_mode == "Anual":
-            keys = ["_YEAR"] + [c for c in base.columns if c.startswith("_") and c not in {"_SEM","_YEAR","_INTER_LABEL"}]
-            g = base.groupby(keys, dropna=False)[cats].sum().reset_index()
-            den = (g[cats].sum(axis=1)).replace(0, pd.NA)
-            if share_col_name == "SA_share":
-                g["SA_share"] = (g["SA"] / den) * 100
-            else:
-                g["OTHER_share"] = (g["OTHER"] / den) * 100
-            return g.rename(columns={"_YEAR":"_SEM"})
-    #    Intersemestral
-        base = base[~base["_INTER_LABEL"].isna()].copy()
-        keys = ["_INTER_LABEL"] + [c for c in base.columns if c.startswith("_") and c not in {"_SEM","_YEAR","_INTER_LABEL"}]
-        g = base.groupby(keys, dropna=False)[cats].sum().reset_index()
-        den = (g[cats].sum(axis=1)).replace(0, pd.NA)
-        if share_col_name == "SA_share":
-            g["SA_share"] = (g["SA"] / den) * 100
-        else:
-            g["OTHER_share"] = (g["OTHER"] / den) * 100
-        return g.rename(columns={"_INTER_LABEL":"_SEM"})
+            tot_P, tot_S = agg_ps["P"].sum(), agg_ps["S"].sum()
+            tot_den_ps   = tot_P + tot_S
+            p_tot = (tot_P / tot_den_ps * 100) if tot_den_ps else 0.0
+            s_tot = 100 - p_tot
+            tipo_sums = agg_tipo[["SA","PA","SP","IP","OTHER"]].sum(axis=0)
+            denom_q_tot = float(tipo_sums.sum())
 
-    def build_time_axis_for_history(df_hist: pd.DataFrame):
-        if time_mode == "Semestral":
-            reg = sorted(
-                {s for s in df_hist["_SEM"].dropna().unique() if period_suffix(s) in {"10","20"}},
-                key=lambda s: (extract_year_from_period(s) or -1, int(period_suffix(s) or 0))
-            )
-            x_map = {s:i for i, s in enumerate(reg)}
-            return "_SEM", reg, x_map
-        if time_mode == "Anual":
-            years = sorted({extract_year_from_period(s) for s in df_hist["_SEM"] if extract_year_from_period(s)}, key=int)
-            x_map = {y:i for i, y in enumerate(years)}
-            return "_YEAR", years, x_map
-        inter = sorted({f"{extract_year_from_period(s)} Intersemestral"
-                        for s in df_hist["_SEM"] if "inter" in str(s).lower()
-                        and extract_year_from_period(s)}, key=lambda x: int(x.split()[0]))
-        x_map = {lab:i for i, lab in enumerate(inter)}
-        return "_INTER_LABEL", inter, x_map
+            total_row = {
+                base_idx_name: "TOTAL",
+                "%P":  round(p_tot, 1),
+                "%S":  round(s_tot, 1),
+                "%SA": round((tipo_sums["SA"] / denom_q_tot * 100) if denom_q_tot else 0.0, 1),
+                "%OTHER": round((tipo_sums["OTHER"] / denom_q_tot * 100) if denom_q_tot else 0.0, 1),
+            }
+            dfm[["%P","%S","%SA","%OTHER"]] = dfm[["%P","%S","%SA","%OTHER"]].round(1)
+            dfm = pd.concat([dfm, pd.DataFrame([total_row])], ignore_index=True)
+            return dfm[[base_idx_name, "%P", "%S", "%SA", "%OTHER"]]
 
-    def draw_history(fig_title, level_name, level_values, metric_kind, total_series_builders,
-                     agg_ps_all, agg_tipo_all, x_labels, x_map, sel_x):
-        palette = px.colors.qualitative.Safe + px.colors.qualitative.Bold + px.colors.qualitative.Pastel
-        color_map = {a: palette[i % len(palette)] for i, a in enumerate(level_values)}
+        # ------------------- BY ACADEMIC AREA -------------------
+        if view_mode == "By Academic Area":
+            colT, colG = st.columns([6,6], gap="large")
 
-        st.markdown(f"<h4 style='margin:0 0 6px 0; font-weight:500;'>{fig_title}</h4>", unsafe_allow_html=True)
-        sel_col, radio_col = st.columns([6,4])
-        options = ["(All)", "(TOTAL)"] + level_values
-        with sel_col:
-            opt = st.selectbox("", options, index=0, key=f"{level_name}_filter", label_visibility="collapsed")
-        with radio_col:
-            metric_choice = st.radio("", ["%P", "%SA", "%OTHER"],
-                                     index={ "%P":0, "%SA":1, "%OTHER":2 }[metric_kind],
-                                     horizontal=True, key=f"metric_{level_name}",
-                                     label_visibility="collapsed")
+            # Agregaciones base (período seleccionado)
+            agg_tipo = (fil.groupby(["_AREA","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+            for k in ["SA","PA","SP","IP","OTHER"]:
+                if k not in agg_tipo.columns: agg_tipo[k] = 0.0
+            agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
 
-        fig = go.Figure()
+            agg_ps = (fil.groupby(["_AREA","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+            for k in ["P","S"]:
+                if k not in agg_ps.columns: agg_ps[k] = 0.0
+            agg_ps = agg_ps[["P","S"]]
 
-        if metric_choice == "%P":
-            thr = 75 if opt == "(TOTAL)" else 60
-            if opt == "(All)":
-                for a in level_values:
-                    sub = agg_ps_all[(agg_ps_all[level_name] == a)].copy()
-                    sub["x"] = sub["_SEM"].map(x_map)
-                    sub = sub.sort_values("x")
-                    if sub.empty: continue
-                    fig.add_trace(go.Scatter(
-                        x=sub["x"], y=sub["P_share"], mode="lines+markers", name=a,
-                        marker=dict(size=6, color=color_map[a]),
-                        line=dict(width=2, color=color_map[a]),
-                        hovertemplate=a + "<br>%{y:.1f}%<extra></extra>"
-                    ))
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["P"].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub["P_share"], mode="lines+markers", name="TOTAL",
-                    marker=dict(size=6, color=TOTAL_SERIES_COLOR),
-                    line=dict(width=2, color=TOTAL_SERIES_COLOR),
-                    hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>"
-                ))
-            else:
-                sub = agg_ps_all[(agg_ps_all[level_name] == opt)].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub["P_share"], mode="lines+markers", name=opt,
-                    marker=dict(size=6, color=MINT), line=dict(width=2, color=MINT),
-                    hovertemplate=opt + "<br>%{y:.1f}%<extra></extra>"
-                ))
-            y_min = 40
-            bad_high = False
+            with colT:
+                base_agg_ps = agg_ps.copy()
+                base_agg_tipo = agg_tipo.copy()
 
-        elif metric_choice == "%SA":
-            thr = 40
-            share_col = "SA_share"
-            if opt == "(All)":
-                for a in level_values:
-                    sub = agg_tipo_all[(agg_tipo_all[level_name] == a)].copy()
-                    sub["x"] = sub["_SEM"].map(x_map)
-                    sub = sub.sort_values("x")
-                    if sub.empty: continue
-                    fig.add_trace(go.Scatter(
-                        x=sub["x"], y=sub[share_col], mode="lines+markers", name=a,
-                        marker=dict(size=6, color=color_map[a]),
-                        line=dict(width=2, color=color_map[a]),
-                        hovertemplate=a + "<br>%{y:.1f}%<extra></extra>"
-                    ))
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["SA"].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub[share_col], mode="lines+markers", name="TOTAL",
-                    marker=dict(size=6, color=TOTAL_SERIES_COLOR),
-                    line=dict(width=2, color=TOTAL_SERIES_COLOR),
-                    hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>"
-                ))
-            else:
-                sub = agg_tipo_all[(agg_tipo_all[level_name] == opt)].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub[share_col], mode="lines+markers", name=opt,
-                    marker=dict(size=6, color=MINT), line=dict(width=2, color=MINT),
-                    hovertemplate=opt + "<br>%{y:.1f}%<extra></extra>"
-                ))
-            y_min = 20
-            bad_high = False
+                # === aplicar sensibilidad (si la hay) ===
+                if SENS["on"] and SENS["ops"]:
+                    mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
+                else:
+                    mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
 
-        else:  # "%OTHER"
-            thr = 10
-            share_col = "OTHER_share"
-            if opt == "(All)":
-                for a in level_values:
-                    sub = agg_tipo_all[(agg_tipo_all[level_name] == a)].copy()
-                    sub["x"] = sub["_SEM"].map(x_map)
-                    sub = sub.sort_values("x")
-                    if sub.empty: continue
-                    fig.add_trace(go.Scatter(
-                        x=sub["x"], y=sub[share_col], mode="lines+markers", name=a,
-                        marker=dict(size=6, color=color_map[a]),
-                        line=dict(width=2, color=color_map[a]),
-                        hovertemplate=a + "<br>%{y:.1f}%<extra></extra>"
-                    ))
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["OTHER"].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub[share_col], mode="lines+markers", name="TOTAL",
-                    marker=dict(size=6, color=TOTAL_SERIES_COLOR),
-                    line=dict(width=2, color=TOTAL_SERIES_COLOR),
-                    hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>"
-                ))
-            else:
-                sub = agg_tipo_all[(agg_tipo_all[level_name] == opt)].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub[share_col], mode="lines+markers", name=opt,
-                    marker=dict(size=6, color=MINT), line=dict(width=2, color=MINT),
-                    hovertemplate=opt + "<br>%{y:.1f}%<extra></extra>"
-                ))
-            y_min = 0
-            y_max = 40
-            bad_high = True
-
-        if bad_high:
-            fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=thr, y1=100,
-                                           fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
-            fig.add_hline(y=thr, line_color="#F5A3A3", line_dash="dash")
-        else:
-            fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=thr,
-                                           fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
-            fig.add_hline(y=thr, line_color="red", line_dash="dash")
-
-        if sel_x is not None:
-            fig.add_vrect(x0=sel_x-0.5, x1=sel_x+0.5,
-                          fillcolor="#E8FAF7", opacity=0.5, layer="below", line_width=0)
-
-        if metric_choice == "%OTHER":
-            fig.update_layout(
-                xaxis=dict(tickmode="array", tickvals=list(range(len(x_labels))), ticktext=[str(x) for x in x_labels]),
-                yaxis=dict(range=[y_min, y_max]),
-            )
-        else:
-            fig.update_layout(
-                xaxis=dict(tickmode="array", tickvals=list(range(len(x_labels))), ticktext=[str(x) for x in x_labels]),
-                yaxis=dict(range=[y_min, 100]),
-            )
-        fig.update_xaxes(title=None)
-        fig.update_yaxes(title=None)
-
-        st.plotly_chart(fig, use_container_width=True)
-
-        # ===== Descarga de datos del gráfico =====
-        def _series_for(level_val: str, ycol: str):
-            if ycol == "P_share":
-                sub = agg_ps_all[(agg_ps_all[level_name] == level_val)]
-            else:
-                sub = agg_tipo_all[(agg_tipo_all[level_name] == level_val)]
-            m = sub.set_index("_SEM")[ycol].to_dict()
-            return [m.get(x, None) for x in x_labels]
-
-        if metric_choice == "%P":
-            ycol = "P_share"
-            base_cols = {}
-            if opt == "(All)":
-                for a in level_values:
-                    base_cols[a] = _series_for(a, ycol)
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["P"].set_index("_SEM")["P_share"].to_dict()
-                base_cols["TOTAL"] = [sub.get(x, None) for x in x_labels]
-            else:
-                base_cols[opt] = _series_for(opt, ycol)
-        elif metric_choice == "%SA":
-            ycol = "SA_share"
-            base_cols = {}
-            if opt == "(All)":
-                for a in level_values:
-                    base_cols[a] = _series_for(a, ycol)
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["SA"].set_index("_SEM")[ycol].to_dict()
-                base_cols["TOTAL"] = [sub.get(x, None) for x in x_labels]
-            else:
-                base_cols[opt] = _series_for(opt, ycol)
-        else:
-            ycol = "OTHER_share"
-            base_cols = {}
-            if opt == "(All)":
-                for a in level_values:
-                    base_cols[a] = _series_for(a, ycol)
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["OTHER"].set_index("_SEM")[ycol].to_dict()
-                base_cols["TOTAL"] = [sub.get(x, None) for x in x_labels]
-            else:
-                base_cols[opt] = _series_for(opt, ycol)
-
-        export_df = pd.DataFrame({"Period": x_labels, **base_cols})
-        fname = f"chart_{_slugify(fig_title)}_{_slugify(metric_choice)}_{_slugify(opt)}_{_slugify(sel_label)}.xlsx"
-        _download_xlsx_button(export_df, fname, key=f"dl_hist_{_slugify(fig_title)}_{metric_choice}_{_slugify(opt)}_{_slugify(sel_label)}", label="⬇️ Datos de la gráfica (Excel)")
-
-    # ======================== BY ACADEMIC AREA ========================
-    if view_mode == "By Academic Area":
-        colT, colG = st.columns([6,6], gap="large")
-
-        # --- Agregaciones por Área (período seleccionado) ---
-        agg_tipo = (fil.groupby(["_AREA","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
-        for k in ["SA","PA","SP","IP","OTHER"]:
-            if k not in agg_tipo.columns: agg_tipo[k] = 0.0
-        agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
-
-        agg_ps = (fil.groupby(["_AREA","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
-        for k in ["P","S"]:
-            if k not in agg_ps.columns: agg_ps[k] = 0.0
-        agg_ps = agg_ps[["P","S"]]
-
-        with colT:
-            base_agg_ps = agg_ps.copy()
-            base_agg_tipo = agg_tipo.copy()
-
-            # Sens o histórico: mismas columnas, distintos agregados
-            if SENS["on"]:
-                mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS.get("ops", []),
-                                                             member_all_label="All", index_name="Academic Area")
+                # Tabla principal (mismas columnas siempre)
                 metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
-                fname = f"table_ByArea_SENS_{_slugify(sel_label)}.xlsx"
-                key_dl = f"dl_tbl_area_sens_{_slugify(sel_label)}"
-            else:
-                metrics_tbl = build_percent_table("Academic Area", base_agg_tipo, base_agg_ps)
-                fname = f"table_ByArea_{_slugify(sel_label)}.xlsx"
-                key_dl = f"dl_tbl_area_{_slugify(sel_label)}"
 
-            _download_xlsx_button(metrics_tbl, fname, key=key_dl, label="⬇️ Download table (Excel)")
-            styled_tbl = (
-                metrics_tbl.style
-                .format({"%P": "{:.1f}%", "%S": "{:.1f}%", "%SA": "{:.1f}%", "%OTHER": "{:.1f}%"})
-                .apply(style_percent_tables, id_col="Academic Area", axis=None)
-                .hide(axis="index")
-            )
-            st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                # Columnas de impacto (Δ%P, Δ%SA, Δ%OTHER) — solo si sensitivity ON
+                if SENS["on"] and SENS["ops"]:
+                    # Δ%P
+                    den0 = (base_agg_ps["P"] + base_agg_ps["S"]).replace(0, pd.NA)
+                    den1 = (mod_agg_ps["P"] + mod_agg_ps["S"]).replace(0, pd.NA)
+                    pct0 = (base_agg_ps["P"] / den0 * 100).fillna(0.0)
+                    pct1 = (mod_agg_ps["P"]  / den1 * 100).fillna(0.0)
+                    impP = (pct1 - pct0).reindex(mod_agg_ps.index).round(2)
+
+                    # Δ%SA y Δ%OTHER
+                    cats = ["SA","PA","SP","IP","OTHER"]
+                    d0 = base_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
+                    d1 = mod_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
+                    sa0 = (base_agg_tipo["SA"]/d0*100).fillna(0.0)
+                    sa1 = (mod_agg_tipo["SA"] /d1*100).fillna(0.0)
+                    ot0 = (base_agg_tipo["OTHER"]/d0*100).fillna(0.0)
+                    ot1 = (mod_agg_tipo["OTHER"]/d1*100).fillna(0.0)
+                    impSA = (sa1 - sa0).reindex(mod_agg_tipo.index).round(2)
+                    impOT = (ot1 - ot0).reindex(mod_agg_tipo.index).round(2)
+
+                    mt = metrics_tbl.set_index("Academic Area")
+                    mt["Impact (Δ%P)"] = impP
+                    mt["Impact (Δ%SA)"] = impSA
+                    mt["Impact (Δ%OTHER)"] = impOT
+
+                    # TOTAL impacts
+                    bt = build_percent_table("Academic Area", base_agg_tipo, base_agg_ps).set_index("Academic Area")
+                    mt.loc["TOTAL","Impact (Δ%P)"] = (mt.loc["TOTAL","%P"] - bt.loc["TOTAL","%P"]).round(2)
+                    mt.loc["TOTAL","Impact (Δ%SA)"] = (mt.loc["TOTAL","%SA"] - bt.loc["TOTAL","%SA"]).round(2)
+                    mt.loc["TOTAL","Impact (Δ%OTHER)"] = (mt.loc["TOTAL","%OTHER"] - bt.loc["TOTAL","%OTHER"]).round(2)
+
+                    metrics_tbl = mt.reset_index()
+
+                _download_xlsx_button(
+                    metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
+                    key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)"
+                )
+
+                if SENS["on"] and SENS["ops"]:
+                    styled_tbl = (
+                        metrics_tbl.style
+                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%","Impact (Δ%P)":"{:+.2f}","Impact (Δ%SA)":"{:+.2f}","Impact (Δ%OTHER)":"{:+.2f}"})
+                        .apply(lambda df_: style_diverging_simple(df_, "Impact (Δ%P)"), axis=None)
+                        .hide(axis="index")
+                    )
+                else:
+                    styled_tbl = (
+                        metrics_tbl.style
+                        .format({"%P": "{:.1f}%", "%S": "{:.1f}%", "%SA": "{:.1f}%", "%OTHER": "{:.1f}%"})
+                        .apply(style_percent_tables, id_col="Academic Area", axis=None)
+                        .hide(axis="index")
+                    )
+                st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
 
         # --- HISTÓRICOS por Área (no afectados por sensibilidad) ---
         df_hist = df_car_global.copy()
@@ -1606,3 +1385,4 @@ if show_counts:
             chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}.xlsx",
             key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}", label="Descargar datos (Excel)"
         )
+
