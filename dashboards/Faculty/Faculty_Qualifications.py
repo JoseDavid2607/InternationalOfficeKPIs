@@ -1063,28 +1063,34 @@ else:
                                  x_labels=x_labels, x_map=x_map, sel_x=sel_x)
 
         # ============================= BY PROGRAM =============================
-        else:  # "By Program"
+        elif view_mode == "By Program":
+            program_col = col_prog  # ya resuelto arriba
             if not program_col:
-                st.info("Column 'program' was not found.")
+                st.info("Column 'Program' was not found.")
             else:
                 fil_mat = fil.copy()
                 fil_mat["_MAT"] = fil_mat[program_col].astype(str).str.strip()
 
                 colM_L, colM_R = st.columns([6,6], gap="large")
 
-                agg_tipo_m = (fil_mat.groupby(["_MAT","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+                # ---- Agregaciones del timeframe seleccionado
+                agg_tipo_m = (fil_mat.groupby(["_MAT","_TIPO"], dropna=False)["_CRED"]
+                              .sum().unstack(fill_value=0.0))
                 for k in ["SA","PA","SP","IP","OTHER"]:
                     if k not in agg_tipo_m.columns: agg_tipo_m[k] = 0.0
                 agg_tipo_m = agg_tipo_m[["SA","PA","SP","IP","OTHER"]]
 
-                agg_ps_m = (fil_mat.groupby(["_MAT","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+                agg_ps_m = (fil_mat.groupby(["_MAT","_PS"], dropna=False)["_CRED"]
+                            .sum().unstack(fill_value=0.0))
                 for k in ["P","S"]:
                     if k not in agg_ps_m.columns: agg_ps_m[k] = 0.0
                 agg_ps_m = agg_ps_m[["P","S"]]
 
                 with colM_L:
-                    base_agg_ps = agg_ps_m.copy()
+                    base_agg_ps   = agg_ps_m.copy()
                     base_agg_tipo = agg_tipo_m.copy()
+
+                    # Sensibilidad (si aplica)
                     if SENS["on"] and SENS["ops"]:
                         mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
                     else:
@@ -1092,38 +1098,38 @@ else:
 
                     metrics_tbl_m = build_percent_table("Program", mod_agg_tipo, mod_agg_ps)
 
+                    # Columnas de impacto cuando hay sensibilidad
                     if SENS["on"] and SENS["ops"]:
+                        impP   = impact_column_generic(base_agg_ps,   mod_agg_ps,   "P",     mode="PS")
+                        impSA  = impact_column_generic(base_agg_tipo, mod_agg_tipo, "SA",    mode="QUAL")
+                        impOTH = impact_column_generic(base_agg_tipo, mod_agg_tipo, "OTHER", mode="QUAL")
 
-                        den0 = (base_agg_ps["P"] + base_agg_ps["S"]).replace(0, pd.NA)
-                        den1 = (mod_agg_ps["P"] + mod_agg_ps["S"]).replace(0, pd.NA)
-                        pct0 = (base_agg_ps["P"] / den0 * 100).fillna(0.0)
-                        pct1 = (mod_agg_ps["P"]  / den1 * 100).fillna(0.0)
-                        impP = (pct1 - pct0).reindex(mod_agg_ps.index).round(2)
-
-                        cats = ["SA","PA","SP","IP","OTHER"]
-                        d0 = base_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
-                        d1 = mod_agg_tipo[cats].sum(axis=1).replace(0, pd.NA)
-                        sa0 = (base_agg_tipo["SA"]/d0*100).fillna(0.0)
-                        sa1 = (mod_agg_tipo["SA"]/d1*100).fillna(0.0)
-                        ot0 = (base_agg_tipo["OTHER"]/d0*100).fillna(0.0)
-                        ot1 = (mod_agg_tipo["OTHER"]/d1*100).fillna(0.0)
                         mt = metrics_tbl_m.set_index("Program")
-                        mt["Impact (Δ%P)"] = impP
-                        mt["Impact (Δ%SA)"] = (sa1 - sa0).reindex(mod_agg_tipo.index).round(2)
-                        mt["Impact (Δ%OTHER)"] = (ot1 - ot0).reindex(mod_agg_tipo.index).round(2)
+                        mt["Impact (Δ%P)"]     = impP.reindex(mt.index)
+                        mt["Impact (Δ%SA)"]    = impSA.reindex(mt.index)
+                        mt["Impact (Δ%OTHER)"] = impOTH.reindex(mt.index)
+
+                        # Ajuste de la fila TOTAL
                         bt = build_percent_table("Program", base_agg_tipo, base_agg_ps).set_index("Program")
-                        mt.loc["TOTAL","Impact (Δ%P)"] = (mt.loc["TOTAL","%P"] - bt.loc["TOTAL","%P"]).round(2)
-                        mt.loc["TOTAL","Impact (Δ%SA)"] = (mt.loc["TOTAL","%SA"] - bt.loc["TOTAL","%SA"]).round(2)
+                        mt.loc["TOTAL","Impact (Δ%P)"]     = (mt.loc["TOTAL","%P"]     - bt.loc["TOTAL","%P"]).round(2)
+                        mt.loc["TOTAL","Impact (Δ%SA)"]    = (mt.loc["TOTAL","%SA"]    - bt.loc["TOTAL","%SA"]).round(2)
                         mt.loc["TOTAL","Impact (Δ%OTHER)"] = (mt.loc["TOTAL","%OTHER"] - bt.loc["TOTAL","%OTHER"]).round(2)
                         metrics_tbl_m = mt.reset_index()
 
-                    _download_xlsx_button(metrics_tbl_m, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
-                                          key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
+                    _download_xlsx_button(
+                        metrics_tbl_m,
+                        f"table_ByProgram_{_slugify(sel_label)}.xlsx",
+                        key=f"dl_tbl_prog_{_slugify(sel_label)}",
+                        label="⬇️ Download table (Excel)"
+                    )
 
                     if SENS["on"] and SENS["ops"]:
                         styled_tbl_m = (
                             metrics_tbl_m.style
-                            .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%","Impact (Δ%P)":"{:+.2f}","Impact (Δ%SA)":"{:+.2f}","Impact (Δ%OTHER)":"{:+.2f}"})
+                            .format({
+                                "%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%",
+                                "Impact (Δ%P)":"{:+.2f}","Impact (Δ%SA)":"{:+.2f}","Impact (Δ%OTHER)":"{:+.2f}"
+                            })
                             .apply(lambda df_: style_diverging_simple(df_, "Impact (Δ%P)"), axis=None)
                             .hide(axis="index")
                         )
@@ -1134,26 +1140,76 @@ else:
                             .apply(style_percent_tables, id_col="Program", axis=None)
                             .hide(axis="index")
                         )
-                    st.markdown(f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>",
+                        unsafe_allow_html=True
+                    )
 
-                # HISTÓRICO — Program
+                # ---- HISTÓRICOS por Programa (timeframe-aware)
                 df_hist_m = df_car_global.copy()
                 df_hist_m["_MAT"] = df_hist_m[program_col].astype(str).str.strip()
-                agg_ps_all_m = (df_hist_m.groupby(["_SEM","_MAT","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+
+                # P/S shares
+                agg_ps_all_m = (df_hist_m.groupby(["_SEM","_MAT","_PS"], dropna=False)["_CRED"]
+                                .sum().unstack(fill_value=0.0))
                 for k in ["P","S"]:
                     if k not in agg_ps_all_m.columns: agg_ps_all_m[k] = 0.0
                 agg_ps_all_m["P_share"] = (agg_ps_all_m["P"] / (agg_ps_all_m["P"] + agg_ps_all_m["S"]).replace(0, pd.NA)) * 100
                 agg_ps_all_m = agg_ps_all_m.reset_index()
 
-                tot_by_sem_m = (df_hist_m.groupby(["_SEM","_PS"])["_CRED"].sum().unstack(fill_value=0.0))
+                # Tipo shares
+                agg_tipo_all_m = (df_hist_m.groupby(["_SEM","_MAT","_TIPO"], dropna=False)["_CRED"]
+                                  .sum().unstack(fill_value=0.0))
+                for k in ["SA","PA","SP","IP","OTHER"]:
+                    if k not in agg_tipo_all_m.columns: agg_tipo_all_m[k] = 0.0
+                den_all_m = (agg_tipo_all_m[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
+                agg_tipo_all_m["SA_share"]    = (agg_tipo_all_m["SA"]    / den_all_m) * 100
+                agg_tipo_all_m["OTHER_share"] = (agg_tipo_all_m["OTHER"] / den_all_m) * 100
+                agg_tipo_all_m = agg_tipo_all_m.reset_index()
+
+                # Series TOTAL
+                tot_by_sem_m = (df_hist_m.groupby(["_SEM","_PS"])["_CRED"]
+                                .sum().unstack(fill_value=0.0))
                 for k in ["P","S"]:
                     if k not in tot_by_sem_m.columns: tot_by_sem_m[k] = 0.0
                 tot_by_sem_m["P_share"] = (tot_by_sem_m["P"] / (tot_by_sem_m["P"] + tot_by_sem_m["S"]).replace(0, pd.NA)) * 100
                 tot_by_sem_m = tot_by_sem_m.reset_index()
 
-                agg_ps_all_tm   = transform_for_time_mode_ps(agg_ps_all_m.rename(columns={"_MAT":"__LEVEL__"})).rename(columns={"__LEVEL__":"_MAT"})
-                tot_by_sem_m_tm = transform_for_time_mode_ps(tot_by_sem_m.copy())
+                tot_by_sem_tipo_m = (df_hist_m.groupby(["_SEM","_TIPO"])["_CRED"]
+                                     .sum().unstack(fill_value=0.0))
+                for k in ["SA","PA","SP","IP","OTHER"]:
+                    if k not in tot_by_sem_tipo_m.columns: tot_by_sem_tipo_m[k] = 0.0
+                den_m = (tot_by_sem_tipo_m[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
+                tot_by_sem_tipo_m["SA_share"]    = (tot_by_sem_tipo_m["SA"]    / den_m) * 100
+                tot_by_sem_tipo_m["OTHER_share"] = (tot_by_sem_tipo_m["OTHER"] / den_m) * 100
+                tot_by_sem_tipo_m = tot_by_sem_tipo_m.reset_index()
 
+                # Adaptación a modo temporal
+                agg_ps_all_tm_m   = transform_for_time_mode_ps(agg_ps_all_m.rename(columns={"_MAT":"__LEVEL__"})).rename(columns={"__LEVEL__":"_MAT"})
+                agg_tipo_all_tm_m = transform_for_time_mode_tipo(agg_tipo_all_m.rename(columns={"_MAT":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_MAT"})
+                agg_tipo_all_tm_m_other = transform_for_time_mode_tipo(agg_tipo_all_m.rename(columns={"_MAT":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_MAT"})
+                agg_tipo_all_tm_m = (
+                    agg_tipo_all_tm_m
+                    .drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_all_tm_m], errors="ignore")
+                    .merge(
+                        agg_tipo_all_tm_m_other[["_SEM","_MAT","OTHER","SA","PA","SP","IP","OTHER_share"]],
+                        on=["_SEM","_MAT","SA","PA","SP","IP","OTHER"], how="outer"
+                    )
+                )
+
+                tot_by_sem_P_tm_m       = transform_for_time_mode_ps(tot_by_sem_m.copy())
+                tot_by_sem_tipo_sa_tm_m = transform_for_time_mode_tipo(tot_by_sem_tipo_m.copy(), "SA_share")
+                tot_by_sem_tipo_ot_tm_m = transform_for_time_mode_tipo(tot_by_sem_tipo_m.copy(), "OTHER_share")
+                tot_by_sem_tipo_tm_m    = (
+                    tot_by_sem_tipo_sa_tm_m
+                    .drop(columns=[c for c in ["OTHER_share"] if c in tot_by_sem_tipo_sa_tm_m], errors="ignore")
+                    .merge(
+                        tot_by_sem_tipo_ot_tm_m[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
+                        on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer"
+                    )
+                )
+
+                # Eje X + barra de selección
                 key_col, x_labels, x_map = build_time_axis_for_history(df_hist_m)
                 sel_x = None
                 if time_mode == "Semestral" and sel_sem and str(sel_sem) in x_map: sel_x = x_map[str(sel_sem)]
@@ -1161,15 +1217,19 @@ else:
                 if time_mode == "Intersemestral":
                     lab = f"{sel_year} Intersemestral"
                     if lab in x_map: sel_x = x_map[lab]
-                programs_all = sorted(set(agg_ps_all_tm["_MAT"].astype(str).unique()))
+
+                programs_all = sorted(
+                    set(agg_ps_all_tm_m["_MAT"].astype(str).unique()) |
+                    set(agg_tipo_all_tm_m["_MAT"].astype(str).unique())
+                )
 
                 with colM_R:
                     draw_history("Evolution by Academic Program",
                                  level_name="_MAT",
                                  level_values=programs_all,
                                  metric_kind="%P",
-                                 total_series_builders={"P": tot_by_sem_m_tm},
-                                 agg_ps_all=agg_ps_all_tm, agg_tipo_all=None,
+                                 total_series_builders={"P": tot_by_sem_P_tm_m, "SA": tot_by_sem_tipo_tm_m, "OTHER": tot_by_sem_tipo_tm_m},
+                                 agg_ps_all=agg_ps_all_tm_m, agg_tipo_all=agg_tipo_all_tm_m,
                                  x_labels=x_labels, x_map=x_map, sel_x=sel_x)
 
 # --------------------------
@@ -1531,4 +1591,5 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
                               label="Descargar datos (Excel)")
+
 
