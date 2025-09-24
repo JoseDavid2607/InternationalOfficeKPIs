@@ -251,6 +251,108 @@ def impact_column_generic(base_df: pd.DataFrame, mod_df: pd.DataFrame, target: s
         pct1 = (mod_df[target]  / den1 * 100).fillna(0.0)
         return (pct1 - pct0).round(2)
 
+# ================== HISTORY HELPERS (restored & simple) ==================
+def _period_sort_key(p: str) -> tuple[int,int]:
+    y = extract_year_from_period(p) or -1
+    suf = period_suffix(p)
+    try:
+        suf_i = int(suf) if suf is not None else 0
+    except Exception:
+        suf_i = 0
+    return (y, suf_i)
+
+def build_time_axis_for_history(df_hist: pd.DataFrame):
+    """
+    Devuelve:
+      key_col: siempre "_SEM"
+      x_labels: lista ordenada de períodos (semestres o etiquetas que ya tengas)
+      x_map: dict label -> posición (0..n-1)
+    """
+    if "_SEM" not in df_hist.columns:
+        sc = _get_any(df_hist, "Semestre","Periodo","Periodo Académico","Periodo academico")
+        if sc:
+            sem = df_hist[sc].astype(str).str.strip()
+        else:
+            sem = pd.Series([], dtype=str)
+    else:
+        sem = df_hist["_SEM"].astype(str).str.strip()
+
+    labs = sorted(set(sem.dropna().tolist()), key=_period_sort_key)
+    x_labels = labs
+    x_map = {lab: i for i, lab in enumerate(x_labels)}
+    return "_SEM", x_labels, x_map
+
+def draw_history(title: str,
+                 level_name: str,
+                 level_values: list[str],
+                 metric_kind: str,
+                 total_series_builders: dict,
+                 agg_ps_all: pd.DataFrame,
+                 agg_tipo_all: pd.DataFrame,
+                 x_labels: list[str],
+                 x_map: dict[str,int],
+                 sel_x: int | None):
+    """
+    Versión simple: soporta %P (lo que usa tu dashboard).
+    Espera que agg_ps_all tenga columnas: ["_SEM", level_name, "P","S","P_share"].
+    Para la serie TOTAL usa total_series_builders["P"] con columnas ["_SEM","P","S","P_share"].
+    """
+    import numpy as np
+    if metric_kind != "%P":
+        metric_kind = "%P"  # manténlo simple (el dashboard lo llama con %P)
+
+    # Selector como ANTES: un select plano (sin cards)
+    default_opt = "(TOTAL)"
+    opts = [default_opt] + sorted([v for v in map(str, level_values) if v and v != "TOTAL"])
+    sel_opt = st.selectbox(f"{title} — select", opts, index=0, key=f"hist_sel_{title}_{level_name}")
+
+    # Serie TOTAL (%P) para la línea de referencia
+    tot_df = total_series_builders.get("P", pd.DataFrame()).copy()
+    if not tot_df.empty:
+        tot_df = tot_df.copy()
+        if "P_share" not in tot_df.columns:
+            den = (tot_df.get("P",0) + tot_df.get("S",0)).replace(0, pd.NA)
+            tot_df["P_share"] = (tot_df.get("P",0) / den * 100).fillna(0.0)
+        tot_ser = {r["_SEM"]: float(r["P_share"]) for _, r in tot_df.iterrows()}
+    else:
+        tot_ser = {}
+
+    # Serie elegida
+    if sel_opt == default_opt or agg_ps_all.empty:
+        y_vals = [tot_ser.get(l, np.nan) for l in x_labels]
+        name = "TOTAL"
+    else:
+        sub = agg_ps_all[agg_ps_all[level_name].astype(str).str.strip() == sel_opt].copy()
+        if "P_share" not in sub.columns:
+            den = (sub.get("P",0) + sub.get("S",0)).replace(0, pd.NA)
+            sub["P_share"] = (sub.get("P",0) / den * 100).fillna(0.0)
+        row_map = {r["_SEM"]: float(r["P_share"]) for _, r in sub.iterrows()}
+        y_vals = [row_map.get(l, np.nan) for l in x_labels]
+        name = sel_opt
+
+    # Construir figura
+    fig = go.Figure()
+    # Línea seleccionada
+    fig.add_trace(go.Scatter(x=x_labels, y=y_vals, mode="lines+markers", name=name))
+    # Línea TOTAL (si no es la misma)
+    if name != "TOTAL":
+        y_tot = [tot_ser.get(l, np.nan) for l in x_labels]
+        fig.add_trace(go.Scatter(x=x_labels, y=y_tot, mode="lines", name="TOTAL"))
+    fig.update_layout(
+        title=title,
+        height=360,
+        margin=dict(l=20, r=10, t=40, b=40),
+        yaxis_title="%P",
+        xaxis_title=None,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+    )
+    # Línea vertical en el seleccionado (si aplica)
+    if sel_x is not None and 0 <= sel_x < len(x_labels):
+        fig.add_vline(x=sel_x, line_width=1, line_dash="dash")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
 # ============== COLS NORMALIZADAS BÁSICAS (igual) ==============
 col_sem  = _get_any(df_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
 if "_SEM" not in df_car.columns and col_sem:
@@ -1069,7 +1171,7 @@ try:
             agg_ps = agg_ps[["P","S"]]; agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
 
             mod_ps, mod_tipo = apply_ops_to_aggs(agg_ps, agg_tipo, SENS.get("ops", []),
-                                                 member_all_label="All", index_name=dim_label)
+                                                 member_all_label="All")
             # Reemplazar columnas de sums por las ajustadas
             tbl["P Sum"]     = mod_ps["P"].reindex(tbl.index, fill_value=0.0)
             tbl["S Sum"]     = mod_ps["S"].reindex(tbl.index, fill_value=0.0)
@@ -1219,7 +1321,7 @@ try:
 
             if SENS.get("on"):
                 mod_ps, mod_tipo = apply_ops_to_aggs(agg_ps, agg_tipo, SENS.get("ops", []),
-                                                     member_all_label="All", index_name=label.title())
+                                                     member_all_label="All")
             else:
                 mod_ps, mod_tipo = agg_ps, agg_tipo
 
@@ -1509,10 +1611,3 @@ if show_counts:
             key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
             label="Descargar datos (Excel)"
         )
-
-
-
-
-
-
-
