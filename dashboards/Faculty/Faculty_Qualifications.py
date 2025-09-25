@@ -3024,7 +3024,7 @@ with left:
                                       label="Descargar (Excel)")
                 st.dataframe(out, use_container_width=True, hide_index=True)
 
-# ======================= PANEL DERECHO — BUSCADOR (2 campos con autocompletar) =======================
+# ======================= PANEL DERECHO — BUSCADOR (selectores abajo) =======================
 with right:
     st.markdown("**Search (current timeframe)**")
 
@@ -3042,94 +3042,124 @@ with right:
     if "_PROF" in base and prof_to_area_map:
         base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
 
-    # ==== RESULTADOS (solo si hay búsqueda) ====
-    # Notar: primero dibujamos resultados, y al final ubicamos selectores (quedan "abajo").
-    # Leemos selección previa si existe:
-    sel_course = st.session_state.get("srch_course", "")
-    sel_prof   = st.session_state.get("srch_prof", "")
+    # Opciones de autocompletar
+    # Profesores: nombres y también "ID: ####" si hay ID
+    prof_opts = [""] + (sorted(base["_PROF"].dropna().unique().tolist()) if "_PROF" in base else [])
+    if "_ID" in base:
+        prof_opts = [""] + sorted(set(prof_opts[1:] + [f"ID:{v}" for v in base["_ID"].dropna().astype(str).tolist()]))
 
-    if sel_course or sel_prof:
-        # Armar máscara (alineada al índice de base) — evita IndexingError
-        mask = pd.Series(True, index=base.index)
-
-        if sel_course:
-            # buscar por nombre (principal). Si no hay nombres en la base, usar código.
-            m_name = pd.Series(False, index=base.index)
-            m_code = pd.Series(False, index=base.index)
-            if "_NAME" in base:
-                m_name = base["_NAME"].str.contains(re.escape(sel_course), case=False, na=False) | (base["_NAME"] == sel_course)
-            if "_CODE" in base:
-                m_code = base["_CODE"].str.contains(re.escape(sel_course), case=False, na=False) | (base["_CODE"] == sel_course)
-            mask &= (m_name | m_code)
-
-        if sel_prof:
-            m_prof = pd.Series(False, index=base.index)
-            m_id   = pd.Series(False, index=base.index)
-            if sel_prof.startswith("ID:"):
-                qid = sel_prof.split(":",1)[1].strip()
-                if "_ID" in base:
-                    m_id = base["_ID"].astype(str).str.fullmatch(re.escape(qid), case=False)
-            else:
-                if "_PROF" in base:
-                    m_prof = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) | (base["_PROF"] == sel_prof)
-            mask &= (m_prof | m_id)
-
-        res = base[mask].copy()
-
-        # Asegurar columnas pedidas para mostrar
-        show_cols = {
-            "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd),
-            "Profesor": col_prof_car or col_prof_fd,
-            "ID": "_ID" if "_ID" in res else col_id_fd,
-            "AREA_PROFESOR": "_AREA_PROF" if "_AREA_PROF" in res else col_area_fd,
-            "Código Materia": col_code_car,
-            "Nombre largo curso": col_name_car,
-            "Secc": col_secc_car,
-            "Area del curso": col_acar_car,
-            "Field": col_field_car,
-            "Program": col_prog_car,
-            "Créditos": col_cred_car,
-            "Campus": col_campus
-        }
-
-        # Construir DataFrame de salida en el orden solicitado
-        data = {}
-        out_cols = []
-        for nice, col in show_cols.items():
-            if col in res:
-                data[nice] = res[col]
-            else:
-                data[nice] = None
-            out_cols.append(nice)
-
-        res_out = pd.DataFrame(data, columns=out_cols).copy()
-        if "Créditos" in res_out.columns:
-            res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
-
-        _download_xlsx_button(res_out, f"search_results_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-                              key=f"dl_search_{_slugify(st.session_state.get('sel_label','sel'))}",
-                              label="Descargar resultados (Excel)")
-        st.dataframe(res_out, use_container_width=True, hide_index=True)
-
-    # ==== SELECTORES (abajo) ====
-    # Opciones para autocompletar — mostrar NOMBRES de curso (fallback a código si no hay nombres)
+    # Cursos: mostrar **NOMBRES**; si no hay nombres, usar códigos como fallback
     if "_NAME" in base and base["_NAME"].notna().any():
         course_opts = sorted(base["_NAME"].dropna().unique().tolist())
     elif "_CODE" in base:
         course_opts = sorted(base["_CODE"].dropna().unique().tolist())
     else:
         course_opts = []
-    course_opts = [""] + course_opts  # opción vacía al inicio
+    course_opts = [""] + course_opts
 
-    prof_opts = [""] + (sorted(base["_PROF"].dropna().unique().tolist()) if "_PROF" in base else [])
-    if "_ID" in base:
-        prof_opts = [""] + sorted(set(prof_opts[1:] + [f"ID:{v}" for v in base["_ID"].dropna().astype(str).tolist()]))
+    # Leemos selección previa; si no existe, vacío
+    sel_prof   = st.session_state.get("srch_prof", "")
+    sel_course = st.session_state.get("srch_course", "")
 
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    csl, csr = st.columns([1,1])
-    with csl:
-        st.selectbox("Curso (Nombre)", options=course_opts, index=course_opts.index(sel_course) if sel_course in course_opts else 0,
-                     key="srch_course")
-    with csr:
-        st.selectbox("Profesor (Nombre) o ID", options=prof_opts, index=prof_opts.index(sel_prof) if sel_prof in prof_opts else 0,
-                     key="srch_prof")
+    # Espaciador grande para empujar selectores hacia abajo
+    st.markdown("<div style='min-height:180px'></div>", unsafe_allow_html=True)
+
+    # Selectores (orden: Profesor primero, luego Curso), bien abajo
+    s1, s2 = st.columns([1,1])
+    with s1:
+        st.selectbox(
+            "Profesor (Nombre) o ID",
+            options=prof_opts,
+            index=prof_opts.index(sel_prof) if sel_prof in prof_opts else 0,
+            key="srch_prof"
+        )
+    with s2:
+        st.selectbox(
+            "Curso (Nombre)",
+            options=course_opts,
+            index=course_opts.index(sel_course) if sel_course in course_opts else 0,
+            key="srch_course"
+        )
+
+# ======================= RESULTADOS BUSQUEDA — FULL WIDTH (debajo de todo) =======================
+# (Fuera de las columnas para que ocupe todo el ancho)
+sel_prof   = st.session_state.get("srch_prof", "")
+sel_course = st.session_state.get("srch_course", "")
+
+if sel_prof or sel_course:
+    # Recalcular base (misma lógica, por si cambió el estado)
+    base = df_car_filt_all.copy()
+    if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
+    if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
+    if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
+    if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
+    if "_PROF" in base and prof_to_id_map:
+        base["_ID"] = base["_PROF"].map(prof_to_id_map)
+    if "_PROF" in base and prof_to_area_map:
+        base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
+
+    # Máscaras alineadas al índice
+    mask = pd.Series(True, index=base.index)
+
+    # Filtro por PROF/ID (prioridad: nombre/ID exacto/contains)
+    if sel_prof:
+        m_prof = pd.Series(False, index=base.index)
+        m_id   = pd.Series(False, index=base.index)
+        if sel_prof.startswith("ID:"):
+            qid = sel_prof.split(":",1)[1].strip()
+            if "_ID" in base:
+                m_id = base["_ID"].astype(str).str.fullmatch(re.escape(qid), case=False)
+        else:
+            if "_PROF" in base:
+                m_prof = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) | (base["_PROF"] == sel_prof)
+        mask &= (m_prof | m_id)
+
+    # Filtro por CURSO (preferir nombre; fallback a código)
+    if sel_course:
+        m_name = pd.Series(False, index=base.index)
+        m_code = pd.Series(False, index=base.index)
+        if "_NAME" in base:
+            m_name = base["_NAME"].str.contains(re.escape(sel_course), case=False, na=False) | (base["_NAME"] == sel_course)
+        if "_CODE" in base:
+            m_code = base["_CODE"].str.contains(re.escape(sel_course), case=False, na=False) | (base["_CODE"] == sel_course)
+        mask &= (m_name | m_code)
+
+    res = base[mask].copy()
+
+    # Columnas a mostrar
+    show_cols = {
+        "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd),
+        "Profesor": col_prof_car or col_prof_fd,
+        "ID": "_ID" if "_ID" in res else col_id_fd,
+        "AREA_PROFESOR": "_AREA_PROF" if "_AREA_PROF" in res else col_area_fd,
+        "Código Materia": col_code_car,
+        "Nombre largo curso": col_name_car,
+        "Secc": col_secc_car,
+        "Area del curso": col_acar_car,
+        "Field": col_field_car,
+        "Program": col_prog_car,
+        "Créditos": col_cred_car,
+        "Campus": col_campus
+    }
+
+    # Construcción del DataFrame final en orden
+    data = {}
+    out_cols = []
+    for nice, col in show_cols.items():
+        if col in res:
+            data[nice] = res[col]
+        else:
+            data[nice] = None
+        out_cols.append(nice)
+
+    res_out = pd.DataFrame(data, columns=out_cols).copy()
+    if "Créditos" in res_out.columns:
+        res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
+
+    _download_xlsx_button(
+        res_out,
+        f"search_results_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+        key=f"dl_search_{_slugify(st.session_state.get('sel_label','sel'))}",
+        label="Descargar resultados (Excel)"
+    )
+    st.dataframe(res_out, use_container_width=True, hide_index=True)
