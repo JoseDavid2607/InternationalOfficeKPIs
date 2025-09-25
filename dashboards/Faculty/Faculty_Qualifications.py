@@ -2628,7 +2628,7 @@ if show_counts:
                 return sty
 
             with left:
-                st.markdown("**7. Participating and Supporting Faculty Counts † (required for AACSB-accredited members only)**")
+                st.markdown("**7. Participating and Supporting Faculty Counts †**")
                 _download_xlsx_button(tbl7, f"bsq_7_gender_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                                       key=f"dl_bsq7_{_slugify(st.session_state.get('sel_label','sel'))}",
                                       label="Descargar tabla 7 (Excel)")
@@ -2732,3 +2732,4 @@ if show_counts:
             _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                                   key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                                   label="Descargar datos (Excel)")
+
