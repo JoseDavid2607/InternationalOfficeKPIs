@@ -3059,14 +3059,9 @@ with left:
                                       label="Descargar (Excel)")
                 st.dataframe(out, use_container_width=True, hide_index=True)
 
-# ======================= PANEL DERECHO — BUSCADOR (Profesor / Curso) =======================
+# ======================= PANEL DERECHO — BUSCADOR (modo único; control pegado) =======================
 with right:
-    # Selector de modo de búsqueda “pegado” al título (arriba del todo)
-    search_mode = st.radio(
-        "Search mode",
-        ["Por Profesor", "Por Curso"],
-        index=0, horizontal=True, key="srch_mode_right"
-    )
+    st.markdown("**Search (current timeframe)**")
 
     # Base: Cartelera (alcance ya filtrado en df_car_filt_all)
     base = df_car_filt_all.copy()
@@ -3094,31 +3089,52 @@ with right:
         course_opts = []
     course_opts = [""] + course_opts
 
-    # Espaciador para alinear selectores hacia abajo
+    # Espaciador para empujar los controles hacia abajo (alineación inferior)
     st.markdown("<div style='min-height:140px'></div>", unsafe_allow_html=True)
 
-    # Controles (primero PROFESOR, luego CURSO)
-    s1, s2 = st.columns([1,1])
-    with s1:
-        sel_prof = st.selectbox(
+    # Callback: al cambiar el modo, limpiar el otro selector
+    def _on_mode_change():
+        mode = st.session_state.get("srch_mode_right", "Por Profesor")
+        if mode == "Por Profesor":
+            st.session_state["srch_course"] = ""
+        else:
+            st.session_state["srch_prof"] = ""
+
+    # Selector de modo pegado al buscador (debajo del espaciador)
+    search_mode = st.radio(
+        "Search mode",
+        ["Por Profesor", "Por Curso"],
+        index=0, horizontal=True, key="srch_mode_right",
+        on_change=_on_mode_change
+    )
+
+    # Controles: UNO solo y a todo el ancho, según modo
+    if search_mode == "Por Profesor":
+        st.selectbox(
             "Profesor (Nombre) o ID",
             options=prof_opts,
-            index=0,
+            index=(prof_opts.index(st.session_state.get("srch_prof",""))
+                   if st.session_state.get("srch_prof","") in prof_opts else 0),
             key="srch_prof"
         )
-    with s2:
-        sel_course = st.selectbox(
+    else:  # Por Curso
+        st.selectbox(
             "Curso (Nombre)",
             options=course_opts,
-            index=0,
+            index=(course_opts.index(st.session_state.get("srch_course",""))
+                   if st.session_state.get("srch_course","") in course_opts else 0),
             key="srch_course"
         )
 
 # ======================= RESULTADOS BUSQUEDA — FULL WIDTH (debajo; sólo si hay búsqueda) =======================
 sel_prof   = st.session_state.get("srch_prof", "")
 sel_course = st.session_state.get("srch_course", "")
+search_mode = st.session_state.get("srch_mode_right", "Por Profesor")
 
-if sel_prof or sel_course:
+# Mostrar resultados SOLO si hay valor en el control activo
+has_query = (search_mode == "Por Profesor" and bool(sel_prof)) or (search_mode == "Por Curso" and bool(sel_course))
+
+if has_query:
     base = df_car_filt_all.copy()
     if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
     if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
@@ -3131,36 +3147,24 @@ if sel_prof or sel_course:
 
     # Máscaras
     mask_all = pd.Series(True, index=base.index)
-    m_prof = pd.Series(False, index=base.index)
-    m_id   = pd.Series(False, index=base.index)
-    m_name = pd.Series(False, index=base.index)
-    m_code = pd.Series(False, index=base.index)
-
-    # PROF/ID
-    if sel_prof:
+    if search_mode == "Por Profesor" and sel_prof:
         if sel_prof.startswith("ID:"):
             qid = sel_prof.split(":",1)[1].strip()
-            if "_ID" in base:
-                m_id = base["_ID"].astype(str).str.fullmatch(re.escape(qid), case=False)
+            m = base["_ID"].astype(str).str.fullmatch(re.escape(qid), case=False) if "_ID" in base else pd.Series(False, index=base.index)
         else:
-            if "_PROF" in base:
-                m_prof = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) | (base["_PROF"] == sel_prof)
-        mask_all &= (m_prof | m_id)
+            m = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) if "_PROF" in base else pd.Series(False, index=base.index)
+        mask_all &= m
 
-    # CURSO (preferir nombre)
-    if sel_course:
-        if "_NAME" in base:
-            m_name = base["_NAME"].str.contains(re.escape(sel_course), case=False, na=False) | (base["_NAME"] == sel_course)
-        if "_CODE" in base:
-            m_code = base["_CODE"].str.contains(re.escape(sel_course), case=False, na=False) | (base["_CODE"] == sel_course)
+    if search_mode == "Por Curso" and sel_course:
+        m_name = base["_NAME"].str.contains(re.escape(sel_course), case=False, na=False) if "_NAME" in base else pd.Series(False, index=base.index)
+        m_code = base["_CODE"].str.contains(re.escape(sel_course), case=False, na=False) if "_CODE" in base else pd.Series(False, index=base.index)
         mask_all &= (m_name | m_code)
 
     res = base[mask_all].copy()
 
     # Mensajes-resumen
     periodo_txt = st.session_state.get('sel_label','Selected')
-    if sel_prof and not sel_course:
-        # Total créditos y cursos del profesor en el periodo
+    if search_mode == "Por Profesor" and sel_prof:
         if "_CRED" not in res.columns and col_cred_car:
             res["_CRED"] = pd.to_numeric(res[col_cred_car], errors="coerce").fillna(0.0)
         tot_cr = float(res.get("_CRED", pd.Series([0]*len(res))).sum())
@@ -3172,11 +3176,11 @@ if sel_prof or sel_course:
                 prof_label = profs[0]
         st.info(f"**El profesor {prof_label} ha dictado {tot_cr:,.1f} créditos con {tot_courses} cursos en {periodo_txt}.**")
 
-    if sel_course and not sel_prof:
+    if search_mode == "Por Curso" and sel_course:
         profs_cnt = res["_PROF"].nunique() if "_PROF" in res else 0
         st.info(f"**El curso {sel_course} ha sido dictado por {profs_cnt} profesor(es) en {periodo_txt}.**")
 
-    # Tabla final (sólo si hay búsqueda)
+    # Tabla final (sólo si hay búsqueda), a todo el ancho de la página (fuera de columnas)
     show_cols = {
         "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd_all),
         "Profesor": col_prof_car or col_prof_fd,
