@@ -1129,28 +1129,7 @@ def compute_header_counts_teaching(df_fd: pd.DataFrame, time_mode: str, sel_year
         "Supporting":    max(0, base["S"]  + dS),
     }
 
-# === Cabecera de totales (Faculty teaching in <periodo/timeframe>) ===
-try:
-    _tm = st.session_state.get("time_mode", "Semestral")
-    _yy = st.session_state.get("sel_year")
-    _ss = st.session_state.get("sel_sem")
-    header_counts = compute_header_counts_teaching(df_fd, _tm, _yy, _ss, SENS)
-except Exception:
-    header_counts = {"Full-time":0, "Part-time":0, "Participating":0, "Supporting":0}
 
-c0, c1, c2, c3, c4 = st.columns([2,1,1,1,1])
-with c0:
-    st.markdown(f"**Faculty teaching in {st.session_state.get('sel_label','(period)')}**")
-with c1:
-    st.metric("Full-time (P)", f"{header_counts['Full-time']}")
-with c2:
-    st.metric("Part-time (S)", f"{header_counts['Part-time']}")
-with c3:
-    st.metric("Participating (P)", f"{header_counts['Participating']}")
-with c4:
-    st.metric("Supporting (S)", f"{header_counts['Supporting']}")
-
-st.subheader(f"Faculty Sufficiency and Qualifications — {st.session_state.get('sel_label','Selected')}")
 
 # ====== NORMALIZACIÓN BASE PARA CARTELERA + EXCLUSIONES ======
 if not all([col_cred, col_tipoC, col_areaCourse]):
@@ -2288,5 +2267,6 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
