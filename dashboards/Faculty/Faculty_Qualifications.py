@@ -991,24 +991,53 @@ def style_percent_tables(df_, id_col):
 st.markdown("---")
 
 # --- helpers específicos para el cabezote ---
-def _guess_prof_col(df: pd.DataFrame) -> str | None:
-    for cand in ["Profesor", "PROFESOR", "Docente", "Nombre", "Name", "Profesor(a)"]:
-        if cand in df.columns:
-            return cand
-    # fallback por patrones
+def _guess_prof_cols(df: pd.DataFrame) -> list[str]:
+    """
+    Devuelve columnas candidatas para identificar un profesor.
+    Prioridad: Documento/ID/Email -> nombre/profesor.
+    """
+    pri = []
+    # IDs / correos
     for c in df.columns:
-        cl = str(c).lower()
+        cl = str(c).strip().lower()
+        if any(k in cl for k in ["documento", "identific", "id", "correo", "email", "mail"]):
+            pri.append(c)
+    # Nombres / profesor
+    for c in df.columns:
+        cl = str(c).strip().lower()
         if any(k in cl for k in ["prof", "docent", "nombre", "name"]):
-            return c
-    return None
+            pri.append(c)
+    # Quitar duplicados preservando orden
+    seen, out = set(), []
+    for c in pri:
+        if c not in seen:
+            out.append(c); seen.add(c)
+    # Fallback simple si nada matchea
+    if not out:
+        for cand in ["Profesor", "PROFESOR", "Docente", "Nombre", "Name", "Profesor(a)"]:
+            if cand in df.columns:
+                out.append(cand)
+                break
+    return out
+
+def _unique_prof_count(df: pd.DataFrame, cols: list[str]) -> int:
+    if df is None or df.empty:
+        return 0
+    # Construir una UID robusta a partir de las columnas disponibles
+    use = [c for c in cols if c in df.columns]
+    if not use:
+        # último recurso: filas únicas por todas las columnas visibles (puede sobre-contar)
+        return int(df.astype(str).drop_duplicates().shape[0])
+    uid = df[use].astype(str).apply(lambda s: s.str.strip()).fillna("").agg(" | ".join, axis=1)
+    return int(uid.nunique())
 
 def _filter_fd_by_timeframe(df_fd: pd.DataFrame, time_mode: str, sel_year, sel_sem) -> pd.DataFrame:
     """
     Filtra Faculty Distribution por Semestral / Anual / Intersemestral.
 
-    - Semestral:      == sel_sem (p.ej. '202520')
-    - Anual:          empieza por sel_year (incluye 10, 20 e intersemestral)
-    - Intersemestral: empieza por sel_year y contiene 'inter'
+    - Semestral:        == sel_sem (p.ej. '202520')
+    - Anual:            empieza por sel_year (incluye 10, 20 e intersemestral)
+    - Intersemestral:   == 'YYYY Intersemestral' (match tolerante a espacios y mayúsculas)
     """
     if df_fd is None or df_fd.empty:
         return df_fd.iloc[0:0]
@@ -1017,36 +1046,27 @@ def _filter_fd_by_timeframe(df_fd: pd.DataFrame, time_mode: str, sel_year, sel_s
     if not sem_col:
         return df_fd.iloc[0:0]
 
-    s = df_fd[sem_col].astype(str).str.strip()
-    time_mode = (time_mode or "Semestral").strip()
+    s = df_fd[sem_col].astype(str)
+    tm = (time_mode or "Semestral").strip()
 
-    if time_mode == "Semestral" and sel_sem:
-        m = s.eq(str(sel_sem))
+    if tm == "Semestral" and sel_sem:
+        m = s.str.strip().eq(str(sel_sem))
         return df_fd[m].copy()
 
-    if time_mode == "Anual" and sel_year is not None:
-        # incluye regular (10/20) e intersemestral del año
-        m = s.str.startswith(str(sel_year))
+    if tm == "Anual" and sel_year is not None:
+        m = s.str.strip().str.startswith(str(sel_year))
         return df_fd[m].copy()
 
-    if time_mode == "Intersemestral" and sel_year is not None:
-        m = s.str.startswith(str(sel_year)) & s.str.lower().str.contains("inter")
+    if tm == "Intersemestral" and sel_year is not None:
+        # Coincidencia EXACTA a "YYYY Intersemestral" (tolerante a espacios múltiples/caso)
+        target = f"{sel_year} intersemestral"
+        m = s.str.strip().str.casefold().eq(target)
+        # tolerancia: permitir variantes con espacios extra entre año y palabra
+        m = m | s.str.casefold().str.contains(rf"^\s*{sel_year}\s+intersemestral\s*$", regex=True)
         return df_fd[m].copy()
 
-    # fallback: sin filtro
+    # Fallback: sin filtro
     return df_fd.copy()
-
-def _count_unique_professors(df: pd.DataFrame, prof_col: str) -> int:
-    if df is None or df.empty:
-        return 0
-    if prof_col and prof_col in df.columns:
-        return int(df[prof_col].astype(str).str.strip().nunique())
-    # si no hay col de profesor, intenta con otra llave razonable
-    alt = _get_any(df, "Documento","ID","Identificación","Identificacion","Email","Correo")
-    if alt and alt in df.columns:
-        return int(df[alt].astype(str).str.strip().nunique())
-    # último recurso: filas únicas por todas las columnas visibles
-    return int(df.astype(str).drop_duplicates().shape[0])
 
 def _count_teaching_from_fd_timeaware(df_fd: pd.DataFrame, time_mode: str, sel_year, sel_sem) -> dict[str,int]:
     """
@@ -1063,7 +1083,7 @@ def _count_teaching_from_fd_timeaware(df_fd: pd.DataFrame, time_mode: str, sel_y
     if dff is None or dff.empty:
         return {"FT":0, "PT":0, "P":0, "S":0}
 
-    prof_col = _guess_prof_col(dff) or _get_any(dff, "Profesor","PROFESOR","Docente","Nombre","Name")
+    prof_cols = _guess_prof_cols(dff)
 
     # columnas de clasificación
     pc_col = _get_any(dff, "PLANTA_CATEDRA", "Planta_Catedra", "Planta/Cátedra", "PLANTA CATEDRA", "Planta/Catedra")
@@ -1075,8 +1095,8 @@ def _count_teaching_from_fd_timeaware(df_fd: pd.DataFrame, time_mode: str, sel_y
         tag = _norm_str(dff[pc_col])
         ft_df = dff[tag.eq("planta")]
         pt_df = dff[tag.isin({"catedra", "cátedra"})]
-        ft = _count_unique_professors(ft_df, prof_col)
-        pt = _count_unique_professors(pt_df, prof_col)
+        ft = _unique_prof_count(ft_df, prof_cols)
+        pt = _unique_prof_count(pt_df, prof_cols)
 
     # Participating / Supporting
     p_cnt = s_cnt = 0
@@ -1084,8 +1104,8 @@ def _count_teaching_from_fd_timeaware(df_fd: pd.DataFrame, time_mode: str, sel_y
         tps = _norm_str(dff[ps_col])
         p_df = dff[tps.eq("p")]
         s_df = dff[tps.eq("s")]
-        p_cnt = _count_unique_professors(p_df, prof_col)
-        s_cnt = _count_unique_professors(s_df, prof_col)
+        p_cnt = _unique_prof_count(p_df, prof_cols)
+        s_cnt = _unique_prof_count(s_df, prof_cols)
 
     return {"FT":ft, "PT":pt, "P":p_cnt, "S":s_cnt}
 
@@ -1120,7 +1140,6 @@ except Exception:
 
 c0, c1, c2, c3, c4 = st.columns([2,1,1,1,1])
 with c0:
-    # Usa el rótulo calculado previamente en el sidebar (ya maneja 'YYYY (Annual)' y 'YYYY Intersemestral')
     st.markdown(f"**Faculty teaching in {st.session_state.get('sel_label','(period)')}**")
 with c1:
     st.metric("Full-time (P)", f"{header_counts['Full-time']}")
@@ -2269,4 +2288,5 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
