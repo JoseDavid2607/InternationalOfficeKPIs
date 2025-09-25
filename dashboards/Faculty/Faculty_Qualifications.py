@@ -692,18 +692,19 @@ if st.session_state.get("sens_mode", False):
 SENS = {"on": bool(st.session_state.get("sens_mode", False)), "ops": st.session_state.get("sens_ops", [])}
 
 # ================== RELEVANT COLUMNS ==================
-col_ps_fd = _get_any(df_fd_f, "P/S", "P - S", "Participating/Supporting")
+col_ps_fd   = _get_any(df_fd_f, "P/S", "P - S", "Participating/Supporting")
 col_area_fd = _get_any(df_fd_f, "AREA_PROFESOR", "Area_Profesor", "Area Profesor", "Área", "Area")
 col_tipo_fd = _get_any(df_fd_f, "TIPO", "Tipo", "Ranking", "Tipo Ranking")
 
-col_cred = _get_any(df_car, "Créditos", "Creditos", "Credits")
-col_tipoC = _get_any(df_car, "TIPO", "Tipo", "Tipo Ranking")
+col_cred       = _get_any(df_car, "Créditos", "Creditos", "Credits")
+col_tipoC      = _get_any(df_car, "TIPO", "Tipo", "Tipo Ranking")
 col_areaCourse = _get_any(df_car, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
-col_prof = _get_any(df_car, "Profesor","PROFESOR","Docente")
-col_code = _get_any(df_car, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
-col_name = _get_any(df_car, "Nombre largo curso","Nombre Curso","Nombre del curso","Course Name")
-col_field = _get_any(df_car, "Field","FIELD","Campo","Área de conocimiento")
-col_prog = _get_any(df_car, "Program","PROGRAM","program","Materia")
+col_prof       = _get_any(df_car, "Profesor","PROFESOR","Docente")
+col_code       = _get_any(df_car, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
+col_name       = _get_any(df_car, "Nombre largo curso","Nombre Curso","Nombre del curso","Course Name")
+col_field      = _get_any(df_car, "Field","FIELD","Campo","Área de conocimiento")
+col_prog       = _get_any(df_car, "Program","PROGRAM","program","Materia")
+col_ps_C       = _get_any(df_car, "P/S", "P - S", "Participating/Supporting")  # ← clave para PS en Cartelera
 
 # ---------- Stylers ----------
 def style_percent_tables(df_, id_col):
