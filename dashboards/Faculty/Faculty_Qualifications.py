@@ -1304,21 +1304,25 @@ else:
                     # Heatmap en la columna de impacto (usando __v__)
                     if show_impact:
                         overall_mode = (scope_label == "Overall")
+                        # quitar columnas técnicas antes de estilizar
+                        vis = need_tbl.drop(columns=["__v__", "__overall__"], errors="ignore")
+                        # armamos un df auxiliar solo con etiqueta e impacto numérico para el heatmap
+                        aux = pd.DataFrame({"Academic Area": need_tbl["Academic Area"], "Impact (±3cr) [p.p.]": pd.to_numeric(need_tbl["__v__"], errors="coerce")})
                         styled_need = (
-                            need_tbl.assign(**{"Impact (±3cr) [p.p.]": need_tbl["Impact (±3cr) [p.p.]"]})
-                            .style.hide(axis="index")
-                            .apply(
-                                lambda d: _style_impact_heatmap(
-                                    pd.DataFrame({label_name: need_tbl[label_name], "Impact (±3cr) [p.p.]": need_tbl["__v__"]}),
-                                    label_col=label_name, value_col="Impact (±3cr) [p.p.]", overall_mode=overall_mode
+                            vis.style
+                            .hide(axis="index")
+                            .apply(lambda _:
+                                _style_impact_heatmap(
+                                    aux, label_col="Academic Area",
+                                    value_col="Impact (±3cr) [p.p.]", overall_mode=overall_mode
                                 ),
                                 axis=None
                             )
-                            .hide_columns(["__v__", "__overall__"])
                         )
                         st.markdown(f"<div class='scroll-wrap-400'>{styled_need.to_html(escape=False)}</div>", unsafe_allow_html=True)
                     else:
-                        st.dataframe(need_tbl.drop(columns=["__v__","__overall__"]), use_container_width=True, hide_index=True)
+                        st.dataframe(need_tbl.drop(columns=["__v__","__overall__"], errors="ignore"),
+                                     use_container_width=True, hide_index=True)
 
             # ========== Series históricas ==========
             df_hist = df_car_global.copy()
@@ -1546,17 +1550,23 @@ else:
                     )
 
                     if show_impact_f:
+                        vis = need_tbl_f.drop(columns=["__v__","__overall__"], errors="ignore")
+                        aux = pd.DataFrame({"Field": need_tbl_f["Field"], "Impact (±3cr) [p.p.]": pd.to_numeric(need_tbl_f["__v__"], errors="coerce")})
                         styled_need_f = (
-                            need_tbl_f.style.hide(axis="index")
-                            .apply(lambda d: _style_impact_heatmap(
-                                pd.DataFrame({"Field": need_tbl_f["Field"], "Impact (±3cr) [p.p.]": need_tbl_f["__v__"]}),
-                                label_col="Field", value_col="Impact (±3cr) [p.p.]", overall_mode=(scope_label_f=="Overall")
-                            ), axis=None)
-                            .hide_columns(["__v__","__overall__"])
+                            vis.style
+                            .hide(axis="index")
+                            .apply(lambda _:
+                                _style_impact_heatmap(
+                                    aux, label_col="Field",
+                                    value_col="Impact (±3cr) [p.p.]", overall_mode=(scope_label_f=="Overall")
+                                ),
+                                axis=None
+                            )
                         )
                         st.markdown(f"<div class='scroll-wrap-400'>{styled_need_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
                     else:
-                        st.dataframe(need_tbl_f.drop(columns=["__v__","__overall__"]), use_container_width=True, hide_index=True)
+                        st.dataframe(need_tbl_f.drop(columns=["__v__","__overall__"], errors="ignore"),
+                                     use_container_width=True, hide_index=True)
 
             # Históricos Field
             df_hist_f = df_car_global.copy()
@@ -1791,17 +1801,23 @@ else:
                     )
 
                     if show_impact_p:
+                        vis = need_tbl_p.drop(columns=["__v__","__overall__"], errors="ignore")
+                        aux = pd.DataFrame({"Program": need_tbl_p["Program"], "Impact (±3cr) [p.p.]": pd.to_numeric(need_tbl_p["__v__"], errors="coerce")})
                         styled_need_p = (
-                            need_tbl_p.style.hide(axis="index")
-                            .apply(lambda d: _style_impact_heatmap(
-                                pd.DataFrame({"Program": need_tbl_p["Program"], "Impact (±3cr) [p.p.]": need_tbl_p["__v__"]}),
-                                label_col="Program", value_col="Impact (±3cr) [p.p.]", overall_mode=(scope_label_p=="Overall")
-                            ), axis=None)
-                            .hide_columns(["__v__","__overall__"])
+                            vis.style
+                            .hide(axis="index")
+                            .apply(lambda _:
+                                _style_impact_heatmap(
+                                    aux, label_col="Program",
+                                    value_col="Impact (±3cr) [p.p.]", overall_mode=(scope_label_p=="Overall")
+                                ),
+                                axis=None
+                            )
                         )
                         st.markdown(f"<div class='scroll-wrap-400'>{styled_need_p.to_html(escape=False)}</div>", unsafe_allow_html=True)
                     else:
-                        st.dataframe(need_tbl_p.drop(columns=["__v__","__overall__"]), use_container_width=True, hide_index=True)
+                        st.dataframe(need_tbl_p.drop(columns=["__v__","__overall__"], errors="ignore"),
+                                     use_container_width=True, hide_index=True)
         
             # ====== Series históricas por Program ======
             df_hist = df_car_global.copy()
@@ -2196,6 +2212,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
