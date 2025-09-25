@@ -2125,19 +2125,31 @@ try:
                                   label="⬇️ Descargar tabla (Excel)")
             st.dataframe(tbl_out.style.format("{:,.0f}"), use_container_width=True)
 
-            # ===== Línea de evolución de créditos: Qualifications <-> P/S =====
-            # (bloque sin try "huérfanos")
+            # ===== Selector propio de dimensión (independiente del gráfico superior) =====
+            # Construye lista de miembros visibles en esta tabla
+            members = [str(x) for x in tbl.index.tolist() if str(x) != "TOTAL"]
+            members_sorted = sorted(set(members))
+            dim_options = ["(All)", "(TOTAL)"] + members_sorted
+            dim_opt = st.selectbox(
+                f"Select {dim_label} for the evolution lines",
+                dim_options,
+                index=1,  # por defecto "(TOTAL)"
+                key=f"credit_dim_selector_{dim_col}"
+            )
+            # Nota: para evitar 5×N líneas, si eligen "(All)" mostramos TOTAL
+            if dim_opt == "(All)":
+                dim_opt_eff = "(TOTAL)"
+                st.caption("Showing TOTAL for readability when '(All)' is selected.")
+            else:
+                dim_opt_eff = dim_opt
+
+            # ===== Toggle de series: Qualifications ↔ P/S =====
             mode_line = st.radio(
                 "Series to show",
                 ["Qualifications", "P/S"],
                 horizontal=True,
                 key=f"credit_line_mode_{dim_col}"
             )
-
-            # --- selección conectada al 1er gráfico (filtro) ---
-            filter_key = f"{dim_col}_filter"      # "_AREA_filter", "_FIELD_filter" o "_PROG_filter"
-            selected_member = st.session_state.get(filter_key, "(TOTAL)")
-            apply_filter = (selected_member not in (None, "(TOTAL)", "(All)"))
 
             # --- histórico base normalizado ---
             df_hist = df_car_global.copy()
@@ -2159,9 +2171,9 @@ try:
             if dim_col == "_PROG" and "_PROG" not in df_hist.columns and col_prog:
                 df_hist["_PROG"] = df_hist[col_prog].astype(str).str.strip()
 
-            # filtro por miembro
-            if apply_filter and dim_col in df_hist.columns:
-                df_hist = df_hist[df_hist[dim_col].astype(str).str.strip() == str(selected_member)]
+            # filtro por miembro elegido en este selector
+            if dim_opt_eff != "(TOTAL)" and dim_col in df_hist.columns:
+                df_hist = df_hist[df_hist[dim_col].astype(str).str.strip() == str(dim_opt_eff)]
 
             # --- agregaciones base ---
             cats_qual = ["SA","PA","SP","IP","OTHER"]
@@ -2202,7 +2214,7 @@ try:
             plot_qual = adapt_time_sum(agg_tipo, cats_qual)
             plot_ps   = adapt_time_sum(agg_ps, ["P","S"])
 
-            # --- eje X consistente con otras gráficas ---
+            # --- eje X consistente ---
             def build_axis(df_x: pd.DataFrame) -> tuple[list, dict]:
                 if tm == "Semestral":
                     x_labels = sorted(
@@ -2288,9 +2300,9 @@ try:
                 tickvals = list(range(len(x_labels_q)))
                 ticktext = [str(x) for x in x_labels_q]
                 fig.update_layout(
-                    title="Evolution of Credits — Qualifications",
-                    margin=dict(l=10,r=10,t=40,b=10),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                    title=f"Evolution of Credits — Qualifications ({dim_opt_eff})",
+                    margin=dict(l=10,r=10,t=40,b=60),
+                    legend=dict(orientation="h", y=-0.2, yanchor="top", x=0.5, xanchor="center"),
                 )
                 fig.update_xaxes(title=None, tickmode="array", tickvals=tickvals, ticktext=ticktext)
                 fig.update_yaxes(title="Credits", rangemode="tozero")
@@ -2307,7 +2319,7 @@ try:
                     name="P",
                     line=dict(width=2, color=COL_P),
                     marker=dict(size=6, color=COL_P),
-                    hovertemplate="P<br>%{y:.0f}} cr<extra></extra>"
+                    hovertemplate="P<br>%{y:.0f} cr<extra></extra>"
                 ))
                 fig2.add_trace(go.Scatter(
                     x=plot_ps["_xi"], y=plot_ps["S"],
@@ -2315,7 +2327,7 @@ try:
                     name="S",
                     line=dict(width=2, color=COL_S),
                     marker=dict(size=6, color=COL_S),
-                    hovertemplate="S<br>%{y:.0f}} cr<extra></extra>"
+                    hovertemplate="S<br>%{y:.0f} cr<extra></extra>"
                 ))
 
                 sel_x2 = x_map_ps.get(str(sel_label_exact)) if (sel_label_exact is not None) else None
@@ -2325,9 +2337,9 @@ try:
                 tickvals2 = list(range(len(x_labels_ps)))
                 ticktext2 = [str(x) for x in x_labels_ps]
                 fig2.update_layout(
-                    title="Evolution of Credits — P/S",
-                    margin=dict(l=10,r=10,t=40,b=10),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                    title=f"Evolution of Credits — P/S ({dim_opt_eff})",
+                    margin=dict(l=10,r=10,t=40,b=60),
+                    legend=dict(orientation="h", y=-0.2, yanchor="top", x=0.5, xanchor="center"),
                 )
                 fig2.update_xaxes(title=None, tickmode="array", tickvals=tickvals2, ticktext=ticktext2)
                 fig2.update_yaxes(title="Credits", rangemode="tozero")
@@ -2579,6 +2591,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
