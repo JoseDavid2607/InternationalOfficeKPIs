@@ -2124,8 +2124,226 @@ try:
                                   key=f"dl_credit_sums_{_slugify(dim_label)}_{_slugify(display_label)}",
                                   label="⬇️ Descargar tabla (Excel)")
             st.dataframe(tbl_out.style.format("{:,.0f}"), use_container_width=True)
-except Exception:
-    pass
+            # ===== Línea de evolución de créditos: Qualifications <-> P/S =====
+            try:
+                mode_line = st.radio(
+                    "Series to show",
+                    ["Qualifications", "P/S"],
+                    horizontal=True,
+                    key=f"credit_line_mode_{dim_col}"
+                )
+
+                # --- 1) Selección en 1a gráfica (conecta por clave "_AREA/_FIELD/_PROG"_filter) ---
+                filter_key = f"{dim_col}_filter"      # "_AREA_filter", "_FIELD_filter" o "_PROG_filter"
+                selected_member = st.session_state.get(filter_key, "(TOTAL)")
+                apply_filter = (selected_member not in (None, "(TOTAL)", "(All)"))
+
+                # --- 2) Histórico base (cartelera normalizada) ---
+                df_hist = df_car_global.copy()
+
+                # Normalizaciones defensivas
+                if "_CRED" not in df_hist.columns and col_cred:
+                    df_hist["_CRED"] = pd.to_numeric(df_hist[col_cred], errors="coerce").fillna(0.0)
+                if "_TIPO" not in df_hist.columns and col_tipoC:
+                    df_hist["_TIPO"] = _norm_str(df_hist[col_tipoC]).map(normalize_tipo)
+                if "_PS" not in df_hist.columns and col_ps_C:
+                    df_hist["_PS"] = _norm_str(df_hist[col_ps_C]).map(normalize_ps)
+                if "_SEM" not in df_hist.columns:
+                    sc = _get_any(df_hist, "Semestre","Periodo","Periodo Académico","Periodo academico")
+                    df_hist["_SEM"] = df_hist[sc].astype(str).str.strip() if sc else ""
+
+                # Añadir columnas de dimensión si hicieran falta
+                if dim_col == "_AREA" and "_AREA" not in df_hist.columns and col_areaCourse:
+                    df_hist["_AREA"] = df_hist[col_areaCourse].astype(str).str.strip()
+                if dim_col == "_FIELD" and "_FIELD" not in df_hist.columns and col_field:
+                    df_hist["_FIELD"] = df_hist[col_field].astype(str).str.strip()
+                if dim_col == "_PROG" and "_PROG" not in df_hist.columns and col_prog:
+                    df_hist["_PROG"] = df_hist[col_prog].astype(str).str.strip()
+
+                # Filtro por miembro (si aplica)
+                if apply_filter and dim_col in df_hist.columns:
+                    df_hist = df_hist[df_hist[dim_col].astype(str).str.strip() == str(selected_member)]
+
+                # --- 3) Agregaciones base ---
+                cats_qual = ["SA","PA","SP","IP","OTHER"]
+
+                # Qualifications (por _SEM, _TIPO)
+                agg_tipo = (
+                    df_hist.groupby(["_SEM","_TIPO"], dropna=False)["_CRED"]
+                    .sum().unstack(fill_value=0.0)
+                )
+                for k in cats_qual:
+                    if k not in agg_tipo.columns:
+                        agg_tipo[k] = 0.0
+                agg_tipo = agg_tipo[cats_qual].reset_index()
+
+                # P/S (por _SEM, _PS)
+                agg_ps = (
+                    df_hist.groupby(["_SEM","_PS"], dropna=False)["_CRED"]
+                    .sum().unstack(fill_value=0.0)
+                )
+                for k in ["P","S"]:
+                    if k not in agg_ps.columns:
+                        agg_ps[k] = 0.0
+                agg_ps = agg_ps[["P","S"]].reset_index()
+
+                # --- 4) Adaptar a modo temporal (sumas) ---
+                tm = st.session_state.get("time_mode", "Semestral")
+                def adapt_time_sum(df_in: pd.DataFrame, value_cols: list[str]) -> pd.DataFrame:
+                    tmp = df_in.copy()
+                    tmp["_YEAR"] = tmp["_SEM"].map(extract_year_from_period)
+                    tmp["_INTER_LABEL"] = tmp["_SEM"].map(lambda s: f"{extract_year_from_period(s)} Intersemestral" if "inter" in str(s).lower() else None)
+                    if tm == "Semestral":
+                        out = tmp.rename(columns={"_SEM":"_X"})
+                    elif tm == "Anual":
+                        out = tmp.groupby("_YEAR", dropna=False)[value_cols].sum().reset_index().rename(columns={"_YEAR":"_X"})
+                    else:
+                        inter_only = tmp[~tmp["_INTER_LABEL"].isna()].copy()
+                        out = inter_only.groupby("_INTER_LABEL", dropna=False)[value_cols].sum().reset_index().rename(columns={"_INTER_LABEL":"_X"})
+                    return out
+
+                plot_qual = adapt_time_sum(agg_tipo, cats_qual)
+                plot_ps   = adapt_time_sum(agg_ps, ["P","S"])
+
+                # Ordenar eje X con el mismo criterio del resto de gráficas
+                def build_axis(df_x: pd.DataFrame) -> tuple[list, dict]:
+                    if tm == "Semestral":
+                        x_labels = sorted(
+                            {x for x in df_x["_X"].dropna().astype(str) if period_suffix(x) in {"10","20"}},
+                            key=_period_sort_key
+                        )
+                    elif tm == "Anual":
+                        x_labels = sorted({int(x) for x in df_x["_X"].dropna()}, key=int)
+                    else:
+                        x_labels = sorted(
+                            df_x["_X"].dropna().astype(str).unique().tolist(),
+                            key=lambda s: int(str(s).split()[0]) if str(s).split() else 0
+                        )
+                    x_map = {lab: i for i, lab in enumerate(x_labels)}
+                    return x_labels, x_map
+
+                x_labels_q, x_map_q = build_axis(plot_qual)
+                x_labels_ps, x_map_ps = build_axis(plot_ps)
+
+                plot_qual["_xi"] = plot_qual["_X"].map(x_map_q)
+                plot_ps["_xi"]   = plot_ps["_X"].map(x_map_ps)
+                plot_qual = plot_qual.sort_values("_xi")
+                plot_ps   = plot_ps.sort_values("_xi")
+
+                # --- 5) Sensibilidad SOLO al período seleccionado (reutilizando helper existente) ---
+                sel_label_exact = None
+                if tm == "Semestral":
+                    sel_sem = st.session_state.get("sel_sem")
+                    sel_label_exact = str(sel_sem) if sel_sem else None
+                elif tm == "Anual":
+                    sel_year = st.session_state.get("sel_year")
+                    sel_label_exact = sel_year
+                else:
+                    sel_year = st.session_state.get("sel_inter_year")
+                    sel_label_exact = f"{sel_year} Intersemestral" if sel_year else None
+
+                if SENS.get("on") and SENS.get("ops") and sel_label_exact is not None:
+                    # Para Qualifications
+                    sens_tipo = plot_qual[["_X"] + cats_qual].rename(columns={"_X":"_SEM"}).copy()
+                    dummy_ps = pd.DataFrame({"_SEM": sens_tipo["_SEM"]})
+                    dummy_tot = sens_tipo.copy()
+                    sens_tipo2, _A, _B, _C = apply_sensitivity_to_history(
+                        agg_ps_tm=dummy_ps, agg_tipo_tm=sens_tipo,
+                        tot_ps_tm=dummy_ps.copy(), tot_tipo_tm=dummy_tot,
+                        level_name="_SEM", sel_label_value=sel_label_exact,
+                        ops=SENS["ops"], member_all_label="All"
+                    )
+                    plot_qual[cats_qual] = sens_tipo2[cats_qual].values
+
+                    # Para P/S
+                    sens_ps = plot_ps[["_X","P","S"]].rename(columns={"_X":"_SEM"}).copy()
+                    dummy_tipo = pd.DataFrame({"_SEM": sens_ps["_SEM"], "SA":0.0,"PA":0.0,"SP":0.0,"IP":0.0,"OTHER":0.0})
+                    sens_ps2, _tq, _tps, _ttq = apply_sensitivity_to_history(
+                        agg_ps_tm=sens_ps, agg_tipo_tm=dummy_tipo,
+                        tot_ps_tm=sens_ps.copy(), tot_tipo_tm=dummy_tipo.copy(),
+                        level_name="_SEM", sel_label_value=sel_label_exact,
+                        ops=SENS["ops"], member_all_label="All"
+                    )
+                    plot_ps[["P","S"]] = sens_ps2[["P","S"]].values
+
+                # --- 6) Dibujar según modo seleccionado ---
+                if mode_line == "Qualifications":
+                    COL_SA = "#1FA89B"  # Pid.: azul menta verdoso
+                    COL_PA = "#6BBF59"  # verde apagado
+                    COL_SP = "#6C8CA1"  # azul grisoso
+                    COL_IP = "#9E9E9E"  # gris
+                    COL_OT = "#F5A3A3"  # rojo claro
+                    cmap = {"SA":COL_SA, "PA":COL_PA, "SP":COL_SP, "IP":COL_IP, "OTHER":COL_OT}
+
+                    fig = go.Figure()
+                    for k in cats_qual:
+                        if k in plot_qual.columns:
+                            fig.add_trace(go.Scatter(
+                                x=plot_qual["_xi"], y=plot_qual[k],
+                                mode="lines+markers",
+                                name=k,
+                                line=dict(width=2, color=cmap[k]),
+                                marker=dict(size=6, color=cmap[k]),
+                                hovertemplate=f"{k}<br>%{{y:.0f}} cr<extra></extra>"
+                            ))
+
+                    # Franja azul del período seleccionado
+                    sel_x = x_map_q.get(str(sel_label_exact)) if (sel_label_exact is not None) else None
+                    if sel_x is not None:
+                        fig.add_vrect(x0=sel_x-0.5, x1=sel_x+0.5, fillcolor="#E8FAF7", opacity=0.5, layer="below", line_width=0)
+
+                    tickvals = list(range(len(x_labels_q)))
+                    ticktext = [str(x) for x in x_labels_q]
+                    fig.update_layout(
+                        title="Evolution of Credits — Qualifications",
+                        margin=dict(l=10,r=10,t=40,b=10),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                    )
+                    fig.update_xaxes(title=None, tickmode="array", tickvals=tickvals, ticktext=ticktext)
+                    fig.update_yaxes(title="Credits", rangemode="tozero")
+                    st.plotly_chart(fig, use_container_width=True)
+
+                else:  # "P/S"
+                    COL_P = "#1FA89B"  # verde menta (P)
+                    COL_S = "#9E9E9E"  # gris (S)
+
+                    fig2 = go.Figure()
+                    fig2.add_trace(go.Scatter(
+                        x=plot_ps["_xi"], y=plot_ps["P"],
+                        mode="lines+markers",
+                        name="P",
+                        line=dict(width=2, color=COL_P),
+                        marker=dict(size=6, color=COL_P),
+                        hovertemplate="P<br>%{y:.0f} cr<extra></extra>"
+                    ))
+                    fig2.add_trace(go.Scatter(
+                        x=plot_ps["_xi"], y=plot_ps["S"],
+                        mode="lines+markers",
+                        name="S",
+                        line=dict(width=2, color=COL_S),
+                        marker=dict(size=6, color=COL_S),
+                        hovertemplate="S<br>%{y:.0f} cr<extra></extra>"
+                    ))
+
+                    # Franja azul del período seleccionado
+                    sel_x2 = x_map_ps.get(str(sel_label_exact)) if (sel_label_exact is not None) else None
+                    if sel_x2 is not None:
+                        fig2.add_vrect(x0=sel_x2-0.5, x1=sel_x2+0.5, fillcolor="#E8FAF7", opacity=0.5, layer="below", line_width=0)
+
+                    tickvals2 = list(range(len(x_labels_ps)))
+                    ticktext2 = [str(x) for x in x_labels_ps]
+                    fig2.update_layout(
+                        title="Evolution of Credits — P/S",
+                        margin=dict(l=10,r=10,t=40,b=10),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                    )
+                    fig2.update_xaxes(title=None, tickmode="array", tickvals=tickvals2, ticktext=ticktext2)
+                    fig2.update_yaxes(title="Credits", rangemode="tozero")
+                    st.plotly_chart(fig2, use_container_width=True)
+
+            except Exception:
+                pass
+
 
 # --------------------------
 # DETAIL TABLE + DONUT + SEARCH
@@ -2369,6 +2587,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
