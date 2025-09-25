@@ -1009,6 +1009,13 @@ def _count_teaching_from_fd(df_fd: pd.DataFrame, sel_sem) -> dict[str,int]:
     if dff.empty:
         return {"FT":0, "PT":0, "P":0, "S":0}
 
+    # Try to guess the professor column by common names
+    def _guess_prof_col(df):
+        for cand in ["Profesor", "PROFESOR", "Docente", "Nombre", "Name"]:
+            if cand in df.columns:
+                return cand
+        return None
+
     prof_col = _guess_prof_col(dff) or _get_any(dff, "Profesor","PROFESOR","Docente","Nombre","Name")
     def _uniq_cnt(x: pd.DataFrame) -> int:
         if not prof_col:
@@ -2211,12 +2218,3 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
-
-
-
-
-
-
-
-
-
