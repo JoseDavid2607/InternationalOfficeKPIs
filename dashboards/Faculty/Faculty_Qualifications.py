@@ -945,7 +945,7 @@ with st.sidebar:
 df_car_base = df_car.copy()
 base = df_fd.copy()
 df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
-f = filter_df_fd(df_fd_base, time_mode, sel_year, sel_sem)
+f = filter_df_fd(df_fd, time_mode, sel_year, sel_sem)
 
 if 'dl_bd_placeholder' in locals():
     safe = _sanitize_for_export(df_car_filt_all)
@@ -3066,6 +3066,7 @@ with right:
 
     # Base: Cartelera (periodo ya filtrado en df_car_filt_all)
     base = df_car_filt_all.copy()
+    col_prof_car = _get_any(df_car_filt_all, "Profesor","PROFESOR","Docente")
     if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
     if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
     if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
