@@ -64,17 +64,8 @@ def load_cartelera():
     df.columns = df.columns.str.strip()
     return df
 
-# NUEVO: hoja de planta para KPI Full-time
-@st.cache_data(ttl=0)
-def load_planta():
-    xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
-    df = pd.read_excel(xls, sheet_name="BD PLANTA 2020-2025")
-    df.columns = df.columns.str.strip()
-    return df
-
 df_fd  = load_faculty_distribution()
 df_car = load_cartelera()
-df_pl  = load_planta()
 
 # ------------------------ CONSTANTS & HELPERS ------------------------
 MINT = "#1FA89B"
@@ -999,80 +990,88 @@ def style_percent_tables(df_, id_col):
 # ================== PRINCIPAL ==================
 st.markdown("---")
 
-# === KPIs header (Full-time / Part-time / P / S) ===
-def compute_header_kpis(df_planta: pd.DataFrame, df_fd_f: pd.DataFrame, time_mode: str, sel_year, sel_sem, sens_ops: list) -> dict:
-    # Full-time: únicos en hoja BD PLANTA 2020-2025 por "Periodo"
-    per_col = _get_any(df_planta, "Periodo", "PERIODO", "Semestre", "Periodo Académico")
-    df_pl_filt = df_planta.copy()
-    if per_col:
-        m = mask_timeframe(df_pl_filt[per_col].astype(str), time_mode, sel_year, sel_sem)
-        df_pl_filt = df_pl_filt[m].copy()
-    ft = 0
-    prof_cols = ["Profesor","PROFESOR","Docente","Nombre"]
-    for c in prof_cols:
-        rc = _get_any(df_pl_filt, c)
-        if rc:
-            ft = int(df_pl_filt[rc].astype(str).str.strip().nunique())
-            break
+def _count_teaching_from_fd(df_fd: pd.DataFrame, sel_sem) -> dict[str,int]:
+    """
+    Cuenta profesores únicos que están dictando en el periodo `sel_sem` en Faculty Distribution:
+      - Full-time:   PLANTA_CATEDRA == 'PLANTA'
+      - Part-time:   PLANTA_CATEDRA == 'CÁTEDRA' (o 'CATEDRA')
+      - Participating (P): P/S == 'P'
+      - Supporting   (S): P/S == 'S'
+    """
+    if sel_sem is None or df_fd is None or df_fd.empty:
+        return {"FT":0, "PT":0, "P":0, "S":0}
 
-    # Part-time / P / S en Faculty Distribution (ya filtrada df_fd_f)
-    col_pc = _get_any(df_fd_f, "PLANTA_CATEDRA", "Planta_Catedra", "Planta/Cátedra")
-    col_ps = _get_any(df_fd_f, "P/S", "P - S", "Participating/Supporting")
-    # Part-time = CÁTEDRA
-    if col_pc:
-        df_pt = df_fd_f[_norm_str(df_fd_f[col_pc]).eq("cátedra") | _norm_str(df_fd_f[col_pc]).eq("catedra")]
-    else:
-        df_pt = df_fd_f.iloc[0:0]
+    sem_col = _get_any(df_fd, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
+    if not sem_col:
+        return {"FT":0, "PT":0, "P":0, "S":0}
 
-    def _unique_cnt(df):
-        for c in prof_cols:
-            rc = _get_any(df, c)
-            if rc:
-                return int(df[rc].astype(str).str.strip().nunique())
-        return int(len(df))
+    dff = df_fd[df_fd[sem_col].astype(str).str.strip().eq(str(sel_sem))].copy()
+    if dff.empty:
+        return {"FT":0, "PT":0, "P":0, "S":0}
 
-    pt = _unique_cnt(df_pt)
+    prof_col = _guess_prof_col(dff) or _get_any(dff, "Profesor","PROFESOR","Docente","Nombre","Name")
+    def _uniq_cnt(x: pd.DataFrame) -> int:
+        if not prof_col:
+            return int(len(x.drop_duplicates()))
+        return int(x[prof_col].astype(str).str.strip().nunique())
 
-    if col_ps:
-        dfP = df_fd_f[_norm_str(df_fd_f[col_ps]).eq("p")]
-        dfS = df_fd_f[_norm_str(df_fd_f[col_ps]).eq("s")]
-    else:
-        dfP = df_fd_f.iloc[0:0]; dfS = df_fd_f.iloc[0:0]
+    # PLANTA / CÁTEDRA
+    pc_col = _get_any(dff, "PLANTA_CATEDRA", "Planta_Catedra", "Planta/Cátedra", "PLANTA CATEDRA")
+    ft = pt = 0
+    if pc_col:
+        tag_pc = _norm_str(dff[pc_col])
+        ft = _uniq_cnt(dff[tag_pc.eq("planta")])
+        pt = _uniq_cnt(dff[tag_pc.isin({"catedra","cátedra"})])
 
-    nP = _unique_cnt(dfP)
-    nS = _unique_cnt(dfS)
+    # P / S
+    ps_col = _get_any(dff, "P/S", "P - S", "Participating/Supporting", "P S")
+    p_cnt = s_cnt = 0
+    if ps_col:
+        tag_ps = _norm_str(dff[ps_col])
+        p_cnt = _uniq_cnt(dff[tag_ps.eq("p")])
+        s_cnt = _uniq_cnt(dff[tag_ps.eq("s")])
 
-    # Sensibilidad: PS (+/-)
+    return {"FT":ft, "PT":pt, "P":p_cnt, "S":s_cnt}
+
+
+def compute_header_counts_teaching(df_fd: pd.DataFrame, sel_sem, sens: dict) -> dict:
+    base = _count_teaching_from_fd(df_fd, sel_sem)
+
+    # Sensibilidad: +P suma a Full-time y Participating; +S suma a Part-time y Supporting
     dP = dS = 0
-    for op in sens_ops or []:
-        if op.get("scope") == "PS":
-            if op.get("cat") == "P":
-                dP += int(op.get("count", 0))
-            elif op.get("cat") == "S":
-                dS += int(op.get("count", 0))
+    if sens.get("on") and sens.get("ops"):
+        for op in sens["ops"]:
+            if op.get("scope") == "PS":
+                if op.get("cat") == "P":
+                    dP += int(op.get("count", 0))
+                elif op.get("cat") == "S":
+                    dS += int(op.get("count", 0))
 
     return {
-        "FT": max(0, ft + dP),           # +P impacta FT
-        "PT": max(0, pt + dS),           # +S impacta PT
-        "P":  max(0, nP + dP),
-        "S":  max(0, nS + dS),
+        "Full-time":    max(0, base["FT"] + dP),
+        "Part-time":    max(0, base["PT"] + dS),
+        "Participating":max(0, base["P"]  + dP),
+        "Supporting":   max(0, base["S"]  + dS),
     }
 
-try:
-    kpis = compute_header_kpis(
-        df_planta=df_pl,
-        df_fd_f=df_fd_f,
-        time_mode=time_mode, sel_year=sel_year, sel_sem=sel_sem,
-        sens_ops=SENS["ops"] if SENS["on"] else []
-    )
-except Exception:
-    kpis = {"FT":0, "PT":0, "P":0, "S":0}
 
-c1, c2, c3, c4 = st.columns(4)
-with c1: st.metric("Full-time",         kpis["FT"])
-with c2: st.metric("Part-time",         kpis["PT"])
-with c3: st.metric("Participating (P)", kpis["P"])
-with c4: st.metric("Supporting (S)",    kpis["S"])
+# === Cabecera de totales (solo Faculty teaching in <periodo>) ===
+try:
+    header_counts = compute_header_counts_teaching(df_fd, sel_sem, SENS)
+except Exception:
+    header_counts = {"Full-time":0, "Part-time":0, "Participating":0, "Supporting":0}
+
+c0, c1, c2, c3, c4 = st.columns([2,1,1,1,1])
+with c0:
+    st.markdown(f"**Faculty teaching in {st.session_state.get('sel_label','(period)')}**")
+with c1:
+    st.metric("Full-time (P)", f"{header_counts['Full-time']}")
+with c2:
+    st.metric("Part-time (S)", f"{header_counts['Part-time']}")
+with c3:
+    st.metric("Participating (P)", f"{header_counts['Participating']}")
+with c4:
+    st.metric("Supporting (S)", f"{header_counts['Supporting']}")
 
 st.subheader(f"Faculty Sufficiency and Qualifications — {st.session_state.get('sel_label','Selected')}")
 
@@ -2212,6 +2211,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
