@@ -1168,16 +1168,14 @@ def _style_impact_heatmap(df: pd.DataFrame, id_col: str):
         # (cuanto mayor el impacto, más "caliente")
         def color_for(val_abs: float) -> str:
             z = (val_abs - vmin) / rng  # 0..1  (0 = menor impacto, 1 = mayor impacto)
-            if z >= 0.90:
-                return "#1FA89B"  # verde fuerte (máximo impacto)
-            elif z >= 0.66:
+            if z >= 0.60:
                 return "#D9F2D9"  # verde claro
-            elif z >= 0.33:
+            elif z >= 0.40:
                 return "#FFF6B3"  # amarillo
-            elif z >= 0.10:
+            elif z >= 0.20:
                 return "#FFD6A6"  # naranja
             else:
-                return "#F5B5B5"  # rojo (mínimo impacto)
+                return "#F5B5B5"  # rojo
 
         # Aplica la paleta a TODAS las columnas de impacto (según la misma escala)
         for c in impact_cols:
@@ -2371,6 +2369,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
