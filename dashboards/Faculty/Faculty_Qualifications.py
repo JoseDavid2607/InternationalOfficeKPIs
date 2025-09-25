@@ -388,6 +388,47 @@ def _impact_pp_overall_if_area_changes(obj: str, totals: dict[str,float], credit
     down = ((max(0.0, OT - credits_each)) / max(eps, denQ - credits_each) - (OT / denQ)) * 100.0 if denQ > credits_each else 0.0
     return (round(up,2), round(down,2))
 
+def _compute_header_counts_from_fil(fil: pd.DataFrame, sens: dict, credits_each_default: float = 3.0) -> dict:
+    """
+    Devuelve dict con totales de Planta, Part-time, Participating y Supporting
+    (en número de profesores), afectando por sensibilidad si está activa.
+    """
+    if fil.empty:
+        base_P_cred = 0.0
+        base_S_cred = 0.0
+    else:
+        if "_PS" not in fil.columns:
+            base_P_cred = 0.0
+            base_S_cred = 0.0
+        else:
+            g = fil.groupby("_PS")["_CRED"].sum()
+            base_P_cred = float(g.get("P", 0.0))
+            base_S_cred = float(g.get("S", 0.0))
+
+    # Usar el valor actual de “Credits per professor” si existe; si no, 3.0
+    credits_each = float(st.session_state.get("sens_credits", credits_each_default))
+
+    # Conteos base como número de profesores (redondeo al entero más cercano)
+    base_P_ct = round(base_P_cred / credits_each) if credits_each > 0 else 0
+    base_S_ct = round(base_S_cred / credits_each) if credits_each > 0 else 0
+
+    # Ajustes por sensibilidad (solo si está encendida)
+    dP = dS = 0
+    if sens.get("on") and sens.get("ops"):
+        for op in sens["ops"]:
+            if op.get("scope") == "PS":
+                if op.get("cat") == "P":
+                    dP += int(op.get("count", 0))
+                elif op.get("cat") == "S":
+                    dS += int(op.get("count", 0))
+
+    res = {
+        "Planta": max(0, int(base_P_ct + dP)),
+        "Part-time": max(0, int(base_S_ct + dS)),
+        "Participating": max(0, int(base_P_ct + dP)),
+        "Supporting": max(0, int(base_S_ct + dS)),
+    }
+    return res
 
 # ================== HISTORY (timeframe-aware) ==================
 def _period_sort_key(p: str) -> tuple[int,int]:
@@ -943,6 +984,23 @@ def style_percent_tables(df_, id_col):
 
 # ================== PRINCIPAL ==================
 st.markdown("---")
+
+# === Cabecera de totales (afectada por sensibilidad) ===
+try:
+    header_counts = _compute_header_counts_from_fil(df_car_filt_all, SENS)
+except Exception:
+    header_counts = {"Planta":0, "Part-time":0, "Participating":0, "Supporting":0}
+
+c1, c2, c3, c4 = st.columns([1,1,1,1])
+with c1:
+    st.metric("Planta (P)", f"{header_counts['Planta']}")
+with c2:
+    st.metric("Part-time (S)", f"{header_counts['Part-time']}")
+with c3:
+    st.metric("Participating (P)", f"{header_counts['Participating']}")
+with c4:
+    st.metric("Supporting (S)", f"{header_counts['Supporting']}")
+
 st.subheader(f"Faculty Sufficiency and Qualifications — {st.session_state.get('sel_label','Selected')}")
 
 # ====== NORMALIZACIÓN BASE PARA CARTELERA + EXCLUSIONES ======
@@ -1039,16 +1097,33 @@ else:
 
             with colT:
                 needed_mode = False
-                # Controles compactos de tabla
-                r1c1, r1c2, r1c3, r1c4 = st.columns([1.6, 1.1, 1.2, 1.4])
-                with r1c1:
-                    needed_mode = st.toggle("Show necessary # of Faculty for…", value=False, key="area_needed_mode")
-                with r1c2:
-                    objective = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="area_objective")
-                with r1c3:
-                    scope_label = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="area_scope")
-                with r1c4:
-                    show_impact = st.checkbox("Show impact (±3cr)", key="area_show_impact", value=False)
+            
+                if SENS["on"]:
+                    r1c1, r1c2, r1c3, r1c4 = st.columns([1.6, 1.1, 1.2, 1.4])
+            
+                    # Botón principal
+                    with r1c1:
+                        needed_mode = st.toggle("Show necessary # of Faculty for…", value=False, key="area_needed_mode")
+            
+                    # Solo mostrar los demás controles si needed_mode está activo
+                    if needed_mode:
+                        with r1c2:
+                            objective = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="area_objective")
+                        with r1c3:
+                            scope_label = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="area_scope")
+                        with r1c4:
+                            show_impact = st.checkbox("Show impact (±3cr)", key="area_show_impact", value=False)
+                    else:
+                        # Defaults “silenciosos” cuando el panel está oculto
+                        objective = st.session_state.get("area_objective", "%P")
+                        scope_label = st.session_state.get("area_scope", "By area")
+                        show_impact = False
+                else:
+                    # Sensibilidad apagada: no mostrar nada
+                    objective = st.session_state.get("area_objective", "%P")
+                    scope_label = st.session_state.get("area_scope", "By area")
+                    show_impact = False
+
 
                 if not needed_mode:
                     metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
@@ -1237,15 +1312,28 @@ else:
 
             with colF_L:
                 needed_mode_f = False
-                r1c1, r1c2, r1c3, r1c4 = st.columns([1.6, 1.1, 1.2, 1.4])
-                with r1c1:
-                    needed_mode_f = st.toggle("Show necessary # of Faculty for…", value=False, key="field_needed_mode")
-                with r1c2:
-                    objective_f = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="field_objective")
-                with r1c3:
-                    scope_label_f = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="field_scope")
-                with r1c4:
-                    show_impact_f = st.checkbox("Show impact (±3cr)", key="field_show_impact", value=False)
+            
+                if SENS["on"]:
+                    r1c1, r1c2, r1c3, r1c4 = st.columns([1.6, 1.1, 1.2, 1.4])
+            
+                    with r1c1:
+                        needed_mode_f = st.toggle("Show necessary # of Faculty for…", value=False, key="field_needed_mode")
+            
+                    if needed_mode_f:
+                        with r1c2:
+                            objective_f = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="field_objective")
+                        with r1c3:
+                            scope_label_f = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="field_scope")
+                        with r1c4:
+                            show_impact_f = st.checkbox("Show impact (±3cr)", key="field_show_impact", value=False)
+                    else:
+                        objective_f = st.session_state.get("field_objective", "%P")
+                        scope_label_f = st.session_state.get("field_scope", "By area")
+                        show_impact_f = False
+                else:
+                    objective_f = st.session_state.get("field_objective", "%P")
+                    scope_label_f = st.session_state.get("field_scope", "By area")
+                    show_impact_f = False
 
                 if not needed_mode_f:
                     metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
@@ -1411,71 +1499,90 @@ else:
 
         # -------------- BY PROGRAM --------------
         elif view_mode == "By Program" and col_prog:
-            colM_L, colM_R = st.columns([6,6], gap="large")
-            fil_mat = fil.copy()
-            fil_mat["_MAT"] = fil_mat[col_prog].astype(str).str.strip()
-
-            agg_tipo_m = (fil_mat.groupby(["_MAT","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+            colP_L, colP_R = st.columns([6,6], gap="large")
+            fil_prog = fil.copy()
+            fil_prog["_PROG"] = fil_prog[col_prog].astype(str).str.strip()
+        
+            # Agregaciones del frame seleccionado
+            agg_tipo_p = (fil_prog.groupby(["_PROG","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["SA","PA","SP","IP","OTHER"]:
-                if k not in agg_tipo_m.columns: agg_tipo_m[k] = 0.0
-            agg_tipo_m = agg_tipo_m[["SA","PA","SP","IP","OTHER"]]
-
-            agg_ps_m = (fil_mat.groupby(["_MAT","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+                if k not in agg_tipo_p.columns: agg_tipo_p[k] = 0.0
+            agg_tipo_p = agg_tipo_p[["SA","PA","SP","IP","OTHER"]]
+        
+            agg_ps_p = (fil_prog.groupby(["_PROG","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["P","S"]:
-                if k not in agg_ps_m.columns: agg_ps_m[k] = 0.0
-            agg_ps_m = agg_ps_m[["P","S"]]
-
-            base_agg_ps = agg_ps_m.copy()
-            base_agg_tipo = agg_tipo_m.copy()
+                if k not in agg_ps_p.columns: agg_ps_p[k] = 0.0
+            agg_ps_p = agg_ps_p[["P","S"]]
+        
+            # Sensibilidad
+            base_agg_ps_p = agg_ps_p.copy()
+            base_agg_tipo_p = agg_tipo_p.copy()
             if SENS["on"] and SENS["ops"]:
-                mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
+                mod_agg_ps_p, mod_agg_tipo_p = apply_ops_to_aggs(base_agg_ps_p, base_agg_tipo_p, SENS["ops"])
             else:
-                mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
-
-            with colM_L:
-                needed_mode_m = False
-                r1, r2, r3, r4 = st.columns([1.6, 1.1, 1.2, 1.6])
-                with r1:
-                    needed_mode_m = st.toggle("Show necessary # of Faculty for…", value=False, key="prog_needed_mode")
-                with r2:
-                    objective_m = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="prog_objective")
-                with r3:
-                    scope_label_m = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="prog_scope")
-                with r4:
-                    show_impact_m = st.checkbox("Show impact (±3cr)", key="prog_show_impact", value=False)
-
-                if not needed_mode_m:
-                    metrics_tbl_m = build_percent_table("Program", mod_agg_tipo, mod_agg_ps)
-                    _download_xlsx_button(metrics_tbl_m, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
+                mod_agg_ps_p, mod_agg_tipo_p = base_agg_ps_p, base_agg_tipo_p
+        
+            with colP_L:
+                needed_mode_p = False
+        
+                # === visibilidad de controles (igual que Area/Field) ===
+                if SENS["on"]:
+                    r1c1, r1c2, r1c3, r1c4 = st.columns([1.6, 1.1, 1.2, 1.4])
+                    with r1c1:
+                        needed_mode_p = st.toggle("Show necessary # of Faculty for…", value=False, key="prog_needed_mode")
+        
+                    if needed_mode_p:
+                        with r1c2:
+                            objective_p = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="prog_objective")
+                        with r1c3:
+                            scope_label_p = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="prog_scope")
+                        with r1c4:
+                            show_impact_p = st.checkbox("Show impact (±3cr)", key="prog_show_impact", value=False)
+                    else:
+                        # Defaults silenciosos si el panel no está visible
+                        objective_p = st.session_state.get("prog_objective", "%P")
+                        scope_label_p = st.session_state.get("prog_scope", "By area")
+                        show_impact_p = False
+                else:
+                    # Sensibilidad apagada: no mostrar nada
+                    objective_p = st.session_state.get("prog_objective", "%P")
+                    scope_label_p = st.session_state.get("prog_scope", "By area")
+                    show_impact_p = False
+        
+                # ===== Tabla normal o "Needed..." =====
+                if not needed_mode_p:
+                    metrics_tbl_p = build_percent_table("Program", mod_agg_tipo_p, mod_agg_ps_p)
+                    _download_xlsx_button(metrics_tbl_p, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
                                           key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                    styled_tbl_m = (
-                        metrics_tbl_m.style
+                    styled_tbl_p = (
+                        metrics_tbl_p.style
                         .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
                         .apply(style_percent_tables, id_col="Program", axis=None)
                         .hide(axis="index")
                     )
-                    st.markdown(f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_p.to_html(escape=False)}</div>", unsafe_allow_html=True)
                 else:
-                    idx = mod_agg_ps.index
-                    p = mod_agg_ps["P"].reindex(idx, fill_value=0.0)
-                    s = mod_agg_ps["S"].reindex(idx, fill_value=0.0)
-                    sa = mod_agg_tipo["SA"].reindex(idx, fill_value=0.0)
-                    pa = mod_agg_tipo["PA"].reindex(idx, fill_value=0.0)
-                    sp = mod_agg_tipo["SP"].reindex(idx, fill_value=0.0)
-                    ip = mod_agg_tipo["IP"].reindex(idx, fill_value=0.0)
-                    other = mod_agg_tipo["OTHER"].reindex(idx, fill_value=0.0)
-
-                    obj_lbl, tgt_area, tgt_overall = _objective_targets(objective_m)
+                    # ===== Needed (una sola columna) + Impacto opcional =====
+                    idx = mod_agg_ps_p.index
+                    p = mod_agg_ps_p["P"].reindex(idx, fill_value=0.0)
+                    s = mod_agg_ps_p["S"].reindex(idx, fill_value=0.0)
+                    sa = mod_agg_tipo_p["SA"].reindex(idx, fill_value=0.0)
+                    pa = mod_agg_tipo_p["PA"].reindex(idx, fill_value=0.0)
+                    sp = mod_agg_tipo_p["SP"].reindex(idx, fill_value=0.0)
+                    ip = mod_agg_tipo_p["IP"].reindex(idx, fill_value=0.0)
+                    other = mod_agg_tipo_p["OTHER"].reindex(idx, fill_value=0.0)
+        
+                    obj_lbl, tgt_area, tgt_overall = _objective_targets(objective_p)
                     totals = {
                         "P": float(p.sum()), "S": float(s.sum()),
                         "SA": float(sa.sum()), "PA": float(pa.sum()),
                         "SP": float(sp.sum()), "IP": float(ip.sum()),
                         "OTHER": float(other.sum())
                     }
-
+        
                     rows = []
-                    colname = {"%P":"Needed P (3cr)", "%SA":"Needed SA (3cr)", "%OTHER":"Needed OTHER less (3cr)"}[objective_m]
-
+                    colname = {"%P":"Needed P (3cr)", "%SA":"Needed SA (3cr)", "%OTHER":"Needed OTHER less (3cr)"}[objective_p]
+        
                     for label in list(idx) + ["TOTAL"]:
                         if label == "TOTAL":
                             P, S = totals["P"], totals["S"]
@@ -1485,126 +1592,126 @@ else:
                             SA_ = float(sa.get(label, 0.0)); PA_ = float(pa.get(label, 0.0))
                             SP_ = float(sp.get(label, 0.0)); IP_ = float(ip.get(label, 0.0))
                             OT_ = float(other.get(label, 0.0))
-
+        
                         area_vals = {"P":P,"S":S,"SA":SA_,"PA":PA_,"SP":SP_,"IP":IP_,"OTHER":OT_}
-
-                        if scope_label_m == "By area" or label == "TOTAL":
-                            if objective_m == "%P":
+        
+                        # Needed según scope
+                        if scope_label_p == "By area" or label == "TOTAL":
+                            if objective_p == "%P":
                                 need_val = _needed_for_pctP(P, S, tgt_area, credits_each=3.0)
-                            elif objective_m == "%SA":
+                            elif objective_p == "%SA":
                                 need_val = _needed_for_pctSA(SA_, PA_+SP_+IP_+OT_, tgt_area, credits_each=3.0)
                             else:
+                                # OTHER menos para el programa (≤10%)
                                 TQ_area = SA_+PA_+SP_+IP_+OT_
                                 need_credits = (OT_ - 0.10*TQ_area) / 0.90
                                 need_val = 0 if need_credits <= 0 else math.ceil(need_credits/3.0)
                         else:
-                            need_n = _needed_for_overall_if_only_this_area_changes(objective_m, totals, area_vals, tgt_overall, credits_each=3.0)
+                            # Overall: cuántos en ESTE PROGRAMA para que el OVERALL llegue al target
+                            need_n = _needed_for_overall_if_only_this_area_changes(objective_p, totals, area_vals, tgt_overall, credits_each=3.0)
                             need_val = (need_n if need_n is not None else None)
-
+        
                         row = {"Program": label, colname: ("" if need_val is None else int(need_val))}
-
-                        if show_impact_m:
-                            if scope_label_m == "By area":
-                                up_pp, down_pp = _impact_pp_area(objective_m, area_vals, credits_each=3.0)
+        
+                        # Impacto opcional
+                        if show_impact_p:
+                            if scope_label_p == "By area":
+                                up_pp, down_pp = _impact_pp_area(objective_p, area_vals, credits_each=3.0)
                                 row["Impact (±3cr)"] = f"{up_pp:+.2f} / {down_pp:+.2f} p.p. (area)"
                             else:
-                                up_pp, down_pp = _impact_pp_overall_if_area_changes(objective_m, totals, credits_each=3.0)
+                                up_pp, down_pp = _impact_pp_overall_if_area_changes(objective_p, totals, credits_each=3.0)
                                 row["Impact (±3cr)"] = f"{up_pp:+.2f} / {down_pp:+.2f} p.p. (overall)"
-
+        
                         rows.append(row)
-
-                    need_tbl_m = pd.DataFrame(rows)
-                    _download_xlsx_button(need_tbl_m, f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label_m)}.xlsx",
-                                          key=f"dl_need_prog_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label_m)}",
+        
+                    need_tbl_p = pd.DataFrame(rows)
+                    _download_xlsx_button(need_tbl_p, f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label_p)}.xlsx",
+                                          key=f"dl_need_prog_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label_p)}",
                                           label="⬇️ Descargar (Excel)")
-                    st.dataframe(need_tbl_m, use_container_width=True, hide_index=True)
-
-            # Históricos Program
-            df_hist_m = df_car_global.copy()
-            df_hist_m["_MAT"] = df_hist_m[col_prog].astype(str).str.strip()
-
-            agg_ps_all_m = (df_hist_m.groupby(["_SEM","_MAT","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+                    st.dataframe(need_tbl_p, use_container_width=True, hide_index=True)
+        
+            # ====== Series históricas por Program ======
+            df_hist = df_car_global.copy()
+            agg_ps_all_p = (df_hist.groupby(["_SEM","_PROG","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["P","S"]:
-                if k not in agg_ps_all_m.columns: agg_ps_all_m[k] = 0.0
-            agg_ps_all_m["P_share"] = (agg_ps_all_m["P"] / (agg_ps_all_m["P"] + agg_ps_all_m["S"]).replace(0, pd.NA)) * 100
-            agg_ps_all_m = agg_ps_all_m.reset_index()
-
-            agg_tipo_all_m = (df_hist_m.groupby(["_SEM","_MAT","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+                if k not in agg_ps_all_p.columns: agg_ps_all_p[k] = 0.0
+            agg_ps_all_p["P_share"] = (agg_ps_all_p["P"] / (agg_ps_all_p["P"] + agg_ps_all_p["S"]).replace(0, pd.NA)) * 100
+            agg_ps_all_p = agg_ps_all_p.reset_index()
+        
+            agg_tipo_all_p = (df_hist.groupby(["_SEM","_PROG","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["SA","PA","SP","IP","OTHER"]:
-                if k not in agg_tipo_all_m.columns: agg_tipo_all_m[k] = 0.0
-            den_all_m = (agg_tipo_all_m[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
-            agg_tipo_all_m["SA_share"] = (agg_tipo_all_m["SA"] / den_all_m) * 100
-            agg_tipo_all_m["OTHER_share"] = (agg_tipo_all_m["OTHER"] / den_all_m) * 100
-            agg_tipo_all_m = agg_tipo_all_m.reset_index()
-
-            tot_by_sem_m = (df_hist_m.groupby(["_SEM","_PS"])["_CRED"].sum().unstack(fill_value=0.0))
+                if k not in agg_tipo_all_p.columns: agg_tipo_all_p[k] = 0.0
+            den_all_p = (agg_tipo_all_p[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
+            agg_tipo_all_p["SA_share"] = (agg_tipo_all_p["SA"] / den_all_p) * 100
+            agg_tipo_all_p["OTHER_share"] = (agg_tipo_all_p["OTHER"] / den_all_p) * 100
+            agg_tipo_all_p = agg_tipo_all_p.reset_index()
+        
+            tot_by_sem_P_p = (df_hist.groupby(["_SEM","_PS"])["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["P","S"]:
-                if k not in tot_by_sem_m.columns: tot_by_sem_m[k] = 0.0
-            tot_by_sem_m["P_share"] = (tot_by_sem_m["P"] / (tot_by_sem_m["P"] + tot_by_sem_m["S"]).replace(0, pd.NA)) * 100
-            tot_by_sem_m = tot_by_sem_m.reset_index()
-
-            tot_by_sem_tipo_m = (df_hist_m.groupby(["_SEM","_TIPO"])["_CRED"].sum().unstack(fill_value=0.0))
+                if k not in tot_by_sem_P_p.columns: tot_by_sem_P_p[k] = 0.0
+            tot_by_sem_P_p["P_share"] = (tot_by_sem_P_p["P"] / (tot_by_sem_P_p["P"] + tot_by_sem_P_p["S"]).replace(0, pd.NA)) * 100
+            tot_by_sem_P_p = tot_by_sem_P_p.reset_index()
+        
+            tot_by_sem_tipo_p = (df_hist.groupby(["_SEM","_TIPO"])["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["SA","PA","SP","IP","OTHER"]:
-                if k not in tot_by_sem_tipo_m.columns: tot_by_sem_tipo_m[k] = 0.0
-            den_m = (tot_by_sem_tipo_m[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
-            tot_by_sem_tipo_m["SA_share"] = (tot_by_sem_tipo_m["SA"] / den_m) * 100
-            tot_by_sem_tipo_m["OTHER_share"] = (tot_by_sem_tipo_m["OTHER"] / den_m) * 100
-            tot_by_sem_tipo_m = tot_by_sem_tipo_m.reset_index()
-
-            agg_ps_all_tm  = transform_for_time_mode_ps(agg_ps_all_m.rename(columns={"_MAT":"__LEVEL__"})).rename(columns={"__LEVEL__":"_MAT"})
-            agg_tipo_sa_tm = transform_for_time_mode_tipo(agg_tipo_all_m.rename(columns={"_MAT":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_MAT"})
-            agg_tipo_ot_tm = transform_for_time_mode_tipo(agg_tipo_all_m.rename(columns={"_MAT":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_MAT"})
-            agg_tipo_all_tm = (
-                agg_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_sa_tm], errors="ignore")
-                .merge(
-                    agg_tipo_ot_tm[["_SEM","_MAT","OTHER","SA","PA","SP","IP","OTHER_share"]],
-                    on=["_SEM","_MAT","SA","PA","SP","IP","OTHER"], how="outer"
-                )
+                if k not in tot_by_sem_tipo_p.columns: tot_by_sem_tipo_p[k] = 0.0
+            den_tot_p = (tot_by_sem_tipo_p[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
+            tot_by_sem_tipo_p["SA_share"] = (tot_by_sem_tipo_p["SA"] / den_tot_p) * 100
+            tot_by_sem_tipo_p["OTHER_share"] = (tot_by_sem_tipo_p["OTHER"] / den_tot_p) * 100
+            tot_by_sem_tipo_p = tot_by_sem_tipo_p.reset_index()
+        
+            # Adaptación a modo temporal
+            agg_ps_all_p_tm  = transform_for_time_mode_ps(agg_ps_all_p.rename(columns={"_PROG":"__LEVEL__"})).rename(columns={"__LEVEL__":"_PROG"})
+            agg_tipo_sa_p_tm = transform_for_time_mode_tipo(agg_tipo_all_p.rename(columns={"_PROG":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_PROG"})
+            agg_tipo_ot_p_tm = transform_for_time_mode_tipo(agg_tipo_all_p.rename(columns={"_PROG":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_PROG"})
+            agg_tipo_all_p_tm = (
+                agg_tipo_sa_p_tm.drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_sa_p_tm], errors="ignore")
+                .merge(agg_tipo_ot_p_tm[["_SEM","_PROG","OTHER","SA","PA","SP","IP","OTHER_share"]],
+                       on=["_SEM","_PROG","SA","PA","SP","IP","OTHER"], how="outer")
             )
-            tot_by_sem_P_tm = transform_for_time_mode_ps(tot_by_sem_m.copy())
-            tot_tipo_sa_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_m.copy(), "SA_share")
-            tot_tipo_ot_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_m.copy(), "OTHER_share")
-            tot_by_sem_tipo_tm = (
-                tot_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in tot_tipo_sa_tm], errors="ignore")
-                .merge(
-                    tot_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
-                    on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer"
-                )
+            tot_by_sem_P_p_tm = transform_for_time_mode_ps(tot_by_sem_P_p.copy())
+            tot_tipo_sa_p_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_p.copy(), "SA_share")
+            tot_tipo_ot_p_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_p.copy(), "OTHER_share")
+            tot_by_sem_tipo_p_tm = (
+                tot_tipo_sa_p_tm.drop(columns=[c for c in ["OTHER_share"] if c in tot_tipo_sa_p_tm], errors="ignore")
+                .merge(tot_tipo_ot_p_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
+                       on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer")
             )
-
-            key_col, x_labels, x_map = build_time_axis_for_history(df_hist_m)
+        
+            key_col_p, x_labels_p, x_map_p = build_time_axis_for_history(df_hist)
             if time_mode == "Semestral":
-                sel_x = x_map.get(str(sel_sem)) if sel_sem else None
-                sel_label_exact = str(sel_sem) if sel_sem else None
+                sel_x_p = x_map_p.get(str(sel_sem)) if sel_sem else None
+                sel_label_exact_p = str(sel_sem) if sel_sem else None
             elif time_mode == "Anual":
-                sel_x = x_map.get(sel_year) if sel_year is not None else None
-                sel_label_exact = sel_year
+                sel_x_p = x_map_p.get(sel_year) if sel_year is not None else None
+                sel_label_exact_p = sel_year
             else:
-                inter_label = f"{sel_year} Intersemestral" if sel_year else None
-                sel_x = x_map.get(inter_label) if inter_label else None
-                sel_label_exact = inter_label
-
-            if SENS["on"] and SENS["ops"] and sel_label_exact is not None:
-                agg_ps_all_tm, agg_tipo_all_tm, tot_by_sem_P_tm, tot_by_sem_tipo_tm = apply_sensitivity_to_history(
-                    agg_ps_all_tm, agg_tipo_all_tm, tot_by_sem_P_tm, tot_by_sem_tipo_tm,
-                    level_name="_MAT",
-                    sel_label_value=sel_label_exact,
+                inter_label_p = f"{sel_year} Intersemestral" if sel_year else None
+                sel_x_p = x_map_p.get(inter_label_p) if inter_label_p else None
+                sel_label_exact_p = inter_label_p
+        
+            if SENS["on"] and SENS["ops"] and sel_label_exact_p is not None:
+                agg_ps_all_p_tm, agg_tipo_all_p_tm, tot_by_sem_P_p_tm, tot_by_sem_tipo_p_tm = apply_sensitivity_to_history(
+                    agg_ps_all_p_tm, agg_tipo_all_p_tm, tot_by_sem_P_p_tm, tot_by_sem_tipo_p_tm,
+                    level_name="_PROG",
+                    sel_label_value=sel_label_exact_p,
                     ops=SENS["ops"],
                     member_all_label="All"
                 )
-
-            programs_all = sorted(set(agg_ps_all_tm["_MAT"].astype(str).unique()) | set(agg_tipo_all_tm["_MAT"].astype(str).unique()))
-            with colM_R:
+        
+            progs_all = sorted(set(agg_ps_all_p_tm["_PROG"].astype(str).unique()) | set(agg_tipo_all_p_tm["_PROG"].astype(str).unique()))
+            with colP_R:
                 draw_history(
-                    "Evolution by Academic Program",
-                    level_name="_MAT",
-                    level_values=programs_all,
+                    "Evolution by Program",
+                    level_name="_PROG",
+                    level_values=progs_all,
                     metric_kind="%P",
-                    total_series_builders={"P": tot_by_sem_P_tm, "SA": tot_by_sem_tipo_tm, "OTHER": tot_by_sem_tipo_tm},
-                    agg_ps_all=agg_ps_all_tm,
-                    agg_tipo_all=agg_tipo_all_tm,
-                    x_labels=x_labels, x_map=x_map, sel_x=sel_x
+                    total_series_builders={"P": tot_by_sem_P_p_tm, "SA": tot_by_sem_tipo_p_tm, "OTHER": tot_by_sem_tipo_p_tm},
+                    agg_ps_all=agg_ps_all_p_tm,
+                    agg_tipo_all=agg_tipo_all_p_tm,
+                    x_labels=x_labels_p, x_map=x_map_p, sel_x=sel_x_p
                 )
+
 # --------------------------
 # CREDIT SUMS (EXPANDER)
 # --------------------------
@@ -1916,6 +2023,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
