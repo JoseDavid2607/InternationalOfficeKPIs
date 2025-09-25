@@ -1129,7 +1129,9 @@ def compute_header_counts_teaching(df_fd: pd.DataFrame, time_mode: str, sel_year
         "Supporting":    max(0, base["S"]  + dS),
     }
 
+# === Subheader ===
 
+st.subheader(f"Faculty Sufficiency and Qualifications — {st.session_state.get('sel_label','Selected')}")
 
 # ====== NORMALIZACIÓN BASE PARA CARTELERA + EXCLUSIONES ======
 if not all([col_cred, col_tipoC, col_areaCourse]):
@@ -2267,6 +2269,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
