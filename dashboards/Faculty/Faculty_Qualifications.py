@@ -2731,12 +2731,56 @@ else:
                               label="Descargar datos (Excel)")
 
 # ==========================================================
-# MÓDULO FINAL: Top 5 (más/menos créditos) y FT sin cursos
+# MÓDULO FINAL: Top 5 (más/menos créditos) y FT sin cursos + Buscador
 # ==========================================================
 st.markdown("---")
 st.markdown("#### Faculty credit highlights (current timeframe)")
 
-# Carga PLANTA (misma fuente del resto del libro)
+# -------- helpers de columnas en Cartelera & Distribution --------
+col_prof_car = _get_any(df_car_filt_all, "Profesor","PROFESOR","Docente")
+col_cred_car = _get_any(df_car_filt_all, "Créditos","Creditos","Credits")
+col_sem_car  = _get_any(df_car_filt_all, "Semestre","Periodo","Periodo Académico","Periodo academico")
+col_code_car = _get_any(df_car_filt_all, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
+col_name_car = _get_any(df_car_filt_all, "Nombre largo curso","Nombre Curso","Nombre del curso","Course Name")
+col_secc_car = _get_any(df_car_filt_all, "Secc","Sección","Seccion","Section")
+col_acar_car = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
+col_field_car= _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
+col_prog_car = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
+col_campus   = _get_any(df_car_filt_all, "Campus","CAMPUS","Sede")
+
+if col_cred_car and "_CRED" not in df_car_filt_all.columns:
+    df_car_filt_all["_CRED"] = pd.to_numeric(df_car_filt_all[col_cred_car], errors="coerce").fillna(0.0)
+
+# Distribution (para enriquecer con ID/AREA_PROFESOR/TIPO/P-S)
+col_id_fd   = _get_any(df_fd, "ID","ID Nr.","Documento")
+col_sem_fd  = _get_any(df_fd, "Semestre","Periodo")
+col_area_fd = _get_any(df_fd, "AREA_PROFESOR","Area_Profesor","Area Profesor","Área","Area")
+col_tipo_fd = _get_any(df_fd, "TIPO","Tipo","Ranking","Tipo Ranking")
+col_ps_fd   = _get_any(df_fd, "P/S","P - S","Participating/Supporting")
+col_prof_fd = _get_any(df_fd, "Profesor","PROFESOR","Docente","Nombre")
+
+# Filtrar DF de Distribution al mismo periodo (si aplica)
+sel_sem_code = st.session_state.get("sel_sem")
+df_fd_sem = df_fd.copy()
+if col_sem_fd and sel_sem_code is not None:
+    df_fd_sem = df_fd_sem[df_fd_sem[col_sem_fd].astype(str).str.strip().eq(str(sel_sem_code))].copy()
+
+# Normalizaciones para enrichment
+if col_prof_fd:
+    df_fd_sem["_PROF_N"] = df_fd_sem[col_prof_fd].astype(str).str.strip()
+if col_id_fd:
+    df_fd_sem["_ID"] = df_fd_sem[col_id_fd].astype(str).str.strip()
+if col_area_fd: df_fd_sem["_AREA_PROF"] = df_fd_sem[col_area_fd].astype(str).str.strip()
+if col_tipo_fd: df_fd_sem["_TIPO"]      = _norm_str(df_fd_sem[col_tipo_fd]).map(normalize_tipo)
+if col_ps_fd:   df_fd_sem["_PS"]        = _norm_str(df_fd_sem[col_ps_fd]).map(normalize_ps)
+
+# Map por profesor (fallback a nombre si no hay ID en Cartelera)
+prof_to_id_map   = df_fd_sem.set_index("_PROF_N")["_ID"].to_dict()        if "_PROF_N" in df_fd_sem and "_ID" in df_fd_sem else {}
+prof_to_area_map = df_fd_sem.set_index("_PROF_N")["_AREA_PROF"].to_dict() if "_PROF_N" in df_fd_sem and "_AREA_PROF" in df_fd_sem else {}
+prof_to_tipo_map = df_fd_sem.set_index("_PROF_N")["_TIPO"].to_dict()      if "_PROF_N" in df_fd_sem and "_TIPO" in df_fd_sem else {}
+prof_to_ps_map   = df_fd_sem.set_index("_PROF_N")["_PS"].to_dict()        if "_PROF_N" in df_fd_sem and "_PS" in df_fd_sem else {}
+
+# ========= Carga PLANTA =========
 @st.cache_data(ttl=0)
 def _load_planta_sheet():
     try:
@@ -2749,82 +2793,187 @@ def _load_planta_sheet():
 
 df_planta = _load_planta_sheet()
 
+# columnas probables en PLANTA
+col_period_pl = _get_any(df_planta, "Periodo","PERIODO","Semestre")
+col_id_pl     = _get_any(df_planta, "ID Nr.","ID","Documento")
+col_fn_pl     = _get_any(df_planta, "First Name","Nombre","Nombres")
+col_ln_pl     = _get_any(df_planta, "Last Name","Apellidos","Apellido")
+col_area_pl   = _get_any(df_planta, "Academic Area","Área Académica","Area Académica","AREA_PROFESOR","Área")
+col_rank_pl   = _get_any(df_planta, "Faculty Ranking","Ranking","Rango")
+col_qual_pl   = _get_any(df_planta, "Faculty Qualific.","Qualification","Qualific.","Qualif.","Tipo Ranking","TIPO")
+col_ps_pl     = _get_any(df_planta, "P/S","P - S","Participating/Supporting")
+
+# Controles de “Top / Zero”
 opt_highlight = st.radio(
     "Show",
     ["Top 5 most credits", "Top 5 least credits", "Full-time with 0 courses"],
-    index=0, horizontal=True, label_visibility="collapsed"
+    index=0, horizontal=True, label_visibility="collapsed", key="highlight_mode"
 )
 
-# Utilidades columnas
-col_prof_car = _get_any(df_car_filt_all, "Profesor","PROFESOR","Docente")
-col_cred_car = _get_any(df_car_filt_all, "Créditos", "Creditos", "Credits")
-if col_cred_car and "_CRED" not in df_car_filt_all.columns:
-    df_car_filt_all["_CRED"] = pd.to_numeric(df_car_filt_all[col_cred_car], errors="coerce").fillna(0.0)
+left, right = st.columns([7,5], gap="large")
 
-if opt_highlight in {"Top 5 most credits", "Top 5 least credits"}:
-    if not all([col_prof_car, "_CRED" in df_car_filt_all.columns]):
-        st.info("Missing credits or professor column in Cartelera for this view.")
-    else:
-        sums = (df_car_filt_all
-                .assign(_PROF=df_car_filt_all[col_prof_car].astype(str).str.strip())
-                .groupby("_PROF")["_CRED"].sum().reset_index())
-        if opt_highlight == "Top 5 most credits":
-            out = sums.sort_values("_CRED", ascending=False).head(5)
-            title = "Top 5 professors by credits (most)"
+# ======================= PANEL IZQUIERDO =======================
+with left:
+    if opt_highlight in {"Top 5 most credits", "Top 5 least credits"}:
+        if not col_prof_car or "_CRED" not in df_car_filt_all.columns:
+            st.info("Missing credits or professor column in Cartelera for this view.")
         else:
-            out = sums.sort_values("_CRED", ascending=True).head(5)
-            title = "Top 5 professors by credits (least)"
+            # Sumas y #cursos por profesor en el periodo
+            df_top = (df_car_filt_all
+                      .assign(_PROF=df_car_filt_all[col_prof_car].astype(str).str.strip())
+                      .groupby("_PROF")
+                      .agg(Credits=("_CRED","sum"), nCourses=(col_prof_car,"count"))
+                      .reset_index())
+            # Orden
+            asc = (opt_highlight == "Top 5 least credits")
+            df_top = df_top.sort_values("Credits", ascending=asc).head(5).copy()
 
-        out = out.rename(columns={"_PROF":"Professor","_CRED":"Credits"})
-        _download_xlsx_button(out, f"highlight_{_slugify(title)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-                              key=f"dl_highlight_{_slugify(title)}_{_slugify(st.session_state.get('sel_label','sel'))}",
-                              label="Descargar (Excel)")
-        st.dataframe(out.style.format({"Credits":"{:,.1f}"}), use_container_width=True, hide_index=True)
+            # Enriquecer con ID/AREA_PROFESOR/TIPO/P-S desde Distribution del periodo
+            df_top["ID"]            = df_top["_PROF"].map(prof_to_id_map)
+            df_top["AREA_PROFESOR"] = df_top["_PROF"].map(prof_to_area_map)
+            df_top["TIPO"]          = df_top["_PROF"].map(prof_to_tipo_map)
+            df_top["P/S"]           = df_top["_PROF"].map(prof_to_ps_map)
 
-else:  # Full-time with 0 courses
-    # match by periodo/semestre exacto
-    sel_sem_code = st.session_state.get("sel_sem")  # funciona en modo Semestral
-    if df_planta.empty or sel_sem_code is None:
-        st.info("Load 'BD PLANTA 2020-2025' and select a specific semester (e.g., 202520) to compute FT with 0 courses.")
+            # Renombrar columnas finales
+            out = (df_top
+                   .rename(columns={"_PROF":"Profesor","Credits":"Créditos","#Courses":"nCourses"})
+                   [["Profesor","ID","AREA_PROFESOR","TIPO","P/S","Credits","nCourses"]]
+                   .rename(columns={"nCourses":"#Cursos"}))
+            title = "Top 5 professors by credits (most)" if not asc else "Top 5 professors by credits (least)"
+            _download_xlsx_button(out, f"highlight_{_slugify(title)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                                  key=f"dl_highlight_{_slugify(title)}_{_slugify(st.session_state.get('sel_label','sel'))}",
+                                  label="Descargar (Excel)")
+            st.dataframe(out.style.format({"Credits":"{:,.1f}"}), use_container_width=True, hide_index=True)
+
     else:
-        # columnas en PLANTA
-        col_period_pl   = _get_any(df_planta, "Periodo", "PERIODO", "Semestre")
-        col_id_pl       = _get_any(df_planta, "ID Nr.", "ID", "Documento")
-        col_name_pl     = _get_any(df_planta, "Nombre", "Nombres", "Nombres y Apellidos", "Professor", "PROFESOR")
-
-        # columnas en Distribution
-        col_sem_fd      = _get_any(df_fd, "Semestre","Periodo")
-        col_id_fd       = _get_any(df_fd, "ID", "ID Nr.", "Documento")
-        name_fd         = _get_any(df_fd, "Profesor","PROFESOR","Docente","Nombre")
-
-        if not all([col_period_pl, col_id_pl, col_sem_fd, col_id_fd]):
-            st.info("Missing IDs or period columns to match PLANTA ↔ Distribution.")
+        # ========= Full-time con 0 cursos =========
+        if df_planta.empty or sel_sem_code is None or not all([col_period_pl, col_id_pl]):
+            st.info("Load 'BD PLANTA 2020-2025' and select a specific semester (e.g., 202520) to compute FT with 0 courses.")
         else:
-            # IDs de FT en PLANTA en el semestre seleccionado
-            df_ft = df_planta.copy()
-            ft_ids = set(df_ft.loc[df_ft[col_period_pl].astype(str).str.strip().eq(str(sel_sem_code)),
-                                   col_id_pl].astype(str).str.strip())
+            # FT del semestre
+            df_ft = df_planta[df_planta[col_period_pl].astype(str).str.strip().eq(str(sel_sem_code))].copy()
+            df_ft["_ID"] = df_ft[col_id_pl].astype(str).str.strip()
+            ft_ids = set(df_ft["_ID"])
 
-            # IDs con carga en Distribution en el mismo semestre
-            df_fd_sem = df_fd.copy()
-            taught_ids = set(df_fd_sem.loc[df_fd_sem[col_sem_fd].astype(str).str.strip().eq(str(sel_sem_code)),
-                                           col_id_fd].astype(str).str.strip())
+            # Taught IDs en Distribution
+            taught_ids = set()
+            if col_sem_fd and col_id_fd:
+                taught_ids = set(
+                    df_fd.loc[df_fd[col_sem_fd].astype(str).str.strip().eq(str(sel_sem_code)), col_id_fd]
+                         .astype(str).str.strip()
+                )
+
+            # Contadores para encabezado
+            ft_total = len(ft_ids)
+            ft_teaching = len(ft_ids & taught_ids)
+            st.markdown(f"**De los {ft_total} profesores de planta, {ft_teaching} están dictando en {sel_sem_code}.**")
 
             missing_ids = sorted(ft_ids - taught_ids)
+            sub = df_ft[df_ft["_ID"].isin(missing_ids)].copy()
 
-            # Armar tabla de salida con nombres si es posible
-            df_out = pd.DataFrame({"ID": missing_ids})
-            if col_name_pl and not df_out.empty:
-                names_map = (df_planta[[col_id_pl, col_name_pl]]
-                             .dropna()
-                             .assign(_id=lambda d: d[col_id_pl].astype(str).str.strip(),
-                                     _nm=lambda d: d[col_name_pl].astype(str).str.strip())
-                             .set_index("_id")["_nm"].to_dict())
-                df_out["Name"] = df_out["ID"].map(names_map)
-                df_out = df_out[["ID","Name"]]
+            # Armar columnas solicitadas
+            def pick(df_, *cands):
+                c = _get_any(df_, *cands)
+                return df_[c] if c else pd.Series([None]*len(df_), index=df_.index)
 
-            title = f"Full-time professors with 0 courses — {sel_sem_code}"
-            _download_xlsx_button(df_out, f"ft_zero_courses_{_slugify(str(sel_sem_code))}.xlsx",
+            out = pd.DataFrame({
+                "ID Nr.":        sub["_ID"],
+                "First Name":    pick(sub, "First Name","Nombre","Nombres"),
+                "Last Name":     pick(sub, "Last Name","Apellidos","Apellido"),
+                "Academic Area": pick(sub, "Academic Area","Área Académica","Area Académica","AREA_PROFESOR","Área"),
+                "Faculty Ranking": pick(sub, "Faculty Ranking","Ranking","Rango"),
+                "Faculty Qualific.": pick(sub, "Faculty Qualific.","Qualification","Qualific.","Tipo Ranking","TIPO"),
+                "P/S": pick(sub, "P/S","P - S","Participating/Supporting")
+            })
+
+            _download_xlsx_button(out, f"ft_zero_courses_{_slugify(str(sel_sem_code))}.xlsx",
                                   key=f"dl_ft_zero_{_slugify(str(sel_sem_code))}",
                                   label="Descargar (Excel)")
-            st.dataframe(df_out, use_container_width=True, hide_index=True)
+            st.dataframe(out, use_container_width=True, hide_index=True)
+
+# ======================= PANEL DERECHO — BUSCADOR =======================
+with right:
+    st.markdown("**Search (current period)**")
+    search_mode = st.radio("",
+        ["Por Curso (Código/Nombre)","Por Profesor/ID"],
+        index=0, horizontal=True, label_visibility="collapsed", key="srch_mode"
+    )
+    q = st.text_input("Type to search…", key="srch_q")
+
+    # Asegurar columnas base para mostrar
+    show_cols = {
+        "Periodo": col_sem_car or col_sem_fd,
+        "Profesor": col_prof_car or col_prof_fd,
+        "ID": col_id_fd,  # ID vendrá de Distribution; si no existe en Cartelera
+        "AREA_PROFESOR": col_area_fd,
+        "Código Materia": col_code_car,
+        "Nombre largo curso": col_name_car,
+        "Secc": col_secc_car,
+        "Area del curso": col_acar_car,
+        "Field": col_field_car,
+        "Program": col_prog_car,
+        "Créditos": col_cred_car,
+        "Campus": col_campus
+    }
+
+    # Build DataFrame del periodo fusionando (para tener ID/AREA_PROF en resultado)
+    # Base: Cartelera (periodo ya filtrado en df_car_filt_all)
+    base = df_car_filt_all.copy()
+    base["_PROF"] = base[col_prof_car].astype(str).str.strip() if col_prof_car else ""
+    base["_SEM"]  = base[col_sem_car].astype(str).str.strip() if col_sem_car else st.session_state.get("sel_label","")
+    # Adjuntar ID y AREA_PROF por nombre (best-effort)
+    if "_PROF" in base and prof_to_id_map:
+        base["_ID"] = base["_PROF"].map(prof_to_id_map)
+    if "_PROF" in base and prof_to_area_map:
+        base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
+
+    # Filtro por búsqueda
+    res = pd.DataFrame()
+    if q:
+        qn = q.strip().lower()
+        if search_mode == "Por Curso (Código/Nombre)":
+            mask = pd.Series([True]*len(base))
+            if col_code_car:
+                mask &= base[col_code_car].astype(str).str.lower().str.contains(qn, na=False) | False
+            if col_name_car:
+                mask |= base[col_name_car].astype(str).str.lower().str.contains(qn, na=False)
+            res = base[mask].copy()
+        else:
+            # Por Profesor/ID
+            mask = pd.Series([False]*len(base))
+            if col_prof_car:
+                mask |= base[col_prof_car].astype(str).str.lower().str.contains(qn, na=False)
+            if "_ID" in base.columns:
+                mask |= base["_ID"].astype(str).str.lower().str.contains(qn, na=False)
+            res = base[mask].copy()
+
+        # Armar salida con columnas pedidas (tomando de Cartelera/Distribution/maps)
+        out_cols = []
+        data = {}
+        for nice, col in show_cols.items():
+            if nice == "Periodo":
+                data[nice] = res["_SEM"] if "_SEM" in res else res[col] if col in res else None
+            elif nice == "ID":
+                # preferir _ID map; si no, intentar columna real
+                if "_ID" in res: data[nice] = res["_ID"]
+                elif col and col in res: data[nice] = res[col]
+                else: data[nice] = None
+            elif nice == "AREA_PROFESOR":
+                if "_AREA_PROF" in res: data[nice] = res["_AREA_PROF"]
+                elif col and col in res: data[nice] = res[col]
+                else: data[nice] = None
+            else:
+                data[nice] = res[col] if col and col in res else None
+            out_cols.append(nice)
+
+        res_out = pd.DataFrame(data, columns=out_cols).copy()
+        # Créditos numéricos
+        if "Créditos" in res_out.columns:
+            res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
+
+        _download_xlsx_button(res_out, f"search_results_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                              key=f"dl_search_{_slugify(st.session_state.get('sel_label','sel'))}",
+                              label="Descargar resultados (Excel)")
+        st.dataframe(res_out, use_container_width=True, hide_index=True)
+    else:
+        st.caption("Busca por código/nombre de curso o por profesor/ID para ver los cursos del periodo.")
