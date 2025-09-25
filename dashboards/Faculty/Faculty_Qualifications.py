@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import re
 import math
+import numpy as np
 from io import BytesIO
 
 # ------------------------ PAGE CONFIG & STYLES ------------------------
@@ -2346,6 +2347,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
