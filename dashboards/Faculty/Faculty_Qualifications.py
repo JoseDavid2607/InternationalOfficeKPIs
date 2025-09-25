@@ -1127,6 +1127,66 @@ def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], 
     # devolver números (no strings)
     return round(up_pp, 2), round(down_pp, 2)
 
+# ==== HEATMAP para columnas de Impact (verde→amarillo→naranja→rojo) ====
+def _interp_color(t: float) -> str:
+    """
+    t ∈ [0,1]: 0=rojo, 0.33=naranja, 0.66=amarillo, 1=verde.
+    Devuelve hex '#RRGGBB'.
+    """
+    t = max(0.0, min(1.0, float(t)))
+    # Puntos de control (R,G,B)
+    stops = [
+        (1.00, 0.00, 0.00),  # rojo
+        (1.00, 0.55, 0.00),  # naranja
+        (1.00, 1.00, 0.00),  # amarillo
+        (0.00, 0.60, 0.20),  # verde (ligeramente oscuro para contraste)
+    ]
+    if t <= 0:   r,g,b = stops[0]
+    elif t >= 1: r,g,b = stops[-1]
+    else:
+        # ubicar segmento
+        pos = t * (len(stops)-1)
+        i   = int(pos)
+        frac= pos - i
+        r = stops[i][0] + (stops[i+1][0]-stops[i][0]) * frac
+        g = stops[i][1] + (stops[i+1][1]-stops[i][1]) * frac
+        b = stops[i][2] + (stops[i+1][2]-stops[i][2]) * frac
+    return '#{0:02X}{1:02X}{2:02X}'.format(int(r*255), int(g*255), int(b*255))
+
+def _style_impact_heatmap(df_: pd.DataFrame, id_col: str):
+    """
+    Aplica heatmap SOLO a columnas de impacto (las que empiezan por 'Impact ').
+    - Escala por |valor| (magnitud) combinando TODAS las columnas de impacto para una sola normalización.
+    - 0 => rojo; máximo => verde; intermedios => amarillo/naranja.
+    - Otras columnas quedan sin color.
+    """
+    sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+
+    impact_cols = [c for c in df_.columns if str(c).startswith("Impact ")]
+    if not impact_cols:
+        return sty
+
+    # Magnitudes absolutas
+    vals_abs = pd.concat(
+        [pd.to_numeric(df_[c], errors="coerce").abs() for c in impact_cols],
+        axis=1
+    )
+    # vmax a partir del conjunto completo (evita escala por-columna)
+    vmax = float(np.nanmax(vals_abs.values)) if vals_abs.size else 0.0
+    if not np.isfinite(vmax) or vmax <= 0:
+        # todos 0 o NaN: colorear todo como rojo para los impact cols
+        for c in impact_cols:
+            sty[c] = 'background-color:#FF0000;'
+        return sty
+
+    # Asignar color por celda
+    for c in impact_cols:
+        col = pd.to_numeric(df_[c], errors="coerce").abs()
+        t = (col / vmax).clip(lower=0.0, upper=1.0).fillna(0.0)
+        sty[c] = t.map(_interp_color).radd('background-color:')
+
+    return sty
+
 
 # ================== PRINCIPAL ==================
 st.markdown("---")
@@ -1448,16 +1508,29 @@ else:
                         })
         
                     need_tbl = pd.DataFrame(rows)
-                    # formato + estilo (rojo claro != 0)
+                    # formateo + heatmap (verde→amarillo→naranja→rojo) SOLO en columnas "Impact ..."
+                    fmt_map = {}
+                    if 'Academic Area' in need_tbl.columns:
+                        fmt_map['Academic Area'] = '{}'
+                    for col in ['Needed P (3cr)', 'Needed S less (3cr)', 'Needed SA (3cr)', 'Needed OTHER less (3cr)', 'Needed OTHER more (3cr)']:
+                        if col in need_tbl.columns:
+                            fmt_map[col] = '{:.0f}'
+                    for col in ['Impact +3cr (pp)', 'Impact -3cr (pp)']:
+                        if col in need_tbl.columns:
+                            fmt_map[col] = '{:+.2f}'
+                    
                     styled = (
                         need_tbl.style
-                        .format({main_col:"{:.0f}", aux_col:"{:.0f}", "Impact +3cr (pp)":"{:+.2f}", "Impact -3cr (pp)":"{:+.2f}"})
-                        .apply(_style_needed_impact, id_col="Academic Area", axis=None)
+                        .format(fmt_map)
+                        .apply(_style_impact_heatmap, id_col="Academic Area", axis=None)  # HEATMAP aplicado aquí
                         .hide(axis="index")
                     )
-                    _download_xlsx_button(need_tbl, f"needed_ByArea_{_slugify(sel_label)}_{_slugify(objective)}_{_slugify(scope_label)}.xlsx",
-                                          key=f"dl_need_area_{_slugify(sel_label)}_{_slugify(objective)}_{_slugify(scope_label)}",
-                                          label="⬇️ Descargar (Excel)")
+                    _download_xlsx_button(
+                        need_tbl,
+                        f"needed_ByArea_{_slugify(sel_label)}_{_slugify(objective)}_{_slugify(scope_label)}.xlsx",
+                        key=f"dl_need_area_{_slugify(sel_label)}_{_slugify(objective)}_{_slugify(scope_label)}",
+                        label="⬇️ Descargar (Excel)"
+                    )
                     st.markdown(styled.to_html(escape=False), unsafe_allow_html=True)
 
             # ========== Series históricas ==========
@@ -1641,15 +1714,31 @@ else:
                         })
         
                     need_tbl_f = pd.DataFrame(rows)
+
+                    fmt_map_f = {}
+                    if 'Field' in need_tbl_f.columns:
+                        fmt_map_f['Field'] = '{}'
+                    for col in ['Needed P (3cr)', 'Needed S less (3cr)', 'Needed SA (3cr)', 'Needed OTHER less (3cr)', 'Needed OTHER more (3cr)']:
+                        if col in need_tbl_f.columns:
+                            fmt_map_f[col] = '{:.0f}'
+                    for col in ['Impact +3cr (pp)', 'Impact -3cr (pp)']:
+                        if col in need_tbl_f.columns:
+                            fmt_map_f[col] = '{:+.2f}'
+                    
                     styled_f = (
                         need_tbl_f.style
-                        .format({main_col:"{:.0f}", aux_col:"{:.0f}", "Impact +3cr (pp)":"{:+.2f}", "Impact -3cr (pp)":"{:+.2f}"})
-                        .apply(_style_needed_impact, id_col="Field", axis=None)
+                        .format(fmt_map_f)
+                        .apply(_style_impact_heatmap, id_col="Field", axis=None)  # HEATMAP aplicado aquí
                         .hide(axis="index")
                     )
-                    _download_xlsx_button(need_tbl_f, f"needed_ByField_{_slugify(sel_label)}_{_slugify(objective_f)}_{_slugify(scope_label_f)}.xlsx",
-                                          key=f"dl_need_field_{_slugify(sel_label)}_{_slugify(objective_f)}_{_slugify(scope_label_f)}",
-                                          label="⬇️ Descargar (Excel)")
+                    
+                    _download_xlsx_button(
+                        need_tbl_f,
+                        f"needed_ByField_{_slugify(sel_label)}_{_slugify(objective_f)}_{_slugify(scope_label_f)}.xlsx",
+                        key=f"dl_need_field_{_slugify(sel_label)}_{_slugify(objective_f)}_{_slugify(scope_label_f)}",
+                        label="⬇️ Descargar (Excel)"
+                    )
+                    
                     st.markdown(styled_f.to_html(escape=False), unsafe_allow_html=True)
 
             # Históricos Field
@@ -1838,15 +1927,30 @@ else:
                         })
         
                     need_tbl_p = pd.DataFrame(rows)
+                    fmt_map_p = {}
+                    if 'Program' in need_tbl_p.columns:
+                        fmt_map_p['Program'] = '{}'
+                    for col in ['Needed P (3cr)', 'Needed S less (3cr)', 'Needed SA (3cr)', 'Needed OTHER less (3cr)', 'Needed OTHER more (3cr)']:
+                        if col in need_tbl_p.columns:
+                            fmt_map_p[col] = '{:.0f}'
+                    for col in ['Impact +3cr (pp)', 'Impact -3cr (pp)']:
+                        if col in need_tbl_p.columns:
+                            fmt_map_p[col] = '{:+.2f}'
+                    
                     styled_p = (
                         need_tbl_p.style
-                        .format({main_col:"{:.0f}", aux_col:"{:.0f}", "Impact +3cr (pp)":"{:+.2f}", "Impact -3cr (pp)":"{:+.2f}"})
-                        .apply(_style_needed_impact, id_col="Program", axis=None)
+                        .format(fmt_map_p)
+                        .apply(_style_impact_heatmap, id_col="Program", axis=None)  # HEATMAP aplicado aquí
                         .hide(axis="index")
                     )
-                    _download_xlsx_button(need_tbl_p, f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(objective_p)}_{_slugify(scope_label_p)}.xlsx",
-                                          key=f"dl_need_prog_{_slugify(sel_label)}_{_slugify(objective_p)}_{_slugify(scope_label_p)}",
-                                          label="⬇️ Descargar (Excel)")
+                    
+                    _download_xlsx_button(
+                        need_tbl_p,
+                        f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(objective_p)}_{_slugify(scope_label_p)}.xlsx",
+                        key=f"dl_need_prog_{_slugify(sel_label)}_{_slugify(objective_p)}_{_slugify(scope_label_p)}",
+                        label="⬇️ Descargar (Excel)"
+                    )
+                    
                     st.markdown(styled_p.to_html(escape=False), unsafe_allow_html=True)
         
             # ====== Series históricas por Program ======
@@ -2242,6 +2346,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
