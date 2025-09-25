@@ -3061,8 +3061,6 @@ with left:
 
 # ======================= PANEL DERECHO — BUSCADOR (modo único; control pegado) =======================
 with right:
-    st.markdown("**Search (current timeframe)**")
-
     # Base: Cartelera (alcance ya filtrado en df_car_filt_all)
     base = df_car_filt_all.copy()
     if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
@@ -3213,3 +3211,4 @@ if has_query:
         label="Descargar resultados (Excel)"
     )
     st.dataframe(res_out, use_container_width=True, hide_index=True)
+
