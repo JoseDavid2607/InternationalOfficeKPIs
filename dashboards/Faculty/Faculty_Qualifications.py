@@ -2144,7 +2144,7 @@ try:
 
             # ===== Toggle de series: Qualifications ↔ P/S =====
             mode_line = st.radio(
-                "Series to show",
+                "",
                 ["Qualifications", "P/S"],
                 horizontal=True,
                 key=f"credit_line_mode_{dim_col}"
@@ -2590,6 +2590,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
