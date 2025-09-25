@@ -2814,7 +2814,6 @@ else:
 st.markdown("---")
 st.markdown("#### Faculty credit highlights (current timeframe)")
 
-# Carga PLANTA (misma fuente del libro)
 @st.cache_data(ttl=0)
 def _load_planta_sheet():
     try:
@@ -2844,17 +2843,22 @@ if col_cred_car and "_CRED" not in df_car_filt_all.columns:
 
 # Distribution (para enriquecer con ID/AREA_PROFESOR/TIPO/P-S)
 col_id_fd   = _get_any(df_fd, "ID","ID Nr.","Documento")
-col_sem_fd  = _get_any(df_fd, "Semestre","Periodo")
+col_sem_fd  = _get_any(df_fd, "Semestre","Periodo","Periodo Académico","Periodo academico")
 col_area_fd = _get_any(df_fd, "AREA_PROFESOR","Area_Profesor","Area Profesor","Área","Area")
 col_tipo_fd = _get_any(df_fd, "TIPO","Tipo","Ranking","Tipo Ranking")
 col_ps_fd   = _get_any(df_fd, "P/S","P - S","Participating/Supporting")
 col_prof_fd = _get_any(df_fd, "Profesor","PROFESOR","Docente","Nombre")
 
-# Filtrar DF de Distribution al mismo periodo (si Semestral) — para Anual/Intersemestral el enriquecimiento vale por año
-sel_sem_code = st.session_state.get("sel_sem")
-time_mode = st.session_state.get("time_mode","Semestral")
-sel_year = st.session_state.get("sel_year")
+# ===== utilidades de tiempo =====
+def _extract_year(s):
+    m = re.search(r"(19|20)\d{2}", str(s) if s is not None else "")
+    return int(m.group(0)) if m else None
 
+time_mode = st.session_state.get("time_mode","Semestral")
+sel_year  = st.session_state.get("sel_year")
+sel_sem_code = st.session_state.get("sel_sem")
+
+# Construir DF Distribution en el mismo alcance temporal (para enrichment/maps)
 df_fd_sem = df_fd.copy()
 semc_fd = _get_any(df_fd_sem, "Semestre","Periodo","Periodo Académico","Periodo academico")
 if semc_fd:
@@ -2877,7 +2881,7 @@ if col_area_fd: df_fd_sem["_AREA_PROF"] = df_fd_sem[col_area_fd].astype(str).str
 if col_tipo_fd: df_fd_sem["_TIPO"]      = _norm_str(df_fd_sem[col_tipo_fd]).map(normalize_tipo)
 if col_ps_fd:   df_fd_sem["_PS"]        = _norm_str(df_fd_sem[col_ps_fd]).map(normalize_ps)
 
-# Maps (por profesor) — si hay filas múltiples por profesor, tomamos el primero
+# Maps (tomar primera coincidencia por profesor)
 def _first_map(df_, key_col, val_col):
     if key_col not in df_ or val_col not in df_:
         return {}
@@ -2914,7 +2918,7 @@ with left:
         if not col_prof_car or "_CRED" not in df_car_filt_all.columns:
             st.info("Missing credits or professor column in Cartelera for this view.")
         else:
-            # Sumas y #cursos por profesor en el periodo/alcance (df_car_filt_all ya respeta el alcance)
+            # Sumas y #cursos por profesor en el alcance actual (df_car_filt_all ya está filtrado por tiempo)
             df_top = (df_car_filt_all
                       .assign(_PROF=df_car_filt_all[col_prof_car].astype(str).str.strip())
                       .groupby("_PROF")
@@ -2943,65 +2947,148 @@ with left:
 
     else:
         # ========= Full-time con 0 cursos =========
-        if df_planta.empty or sel_sem_code is None or not all([col_period_pl, col_id_pl]):
-            st.info("Load 'BD PLANTA 2020-2025' and select a specific semester (e.g., 202520) to compute FT with 0 courses.")
+        if df_planta.empty or not all([col_period_pl, col_id_pl]):
+            st.info("Load 'BD PLANTA 2020-2025' to compute FT with 0 courses.")
         else:
-            # FT del semestre
-            df_ft = df_planta[df_planta[col_period_pl].astype(str).str.strip().eq(str(sel_sem_code))].copy()
-            df_ft["_ID"] = df_ft[col_id_pl].astype(str).str.strip()
-            ft_ids = set(df_ft["_ID"])
+            # Alcance temporal para PLANTA y DISTRIBUTION
+            if time_mode == "Semestral" and sel_sem_code is not None:
+                # FT del semestre exacto
+                df_ft = df_planta[df_planta[col_period_pl].astype(str).str.strip().eq(str(sel_sem_code))].copy()
+                alcance_txt = str(sel_sem_code)
+                # ids que dictaron en el mismo semestre
+                taught_ids = set()
+                if col_sem_fd and col_id_fd:
+                    taught_ids = set(
+                        df_fd.loc[df_fd[col_sem_fd].astype(str).str.strip().eq(str(sel_sem_code)), col_id_fd]
+                             .astype(str).str.strip()
+                    )
+            elif time_mode == "Intersemestral" and sel_year is not None:
+                # FT marcados como "YYYY Intersemestral" en PLANTA
+                mask_inter = df_planta[col_period_pl].astype(str).str.contains(rf"^{sel_year}\s*Intersemestral$", case=False, na=False)
+                df_ft = df_planta[mask_inter].copy()
+                alcance_txt = f"{sel_year} Intersemestral"
+                # taught_ids solo de ese intersemestral
+                taught_ids = set()
+                if col_sem_fd and col_id_fd:
+                    taught_ids = set(
+                        df_fd.loc[df_fd[col_sem_fd].astype(str).str.contains(rf"^{sel_year}\s*Intersemestral$", case=False, na=False), col_id_fd]
+                             .astype(str).str.strip()
+                    )
+            elif time_mode == "Anual" and sel_year is not None:
+                # FT de TODO el año (aparezca en 10, 20 o Inter) — dedup por ID
+                df_ft = df_planta[df_planta[col_period_pl].astype(str).str.contains(str(sel_year), na=False)].copy()
+                alcance_txt = f"{sel_year} (annual)"
+                # taught_ids en todo el año (10/20/inter) — dedup por ID
+                taught_ids = set()
+                if col_sem_fd and col_id_fd:
+                    taught_ids = set(
+                        df_fd.loc[df_fd[col_sem_fd].astype(str).str.contains(str(sel_year), na=False), col_id_fd]
+                             .astype(str).str.strip()
+                    )
+            else:
+                df_ft = pd.DataFrame()
+                taught_ids = set()
+                alcance_txt = st.session_state.get('sel_label','Selected')
 
-            # Taught IDs en Distribution (mismo semestre)
-            taught_ids = set()
-            if col_sem_fd and col_id_fd:
-                taught_ids = set(
-                    df_fd.loc[df_fd[col_sem_fd].astype(str).str.strip().eq(str(sel_sem_code)), col_id_fd]
-                         .astype(str).str.strip()
-                )
+            if df_ft.empty:
+                st.info(f"No full-time data found for {alcance_txt}.")
+            else:
+                df_ft["_ID"] = df_ft[col_id_pl].astype(str).str.strip()
+                ft_ids = set(df_ft["_ID"])
 
-            # Contadores para encabezado
-            ft_total = len(ft_ids)
-            ft_teaching = len(ft_ids & taught_ids)
-            st.markdown(f"**De los {ft_total} profesores de planta {ft_teaching} están dictando en {sel_sem_code}.**")
+                # Contadores para encabezado
+                ft_total = len(ft_ids)
+                ft_teaching = len(ft_ids & taught_ids)
+                st.markdown(f"**De los {ft_total} profesores de planta, {ft_teaching} están dictando en {alcance_txt}.**")
 
-            missing_ids = sorted(ft_ids - taught_ids)
-            sub = df_ft[df_ft["_ID"].isin(missing_ids)].copy()
+                missing_ids = sorted(ft_ids - taught_ids)
+                sub = df_ft[df_ft["_ID"].isin(missing_ids)].copy()
 
-            # Armar columnas solicitadas
-            def pick(df_, *cands):
-                c = _get_any(df_, *cands)
-                return df_[c] if c else pd.Series([None]*len(df_), index=df_.index)
+                # Armar columnas solicitadas
+                def pick(df_, *cands):
+                    c = _get_any(df_, *cands)
+                    return df_[c] if c else pd.Series([None]*len(df_), index=df_.index)
 
-            out = pd.DataFrame({
-                "ID Nr.":        sub["_ID"],
-                "First Name":    pick(sub, "First Name","Nombre","Nombres"),
-                "Last Name":     pick(sub, "Last Name","Apellidos","Apellido"),
-                "Academic Area": pick(sub, "Academic Area","Área Académica","Area Académica","AREA_PROFESOR","Área"),
-                "Faculty Ranking": pick(sub, "Faculty Ranking","Ranking","Rango"),
-                "Faculty Qualific.": pick(sub, "Faculty Qualific.","Qualification","Qualific.","Tipo Ranking","TIPO"),
-                "P/S": pick(sub, "P/S","P - S","Participating/Supporting")
-            })
+                out = pd.DataFrame({
+                    "ID Nr.":        sub["_ID"],
+                    "First Name":    pick(sub, "First Name","Nombre","Nombres"),
+                    "Last Name":     pick(sub, "Last Name","Apellidos","Apellido"),
+                    "Academic Area": pick(sub, "Academic Area","Área Académica","Area Académica","AREA_PROFESOR","Área"),
+                    "Faculty Ranking": pick(sub, "Faculty Ranking","Ranking","Rango"),
+                    "Faculty Qualific.": pick(sub, "Faculty Qualific.","Qualification","Qualific.","Tipo Ranking","TIPO"),
+                    "P/S": pick(sub, "P/S","P - S","Participating/Supporting")
+                })
 
-            _download_xlsx_button(out, f"ft_zero_courses_{_slugify(str(sel_sem_code))}.xlsx",
-                                  key=f"dl_ft_zero_{_slugify(str(sel_sem_code))}",
-                                  label="Descargar (Excel)")
-            st.dataframe(out, use_container_width=True, hide_index=True)
+                _download_xlsx_button(out, f"ft_zero_courses_{_slugify(alcance_txt)}.xlsx",
+                                      key=f"dl_ft_zero_{_slugify(alcance_txt)}",
+                                      label="Descargar (Excel)")
+                st.dataframe(out, use_container_width=True, hide_index=True)
 
-# ======================= PANEL DERECHO — BUSCADOR =======================
+# ======================= PANEL DERECHO — BUSCADOR (2 campos con autocompletar) =======================
 with right:
-    st.markdown("**Search (current period)**")
-    search_mode = st.radio("",
-        ["Por Curso (Código/Nombre)","Por Profesor/ID"],
-        index=0, horizontal=True, label_visibility="collapsed", key="srch_mode"
-    )
-    q = st.text_input("Type to search…", key="srch_q")
+    st.markdown("**Search (current timeframe)**")
 
-    # Asegurar columnas base para mostrar
+    # Base: Cartelera (periodo ya filtrado en df_car_filt_all)
+    base = df_car_filt_all.copy()
+    # columnas seguras
+    if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
+    if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
+    if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
+    if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
+
+    # Adjuntar ID y AREA_PROF por nombre (best-effort) para las columnas pedidas
+    if "_PROF" in base and prof_to_id_map:
+        base["_ID"] = base["_PROF"].map(prof_to_id_map)
+    if "_PROF" in base and prof_to_area_map:
+        base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
+
+    # Opciones para autocompletar
+    course_opts = []
+    if "_CODE" in base: course_opts += sorted(base["_CODE"].dropna().unique().tolist())
+    if "_NAME" in base: course_opts += sorted(base["_NAME"].dropna().unique().tolist())
+    course_opts = [""] + list(dict.fromkeys(course_opts))  # dedup y opción vacía
+
+    prof_opts = [""] + sorted(base["_PROF"].dropna().unique().tolist()) if "_PROF" in base else [""]
+    # Si tenemos IDs, agregarlos como opciones "ID: ####"
+    if "_ID" in base:
+        prof_opts = [""] + sorted(set(prof_opts[1:] + [f"ID:{v}" for v in base["_ID"].dropna().astype(str).tolist()]))
+
+    # Dos selectores con búsqueda
+    sel_course = st.selectbox("Curso (Código o Nombre)", options=course_opts, index=0, key="srch_course")
+    sel_prof   = st.selectbox("Profesor (Nombre) o ID", options=prof_opts, index=0, key="srch_prof")
+
+    # Armar máscara (alineada al índice de base) — evita IndexingError
+    mask = pd.Series(True, index=base.index)
+
+    if sel_course:
+        m_code = pd.Series(False, index=base.index)
+        m_name = pd.Series(False, index=base.index)
+        if "_CODE" in base:
+            m_code = base["_CODE"].str.contains(re.escape(sel_course), case=False, na=False) | (base["_CODE"] == sel_course)
+        if "_NAME" in base:
+            m_name = base["_NAME"].str.contains(re.escape(sel_course), case=False, na=False) | (base["_NAME"] == sel_course)
+        mask &= (m_code | m_name)
+
+    if sel_prof:
+        m_prof = pd.Series(False, index=base.index)
+        m_id   = pd.Series(False, index=base.index)
+        if sel_prof.startswith("ID:"):
+            qid = sel_prof.split(":",1)[1].strip()
+            if "_ID" in base:
+                m_id = base["_ID"].astype(str).str.fullmatch(re.escape(qid), case=False)
+        else:
+            if "_PROF" in base:
+                m_prof = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) | (base["_PROF"] == sel_prof)
+        mask &= (m_prof | m_id)
+
+    res = base[mask].copy()
+
+    # Asegurar columnas pedidas para mostrar
     show_cols = {
-        "Periodo": col_sem_car or col_sem_fd,
+        "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd),
         "Profesor": col_prof_car or col_prof_fd,
-        "ID": col_id_fd,  # ID vendrá de Distribution; si no existe en Cartelera
-        "AREA_PROFESOR": col_area_fd,
+        "ID": "_ID" if "_ID" in res else col_id_fd,
+        "AREA_PROFESOR": "_AREA_PROF" if "_AREA_PROF" in res else col_area_fd,
         "Código Materia": col_code_car,
         "Nombre largo curso": col_name_car,
         "Secc": col_secc_car,
@@ -3012,63 +3099,21 @@ with right:
         "Campus": col_campus
     }
 
-    # Base: Cartelera (periodo ya filtrado en df_car_filt_all)
-    base = df_car_filt_all.copy()
-    if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
-    if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
-    # Adjuntar ID y AREA_PROF por nombre (best-effort)
-    if "_PROF" in base and prof_to_id_map:
-        base["_ID"] = base["_PROF"].map(prof_to_id_map)
-    if "_PROF" in base and prof_to_area_map:
-        base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
-
-    # Filtro por búsqueda
-    res = pd.DataFrame()
-    if q:
-        qn = q.strip().lower()
-        if search_mode == "Por Curso (Código/Nombre)":
-            mask = pd.Series([False]*len(base))
-            if col_code_car:
-                mask = mask | base[col_code_car].astype(str).str.lower().str.contains(qn, na=False)
-            if col_name_car:
-                mask = mask | base[col_name_car].astype(str).str.lower().str.contains(qn, na=False)
-            res = base[mask].copy()
+    # Construir DataFrame de salida en el orden solicitado
+    data = {}
+    out_cols = []
+    for nice, col in show_cols.items():
+        if col in res:
+            data[nice] = res[col]
         else:
-            # Por Profesor/ID
-            mask = pd.Series([False]*len(base))
-            if col_prof_car:
-                mask |= base[col_prof_car].astype(str).str.lower().str.contains(qn, na=False)
-            if "_ID" in base.columns:
-                mask |= base["_ID"].astype(str).str.lower().str.contains(qn, na=False)
-            res = base[mask].copy()
+            data[nice] = None
+        out_cols.append(nice)
 
-        # Armar salida con columnas pedidas (tomando de Cartelera/Distribution/maps)
-        out_cols = []
-        data = {}
-        for nice, col in show_cols.items():
-            if nice == "Periodo":
-                data[nice] = res["_SEM"] if "_SEM" in res else (res[col] if col in res else None)
-            elif nice == "ID":
-                # preferir _ID map; si no, intentar columna real
-                if "_ID" in res: data[nice] = res["_ID"]
-                elif col and col in res: data[nice] = res[col]
-                else: data[nice] = None
-            elif nice == "AREA_PROFESOR":
-                if "_AREA_PROF" in res: data[nice] = res["_AREA_PROF"]
-                elif col and col in res: data[nice] = res[col]
-                else: data[nice] = None
-            else:
-                data[nice] = res[col] if col and col in res else None
-            out_cols.append(nice)
+    res_out = pd.DataFrame(data, columns=out_cols).copy()
+    if "Créditos" in res_out.columns:
+        res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
 
-        res_out = pd.DataFrame(data, columns=out_cols).copy()
-        # Créditos numéricos
-        if "Créditos" in res_out.columns:
-            res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
-
-        _download_xlsx_button(res_out, f"search_results_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-                              key=f"dl_search_{_slugify(st.session_state.get('sel_label','sel'))}",
-                              label="Descargar resultados (Excel)")
-        st.dataframe(res_out, use_container_width=True, hide_index=True)
-    else:
-        st.caption("Busca por código/nombre de curso o por profesor/ID para ver los cursos del periodo.")
+    _download_xlsx_button(res_out, f"search_results_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                          key=f"dl_search_{_slugify(st.session_state.get('sel_label','sel'))}",
+                          label="Descargar resultados (Excel)")
+    st.dataframe(res_out, use_container_width=True, hide_index=True)
