@@ -342,27 +342,25 @@ def transform_for_time_mode_tipo(df_tipo: pd.DataFrame, share_col_name: str):
         g["OTHER_share"] = (g["OTHER"] / den) * 100
     return g.rename(columns={"_INTER_LABEL":"_SEM"})
 
-# === NEW: aplicar sensibilidad sobre series históricas SOLO en el período seleccionado ===
+# === aplicar sensibilidad sobre series históricas SOLO en el período seleccionado ===
 def apply_sensitivity_to_history(
     agg_ps_tm: pd.DataFrame,
     agg_tipo_tm: pd.DataFrame,
     tot_ps_tm: pd.DataFrame,
     tot_tipo_tm: pd.DataFrame,
     level_name: str,
-    sel_label_value,  # etiqueta exacta del eje X seleccionada (p.ej. "202420" ó 2024 ó "2024 Intersemestral")
+    sel_label_value,  # etiqueta exacta seleccionada en el eje X
     ops: list,
     member_all_label="All"
 ):
     if not ops or sel_label_value is None:
         return agg_ps_tm, agg_tipo_tm, tot_ps_tm, tot_tipo_tm
 
-    # Copias editables
     ps = agg_ps_tm.copy()
     tq = agg_tipo_tm.copy()
     tps = tot_ps_tm.copy()
     ttq = tot_tipo_tm.copy()
 
-    # Asegurar columnas
     for k in ["P","S"]:
         if k not in ps.columns:  ps[k] = 0.0
         if k not in tps.columns: tps[k] = 0.0
@@ -370,7 +368,6 @@ def apply_sensitivity_to_history(
         if k not in tq.columns:  tq[k] = 0.0
         if k not in ttq.columns: ttq[k] = 0.0
 
-    # Aplicar solo en el periodo seleccionado
     mask_period_ps  = ps["_SEM"].eq(sel_label_value)
     mask_period_tq  = tq["_SEM"].eq(sel_label_value)
     mask_period_tps = tps["_SEM"].eq(sel_label_value)
@@ -390,7 +387,6 @@ def apply_sensitivity_to_history(
             else:
                 m = mask_period_ps & ps[level_name].eq(member)
                 ps.loc[m, cat] = (ps.loc[m, cat].astype(float) + delta).clip(lower=0.0)
-            # TOTAL por período
             tps.loc[mask_period_tps, cat] = (tps.loc[mask_period_tps, cat].astype(float) + delta).clip(lower=0.0)
 
         if scope == "QUAL" and cat in ["SA","PA","SP","IP","OTHER"]:
@@ -399,10 +395,8 @@ def apply_sensitivity_to_history(
             else:
                 m = mask_period_tq & tq[level_name].eq(member)
                 tq.loc[m, cat] = (tq.loc[m, cat].astype(float) + delta).clip(lower=0.0)
-            # TOTAL por período
             ttq.loc[mask_period_ttq, cat] = (ttq.loc[mask_period_ttq, cat].astype(float) + delta).clip(lower=0.0)
 
-    # Recalcular shares en filas afectadas del período seleccionado
     den_ps = (ps.loc[mask_period_ps, "P"].astype(float) + ps.loc[mask_period_ps, "S"].astype(float)).replace(0, pd.NA)
     ps.loc[mask_period_ps, "P_share"] = (ps.loc[mask_period_ps, "P"] / den_ps * 100).fillna(0.0)
 
@@ -668,12 +662,15 @@ with st.sidebar:
         st.selectbox("Qualification", ["None", "SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
         st.number_input("Professors", min_value=1, step=1, value=1, key="sens_count")
         st.number_input("Credits per professor", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
-        c_add, c_reset = st.columns(2)
+
+        c_add, c_elim, c_reset = st.columns([1,1,1])
+
+        # ADD
         with c_add:
             if st.button("Add", use_container_width=True, key="sens_add"):
                 ops_to_add = []
                 member_val = st.session_state.get("sens_member", "All")
-                cnt = int(st.session_state.get("sens_count", 1))
+                cnt  = int(st.session_state.get("sens_count", 1))
                 cred = float(st.session_state.get("sens_credits", 3.0))
                 if st.session_state.get("sens_cat_ps") and st.session_state["sens_cat_ps"] != "None":
                     ops_to_add.append({
@@ -688,12 +685,35 @@ with st.sidebar:
                 if ops_to_add:
                     st.session_state.sens_ops.extend(ops_to_add)
                     st.success("Added.")
+
+        # ELIMINATE (nuevo)
+        with c_elim:
+            if st.button("Eliminate", use_container_width=True, key="sens_eliminate"):
+                ops_to_add = []
+                member_val = st.session_state.get("sens_member", "All")
+                cred = float(st.session_state.get("sens_credits", 3.0))
+                # elimina exactamente 1 profesor con los créditos indicados
+                if st.session_state.get("sens_cat_ps") and st.session_state["sens_cat_ps"] != "None":
+                    ops_to_add.append({
+                        "scope": "PS", "cat": st.session_state["sens_cat_ps"], "member": member_val,
+                        "credits": cred, "count": -1
+                    })
+                if st.session_state.get("sens_cat_qual") and st.session_state["sens_cat_qual"] != "None":
+                    ops_to_add.append({
+                        "scope": "QUAL", "cat": st.session_state["sens_cat_qual"], "member": member_val,
+                        "credits": cred, "count": -1
+                    })
+                if ops_to_add:
+                    st.session_state.sens_ops.extend(ops_to_add)
+                    st.success("Eliminated 1 professor.")
+
+        # RESET
         with c_reset:
             if st.button("Reset to original", use_container_width=True, key="sens_reset"):
                 st.session_state.sens_ops = []
                 st.success("Reset.")
 
-        # --- NEW: listado de operaciones + eliminar seleccionada
+        # listado de operaciones + eliminar seleccionada
         if st.session_state.sens_ops:
             st.markdown("**Current sensitivity operations**")
             labels = []
@@ -704,7 +724,8 @@ with st.sidebar:
                 cnt   = op.get("count", 0)
                 cred  = op.get("credits", 0)
                 labels.append(f"{i+1}. [{scope}] {cat} | member: {mem} | count={cnt} | credits={cred}")
-            idx_sel = st.selectbox("Select to remove", options=list(range(len(labels))), format_func=lambda i: labels[i], key="sens_del_idx")
+            idx_sel = st.selectbox("Select to remove", options=list(range(len(labels))),
+                                   format_func=lambda i: labels[i], key="sens_del_idx")
             if st.button("Remove selected", use_container_width=True, key="sens_remove"):
                 try:
                     st.session_state.sens_ops.pop(idx_sel)
@@ -833,6 +854,7 @@ else:
     df_car_n["_AREA"] = df_car_n[col_areaCourse].astype(str).str.strip()
     col_ps_C_local = _get_any(df_car_n, "P/S","P - S","Participating/Supporting")
     df_car_n["_PS"] = _norm_str(df_car_n[col_ps_C_local]).map(normalize_ps) if col_ps_C_local else ""
+
     # excluir programas
     program_col0 = _get_any(df_car_n, "Program","PROGRAM","program","Materia")
     EXCLUDE_SUBJ = {"CONT", "E-IMER", "E-ENEG", "E-AFIN"}
@@ -850,10 +872,6 @@ else:
 
     fil = filter_df_car(df_car_global, time_mode, sel_year, sel_sem)
     df_car_filt_all = fil.copy()  # usar en expander/tabla/dona
-
-    # ======== TOGGLE DE MODO VISUAL (oculta tabla + dona) ========
-    with st.sidebar:
-        visual_mode = st.toggle("Visual mode (hide details)", value=st.session_state.get("visual_mode", False), key="visual_mode")
 
     # ============================ VISTAS ============================
     def build_percent_table(base_idx_name, agg_tipo, agg_ps):
@@ -926,7 +944,7 @@ else:
                 )
                 st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
 
-            # Series históricas (sobre TODO el df_car_global, luego se ajustan shares por modo temporal)
+            # Series históricas base (todo el histórico)
             df_hist = df_car_global.copy()
             agg_ps_all = (df_hist.groupby(["_SEM","_AREA","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["P","S"]:
@@ -961,17 +979,19 @@ else:
             agg_ps_all_tm  = transform_for_time_mode_ps(agg_ps_all.rename(columns={"_AREA":"__LEVEL__"})).rename(columns={"__LEVEL__":"_AREA"})
             agg_tipo_sa_tm = transform_for_time_mode_tipo(agg_tipo_all.rename(columns={"_AREA":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_AREA"})
             agg_tipo_ot_tm = transform_for_time_mode_tipo(agg_tipo_all.rename(columns={"_AREA":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_AREA"})
-            agg_tipo_all_tm = (agg_tipo_sa_tm
-                               .drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_sa_tm], errors="ignore")
-                               .merge(agg_tipo_ot_tm[["_SEM","_AREA","OTHER","SA","PA","SP","IP","OTHER_share"]],
-                                      on=["_SEM","_AREA","SA","PA","SP","IP","OTHER"], how="outer"))
+            agg_tipo_all_tm = (
+                agg_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_sa_tm], errors="ignore")
+                .merge(agg_tipo_ot_tm[["_SEM","_AREA","OTHER","SA","PA","SP","IP","OTHER_share"]],
+                       on=["_SEM","_AREA","SA","PA","SP","IP","OTHER"], how="outer")
+            )
             tot_by_sem_P_tm = transform_for_time_mode_ps(tot_by_sem_P.copy())
             tot_tipo_sa_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo.copy(), "SA_share")
             tot_tipo_ot_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo.copy(), "OTHER_share")
-            tot_by_sem_tipo_tm = (tot_tipo_sa_tm
-                                  .drop(columns=[c for c in ["OTHER_share"] if c in tot_tipo_sa_tm], errors="ignore")
-                                  .merge(tot_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
-                                         on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer"))
+            tot_by_sem_tipo_tm = (
+                tot_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in tot_tipo_sa_tm], errors="ignore")
+                .merge(tot_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
+                       on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer")
+            )
 
             # Eje X + etiqueta seleccionada EXACTA para sensibilidad
             key_col, x_labels, x_map = build_time_axis_for_history(df_hist)
@@ -986,7 +1006,7 @@ else:
                 sel_x = x_map.get(inter_label) if inter_label else None
                 sel_label_exact = inter_label
 
-            # === NUEVO: aplicar sensibilidad en series históricas en el periodo seleccionado
+            # aplicar sensibilidad solo en el periodo seleccionado
             if SENS["on"] and SENS["ops"] and sel_label_exact is not None:
                 agg_ps_all_tm, agg_tipo_all_tm, tot_by_sem_P_tm, tot_by_sem_tipo_tm = apply_sensitivity_to_history(
                     agg_ps_all_tm, agg_tipo_all_tm, tot_by_sem_P_tm, tot_by_sem_tipo_tm,
@@ -1079,17 +1099,19 @@ else:
             agg_ps_all_tm = transform_for_time_mode_ps(agg_ps_all_f.rename(columns={"_FIELD":"__LEVEL__"})).rename(columns={"__LEVEL__":"_FIELD"})
             agg_tipo_sa_tm = transform_for_time_mode_tipo(agg_tipo_all_f.rename(columns={"_FIELD":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_FIELD"})
             agg_tipo_ot_tm = transform_for_time_mode_tipo(agg_tipo_all_f.rename(columns={"_FIELD":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_FIELD"})
-            agg_tipo_all_tm = (agg_tipo_sa_tm
-                               .drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_sa_tm], errors="ignore")
-                               .merge(agg_tipo_ot_tm[["_SEM","_FIELD","OTHER","SA","PA","SP","IP","OTHER_share"]],
-                                      on=["_SEM","_FIELD","SA","PA","SP","IP","OTHER"], how="outer"))
+            agg_tipo_all_tm = (
+                agg_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_sa_tm], errors="ignore")
+                .merge(agg_tipo_ot_tm[["_SEM","_FIELD","OTHER","SA","PA","SP","IP","OTHER_share"]],
+                       on=["_SEM","_FIELD","SA","PA","SP","IP","OTHER"], how="outer")
+            )
             tot_by_sem_P_tm = transform_for_time_mode_ps(tot_by_sem_f.copy())
             tot_tipo_sa_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_f.copy(), "SA_share")
             tot_tipo_ot_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_f.copy(), "OTHER_share")
-            tot_by_sem_tipo_tm = (tot_tipo_sa_tm
-                                  .drop(columns=[c for c in ["OTHER_share"] if c in tot_tipo_sa_tm], errors="ignore")
-                                  .merge(tot_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
-                                         on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer"))
+            tot_by_sem_tipo_tm = (
+                tot_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in tot_tipo_sa_tm], errors="ignore")
+                .merge(tot_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
+                       on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer")
+            )
 
             key_col, x_labels, x_map = build_time_axis_for_history(df_hist_f)
             if time_mode == "Semestral":
@@ -1195,17 +1217,19 @@ else:
             agg_ps_all_tm  = transform_for_time_mode_ps(agg_ps_all_m.rename(columns={"_MAT":"__LEVEL__"})).rename(columns={"__LEVEL__":"_MAT"})
             agg_tipo_sa_tm = transform_for_time_mode_tipo(agg_tipo_all_m.rename(columns={"_MAT":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_MAT"})
             agg_tipo_ot_tm = transform_for_time_mode_tipo(agg_tipo_all_m.rename(columns={"_MAT":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_MAT"})
-            agg_tipo_all_tm = (agg_tipo_sa_tm
-                               .drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_sa_tm], errors="ignore")
-                               .merge(agg_tipo_ot_tm[["_SEM","_MAT","OTHER","SA","PA","SP","IP","OTHER_share"]],
-                                      on=["_SEM","_MAT","SA","PA","SP","IP","OTHER"], how="outer"))
+            agg_tipo_all_tm = (
+                agg_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_sa_tm], errors="ignore")
+                .merge(agg_tipo_ot_tm[["_SEM","_MAT","OTHER","SA","PA","SP","IP","OTHER_share"]],
+                       on=["_SEM","_MAT","SA","PA","SP","IP","OTHER"], how="outer")
+            )
             tot_by_sem_P_tm = transform_for_time_mode_ps(tot_by_sem_m.copy())
             tot_tipo_sa_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_m.copy(), "SA_share")
             tot_tipo_ot_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_m.copy(), "OTHER_share")
-            tot_by_sem_tipo_tm = (tot_tipo_sa_tm
-                                  .drop(columns=[c for c in ["OTHER_share"] if c in tot_tipo_sa_tm], errors="ignore")
-                                  .merge(tot_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
-                                         on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer"))
+            tot_by_sem_tipo_tm = (
+                tot_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in tot_tipo_sa_tm], errors="ignore")
+                .merge(tot_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
+                       on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer")
+            )
 
             key_col, x_labels, x_map = build_time_axis_for_history(df_hist_m)
             if time_mode == "Semestral":
@@ -1311,9 +1335,10 @@ except Exception:
     pass
 
 # --------------------------
-# DETAIL TABLE + DONUT + SEARCH  (ocultar en visual_mode)
+# DETAIL TABLE + DONUT + SEARCH
+# (Oculto automáticamente cuando Sensitivity mode está activo)
 # --------------------------
-if not st.session_state.get("visual_mode", False):
+if not SENS.get("on", False):
     try:
         cfg = {
             "By Academic Area": {"key": "_AREA_filter",  "col": "_AREA", "label": "area",    "metric_key": "metric__AREA"},
@@ -1392,24 +1417,19 @@ if not st.session_state.get("visual_mode", False):
                     if k not in agg_ps.columns: agg_ps[k] = 0.0
                 agg_ps = agg_ps[["P","S"]]; agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
 
-                # Aplicar sensibilidad al total/miembro
-                if SENS.get("on"):
-                    mod_ps, mod_tipo = apply_ops_to_aggs(agg_ps, agg_tipo, SENS.get("ops", []), member_all_label="All")
-                else:
-                    mod_ps, mod_tipo = agg_ps, agg_tipo
+                # (sin sensibilidad aquí porque está desactivada; si la activas, esta sección completa se oculta)
 
-                # Donut
                 if opt_val in {"(TOTAL)", "(All)"} or col_tag not in base.columns:
-                    p_val, s_val = float(mod_ps["P"].sum() if not mod_ps.empty else 0.0), float(mod_ps["S"].sum() if not mod_ps.empty else 0.0)
-                    sa = float(mod_tipo["SA"].sum() if not mod_tipo.empty else 0.0)
-                    pa = float(mod_tipo["PA"].sum() if not mod_tipo.empty else 0.0)
-                    sp = float(mod_tipo["SP"].sum() if not mod_tipo.empty else 0.0)
-                    ip = float(mod_tipo["IP"].sum() if not mod_tipo.empty else 0.0)
-                    other = float(mod_tipo["OTHER"].sum() if not mod_tipo.empty else 0.0)
+                    p_val, s_val = float(agg_ps["P"].sum() if not agg_ps.empty else 0.0), float(agg_ps["S"].sum() if not agg_ps.empty else 0.0)
+                    sa = float(agg_tipo["SA"].sum() if not agg_tipo.empty else 0.0)
+                    pa = float(agg_tipo["PA"].sum() if not agg_tipo.empty else 0.0)
+                    sp = float(agg_tipo["SP"].sum() if not agg_tipo.empty else 0.0)
+                    ip = float(agg_tipo["IP"].sum() if not agg_tipo.empty else 0.0)
+                    other = float(agg_tipo["OTHER"].sum() if not agg_tipo.empty else 0.0)
                     title_suffix = "TOTAL"
                 else:
-                    row_ps = mod_ps.loc[[opt_val]] if opt_val in mod_ps.index else pd.DataFrame(columns=["P","S"])
-                    row_q  = mod_tipo.loc[[opt_val]] if opt_val in mod_tipo.index else pd.DataFrame(columns=["SA","PA","SP","IP","OTHER"])
+                    row_ps = agg_ps.loc[[opt_val]] if opt_val in agg_ps.index else pd.DataFrame(columns=["P","S"])
+                    row_q  = agg_tipo.loc[[opt_val]] if opt_val in agg_tipo.index else pd.DataFrame(columns=["SA","PA","SP","IP","OTHER"])
                     p_val, s_val = float(row_ps["P"].sum() if not row_ps.empty else 0.0), float(row_ps["S"].sum() if not row_ps.empty else 0.0)
                     sa = float(row_q["SA"].sum() if not row_q.empty else 0.0)
                     pa = float(row_q["PA"].sum() if not row_q.empty else 0.0)
@@ -1493,6 +1513,7 @@ if show_counts:
     for k in ["Participating", "Supporting"]:
         if k not in table.columns: table[k] = 0
 
+    # Ajuste simple por sensibilidad (solo cuenta de profesores agregados/quitados a nivel total)
     if SENS["on"] and SENS["ops"]:
         add_P = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="P")
         add_S = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="S")
