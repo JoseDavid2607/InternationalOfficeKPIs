@@ -2139,7 +2139,6 @@ try:
             # Nota: para evitar 5×N líneas, si eligen "(All)" mostramos TOTAL
             if dim_opt == "(All)":
                 dim_opt_eff = "(TOTAL)"
-                st.caption("Showing TOTAL for readability when '(All)' is selected.")
             else:
                 dim_opt_eff = dim_opt
 
@@ -2591,6 +2590,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
