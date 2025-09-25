@@ -3099,21 +3099,22 @@ with right:
         "Campus": col_campus
     }
 
-    # Construir DataFrame de salida en el orden solicitado
-    data = {}
-    out_cols = []
-    for nice, col in show_cols.items():
-        if col in res:
-            data[nice] = res[col]
-        else:
-            data[nice] = None
-        out_cols.append(nice)
+# Construir DataFrame de salida en el orden solicitado
+data = {}
+out_cols = []
+for nice, col in show_cols.items():
+    if col in res:
+        data[nice] = res[col]
+    else:
+        data[nice] = None
+    out_cols.append(nice)
 
-    res_out = pd.DataFrame(data, columns=out_cols).copy()
-    if "Créditos" in res_out.columns:
-        res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
+res_out = pd.DataFrame(data, columns=out_cols).copy()
+if "Créditos" in res_out.columns:
+    res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
 
-    _download_xlsx_button(res_out, f"search_results_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-                          key=f"dl_search_{_slugify(st.session_state.get('sel_label','sel'))}",
-                          label="Descargar resultados (Excel)")
-    st.dataframe(res_out, use_container_width=True, hide_index=True)
+_download_xlsx_button(res_out, f"search_results_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                      key=f"dl_search_{_slugify(st.session_state.get('sel_label','sel'))}",
+                      label="Descargar resultados (Excel)")
+st.dataframe(res_out, use_container_width=True, hide_index=True)
+
