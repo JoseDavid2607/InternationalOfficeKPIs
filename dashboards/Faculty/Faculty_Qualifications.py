@@ -234,7 +234,8 @@ def _impact_plus3_P(rowP: pd.Series) -> float:
     P = float(rowP.get("P", 0.0)); S = float(rowP.get("S", 0.0)); T = P + S
     d = IMPACT_DELTA
     if T <= 0: return 0.0
-    return round(100.0 * (d * S) / (T * (T + d)), 2)
+    # Δ%P = 100 * d * S / [T*(T+d)]
+    return round(100.0 * (d * S) / (T * (T + d)), 1)
 
 def _impact_plus3_SA(rowQ: pd.Series) -> float:
     SA = float(rowQ.get("SA", 0.0))
@@ -242,7 +243,8 @@ def _impact_plus3_SA(rowQ: pd.Series) -> float:
     Q = SA + PA + SP + IP + OT
     d = IMPACT_DELTA
     if Q <= 0: return 0.0
-    return round(100.0 * (d * (Q - SA)) / (Q * (Q + d)), 2)
+    # Δ%SA = 100 * d * (Q-SA) / [Q*(Q+d)]
+    return round(100.0 * (d * (Q - SA)) / (Q * (Q + d)), 1)
 
 def _impact_plus3_OTHER(rowQ: pd.Series) -> float:
     OT = float(rowQ.get("OTHER", 0.0))
@@ -250,7 +252,8 @@ def _impact_plus3_OTHER(rowQ: pd.Series) -> float:
     Q = SA + PA + SP + IP + OT
     d = IMPACT_DELTA
     if Q <= 0: return 0.0
-    return round(100.0 * (d * (Q - OT)) / (Q * (Q + d)), 2)
+    # Δ%OTHER = 100 * d * (Q-OT) / [Q*(Q+d)]
+    return round(100.0 * (d * (Q - OT)) / (Q * (Q + d)), 1)
 
 # ================== HISTORY (timeframe-aware) ==================
 def _period_sort_key(p: str) -> tuple[int,int]:
@@ -501,10 +504,10 @@ def draw_history(fig_title, level_name, level_values, metric_kind, total_series_
         y_max = 40
 
     if bad_high:
-        fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=thr, y1=100, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
+        fig.update_layout(shapes=[dict(type="rect", xref="paper, x", yref="y", x0=0, x1=1, y0=thr, y1=100, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
         fig.add_hline(y=thr, line_color="#F5A3A3", line_dash="dash")
     else:
-        fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=thr, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
+        fig.update_layout(shapes=[dict(type="rect", xref="paper, x", yref="y", x0=0, x1=1, y0=0, y1=thr, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
         fig.add_hline(y=thr, line_color="red", line_dash="dash")
 
     if sel_x is not None:
@@ -753,8 +756,9 @@ def style_percent_tables(df_, id_col):
 
 def style_impact_bins(df_: pd.DataFrame, impact_cols: list[str]):
     sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
-    bins = [0, 0.5, 1, 2, 4, 9999]  # pp
-    colors = ['#FDE2E2', '#EAF7F3', '#D6F0E6', '#BDE5D6', '#93D4C0', '#59BFA6']  # rojo->verde
+    # bins en puntos porcentuales (pp). Más cercano a 0 => “menos impacto” (rojo claro), más alto => más impacto (verdes).
+    bins = [0, 0.5, 1, 2, 4, 9999]
+    colors = ['#FDE2E2', '#EAF7F3', '#D6F0E6', '#BDE5D6', '#93D4C0', '#59BFA6']
     for col in impact_cols:
         if col not in df_.columns: continue
         vals = pd.to_numeric(df_[col], errors='coerce').fillna(0.0)
@@ -797,6 +801,7 @@ else:
     else:
         # ============================ VISTAS ============================
         def build_percent_table(base_idx_name, agg_tipo, agg_ps, show_impacts: bool):
+            # % base
             den_ps   = (agg_ps["P"] + agg_ps["S"]).replace(0, pd.NA)
             p_share  = (agg_ps["P"] / den_ps) * 100
             s_share  = 100 - p_share
@@ -809,7 +814,7 @@ else:
                 "%OTHER": (agg_tipo["OTHER"] / denom_q) * 100,
             }).fillna(0.0)
 
-            # fila TOTAL (%)
+            # fila TOTAL
             tot_P, tot_S = agg_ps["P"].sum(), agg_ps["S"].sum()
             tot_den_ps   = tot_P + tot_S
             p_tot = (tot_P / tot_den_ps * 100) if tot_den_ps else 0.0
@@ -829,19 +834,20 @@ else:
             if show_impacts:
                 ps_abs = agg_ps[["P","S"]].copy()
                 tipo_abs = agg_tipo[["SA","PA","SP","IP","OTHER"]].copy()
-                dfm["Impact +3cr (P)"]     = ps_abs.apply(_impact_plus3_P, axis=1)
-                dfm["Impact +3cr (SA)"]    = tipo_abs.apply(_impact_plus3_SA, axis=1)
-                dfm["Impact +3cr (OTHER)"] = tipo_abs.apply(_impact_plus3_OTHER, axis=1)
+                dfm["Impacto +3cr (P→%P)"]       = ps_abs.apply(_impact_plus3_P, axis=1)
+                dfm["Impacto +3cr (SA→%SA)"]     = tipo_abs.apply(_impact_plus3_SA, axis=1)
+                dfm["Impacto +3cr (OTHER→%OTHER)"] = tipo_abs.apply(_impact_plus3_OTHER, axis=1)
                 total_row.update({
-                    "Impact +3cr (P)":     _impact_plus3_P(pd.Series({"P": tot_P, "S": tot_S})),
-                    "Impact +3cr (SA)":    _impact_plus3_SA(tipo_sums),
-                    "Impact +3cr (OTHER)": _impact_plus3_OTHER(tipo_sums),
+                    "Impacto +3cr (P→%P)":         _impact_plus3_P(pd.Series({"P": tot_P, "S": tot_S})),
+                    "Impacto +3cr (SA→%SA)":       _impact_plus3_SA(tipo_sums),
+                    "Impacto +3cr (OTHER→%OTHER)": _impact_plus3_OTHER(tipo_sums),
                 })
 
             dfm = pd.concat([dfm, pd.DataFrame([total_row])], ignore_index=True)
 
             if show_impacts:
-                return dfm[[base_idx_name, "%P", "Impact +3cr (P)", "%S", "%SA", "Impact +3cr (SA)", "%OTHER", "Impact +3cr (OTHER)"]]
+                # Orden: %P, %S, Impacto P, %SA, Impacto SA, %OTHER, Impacto OTHER
+                return dfm[[base_idx_name, "%P", "%S", "Impacto +3cr (P→%P)", "%SA", "Impacto +3cr (SA→%SA)", "%OTHER", "Impacto +3cr (OTHER→%OTHER)"]]
             else:
                 return dfm[[base_idx_name, "%P", "%S", "%SA", "%OTHER"]]
 
@@ -867,22 +873,25 @@ else:
                 else:
                     mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
 
-                show_impacts = SENS["on"]  # 🔒 mostrar solo en sensibilidad
+                show_impacts = SENS["on"]  # mostrar impactos solo en modo sensibilidad
                 if show_impacts:
-                    st.markdown("<div class='impact-note'>Impacto = aumento esperado (pp) al añadir +3 créditos en esa fila. Considera el total de créditos: a más total, menor impacto.</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='impact-note'>Impacto = aumento esperado (pp) al añadir +3 créditos en esa fila. A más créditos totales ⇒ menor impacto.</div>", unsafe_allow_html=True)
 
                 metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps, show_impacts=show_impacts)
 
                 _download_xlsx_button(metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx", key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
 
+                fmt_perc = {c: "{:.1f}%" for c in ["%P","%S","%SA","%OTHER"] if c in metrics_tbl.columns}
+                fmt_imp  = {c: lambda v: f"{v:.1f} pp" for c in ["Impacto +3cr (P→%P)","Impacto +3cr (SA→%SA)","Impacto +3cr (OTHER→%OTHER)"] if c in metrics_tbl.columns}
+
                 styler = (
                     metrics_tbl.style
-                    .format({c: "{:.1f}%" for c in ["%P","%S","%SA","%OTHER"] if c in metrics_tbl.columns})
-                    .format({c: "{:.2f}" for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl.columns})
+                    .format(fmt_perc)
+                    .format(fmt_imp)
                     .apply(style_percent_tables, id_col="Academic Area", axis=None)
                 )
                 if show_impacts:
-                    styler = styler.apply(style_impact_bins, impact_cols=[c for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl.columns], axis=None)
+                    styler = styler.apply(style_impact_bins, impact_cols=[c for c in ["Impacto +3cr (P→%P)","Impacto +3cr (SA→%SA)","Impacto +3cr (OTHER→%OTHER)"] if c in metrics_tbl.columns], axis=None)
                 st.markdown(f"<div class='scroll-wrap-400'>{styler.hide(axis='index').to_html(escape=False)}</div>", unsafe_allow_html=True)
 
             # --- HISTÓRICOS (área) ---
@@ -988,14 +997,17 @@ else:
                     _download_xlsx_button(metrics_tbl_f, f"table_ByField_{_slugify(sel_label)}.xlsx",
                                           key=f"dl_tbl_field_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
 
+                    fmt_perc = {c: "{:.1f}%" for c in ["%P","%S","%SA","%OTHER"] if c in metrics_tbl_f.columns}
+                    fmt_imp  = {c: lambda v: f"{v:.1f} pp" for c in ["Impacto +3cr (P→%P)","Impacto +3cr (SA→%SA)","Impacto +3cr (OTHER→%OTHER)"] if c in metrics_tbl_f.columns}
+
                     styler_f = (
                         metrics_tbl_f.style
-                        .format({c: "{:.1f}%" for c in ["%P","%S","%SA","%OTHER"] if c in metrics_tbl_f.columns})
-                        .format({c: "{:.2f}" for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl_f.columns})
+                        .format(fmt_perc)
+                        .format(fmt_imp)
                         .apply(style_percent_tables, id_col="Field", axis=None)
                     )
                     if show_impacts:
-                        styler_f = styler_f.apply(style_impact_bins, impact_cols=[c for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl_f.columns], axis=None)
+                        styler_f = styler_f.apply(style_impact_bins, impact_cols=[c for c in ["Impacto +3cr (P→%P)","Impacto +3cr (SA→%SA)","Impacto +3cr (OTHER→%OTHER)"] if c in metrics_tbl_f.columns], axis=None)
                     st.markdown(f"<div class='scroll-wrap-400'>{styler_f.hide(axis='index').to_html(escape=False)}</div>", unsafe_allow_html=True)
 
                 # HISTÓRICOS Field
@@ -1090,14 +1102,17 @@ else:
                     _download_xlsx_button(metrics_tbl_m, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
                                           key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
 
+                    fmt_perc = {c: "{:.1f}%" for c in ["%P","%S","%SA","%OTHER"] if c in metrics_tbl_m.columns}
+                    fmt_imp  = {c: lambda v: f"{v:.1f} pp" for c in ["Impacto +3cr (P→%P)","Impacto +3cr (SA→%SA)","Impacto +3cr (OTHER→%OTHER)"] if c in metrics_tbl_m.columns}
+
                     styler_m = (
                         metrics_tbl_m.style
-                        .format({c: "{:.1f}%" for c in ["%P","%S","%SA","%OTHER"] if c in metrics_tbl_m.columns})
-                        .format({c: "{:.2f}" for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl_m.columns})
+                        .format(fmt_perc)
+                        .format(fmt_imp)
                         .apply(style_percent_tables, id_col="Program", axis=None)
                     )
                     if show_impacts:
-                        styler_m = styler_m.apply(style_impact_bins, impact_cols=[c for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl_m.columns], axis=None)
+                        styler_m = styler_m.apply(style_impact_bins, impact_cols=[c for c in ["Impacto +3cr (P→%P)","Impacto +3cr (SA→%SA)","Impacto +3cr (OTHER→%OTHER)"] if c in metrics_tbl_m.columns], axis=None)
                     st.markdown(f"<div class='scroll-wrap-program'>{styler_m.hide(axis='index').to_html(escape=False)}</div>", unsafe_allow_html=True)
 
                 # HISTÓRICOS (programa)
