@@ -65,6 +65,17 @@ def load_cartelera():
     df.columns = df.columns.str.strip()
     return df
 
+@st.cache_data(ttl=0)
+def _load_planta_sheet():
+    try:
+        xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
+        dfp = pd.read_excel(xls, sheet_name="BD PLANTA 2020-2025")
+        dfp.columns = dfp.columns.str.strip()
+        return dfp
+    except Exception:
+        return pd.DataFrame()
+
+df_planta = _load_planta_sheet()
 df_fd  = load_faculty_distribution()
 df_car = load_cartelera()
 
@@ -2780,19 +2791,6 @@ prof_to_area_map = df_fd_sem.set_index("_PROF_N")["_AREA_PROF"].to_dict() if "_P
 prof_to_tipo_map = df_fd_sem.set_index("_PROF_N")["_TIPO"].to_dict()      if "_PROF_N" in df_fd_sem and "_TIPO" in df_fd_sem else {}
 prof_to_ps_map   = df_fd_sem.set_index("_PROF_N")["_PS"].to_dict()        if "_PROF_N" in df_fd_sem and "_PS" in df_fd_sem else {}
 
-# ========= Carga PLANTA =========
-@st.cache_data(ttl=0)
-def _load_planta_sheet():
-    try:
-        xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
-        dfp = pd.read_excel(xls, sheet_name="BD PLANTA 2020-2025")
-        dfp.columns = dfp.columns.str.strip()
-        return dfp
-    except Exception:
-        return pd.DataFrame()
-
-df_planta = _load_planta_sheet()
-
 # columnas probables en PLANTA
 col_period_pl = _get_any(df_planta, "Periodo","PERIODO","Semestre")
 col_id_pl     = _get_any(df_planta, "ID Nr.","ID","Documento")
@@ -2977,3 +2975,4 @@ with right:
         st.dataframe(res_out, use_container_width=True, hide_index=True)
     else:
         st.caption("Busca por código/nombre de curso o por profesor/ID para ver los cursos del periodo.")
+
