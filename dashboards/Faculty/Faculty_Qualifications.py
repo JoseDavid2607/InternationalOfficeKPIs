@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import re
+import math
 from io import BytesIO
 
 # ------------------------ PAGE CONFIG & STYLES ------------------------
@@ -239,25 +240,33 @@ def apply_ops_to_aggs(agg_ps: pd.DataFrame, agg_tipo: pd.DataFrame, ops: list, m
                     mod_tipo.at[member, cat] = max(0.0, float(mod_tipo.at[member, cat]) + delta)
     return mod_ps, mod_tipo
 
-def impact_column_generic(base_df: pd.DataFrame, mod_df: pd.DataFrame, target: str, mode: str) -> pd.Series:
-    if mode == "PS":
-        den0 = (base_df.get("P",0) + base_df.get("S",0)).replace(0, pd.NA)
-        den1 = (mod_df.get("P",0) + mod_df.get("S",0)).replace(0, pd.NA)
-        pct0 = (base_df[target] / den0 * 100).fillna(0.0)
-        pct1 = (mod_df[target] / den1 * 100).fillna(0.0)
-        return (pct1 - pct0).round(2)
-    else:
-        cats = ["SA","SP","IP","PA","OTHER"]
-        for c in cats:
-            if c not in base_df.columns:
-                base_df[c] = 0.0
-            if c not in mod_df.columns:
-                mod_df[c] = 0.0
-        den0 = base_df[cats].sum(axis=1).replace(0, pd.NA)
-        den1 = mod_df[cats].sum(axis=1).replace(0, pd.NA)
-        pct0 = (base_df[target] / den0 * 100).fillna(0.0)
-        pct1 = (mod_df[target] / den1 * 100).fillna(0.0)
-        return (pct1 - pct0).round(2)
+# ===== Cálculo de “profesores necesarios” (3 créditos) por fila =====
+def _needed_for_pctP(p: float, s: float, target_pct: float, credits_each: float = 3.0) -> int:
+    # (p + c*n)/(p + s + c*n) >= t  ->  n >= (t*s - (1-t)*p) / (c*(1-t))
+    t = target_pct / 100.0
+    denom = credits_each * (1 - t)
+    if denom <= 0: 
+        return 0
+    rhs = (t * s - (1 - t) * p) / denom
+    return max(0, math.ceil(rhs))
+
+def _needed_for_pctSA(sa: float, rest: float, target_pct: float, credits_each: float = 3.0) -> int:
+    # (sa + c*n)/(sa + rest + c*n) >= t -> n >= (t*rest - (1-t)*sa) / (c*(1-t))
+    t = target_pct / 100.0
+    denom = credits_each * (1 - t)
+    if denom <= 0:
+        return 0
+    rhs = (t * rest - (1 - t) * sa) / denom
+    return max(0, math.ceil(rhs))
+
+def _needed_for_other_leq10(other: float, rest: float, credits_each: float = 3.0) -> int:
+    # other/(other + rest + c*n) <= 0.10  ->  n >= (0.9*other - 0.1*rest) / (0.3*c) = (9*other - rest)/(3*c)
+    num = 9*other - rest
+    denom = 3 * credits_each
+    if denom <= 0:
+        return 0
+    rhs = num / denom
+    return max(0, math.ceil(rhs))
 
 # ================== HISTORY (timeframe-aware) ==================
 def _period_sort_key(p: str) -> tuple[int,int]:
@@ -418,6 +427,7 @@ def apply_sensitivity_to_history(
 
     return ps, tq, tps, ttq
 
+# --------- Gráfica histórica ---------
 def draw_history(fig_title, level_name, level_values, metric_kind, total_series_builders, agg_ps_all, agg_tipo_all, x_labels, x_map, sel_x):
     palette = px.colors.qualitative.Safe + px.colors.qualitative.Bold + px.colors.qualitative.Pastel
     color_map = {a: palette[i % len(palette)] for i, a in enumerate(level_values)}
@@ -533,7 +543,7 @@ def draw_history(fig_title, level_name, level_values, metric_kind, total_series_
         y_min, bad_high = 0, True
         y_max = 40
 
-    # Zonas “malas” y líneas de referencia
+    # Zonas de referencia
     if bad_high:
         fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=thr, y1=100, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
         fig.add_hline(y=thr, line_color="#F5A3A3", line_dash="dash")
@@ -663,75 +673,38 @@ with st.sidebar:
         st.number_input("Professors", min_value=1, step=1, value=1, key="sens_count")
         st.number_input("Credits per professor", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
 
-        c_add, c_elim, c_reset = st.columns([1,1,1])
+        # ADD (suma)
+        if st.button("Add", use_container_width=True, key="sens_add"):
+            ops_to_add = []
+            member_val = st.session_state.get("sens_member", "All")
+            cnt  = int(st.session_state.get("sens_count", 1))
+            cred = float(st.session_state.get("sens_credits", 3.0))
+            if st.session_state.get("sens_cat_ps") and st.session_state["sens_cat_ps"] != "None":
+                ops_to_add.append({"scope": "PS", "cat": st.session_state["sens_cat_ps"], "member": member_val, "credits": cred, "count": cnt})
+            if st.session_state.get("sens_cat_qual") and st.session_state["sens_cat_qual"] != "None":
+                ops_to_add.append({"scope": "QUAL", "cat": st.session_state["sens_cat_qual"], "member": member_val, "credits": cred, "count": cnt})
+            if ops_to_add:
+                st.session_state.sens_ops.extend(ops_to_add)
+                st.success("Added.")
 
-        # ADD
-        with c_add:
-            if st.button("Add", use_container_width=True, key="sens_add"):
-                ops_to_add = []
-                member_val = st.session_state.get("sens_member", "All")
-                cnt  = int(st.session_state.get("sens_count", 1))
-                cred = float(st.session_state.get("sens_credits", 3.0))
-                if st.session_state.get("sens_cat_ps") and st.session_state["sens_cat_ps"] != "None":
-                    ops_to_add.append({
-                        "scope": "PS", "cat": st.session_state["sens_cat_ps"], "member": member_val,
-                        "credits": cred, "count": cnt
-                    })
-                if st.session_state.get("sens_cat_qual") and st.session_state["sens_cat_qual"] != "None":
-                    ops_to_add.append({
-                        "scope": "QUAL", "cat": st.session_state["sens_cat_qual"], "member": member_val,
-                        "credits": cred, "count": cnt
-                    })
-                if ops_to_add:
-                    st.session_state.sens_ops.extend(ops_to_add)
-                    st.success("Added.")
-
-        # ELIMINATE (nuevo)
-        with c_elim:
-            if st.button("Eliminate", use_container_width=True, key="sens_eliminate"):
-                ops_to_add = []
-                member_val = st.session_state.get("sens_member", "All")
-                cred = float(st.session_state.get("sens_credits", 3.0))
-                # elimina exactamente 1 profesor con los créditos indicados
-                if st.session_state.get("sens_cat_ps") and st.session_state["sens_cat_ps"] != "None":
-                    ops_to_add.append({
-                        "scope": "PS", "cat": st.session_state["sens_cat_ps"], "member": member_val,
-                        "credits": cred, "count": -1
-                    })
-                if st.session_state.get("sens_cat_qual") and st.session_state["sens_cat_qual"] != "None":
-                    ops_to_add.append({
-                        "scope": "QUAL", "cat": st.session_state["sens_cat_qual"], "member": member_val,
-                        "credits": cred, "count": -1
-                    })
-                if ops_to_add:
-                    st.session_state.sens_ops.extend(ops_to_add)
-                    st.success("Eliminated 1 professor.")
+        # REMOVE (resta) — debajo de Add, usa el mismo conteo y créditos (con signo negativo)
+        if st.button("Remove", use_container_width=True, key="sens_remove_btn"):
+            ops_to_add = []
+            member_val = st.session_state.get("sens_member", "All")
+            cnt  = -abs(int(st.session_state.get("sens_count", 1)))  # resta 'Professors'
+            cred = float(st.session_state.get("sens_credits", 3.0))
+            if st.session_state.get("sens_cat_ps") and st.session_state["sens_cat_ps"] != "None":
+                ops_to_add.append({"scope": "PS", "cat": st.session_state["sens_cat_ps"], "member": member_val, "credits": cred, "count": cnt})
+            if st.session_state.get("sens_cat_qual") and st.session_state["sens_cat_qual"] != "None":
+                ops_to_add.append({"scope": "QUAL", "cat": st.session_state["sens_cat_qual"], "member": member_val, "credits": cred, "count": cnt})
+            if ops_to_add:
+                st.session_state.sens_ops.extend(ops_to_add)
+                st.success("Removed.")
 
         # RESET
-        with c_reset:
-            if st.button("Reset to original", use_container_width=True, key="sens_reset"):
-                st.session_state.sens_ops = []
-                st.success("Reset.")
-
-        # listado de operaciones + eliminar seleccionada
-        if st.session_state.sens_ops:
-            st.markdown("**Current sensitivity operations**")
-            labels = []
-            for i, op in enumerate(st.session_state.sens_ops):
-                scope = op.get("scope")
-                cat   = op.get("cat")
-                mem   = op.get("member", "All")
-                cnt   = op.get("count", 0)
-                cred  = op.get("credits", 0)
-                labels.append(f"{i+1}. [{scope}] {cat} | member: {mem} | count={cnt} | credits={cred}")
-            idx_sel = st.selectbox("Select to remove", options=list(range(len(labels))),
-                                   format_func=lambda i: labels[i], key="sens_del_idx")
-            if st.button("Remove selected", use_container_width=True, key="sens_remove"):
-                try:
-                    st.session_state.sens_ops.pop(idx_sel)
-                    st.success("Removed.")
-                except Exception:
-                    st.warning("Could not remove the selected item.")
+        if st.button("Reset to original", use_container_width=True, key="sens_reset"):
+            st.session_state.sens_ops = []
+            st.success("Reset.")
 
     if not sens_mode:
         st.markdown("### Go to KPI")
@@ -906,6 +879,19 @@ else:
         dfm = pd.concat([dfm, pd.DataFrame([total_row])], ignore_index=True)
         return dfm[[f"{base_idx_name}", "%P", "%S", "%SA", "%OTHER"]]
 
+    # ===== Helper específico: OTHER menos para llegar a ≤10% (quitar OTHER) =====
+    def _needed_decrease_other_to_leq10(other: float, rest: float, credits_each: float = 3.0) -> int:
+        # (other - c*n) / (other - c*n + rest) ≤ 0.10
+        #  => n ≥ (0.9*other - 0.1*rest) / (0.9*c) = (9*other - rest) / (9*c)
+        num = 9*other - rest
+        denom = 9 * credits_each
+        if denom <= 0:
+            return 0
+        rhs = num / denom
+        n = max(0, math.ceil(rhs))
+        max_possible = math.floor(other / credits_each) if credits_each > 0 else n
+        return min(n, max_possible)
+
     if fil.empty:
         st.info(f"No records for the selected timeframe: {sel_label}.")
     else:
@@ -933,18 +919,69 @@ else:
                 mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
 
             with colT:
-                metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
-                _download_xlsx_button(metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
-                                      key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                styled_tbl = (
-                    metrics_tbl.style
-                    .format({"%P": "{:.1f}%", "%S": "{:.1f}%", "%SA": "{:.1f}%", "%OTHER": "{:.1f}%"})
-                    .apply(style_percent_tables, id_col="Academic Area", axis=None)
-                    .hide(axis="index")
-                )
-                st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                # ===== Toggle de vista cuando sensibilidad está activa =====
+                needed_mode = False
+                target_mode = "Área 60%"
+                if SENS["on"]:
+                    tleft, tright = st.columns([1,1])
+                    with tleft:
+                        needed_mode = st.toggle("Mostrar profesores necesarios (3cr)", value=False, key="area_needed_mode")
+                    with tright:
+                        target_mode = st.radio("Objetivo %P", ["Área 60%", "Overall 75%"], index=0, horizontal=True, key="area_target_mode")
 
-            # Series históricas base (todo el histórico)
+                if not needed_mode:
+                    # -------- vista original de porcentajes --------
+                    metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
+                    _download_xlsx_button(metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
+                                          key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
+                    styled_tbl = (
+                        metrics_tbl.style
+                        .format({"%P": "{:.1f}%", "%S": "{:.1f}%", "%SA": "{:.1f}%", "%OTHER": "{:.1f}%"})
+                        .apply(style_percent_tables, id_col="Academic Area", axis=None)
+                        .hide(axis="index")
+                    )
+                    st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                else:
+                    # -------- nueva vista: “profesores necesarios (3cr)” --------
+                    idx = mod_agg_ps.index
+                    p = mod_agg_ps["P"].reindex(idx, fill_value=0.0)
+                    s = mod_agg_ps["S"].reindex(idx, fill_value=0.0)
+                    sa = mod_agg_tipo["SA"].reindex(idx, fill_value=0.0)
+                    pa = mod_agg_tipo["PA"].reindex(idx, fill_value=0.0)
+                    sp = mod_agg_tipo["SP"].reindex(idx, fill_value=0.0)
+                    ip = mod_agg_tipo["IP"].reindex(idx, fill_value=0.0)
+                    other = mod_agg_tipo["OTHER"].reindex(idx, fill_value=0.0)
+
+                    # target dinámico para %P: 75% si TOTAL y modo Overall 75%, de lo contrario 60%
+                    def _targetP(label):
+                        if str(label).upper() == "TOTAL" and target_mode == "Overall 75%":
+                            return 75.0
+                        return 60.0
+
+                    rows = []
+                    for label in list(idx) + ["TOTAL"]:
+                        if label == "TOTAL":
+                            P, S = float(p.sum()), float(s.sum())
+                            SA, PA_, SP_, IP_, OT = float(sa.sum()), float(pa.sum()), float(sp.sum()), float(ip.sum()), float(other.sum())
+                        else:
+                            P, S = float(p.get(label, 0.0)), float(s.get(label, 0.0))
+                            SA, PA_, SP_, IP_, OT = float(sa.get(label, 0.0)), float(pa.get(label, 0.0)), float(sp.get(label, 0.0)), float(ip.get(label, 0.0)), float(other.get(label, 0.0))
+
+                        rest_q = PA_ + SP_ + IP_ + OT       # para SA (resto distinto de SA)
+                        rest_not_other = SA + PA_ + SP_ + IP_  # para OTHER (resto distinto de OTHER)
+
+                        need_P     = _needed_for_pctP(P, S, _targetP(label), credits_each=3.0)
+                        need_SA    = _needed_for_pctSA(SA, rest_q, 40.0, credits_each=3.0)
+                        need_OTHm  = _needed_decrease_other_to_leq10(OT, SA + PA_ + SP_ + IP_, credits_each=3.0)  # OTHER menos
+
+                        rows.append({"Academic Area": label, "Need P (3cr)": int(need_P), "Need SA (3cr)": int(need_SA), "Need OTHER less (3cr)": int(need_OTHm)})
+
+                    need_tbl = pd.DataFrame(rows)
+                    _download_xlsx_button(need_tbl, f"needed_ByArea_{_slugify(sel_label)}.xlsx",
+                                          key=f"dl_need_area_{_slugify(sel_label)}", label="⬇️ Descargar (Excel)")
+                    st.dataframe(need_tbl, use_container_width=True, hide_index=True)
+
+            # ========== Series históricas ==========
             df_hist = df_car_global.copy()
             agg_ps_all = (df_hist.groupby(["_SEM","_AREA","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["P","S"]:
@@ -960,7 +997,6 @@ else:
             agg_tipo_all["OTHER_share"] = (agg_tipo_all["OTHER"] / den_all) * 100
             agg_tipo_all = agg_tipo_all.reset_index()
 
-            # Series TOTAL base
             tot_by_sem_P = (df_hist.groupby(["_SEM","_PS"])["_CRED"].sum().unstack(fill_value=0.0))
             for k in ["P","S"]:
                 if k not in tot_by_sem_P.columns: tot_by_sem_P[k] = 0.0
@@ -1053,16 +1089,60 @@ else:
                 mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
 
             with colF_L:
-                metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
-                _download_xlsx_button(metrics_tbl_f, f"table_ByField_{_slugify(sel_label)}.xlsx",
-                                      key=f"dl_tbl_field_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                styled_tbl_f = (
-                    metrics_tbl_f.style
-                    .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
-                    .apply(style_percent_tables, id_col="Field", axis=None)
-                    .hide(axis="index")
-                )
-                st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                needed_mode_f = False
+                target_mode_f = "Área 60%"
+                if SENS["on"]:
+                    tleft, tright = st.columns([1,1])
+                    with tleft:
+                        needed_mode_f = st.toggle("Mostrar profesores necesarios (3cr)", value=False, key="field_needed_mode")
+                    with tright:
+                        target_mode_f = st.radio("Objetivo %P", ["Área 60%", "Overall 75%"], index=0, horizontal=True, key="field_target_mode")
+
+                if not needed_mode_f:
+                    metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
+                    _download_xlsx_button(metrics_tbl_f, f"table_ByField_{_slugify(sel_label)}.xlsx",
+                                          key=f"dl_tbl_field_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
+                    styled_tbl_f = (
+                        metrics_tbl_f.style
+                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
+                        .apply(style_percent_tables, id_col="Field", axis=None)
+                        .hide(axis="index")
+                    )
+                    st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                else:
+                    idx = mod_agg_ps.index
+                    p = mod_agg_ps["P"].reindex(idx, fill_value=0.0)
+                    s = mod_agg_ps["S"].reindex(idx, fill_value=0.0)
+                    sa = mod_agg_tipo["SA"].reindex(idx, fill_value=0.0)
+                    pa = mod_agg_tipo["PA"].reindex(idx, fill_value=0.0)
+                    sp = mod_agg_tipo["SP"].reindex(idx, fill_value=0.0)
+                    ip = mod_agg_tipo["IP"].reindex(idx, fill_value=0.0)
+                    other = mod_agg_tipo["OTHER"].reindex(idx, fill_value=0.0)
+
+                    def _targetP_f(label):
+                        if str(label).upper() == "TOTAL" and target_mode_f == "Overall 75%":
+                            return 75.0
+                        return 60.0
+
+                    rows = []
+                    for label in list(idx) + ["TOTAL"]:
+                        if label == "TOTAL":
+                            P, S = float(p.sum()), float(s.sum())
+                            SA, PA_, SP_, IP_, OT = float(sa.sum()), float(pa.sum()), float(sp.sum()), float(ip.sum()), float(other.sum())
+                        else:
+                            P, S = float(p.get(label, 0.0)), float(s.get(label, 0.0))
+                            SA, PA_, SP_, IP_, OT = float(sa.get(label, 0.0)), float(pa.get(label, 0.0)), float(sp.get(label, 0.0)), float(ip.get(label, 0.0)), float(other.get(label, 0.0))
+
+                        need_P     = _needed_for_pctP(P, S, _targetP_f(label), credits_each=3.0)
+                        need_SA    = _needed_for_pctSA(SA, PA_+SP_+IP_+OT, 40.0, credits_each=3.0)
+                        need_OTHm  = _needed_decrease_other_to_leq10(OT, SA+PA_+SP_+IP_, credits_each=3.0)
+
+                        rows.append({"Field": label, "Need P (3cr)": int(need_P), "Need SA (3cr)": int(need_SA), "Need OTHER less (3cr)": int(need_OTHm)})
+
+                    need_tbl_f = pd.DataFrame(rows)
+                    _download_xlsx_button(need_tbl_f, f"needed_ByField_{_slugify(sel_label)}.xlsx",
+                                          key=f"dl_need_field_{_slugify(sel_label)}", label="⬇️ Descargar (Excel)")
+                    st.dataframe(need_tbl_f, use_container_width=True, hide_index=True)
 
             # Históricos Field
             df_hist_f = df_car_global.copy()
@@ -1171,16 +1251,60 @@ else:
                 mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
 
             with colM_L:
-                metrics_tbl_m = build_percent_table("Program", mod_agg_tipo, mod_agg_ps)
-                _download_xlsx_button(metrics_tbl_m, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
-                                      key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                styled_tbl_m = (
-                    metrics_tbl_m.style
-                    .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
-                    .apply(style_percent_tables, id_col="Program", axis=None)
-                    .hide(axis="index")
-                )
-                st.markdown(f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                needed_mode_m = False
+                target_mode_m = "Área 60%"
+                if SENS["on"]:
+                    tleft, tright = st.columns([1,1])
+                    with tleft:
+                        needed_mode_m = st.toggle("Mostrar profesores necesarios (3cr)", value=False, key="prog_needed_mode")
+                    with tright:
+                        target_mode_m = st.radio("Objetivo %P", ["Área 60%", "Overall 75%"], index=0, horizontal=True, key="prog_target_mode")
+
+                if not needed_mode_m:
+                    metrics_tbl_m = build_percent_table("Program", mod_agg_tipo, mod_agg_ps)
+                    _download_xlsx_button(metrics_tbl_m, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
+                                          key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
+                    styled_tbl_m = (
+                        metrics_tbl_m.style
+                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
+                        .apply(style_percent_tables, id_col="Program", axis=None)
+                        .hide(axis="index")
+                    )
+                    st.markdown(f"<div class='scroll-wrap-program'>{styled_tbl_m.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                else:
+                    idx = mod_agg_ps.index
+                    p = mod_agg_ps["P"].reindex(idx, fill_value=0.0)
+                    s = mod_agg_ps["S"].reindex(idx, fill_value=0.0)
+                    sa = mod_agg_tipo["SA"].reindex(idx, fill_value=0.0)
+                    pa = mod_agg_tipo["PA"].reindex(idx, fill_value=0.0)
+                    sp = mod_agg_tipo["SP"].reindex(idx, fill_value=0.0)
+                    ip = mod_agg_tipo["IP"].reindex(idx, fill_value=0.0)
+                    other = mod_agg_tipo["OTHER"].reindex(idx, fill_value=0.0)
+
+                    def _targetP_m(label):
+                        if str(label).upper() == "TOTAL" and target_mode_m == "Overall 75%":
+                            return 75.0
+                        return 60.0
+
+                    rows = []
+                    for label in list(idx) + ["TOTAL"]:
+                        if label == "TOTAL":
+                            P, S = float(p.sum()), float(s.sum())
+                            SA, PA_, SP_, IP_, OT = float(sa.sum()), float(pa.sum()), float(sp.sum()), float(ip.sum()), float(other.sum())
+                        else:
+                            P, S = float(p.get(label, 0.0)), float(s.get(label, 0.0))
+                            SA, PA_, SP_, IP_, OT = float(sa.get(label, 0.0)), float(pa.get(label, 0.0)), float(sp.get(label, 0.0)), float(ip.get(label, 0.0)), float(other.get(label, 0.0))
+
+                        need_P     = _needed_for_pctP(P, S, _targetP_m(label), credits_each=3.0)
+                        need_SA    = _needed_for_pctSA(SA, PA_+SP_+IP_+OT, 40.0, credits_each=3.0)
+                        need_OTHm  = _needed_decrease_other_to_leq10(OT, SA+PA_+SP_+IP_, credits_each=3.0)
+
+                        rows.append({"Program": label, "Need P (3cr)": int(need_P), "Need SA (3cr)": int(need_SA), "Need OTHER less (3cr)": int(need_OTHm)})
+
+                    need_tbl_m = pd.DataFrame(rows)
+                    _download_xlsx_button(need_tbl_m, f"needed_ByProgram_{_slugify(sel_label)}.xlsx",
+                                          key=f"dl_need_prog_{_slugify(sel_label)}", label="⬇️ Descargar (Excel)")
+                    st.dataframe(need_tbl_m, use_container_width=True, hide_index=True)
 
             # Históricos Program
             df_hist_m = df_car_global.copy()
@@ -1576,3 +1700,4 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
