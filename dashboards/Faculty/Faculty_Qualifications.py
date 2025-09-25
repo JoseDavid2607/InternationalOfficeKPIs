@@ -1128,44 +1128,66 @@ def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], 
     # devolver números (no strings)
     return round(up_pp, 2), round(down_pp, 2)
 
-# ==== HEATMAP para columnas de Impact (verde→amarillo→naranja→rojo) ====
-def _interp_color(t: float) -> str:
+# === HEATMAP + ROJO-CLARO PARA "Needed" ===
+def _style_impact_heatmap(df: pd.DataFrame, id_col: str):
     """
-    t ∈ [0,1]: 0=rojo, 0.33=naranja, 0.66=amarillo, 1=verde.
-    Devuelve hex '#RRGGBB'.
+    - Heatmap (verde→amarillo→naranja→rojo) para columnas 'Impact +3cr (pp)' y 'Impact -3cr (pp)'.
+      Se colorea por magnitud absoluta (mayor impacto = más rojo).
+    - Fondo rojo claro en columnas 'Needed ...' cuando el valor != 0.
+    - No toca la columna del identificador (id_col) ni otras columnas.
     """
-    t = max(0.0, min(1.0, float(t)))
-    # Puntos de control (R,G,B)
-    stops = [
-        (1.00, 0.00, 0.00),  # rojo
-        (1.00, 0.55, 0.00),  # naranja
-        (1.00, 1.00, 0.00),  # amarillo
-        (0.00, 0.60, 0.20),  # verde (ligeramente oscuro para contraste)
-    ]
-    if t <= 0:   r,g,b = stops[0]
-    elif t >= 1: r,g,b = stops[-1]
-    else:
-        # ubicar segmento
-        pos = t * (len(stops)-1)
-        i   = int(pos)
-        frac= pos - i
-        r = stops[i][0] + (stops[i+1][0]-stops[i][0]) * frac
-        g = stops[i][1] + (stops[i+1][1]-stops[i][1]) * frac
-        b = stops[i][2] + (stops[i+1][2]-stops[i][2]) * frac
-    return '#{0:02X}{1:02X}{2:02X}'.format(int(r*255), int(g*255), int(b*255))
+    # DataFrame de estilos vacío
+    sty = pd.DataFrame('', index=df.index, columns=df.columns)
 
-def _style_impact_heatmap(df_: pd.DataFrame, id_col: str):
-    """
-    Aplica heatmap SOLO a columnas de impacto (las que empiezan por 'Impact ').
-    - Escala por |valor| (magnitud) combinando TODAS las columnas de impacto para una sola normalización.
-    - 0 => rojo; máximo => verde; intermedios => amarillo/naranja.
-    - Otras columnas quedan sin color.
-    """
-    sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+    # --- 1) Rojo claro para "Needed ..." cuando != 0 ---
+    needed_cols = [c for c in df.columns if c.startswith("Needed ")]
+    for c in needed_cols:
+        if c in df:
+            vals = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
+            sty.loc[vals != 0, c] = sty.loc[vals != 0, c].astype(str) + 'background-color:#FDE2E2;'
 
-    impact_cols = [c for c in df_.columns if str(c).startswith("Impact ")]
-    if not impact_cols:
-        return sty
+    # --- 2) Heatmap para columnas de Impact ---
+    impact_cols = [c for c in df.columns if c.startswith("Impact ")]
+    if impact_cols:
+        # Usamos por defecto la magnitud del "+3cr" si existe; si no, el promedio abs de todas
+        if "Impact +3cr (pp)" in df.columns:
+            base_vals = pd.to_numeric(df["Impact +3cr (pp)"], errors="coerce").abs()
+        else:
+            base_vals = (
+                df[impact_cols]
+                .apply(pd.to_numeric, errors="coerce")
+                .abs()
+                .mean(axis=1)
+            )
+        base_vals = base_vals.fillna(0.0)
+        vmin = float(np.nanmin(base_vals.values)) if base_vals.size else 0.0
+        vmax = float(np.nanmax(base_vals.values)) if base_vals.size else 0.0
+        rng = (vmax - vmin) if (vmax - vmin) > 1e-12 else 1.0  # evita división por cero
+
+        # Paleta suave: verde → amarillo → naranja → rojo
+        # (cuanto mayor el impacto, más "caliente")
+        def color_for(val_abs: float) -> str:
+            z = (val_abs - vmin) / rng  # 0..1
+            if z < 0.33:
+                return "#D9F2D9"  # verde suave
+            elif z < 0.66:
+                return "#FFF6B3"  # amarillo
+            elif z < 0.90:
+                return "#FFD6A6"  # naranja
+            else:
+                return "#F5B5B5"  # rojo suave
+
+        # Aplica la paleta a TODAS las columnas de impacto (según la misma escala)
+        for c in impact_cols:
+            col_vals = pd.to_numeric(df[c], errors="coerce").abs().fillna(0.0)
+            for i, v in col_vals.items():
+                sty.at[i, c] = sty.at[i, c] + f'background-color:{color_for(float(v))};'
+
+    # Asegura que el id_col no reciba estilo accidental
+    if id_col in sty.columns:
+        sty[id_col] = ''
+
+    return sty
 
     # Magnitudes absolutas
     vals_abs = pd.concat(
@@ -2347,6 +2369,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
