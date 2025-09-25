@@ -20,9 +20,25 @@ with st.container():
         .header-title { color:#21877D; font-weight:700; text-align:center; font-size:32px; }
         .header-btn { background-color:#21877D; padding:8px 16px; border:none; border-radius:8px; cursor:pointer; font-size:14px; display:inline-block; }
         a.header-btn, a.header-btn:link, a.header-btn:visited, a.header-btn:hover, a.header-btn:active { color:#ffffff !important; text-decoration:none !important; }
+
         .scroll-wrap-600 { max-height:600px; overflow-y:auto; }
         .scroll-wrap-400 { max-height:400px; overflow-y:auto; }
         .scroll-wrap-program { max-height:520px; overflow-y:auto; }
+
+        /* Encabezados siempre visibles y legibles dentro de los contenedores scroll */
+        .scroll-wrap-600 table thead th,
+        .scroll-wrap-400 table thead th,
+        .scroll-wrap-program table thead th {
+          position: sticky; top: 0;
+          background: #ffffff; z-index: 2;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        /* Mejor lectura de tablas renderizadas por Styler */
+        .scroll-wrap-600 table, .scroll-wrap-400 table, .scroll-wrap-program table {
+          font-size: 13px;
+        }
+
         .impact-note { font-size:12px; color:#6B7280; margin:6px 0 -6px 0; }
         </style>
         """,
@@ -234,6 +250,8 @@ def _impact_plus3_P(rowP: pd.Series) -> float:
     P = float(rowP.get("P", 0.0)); S = float(rowP.get("S", 0.0)); T = P + S
     d = IMPACT_DELTA
     if T <= 0: return 0.0
+    # Δ%P = 100 * ( (P) / (T)  vs  (P) / (T+d) ) al asignar d créditos a S (peor caso para %P)
+    # Usamos el cambio esperado con +d créditos que van al complemento de P.
     return round(100.0 * (d * S) / (T * (T + d)), 2)
 
 def _impact_plus3_SA(rowQ: pd.Series) -> float:
@@ -242,6 +260,7 @@ def _impact_plus3_SA(rowQ: pd.Series) -> float:
     Q = SA + PA + SP + IP + OT
     d = IMPACT_DELTA
     if Q <= 0: return 0.0
+    # Impacto en %SA al añadir d créditos a no-SA
     return round(100.0 * (d * (Q - SA)) / (Q * (Q + d)), 2)
 
 def _impact_plus3_OTHER(rowQ: pd.Series) -> float:
@@ -250,6 +269,7 @@ def _impact_plus3_OTHER(rowQ: pd.Series) -> float:
     Q = SA + PA + SP + IP + OT
     d = IMPACT_DELTA
     if Q <= 0: return 0.0
+    # Impacto en %OTHER al añadir d créditos a no-OTHER
     return round(100.0 * (d * (Q - OT)) / (Q * (Q + d)), 2)
 
 # ================== HISTORY (timeframe-aware) ==================
@@ -753,7 +773,8 @@ def style_percent_tables(df_, id_col):
 
 def style_impact_bins(df_: pd.DataFrame, impact_cols: list[str]):
     sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
-    bins = [0, 0.5, 1, 2, 4, 9999]  # pp
+    # bins en puntos porcentuales (pp)
+    bins = [0, 0.5, 1, 2, 4, 9999]
     colors = ['#FDE2E2', '#EAF7F3', '#D6F0E6', '#BDE5D6', '#93D4C0', '#59BFA6']  # rojo->verde
     for col in impact_cols:
         if col not in df_.columns: continue
@@ -825,7 +846,7 @@ else:
             }
             dfm[["%P","%S","%SA","%OTHER"]] = dfm[["%P","%S","%SA","%OTHER"]].round(1)
 
-            # IMPACTOS +3cr (solo si sensibilidad ON)
+            # IMPACTOS +3cr (solo si sensibilidad ON) — expresados en puntos porcentuales (pp)
             if show_impacts:
                 ps_abs = agg_ps[["P","S"]].copy()
                 tipo_abs = agg_tipo[["SA","PA","SP","IP","OTHER"]].copy()
@@ -869,7 +890,7 @@ else:
 
                 show_impacts = SENS["on"]  # 🔒 mostrar solo en sensibilidad
                 if show_impacts:
-                    st.markdown("<div class='impact-note'>Impacto = aumento esperado (pp) al añadir +3 créditos en esa fila. Considera el total de créditos: a más total, menor impacto.</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='impact-note'>Impacto = cambio esperado en puntos porcentuales (pp) al añadir +3 créditos en esa fila. Entre más créditos totales, menor el impacto.</div>", unsafe_allow_html=True)
 
                 metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps, show_impacts=show_impacts)
 
@@ -878,7 +899,7 @@ else:
                 styler = (
                     metrics_tbl.style
                     .format({c: "{:.1f}%" for c in ["%P","%S","%SA","%OTHER"] if c in metrics_tbl.columns})
-                    .format({c: "{:.2f}" for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl.columns})
+                    .format({c: "{:.2f} pp" for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl.columns})
                     .apply(style_percent_tables, id_col="Academic Area", axis=None)
                 )
                 if show_impacts:
@@ -981,7 +1002,7 @@ else:
 
                     show_impacts = SENS["on"]
                     if show_impacts:
-                        st.markdown("<div class='impact-note'>Impacto = aumento esperado (pp) al añadir +3 créditos en esa fila (más créditos totales ⇒ menor impacto).</div>", unsafe_allow_html=True)
+                        st.markdown("<div class='impact-note'>Impacto = cambio esperado en pp al añadir +3 créditos en esa fila (más créditos totales ⇒ menor impacto).</div>", unsafe_allow_html=True)
 
                     metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps, show_impacts=show_impacts)
 
@@ -991,7 +1012,7 @@ else:
                     styler_f = (
                         metrics_tbl_f.style
                         .format({c: "{:.1f}%" for c in ["%P","%S","%SA","%OTHER"] if c in metrics_tbl_f.columns})
-                        .format({c: "{:.2f}" for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl_f.columns})
+                        .format({c: "{:.2f} pp" for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl_f.columns})
                         .apply(style_percent_tables, id_col="Field", axis=None)
                     )
                     if show_impacts:
@@ -1083,7 +1104,7 @@ else:
 
                     show_impacts = SENS["on"]
                     if show_impacts:
-                        st.markdown("<div class='impact-note'>Impacto = aumento esperado (pp) al añadir +3 créditos en esa fila.</div>", unsafe_allow_html=True)
+                        st.markdown("<div class='impact-note'>Impacto = cambio esperado en pp al añadir +3 créditos en esa fila.</div>", unsafe_allow_html=True)
 
                     metrics_tbl_m = build_percent_table("Program", mod_agg_tipo, mod_agg_ps, show_impacts=show_impacts)
 
@@ -1093,7 +1114,7 @@ else:
                     styler_m = (
                         metrics_tbl_m.style
                         .format({c: "{:.1f}%" for c in ["%P","%S","%SA","%OTHER"] if c in metrics_tbl_m.columns})
-                        .format({c: "{:.2f}" for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl_m.columns})
+                        .format({c: "{:.2f} pp" for c in ["Impact +3cr (P)","Impact +3cr (SA)","Impact +3cr (OTHER)"] if c in metrics_tbl_m.columns})
                         .apply(style_percent_tables, id_col="Program", axis=None)
                     )
                     if show_impacts:
@@ -1167,7 +1188,7 @@ else:
                                  total_series_builders={"P": tot_by_sem_P_tm_m, "SA": tot_by_sem_tipo_tm_m, "OTHER": tot_by_sem_tipo_tm_m},
                                  agg_ps_all=agg_ps_all_tm_m, agg_tipo_all=agg_tipo_all_tm_m,
                                  x_labels=x_labels, x_map=x_map, sel_x=sel_x)
-
+                    
 # --------------------------
 # CREDIT SUMS (EXPANDER)
 # --------------------------
@@ -1492,3 +1513,4 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(sel_label)}",
                               label="Descargar datos (Excel)")
+
