@@ -1240,8 +1240,7 @@ else:
                             }
                             up_pp, down_pp = _impact_pp_overall(objective_f, totals, credits_each=3.0)
                             st.info(f"{obj_lbl}: +3cr → {up_pp:+.2f} p.p.,  -3cr → {down_pp:+.2f} p.p. (overall)")
-
-
+                            
             # Históricos Field
             df_hist_f = df_car_global.copy()
             df_hist_f["_FIELD"] = df_hist_f[col_field].astype(str).str.strip()
@@ -1279,16 +1278,20 @@ else:
             agg_tipo_ot_tm = transform_for_time_mode_tipo(agg_tipo_all_f.rename(columns={"_FIELD":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_FIELD"})
             agg_tipo_all_tm = (
                 agg_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_sa_tm], errors="ignore")
-                .merge(agg_tipo_ot_tm[["_SEM","_FIELD","OTHER","SA","PA","SP","IP","OTHER_share"]],
-                       on=["_SEM","_FIELD","SA","PA","SP","IP","OTHER"], how="outer")
+                .merge(
+                    agg_tipo_ot_tm[["_SEM","_FIELD","OTHER","SA","PA","SP","IP","OTHER_share"]],
+                    on=["_SEM","_FIELD","SA","PA","SP","IP","OTHER"], how="outer"
+                )
             )
             tot_by_sem_P_tm = transform_for_time_mode_ps(tot_by_sem_f.copy())
             tot_tipo_sa_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_f.copy(), "SA_share")
             tot_tipo_ot_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_f.copy(), "OTHER_share")
             tot_by_sem_tipo_tm = (
                 tot_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in tot_tipo_sa_tm], errors="ignore")
-                .merge(tot_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
-                       on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer")
+                .merge(
+                    tot_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
+                    on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer"
+                )
             )
 
             key_col, x_labels, x_map = build_time_axis_for_history(df_hist_f)
@@ -1350,17 +1353,16 @@ else:
 
             with colM_L:
                 needed_mode_m = False
-                objective_m = "%P"
-                scope_label_m = "By area"
-                if SENS["on"]:
-                    r1, r2, r3 = st.columns([1.2, 1.2, 1])
-                    with r1:
-                        needed_mode_m = st.toggle("Show necessary # of Faculty for…", value=False, key="prog_needed_mode")
-                    with r2:
-                        objective_m = st.radio("Objective", ["%P", "%SA", "%OTHER"], horizontal=True, key="prog_objective")
-                    with r3:
-                        scope_label_m = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="prog_scope")
-            
+                r1, r2, r3, r4 = st.columns([1.6, 1.1, 1.2, 1.6])
+                with r1:
+                    needed_mode_m = st.toggle("Show necessary # of Faculty for…", value=False, key="prog_needed_mode")
+                with r2:
+                    objective_m = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="prog_objective")
+                with r3:
+                    scope_label_m = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="prog_scope")
+                with r4:
+                    show_impact_m = st.checkbox("Show impact (±3cr)", key="prog_show_impact", value=False)
+
                 if not needed_mode_m:
                     metrics_tbl_m = build_percent_table("Program", mod_agg_tipo, mod_agg_ps)
                     _download_xlsx_button(metrics_tbl_m, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
@@ -1381,56 +1383,60 @@ else:
                     sp = mod_agg_tipo["SP"].reindex(idx, fill_value=0.0)
                     ip = mod_agg_tipo["IP"].reindex(idx, fill_value=0.0)
                     other = mod_agg_tipo["OTHER"].reindex(idx, fill_value=0.0)
-            
+
                     obj_lbl, tgt_area, tgt_overall = _objective_targets(objective_m)
-            
-                    def _target_for_m(label):
-                        if objective_m == "%P" and str(label).upper() == "TOTAL" and scope_label_m == "Overall":
-                            return tgt_overall
-                        return tgt_area
-            
+                    totals = {
+                        "P": float(p.sum()), "S": float(s.sum()),
+                        "SA": float(sa.sum()), "PA": float(pa.sum()),
+                        "SP": float(sp.sum()), "IP": float(ip.sum()),
+                        "OTHER": float(other.sum())
+                    }
+
                     rows = []
+                    colname = {"%P":"Needed P (3cr)", "%SA":"Needed SA (3cr)", "%OTHER":"Needed OTHER less (3cr)"}[objective_m]
+
                     for label in list(idx) + ["TOTAL"]:
                         if label == "TOTAL":
-                            P, S = float(p.sum()), float(s.sum())
-                            SA, PA_, SP_, IP_, OT = float(sa.sum()), float(pa.sum()), float(sp.sum()), float(ip.sum()), float(other.sum())
+                            P, S = totals["P"], totals["S"]
+                            SA_, PA_, SP_, IP_, OT_ = totals["SA"], totals["PA"], totals["SP"], totals["IP"], totals["OTHER"]
                         else:
-                            P, S = float(p.get(label, 0.0)), float(s.get(label, 0.0))
-                            SA, PA_, SP_, IP_, OT = float(sa.get(label, 0.0)), float(pa.get(label, 0.0)), float(sp.get(label, 0.0)), float(ip.get(label, 0.0)), float(other.get(label, 0.0))
-            
-                        if objective_m == "%P":
-                            need_val = _needed_for_pctP(P, S, _target_for_m(label), credits_each=3.0)
-                            colname = "Needed P (3cr)"
-                        elif objective_m == "%SA":
-                            need_val = _needed_for_pctSA(SA, PA_+SP_+IP_+OT, _target_for_m(label), credits_each=3.0)
-                            colname = "Needed SA (3cr)"
-                        else:
-                            need_val = _needed_decrease_other_to_leq10(OT, SA+PA_+SP_+IP_, credits_each=3.0)
-                            colname = "Needed OTHER less (3cr)"
-            
-                        rows.append({"Program": label, colname: int(need_val)})
-            
-                    need_tbl_m = pd.DataFrame(rows)
-                    _download_xlsx_button(need_tbl_m, f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(obj_lbl)}.xlsx",
-                                          key=f"dl_need_prog_{_slugify(sel_label)}_{_slugify(obj_lbl)}", label="⬇️ Descargar (Excel)")
-                    st.dataframe(need_tbl_m, use_container_width=True, hide_index=True)
-            
-                    pA, pB, pC = st.columns([1,1,2])
-                    with pA:
-                        st.button(f"By area target: {int(tgt_area)}%", key="prog_btn_target_area", disabled=True)
-                    with pB:
-                        st.button(f"Overall target: {int(tgt_overall)}%", key="prog_btn_target_overall", disabled=True)
-                    with pC:
-                        if st.button("Impact (±3 credits) on OVERALL", key="prog_btn_impact"):
-                            totals = {
-                                "P": float(p.sum()), "S": float(s.sum()),
-                                "SA": float(sa.sum()), "PA": float(pa.sum()),
-                                "SP": float(sp.sum()), "IP": float(ip.sum()),
-                                "OTHER": float(other.sum())
-                            }
-                            up_pp, down_pp = _impact_pp_overall(objective_m, totals, credits_each=3.0)
-                            st.info(f"{obj_lbl}: +3cr → {up_pp:+.2f} p.p.,  -3cr → {down_pp:+.2f} p.p. (overall)")
+                            P = float(p.get(label, 0.0)); S = float(s.get(label, 0.0))
+                            SA_ = float(sa.get(label, 0.0)); PA_ = float(pa.get(label, 0.0))
+                            SP_ = float(sp.get(label, 0.0)); IP_ = float(ip.get(label, 0.0))
+                            OT_ = float(other.get(label, 0.0))
 
+                        area_vals = {"P":P,"S":S,"SA":SA_,"PA":PA_,"SP":SP_,"IP":IP_,"OTHER":OT_}
+
+                        if scope_label_m == "By area" or label == "TOTAL":
+                            if objective_m == "%P":
+                                need_val = _needed_for_pctP(P, S, tgt_area, credits_each=3.0)
+                            elif objective_m == "%SA":
+                                need_val = _needed_for_pctSA(SA_, PA_+SP_+IP_+OT_, tgt_area, credits_each=3.0)
+                            else:
+                                TQ_area = SA_+PA_+SP_+IP_+OT_
+                                need_credits = (OT_ - 0.10*TQ_area) / 0.90
+                                need_val = 0 if need_credits <= 0 else math.ceil(need_credits/3.0)
+                        else:
+                            need_n = _needed_for_overall_if_only_this_area_changes(objective_m, totals, area_vals, tgt_overall, credits_each=3.0)
+                            need_val = (need_n if need_n is not None else None)
+
+                        row = {"Program": label, colname: ("" if need_val is None else int(need_val))}
+
+                        if show_impact_m:
+                            if scope_label_m == "By area":
+                                up_pp, down_pp = _impact_pp_area(objective_m, area_vals, credits_each=3.0)
+                                row["Impact (±3cr)"] = f"{up_pp:+.2f} / {down_pp:+.2f} p.p. (area)"
+                            else:
+                                up_pp, down_pp = _impact_pp_overall_if_area_changes(objective_m, totals, credits_each=3.0)
+                                row["Impact (±3cr)"] = f"{up_pp:+.2f} / {down_pp:+.2f} p.p. (overall)"
+
+                        rows.append(row)
+
+                    need_tbl_m = pd.DataFrame(rows)
+                    _download_xlsx_button(need_tbl_m, f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label_m)}.xlsx",
+                                          key=f"dl_need_prog_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label_m)}",
+                                          label="⬇️ Descargar (Excel)")
+                    st.dataframe(need_tbl_m, use_container_width=True, hide_index=True)
 
             # Históricos Program
             df_hist_m = df_car_global.copy()
@@ -1469,16 +1475,20 @@ else:
             agg_tipo_ot_tm = transform_for_time_mode_tipo(agg_tipo_all_m.rename(columns={"_MAT":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_MAT"})
             agg_tipo_all_tm = (
                 agg_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_sa_tm], errors="ignore")
-                .merge(agg_tipo_ot_tm[["_SEM","_MAT","OTHER","SA","PA","SP","IP","OTHER_share"]],
-                       on=["_SEM","_MAT","SA","PA","SP","IP","OTHER"], how="outer")
+                .merge(
+                    agg_tipo_ot_tm[["_SEM","_MAT","OTHER","SA","PA","SP","IP","OTHER_share"]],
+                    on=["_SEM","_MAT","SA","PA","SP","IP","OTHER"], how="outer"
+                )
             )
             tot_by_sem_P_tm = transform_for_time_mode_ps(tot_by_sem_m.copy())
             tot_tipo_sa_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_m.copy(), "SA_share")
             tot_tipo_ot_tm  = transform_for_time_mode_tipo(tot_by_sem_tipo_m.copy(), "OTHER_share")
             tot_by_sem_tipo_tm = (
                 tot_tipo_sa_tm.drop(columns=[c for c in ["OTHER_share"] if c in tot_tipo_sa_tm], errors="ignore")
-                .merge(tot_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
-                       on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer")
+                .merge(
+                    tot_tipo_ot_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
+                    on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer"
+                )
             )
 
             key_col, x_labels, x_map = build_time_axis_for_history(df_hist_m)
@@ -1514,7 +1524,6 @@ else:
                     agg_tipo_all=agg_tipo_all_tm,
                     x_labels=x_labels, x_map=x_map, sel_x=sel_x
                 )
-
 # --------------------------
 # CREDIT SUMS (EXPANDER)
 # --------------------------
@@ -1826,5 +1835,6 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
