@@ -1202,184 +1202,122 @@ else:
     if fil.empty:
         st.info(f"No records for the selected timeframe: {sel_label}.")
     else:
-        # -------------- BY ACADEMIC AREA --------------
-        if view_mode == "By Academic Area":
-            colT, colG = st.columns([6,6], gap="large")
+        # ========== BY ACADEMIC AREA ==========
+if view_mode == "By Academic Area":
+    colT, colG = st.columns([6,6], gap="large")
 
-            # Agregaciones del frame seleccionado
-            agg_tipo = (fil.groupby(["_AREA","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
-            for k in ["SA","PA","SP","IP","OTHER"]:
-                if k not in agg_tipo.columns: agg_tipo[k] = 0.0
-            agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
+    # Agregaciones
+    agg_tipo = (fil.groupby(["_AREA","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+    for k in ["SA","PA","SP","IP","OTHER"]:
+        if k not in agg_tipo.columns: agg_tipo[k] = 0.0
+    agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
 
-            agg_ps = (fil.groupby(["_AREA","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
-            for k in ["P","S"]:
-                if k not in agg_ps.columns: agg_ps[k] = 0.0
-            agg_ps = agg_ps[["P","S"]]
+    agg_ps = (fil.groupby(["_AREA","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+    for k in ["P","S"]:
+        if k not in agg_ps.columns: agg_ps[k] = 0.0
+    agg_ps = agg_ps[["P","S"]]
 
-            # Sensibilidad
-            base_agg_ps = agg_ps.copy()
-            base_agg_tipo = agg_tipo.copy()
-            if SENS["on"] and SENS["ops"]:
-                mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
+    # Sensibilidad
+    base_agg_ps = agg_ps.copy()
+    base_agg_tipo = agg_tipo.copy()
+    if SENS["on"] and SENS["ops"]:
+        mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
+    else:
+        mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
+
+    with colT:
+        # Controles: solo si Sensitivity ON y toggle ON se muestra el selector; el IMPACTO ya es siempre visible
+        needed_mode = False
+        if SENS["on"]:
+            r1c1, r1c2, r1c3 = st.columns([1.8, 1.1, 1.6])
+            with r1c1:
+                needed_mode = st.toggle("Show necessary # of Faculty for…", value=False, key="area_needed_mode")
+            if needed_mode:
+                with r1c2:
+                    objective = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="area_objective")
+                with r1c3:
+                    scope_label = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="area_scope")
             else:
-                mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
+                objective = st.session_state.get("area_objective", "%P")
+                scope_label = st.session_state.get("area_scope", "By area")
+        else:
+            objective = st.session_state.get("area_objective", "%P")
+            scope_label = st.session_state.get("area_scope", "By area")
 
-            with colT:
-                needed_mode = False
-                if SENS["on"]:
-                    r1c1, r1c2, r1c3, r1c4 = st.columns([1.6, 1.1, 1.2, 1.4])
-                    with r1c1:
-                        needed_mode = st.toggle("Show necessary # of Faculty for…", value=False, key="area_needed_mode")
-                    if needed_mode:
-                        with r1c2:
-                            objective = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="area_objective")
-                        with r1c3:
-                            scope_label = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="area_scope")
-                        with r1c4:
-                            show_impact = st.checkbox("Show impact (±3cr)", key="area_show_impact", value=False)
-                    else:
-                        objective   = st.session_state.get("area_objective", "%P")
-                        scope_label = st.session_state.get("area_scope", "By area")
-                        show_impact = False
-                else:
-                    objective   = st.session_state.get("area_objective", "%P")
-                    scope_label = st.session_state.get("area_scope", "By area")
-                    show_impact = False
+        if not needed_mode:
+            metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
+            _download_xlsx_button(metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
+                                  key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
+            styled_tbl = (
+                metrics_tbl.style
+                .format({"%P": "{:.1f}%", "%S": "{:.1f}%", "%SA": "{:.1f}%", "%OTHER": "{:.1f}%"})
+                .apply(style_percent_tables, id_col="Academic Area", axis=None)
+                .hide(axis="index")
+            )
+            st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
+        else:
+            # ===== Tabla: Needed (dos columnas) + Impact (siempre) SIN TOTAL =====
+            # union de índices para no perder filas
+            idx_all = sorted(set(mod_agg_ps.index.tolist()) | set(mod_agg_tipo.index.tolist()))
+            p   = mod_agg_ps["P"].reindex(idx_all, fill_value=0.0)
+            s   = mod_agg_ps["S"].reindex(idx_all, fill_value=0.0)
+            sa  = mod_agg_tipo["SA"].reindex(idx_all, fill_value=0.0)
+            pa  = mod_agg_tipo["PA"].reindex(idx_all, fill_value=0.0)
+            sp  = mod_agg_tipo["SP"].reindex(idx_all, fill_value=0.0)
+            ip  = mod_agg_tipo["IP"].reindex(idx_all, fill_value=0.0)
+            oth = mod_agg_tipo["OTHER"].reindex(idx_all, fill_value=0.0)
 
-                if not needed_mode:
-                    metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
-                    _download_xlsx_button(metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
-                                          key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                    styled_tbl = (
-                        metrics_tbl.style
-                        .format({"%P": "{:.1f}%", "%S": "{:.1f}%", "%SA": "{:.1f}%", "%OTHER": "{:.1f}%"})
-                        .apply(style_percent_tables, id_col="Academic Area", axis=None)
-                        .hide(axis="index")
-                    )
-                    st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
-                else:
-                    # ===== Needed con DOBLE columna + heatmap de impacto =====
-                    idx = mod_agg_ps.index
-                    p = mod_agg_ps["P"].reindex(idx, fill_value=0.0)
-                    s = mod_agg_ps["S"].reindex(idx, fill_value=0.0)
-                    sa = mod_agg_tipo["SA"].reindex(idx, fill_value=0.0)
-                    pa = mod_agg_tipo["PA"].reindex(idx, fill_value=0.0)
-                    sp = mod_agg_tipo["SP"].reindex(idx, fill_value=0.0)
-                    ip = mod_agg_tipo["IP"].reindex(idx, fill_value=0.0)
-                    other = mod_agg_tipo["OTHER"].reindex(idx, fill_value=0.0)
+            totals = {
+                "P": float(p.sum()), "S": float(s.sum()),
+                "SA": float(sa.sum()), "PA": float(pa.sum()),
+                "SP": float(sp.sum()), "IP": float(ip.sum()),
+                "OTHER": float(oth.sum())
+            }
 
-                    obj_lbl, tgt_area, tgt_overall = _objective_targets(objective)
-                    totals = {
-                        "P": float(p.sum()), "S": float(s.sum()),
-                        "SA": float(sa.sum()), "PA": float(pa.sum()),
-                        "SP": float(sp.sum()), "IP": float(ip.sum()),
-                        "OTHER": float(other.sum())
-                    }
+            # nombres de columnas según objetivo
+            if objective == "%P":
+                main_col, aux_col = "Needed P (3cr)", "Needed S less (3cr)"
+            elif objective == "%SA":
+                main_col, aux_col = "Needed SA (3cr)", "Needed Non-SA less (3cr)"
+            else:
+                main_col, aux_col = "Needed OTHER less (3cr)", "Needed Non-OTHER more (3cr)"
 
-                    rows = []
-                    label_name = "Academic Area"
+            rows = []
+            for label in idx_all:
+                Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
+                SAv, PAv = float(sa.get(label,0.0)), float(pa.get(label,0.0))
+                SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
+                OTv      = float(oth.get(label,0.0))
 
-                    for label in list(idx) + ["TOTAL"]:
-                        if label == "TOTAL":
-                            P, S = totals["P"], totals["S"]
-                            SA_, PA_, SP_, IP_, OT_ = totals["SA"], totals["PA"], totals["SP"], totals["IP"], totals["OTHER"]
-                        else:
-                            P  = float(p.get(label, 0.0));  S  = float(s.get(label, 0.0))
-                            SA_ = float(sa.get(label, 0.0)); PA_ = float(pa.get(label, 0.0))
-                            SP_ = float(sp.get(label, 0.0)); IP_ = float(ip.get(label, 0.0))
-                            OT_ = float(other.get(label, 0.0))
+                need1, need2 = _needed_pairs_for_obj(
+                    objective, scope_label,
+                    Pv, Sv, SAv, PAv, SPv, IPv, OTv,
+                    totals, credits_each=3.0
+                )
 
-                        area_vals = {"P":P,"S":S,"SA":SA_,"PA":PA_,"SP":SP_,"IP":IP_,"OTHER":OT_}
+                area_vals = {"P":Pv,"S":Sv,"SA":SAv,"PA":PAv,"SP":SPv,"IP":IPv,"OTHER":OTv}
+                up_pp, down_pp = _impact_pair(objective, area_vals, totals, scope_label, credits_each=3.0)
 
-                        # Needed A/B según objetivo y scope
-                        if scope_label == "By area" or label == "TOTAL":
-                            if objective == "%P":
-                                needA = _needed_for_pctP(P, S, tgt_area, credits_each=3.0)                                   # Needed P
-                                needB = _needed_S_less_for_pctP_area(P, S, tgt_area, credits_each=3.0)                      # Needed S less
-                                colA, colB = "Needed P (3cr)", "Needed S less (3cr)"
-                            elif objective == "%SA":
-                                rest = PA_+SP_+IP_+OT_
-                                needA = _needed_for_pctSA(SA_, rest, tgt_area, credits_each=3.0)                             # Needed SA
-                                needB = _needed_OTHERS_less_for_SA_area(SA_, rest, tgt_area, credits_each=3.0)              # Needed OTHERS less
-                                colA, colB = "Needed SA (3cr)", "Needed OTHERS less (3cr)"
-                            else:
-                                TQ_area = SA_+PA_+SP_+IP_+OT_
-                                need_credits = (OT_ - 0.10*TQ_area) / 0.90
-                                needA = 0 if need_credits <= 0 else math.ceil(need_credits/3.0)                              # OTHER less
-                                rest  = SA_+PA_+SP_+IP_
-                                needB = _needed_OTHERS_more_for_OTHER_area(OT_, rest, tgt_area, credits_each=3.0)            # OTHERS more
-                                colA, colB = "Needed OTHER less (3cr)", "Needed OTHERS more (3cr)"
-                        else:
-                            if objective == "%P":
-                                needA = _needed_for_overall_if_only_this_area_changes("%P", totals, area_vals, tgt_overall, 3.0)
-                                needB = _needed_S_less_for_pctP_overall(totals, area_vals, tgt_overall, credits_each=3.0)
-                                colA, colB = "Needed P (3cr)", "Needed S less (3cr)"
-                            elif objective == "%SA":
-                                needA = _needed_for_overall_if_only_this_area_changes("%SA", totals, area_vals, tgt_overall, 3.0)
-                                needB = _needed_OTHERS_less_for_SA_overall(totals, area_vals, tgt_overall, credits_each=3.0)
-                                colA, colB = "Needed SA (3cr)", "Needed OTHERS less (3cr)"
-                            else:
-                                needA = _needed_for_overall_if_only_this_area_changes("%OTHER", totals, area_vals, tgt_overall, 3.0)
-                                needB = _needed_OTHERS_more_for_OTHER_overall(totals, tgt_overall, credits_each=3.0)
-                                colA, colB = "Needed OTHER less (3cr)", "Needed OTHERS more (3cr)"
+                rows.append({
+                    "Academic Area": label,
+                    main_col: int(need1),
+                    aux_col:  int(need2),
+                    "Impact +3cr (pp)": up_pp,
+                    "Impact -3cr (pp)": down_pp
+                })
 
-                        # Impacto + heatmap
-                        if show_impact:
-                            if scope_label == "By area":
-                                up_pp, down_pp = _impact_pp_area(objective, area_vals, credits_each=3.0)
-                                imp_plus = round(up_pp, 4)
-                                imp_txt  = f"{up_pp:+.2f} / {down_pp:+.2f}"
-                                overall_heat = False
-                            else:
-                                up_pp, down_pp = _impact_pp_overall_if_area_changes(objective, totals, credits_each=3.0)
-                                imp_plus = round(up_pp, 4)
-                                imp_txt  = f"{up_pp:+.2f} / {down_pp:+.2f}"
-                                overall_heat = True
-                        else:
-                            imp_plus = None
-                            imp_txt  = ""
-                            overall_heat = False
-
-                        rows.append({
-                            label_name: label,
-                            colA: ("" if needA is None else int(needA)),
-                            colB: ("" if needB is None else int(needB)),
-                            "Impact (±3cr) [p.p.]": imp_txt,
-                            "__v__": imp_plus,
-                            "__overall__": overall_heat
-                        })
-
-                    need_tbl = pd.DataFrame(rows)
-                    _download_xlsx_button(
-                        need_tbl.drop(columns=["__v__","__overall__"]),
-                        f"needed_ByArea_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label)}.xlsx",
-                        key=f"dl_need_area_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label)}",
-                        label="⬇️ Descargar (Excel)"
-                    )
-
-                    # Heatmap en la columna de impacto (usando __v__)
-                    if show_impact:
-                        overall_mode = (scope_label == "Overall")
-                        # quitar columnas técnicas antes de estilizar
-                        vis = need_tbl.drop(columns=["__v__", "__overall__"], errors="ignore")
-                        # armamos un df auxiliar solo con etiqueta e impacto numérico para el heatmap
-                        aux = pd.DataFrame({"Academic Area": need_tbl["Academic Area"], "Impact (±3cr) [p.p.]": pd.to_numeric(need_tbl["__v__"], errors="coerce")})
-                        styled_need = (
-                            vis.style
-                            .hide(axis="index")
-                            .apply(lambda _:
-                                _style_impact_heatmap(
-                                    aux, label_col="Academic Area",
-                                    value_col="Impact (±3cr) [p.p.]", overall_mode=overall_mode
-                                ),
-                                axis=None
-                            )
-                        )
-                        st.markdown(f"<div class='scroll-wrap-400'>{styled_need.to_html(escape=False)}</div>", unsafe_allow_html=True)
-                    else:
-                        st.dataframe(need_tbl.drop(columns=["__v__","__overall__"], errors="ignore"),
-                                     use_container_width=True, hide_index=True)
+            need_tbl = pd.DataFrame(rows)
+            # formato + estilo (rojo claro != 0)
+            styled = (
+                need_tbl.style
+                .format({main_col:"{:.0f}", aux_col:"{:.0f}", "Impact +3cr (pp)":"{:+.2f}", "Impact -3cr (pp)":"{:+.2f}"})
+                .apply(_style_needed_impact, id_col="Academic Area", axis=None)
+                .hide(axis="index")
+            )
+            _download_xlsx_button(need_tbl, f"needed_ByArea_{_slugify(sel_label)}_{_slugify(objective)}_{_slugify(scope_label)}.xlsx",
+                                  key=f"dl_need_area_{_slugify(sel_label)}_{_slugify(objective)}_{_slugify(scope_label)}",
+                                  label="⬇️ Descargar (Excel)")
+            st.markdown(styled.to_html(escape=False), unsafe_allow_html=True)
 
             # ========== Series históricas ==========
             df_hist = df_car_global.copy()
@@ -1465,165 +1403,113 @@ else:
 
         # -------------- BY FIELD --------------
         elif view_mode == "By Field" and col_field:
-            colF_L, colF_R = st.columns([6,6], gap="large")
-            fil_field = fil.copy()
-            fil_field["_FIELD"] = fil_field[col_field].astype(str).str.strip()
+    colF_L, colF_R = st.columns([6,6], gap="large")
+    fil_field = fil.copy()
+    fil_field["_FIELD"] = fil_field[col_field].astype(str).str.strip()
 
-            agg_tipo_f = (fil_field.groupby(["_FIELD","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
-            for k in ["SA","PA","SP","IP","OTHER"]:
-                if k not in agg_tipo_f.columns: agg_tipo_f[k] = 0.0
-            agg_tipo_f = agg_tipo_f[["SA","PA","SP","IP","OTHER"]]
+    agg_tipo_f = (fil_field.groupby(["_FIELD","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+    for k in ["SA","PA","SP","IP","OTHER"]:
+        if k not in agg_tipo_f.columns: agg_tipo_f[k] = 0.0
+    agg_tipo_f = agg_tipo_f[["SA","PA","SP","IP","OTHER"]]
 
-            agg_ps_f = (fil_field.groupby(["_FIELD","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
-            for k in ["P","S"]:
-                if k not in agg_ps_f.columns: agg_ps_f[k] = 0.0
-            agg_ps_f = agg_ps_f[["P","S"]]
+    agg_ps_f = (fil_field.groupby(["_FIELD","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+    for k in ["P","S"]:
+        if k not in agg_ps_f.columns: agg_ps_f[k] = 0.0
+    agg_ps_f = agg_ps_f[["P","S"]]
 
-            base_agg_ps = agg_ps_f.copy()
-            base_agg_tipo = agg_tipo_f.copy()
-            if SENS["on"] and SENS["ops"]:
-                mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
+    base_agg_ps = agg_ps_f.copy()
+    base_agg_tipo = agg_tipo_f.copy()
+    if SENS["on"] and SENS["ops"]:
+        mod_agg_ps, mod_agg_tipo = apply_ops_to_aggs(base_agg_ps, base_agg_tipo, SENS["ops"])
+    else:
+        mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
+
+    with colF_L:
+        needed_mode_f = False
+        if SENS["on"]:
+            r1c1, r1c2, r1c3 = st.columns([1.8, 1.1, 1.6])
+            with r1c1:
+                needed_mode_f = st.toggle("Show necessary # of Faculty for…", value=False, key="field_needed_mode")
+            if needed_mode_f:
+                with r1c2:
+                    objective_f = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="field_objective")
+                with r1c3:
+                    scope_label_f = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="field_scope")
             else:
-                mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
+                objective_f = st.session_state.get("field_objective", "%P")
+                scope_label_f = st.session_state.get("field_scope", "By area")
+        else:
+            objective_f = st.session_state.get("field_objective", "%P")
+            scope_label_f = st.session_state.get("field_scope", "By area")
 
-            with colF_L:
-                needed_mode_f = False
-                if SENS["on"]:
-                    r1c1, r1c2, r1c3, r1c4 = st.columns([1.6, 1.1, 1.2, 1.4])
-                    with r1c1:
-                        needed_mode_f = st.toggle("Show necessary # of Faculty for…", value=False, key="field_needed_mode")
-                    if needed_mode_f:
-                        with r1c2:
-                            objective_f = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="field_objective")
-                        with r1c3:
-                            scope_label_f = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="field_scope")
-                        with r1c4:
-                            show_impact_f = st.checkbox("Show impact (±3cr)", key="field_show_impact", value=False)
-                    else:
-                        objective_f   = st.session_state.get("field_objective", "%P")
-                        scope_label_f = st.session_state.get("field_scope", "By area")
-                        show_impact_f = False
-                else:
-                    objective_f   = st.session_state.get("field_objective", "%P")
-                    scope_label_f = st.session_state.get("field_scope", "By area")
-                    show_impact_f = False
+        if not needed_mode_f:
+            metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
+            _download_xlsx_button(metrics_tbl_f, f"table_ByField_{_slugify(sel_label)}.xlsx",
+                                  key=f"dl_tbl_field_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
+            styled_tbl_f = (
+                metrics_tbl_f.style
+                .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
+                .apply(style_percent_tables, id_col="Field", axis=None)
+                .hide(axis="index")
+            )
+            st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
+        else:
+            idx_all = sorted(set(mod_agg_ps.index.tolist()) | set(mod_agg_tipo.index.tolist()))
+            p   = mod_agg_ps["P"].reindex(idx_all, fill_value=0.0)
+            s   = mod_agg_ps["S"].reindex(idx_all, fill_value=0.0)
+            sa  = mod_agg_tipo["SA"].reindex(idx_all, fill_value=0.0)
+            pa  = mod_agg_tipo["PA"].reindex(idx_all, fill_value=0.0)
+            sp  = mod_agg_tipo["SP"].reindex(idx_all, fill_value=0.0)
+            ip  = mod_agg_tipo["IP"].reindex(idx_all, fill_value=0.0)
+            oth = mod_agg_tipo["OTHER"].reindex(idx_all, fill_value=0.0)
 
-                if not needed_mode_f:
-                    metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
-                    _download_xlsx_button(metrics_tbl_f, f"table_ByField_{_slugify(sel_label)}.xlsx",
-                                          key=f"dl_tbl_field_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                    styled_tbl_f = (
-                        metrics_tbl_f.style
-                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
-                        .apply(style_percent_tables, id_col="Field", axis=None)
-                        .hide(axis="index")
-                    )
-                    st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
-                else:
-                    # ===== Needed Field: doble columna + heatmap =====
-                    idx = mod_agg_ps.index
-                    p = mod_agg_ps["P"].reindex(idx, fill_value=0.0)
-                    s = mod_agg_ps["S"].reindex(idx, fill_value=0.0)
-                    sa = mod_agg_tipo["SA"].reindex(idx, fill_value=0.0)
-                    pa = mod_agg_tipo["PA"].reindex(idx, fill_value=0.0)
-                    sp = mod_agg_tipo["SP"].reindex(idx, fill_value=0.0)
-                    ip = mod_agg_tipo["IP"].reindex(idx, fill_value=0.0)
-                    other = mod_agg_tipo["OTHER"].reindex(idx, fill_value=0.0)
+            totals = {
+                "P": float(p.sum()), "S": float(s.sum()),
+                "SA": float(sa.sum()), "PA": float(pa.sum()),
+                "SP": float(sp.sum()), "IP": float(ip.sum()),
+                "OTHER": float(oth.sum())
+            }
 
-                    obj_lbl, tgt_area, tgt_overall = _objective_targets(objective_f)
-                    totals = {"P": float(p.sum()), "S": float(s.sum()),
-                              "SA": float(sa.sum()), "PA": float(pa.sum()),
-                              "SP": float(sp.sum()), "IP": float(ip.sum()),
-                              "OTHER": float(other.sum())}
+            if objective_f == "%P":
+                main_col, aux_col = "Needed P (3cr)", "Needed S less (3cr)"
+            elif objective_f == "%SA":
+                main_col, aux_col = "Needed SA (3cr)", "Needed Non-SA less (3cr)"
+            else:
+                main_col, aux_col = "Needed OTHER less (3cr)", "Needed Non-OTHER more (3cr)"
 
-                    rows = []
-                    label_name = "Field"
+            rows = []
+            for label in idx_all:
+                Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
+                SAv, PAv = float(sa.get(label,0.0)), float(pa.get(label,0.0))
+                SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
+                OTv      = float(oth.get(label,0.0))
 
-                    for label in list(idx) + ["TOTAL"]:
-                        if label == "TOTAL":
-                            P, S = totals["P"], totals["S"]
-                            SA_, PA_, SP_, IP_, OT_ = totals["SA"], totals["PA"], totals["SP"], totals["IP"], totals["OTHER"]
-                        else:
-                            P = float(p.get(label, 0.0)); S = float(s.get(label, 0.0))
-                            SA_ = float(sa.get(label, 0.0)); PA_ = float(pa.get(label, 0.0))
-                            SP_ = float(sp.get(label, 0.0)); IP_ = float(ip.get(label, 0.0))
-                            OT_ = float(other.get(label, 0.0))
+                need1, need2 = _needed_pairs_for_obj(
+                    objective_f, scope_label_f,
+                    Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=3.0
+                )
+                area_vals = {"P":Pv,"S":Sv,"SA":SAv,"PA":PAv,"SP":SPv,"IP":IPv,"OTHER":OTv}
+                up_pp, down_pp = _impact_pair(objective_f, area_vals, totals, scope_label_f, credits_each=3.0)
 
-                        area_vals = {"P":P,"S":S,"SA":SA_,"PA":PA_,"SP":SP_,"IP":IP_,"OTHER":OT_}
+                rows.append({
+                    "Field": label,
+                    main_col: int(need1),
+                    aux_col:  int(need2),
+                    "Impact +3cr (pp)": up_pp,
+                    "Impact -3cr (pp)": down_pp
+                })
 
-                        if scope_label_f == "By area" or label == "TOTAL":
-                            if objective_f == "%P":
-                                needA = _needed_for_pctP(P, S, tgt_area, 3.0)
-                                needB = _needed_S_less_for_pctP_area(P, S, tgt_area, 3.0)
-                                colA, colB = "Needed P (3cr)", "Needed S less (3cr)"
-                            elif objective_f == "%SA":
-                                rest = PA_+SP_+IP_+OT_
-                                needA = _needed_for_pctSA(SA_, rest, tgt_area, 3.0)
-                                needB = _needed_OTHERS_less_for_SA_area(SA_, rest, tgt_area, 3.0)
-                                colA, colB = "Needed SA (3cr)", "Needed OTHERS less (3cr)"
-                            else:
-                                TQ = SA_+PA_+SP_+IP_+OT_
-                                need_credits = (OT_ - 0.10*TQ) / 0.90
-                                needA = 0 if need_credits <= 0 else math.ceil(need_credits/3.0)
-                                rest = SA_+PA_+SP_+IP_
-                                needB = _needed_OTHERS_more_for_OTHER_area(OT_, rest, tgt_area, 3.0)
-                                colA, colB = "Needed OTHER less (3cr)", "Needed OTHERS more (3cr)"
-                        else:
-                            if objective_f == "%P":
-                                needA = _needed_for_overall_if_only_this_area_changes("%P", totals, area_vals, tgt_overall, 3.0)
-                                needB = _needed_S_less_for_pctP_overall(totals, area_vals, tgt_overall, 3.0)
-                                colA, colB = "Needed P (3cr)", "Needed S less (3cr)"
-                            elif objective_f == "%SA":
-                                needA = _needed_for_overall_if_only_this_area_changes("%SA", totals, area_vals, tgt_overall, 3.0)
-                                needB = _needed_OTHERS_less_for_SA_overall(totals, area_vals, tgt_overall, 3.0)
-                                colA, colB = "Needed SA (3cr)", "Needed OTHERS less (3cr)"
-                            else:
-                                needA = _needed_for_overall_if_only_this_area_changes("%OTHER", totals, area_vals, tgt_overall, 3.0)
-                                needB = _needed_OTHERS_more_for_OTHER_overall(totals, tgt_overall, 3.0)
-                                colA, colB = "Needed OTHER less (3cr)", "Needed OTHERS more (3cr)"
-
-                        if show_impact_f:
-                            if scope_label_f == "By area":
-                                up_pp, down_pp = _impact_pp_area(objective_f, area_vals, 3.0)
-                                imp_plus = round(up_pp, 4); imp_txt = f"{up_pp:+.2f} / {down_pp:+.2f}"
-                                overall_heat = False
-                            else:
-                                up_pp, down_pp = _impact_pp_overall_if_area_changes(objective_f, totals, 3.0)
-                                imp_plus = round(up_pp, 4); imp_txt = f"{up_pp:+.2f} / {down_pp:+.2f}"
-                                overall_heat = True
-                        else:
-                            imp_plus = None; imp_txt = ""; overall_heat = False
-
-                        rows.append({label_name: label, colA: ("" if needA is None else int(needA)),
-                                     colB: ("" if needB is None else int(needB)),
-                                     "Impact (±3cr) [p.p.]": imp_txt, "__v__": imp_plus, "__overall__": overall_heat})
-
-                    need_tbl_f = pd.DataFrame(rows)
-                    _download_xlsx_button(
-                        need_tbl_f.drop(columns=["__v__","__overall__"]),
-                        f"needed_ByField_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label_f)}.xlsx",
-                        key=f"dl_need_field_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label_f)}",
-                        label="⬇️ Descargar (Excel)"
-                    )
-
-                    if show_impact_f:
-                        vis = need_tbl_f.drop(columns=["__v__","__overall__"], errors="ignore")
-                        aux = pd.DataFrame({"Field": need_tbl_f["Field"], "Impact (±3cr) [p.p.]": pd.to_numeric(need_tbl_f["__v__"], errors="coerce")})
-                        styled_need_f = (
-                            vis.style
-                            .hide(axis="index")
-                            .apply(lambda _:
-                                _style_impact_heatmap(
-                                    aux, label_col="Field",
-                                    value_col="Impact (±3cr) [p.p.]", overall_mode=(scope_label_f=="Overall")
-                                ),
-                                axis=None
-                            )
-                        )
-                        st.markdown(f"<div class='scroll-wrap-400'>{styled_need_f.to_html(escape=False)}</div>", unsafe_allow_html=True)
-                    else:
-                        st.dataframe(need_tbl_f.drop(columns=["__v__","__overall__"], errors="ignore"),
-                                     use_container_width=True, hide_index=True)
+            need_tbl_f = pd.DataFrame(rows)
+            styled_f = (
+                need_tbl_f.style
+                .format({main_col:"{:.0f}", aux_col:"{:.0f}", "Impact +3cr (pp)":"{:+.2f}", "Impact -3cr (pp)":"{:+.2f}"})
+                .apply(_style_needed_impact, id_col="Field", axis=None)
+                .hide(axis="index")
+            )
+            _download_xlsx_button(need_tbl_f, f"needed_ByField_{_slugify(sel_label)}_{_slugify(objective_f)}_{_slugify(scope_label_f)}.xlsx",
+                                  key=f"dl_need_field_{_slugify(sel_label)}_{_slugify(objective_f)}_{_slugify(scope_label_f)}",
+                                  label="⬇️ Descargar (Excel)")
+            st.markdown(styled_f.to_html(escape=False), unsafe_allow_html=True)
 
             # Históricos Field
             df_hist_f = df_car_global.copy()
@@ -1714,167 +1600,113 @@ else:
 
         # -------------- BY PROGRAM --------------
         elif view_mode == "By Program" and col_prog:
-            colP_L, colP_R = st.columns([6,6], gap="large")
-            fil_prog = fil.copy()
-            fil_prog["_PROG"] = fil_prog[col_prog].astype(str).str.strip()
-        
-            # Agregaciones del frame seleccionado
-            agg_tipo_p = (fil_prog.groupby(["_PROG","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
-            for k in ["SA","PA","SP","IP","OTHER"]:
-                if k not in agg_tipo_p.columns: agg_tipo_p[k] = 0.0
-            agg_tipo_p = agg_tipo_p[["SA","PA","SP","IP","OTHER"]]
-        
-            agg_ps_p = (fil_prog.groupby(["_PROG","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
-            for k in ["P","S"]:
-                if k not in agg_ps_p.columns: agg_ps_p[k] = 0.0
-            agg_ps_p = agg_ps_p[["P","S"]]
-        
-            # Sensibilidad
-            base_agg_ps_p = agg_ps_p.copy()
-            base_agg_tipo_p = agg_tipo_p.copy()
-            if SENS["on"] and SENS["ops"]:
-                mod_agg_ps_p, mod_agg_tipo_p = apply_ops_to_aggs(base_agg_ps_p, base_agg_tipo_p, SENS["ops"])
+    colP_L, colP_R = st.columns([6,6], gap="large")
+    fil_prog = fil.copy()
+    fil_prog["_PROG"] = fil_prog[col_prog].astype(str).str.strip()
+
+    agg_tipo_p = (fil_prog.groupby(["_PROG","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+    for k in ["SA","PA","SP","IP","OTHER"]:
+        if k not in agg_tipo_p.columns: agg_tipo_p[k] = 0.0
+    agg_tipo_p = agg_tipo_p[["SA","PA","SP","IP","OTHER"]]
+
+    agg_ps_p = (fil_prog.groupby(["_PROG","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+    for k in ["P","S"]:
+        if k not in agg_ps_p.columns: agg_ps_p[k] = 0.0
+    agg_ps_p = agg_ps_p[["P","S"]]
+
+    base_agg_ps_p = agg_ps_p.copy()
+    base_agg_tipo_p = agg_tipo_p.copy()
+    if SENS["on"] and SENS["ops"]:
+        mod_agg_ps_p, mod_agg_tipo_p = apply_ops_to_aggs(base_agg_ps_p, base_agg_tipo_p, SENS["ops"])
+    else:
+        mod_agg_ps_p, mod_agg_tipo_p = base_agg_ps_p, base_agg_tipo_p
+
+    with colP_L:
+        needed_mode_p = False
+        if SENS["on"]:
+            r1c1, r1c2, r1c3 = st.columns([1.8, 1.1, 1.6])
+            with r1c1:
+                needed_mode_p = st.toggle("Show necessary # of Faculty for…", value=False, key="prog_needed_mode")
+            if needed_mode_p:
+                with r1c2:
+                    objective_p = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="prog_objective")
+                with r1c3:
+                    scope_label_p = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="prog_scope")
             else:
-                mod_agg_ps_p, mod_agg_tipo_p = base_agg_ps_p, base_agg_tipo_p
-        
-            with colP_L:
-                needed_mode_p = False
-                if SENS["on"]:
-                    r1c1, r1c2, r1c3, r1c4 = st.columns([1.6, 1.1, 1.2, 1.4])
-                    with r1c1:
-                        needed_mode_p = st.toggle("Show necessary # of Faculty for…", value=False, key="prog_needed_mode")
-                    if needed_mode_p:
-                        with r1c2:
-                            objective_p = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="prog_objective")
-                        with r1c3:
-                            scope_label_p = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="prog_scope")
-                        with r1c4:
-                            show_impact_p = st.checkbox("Show impact (±3cr)", key="prog_show_impact", value=False)
-                    else:
-                        objective_p   = st.session_state.get("prog_objective", "%P")
-                        scope_label_p = st.session_state.get("prog_scope", "By area")
-                        show_impact_p = False
-                else:
-                    objective_p   = st.session_state.get("prog_objective", "%P")
-                    scope_label_p = st.session_state.get("prog_scope", "By area")
-                    show_impact_p = False
+                objective_p = st.session_state.get("prog_objective", "%P")
+                scope_label_p = st.session_state.get("prog_scope", "By area")
+        else:
+            objective_p = st.session_state.get("prog_objective", "%P")
+            scope_label_p = st.session_state.get("prog_scope", "By area")
 
-                if not needed_mode_p:
-                    metrics_tbl_p = build_percent_table("Program", mod_agg_tipo_p, mod_agg_ps_p)
-                    _download_xlsx_button(metrics_tbl_p, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
-                                          key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
-                    styled_tbl_p = (
-                        metrics_tbl_p.style
-                        .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
-                        .apply(style_percent_tables, id_col="Program", axis=None)
-                        .hide(axis="index")
-                    )
-                    st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_p.to_html(escape=False)}</div>", unsafe_allow_html=True)
-                else:
-                    # ===== Needed Program: doble columna + heatmap =====
-                    idx = mod_agg_ps_p.index
-                    p = mod_agg_ps_p["P"].reindex(idx, fill_value=0.0)
-                    s = mod_agg_ps_p["S"].reindex(idx, fill_value=0.0)
-                    sa = mod_agg_tipo_p["SA"].reindex(idx, fill_value=0.0)
-                    pa = mod_agg_tipo_p["PA"].reindex(idx, fill_value=0.0)
-                    sp = mod_agg_tipo_p["SP"].reindex(idx, fill_value=0.0)
-                    ip = mod_agg_tipo_p["IP"].reindex(idx, fill_value=0.0)
-                    other = mod_agg_tipo_p["OTHER"].reindex(idx, fill_value=0.0)
+        if not needed_mode_p:
+            metrics_tbl_p = build_percent_table("Program", mod_agg_tipo_p, mod_agg_ps_p)
+            _download_xlsx_button(metrics_tbl_p, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
+                                  key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
+            styled_tbl_p = (
+                metrics_tbl_p.style
+                .format({"%P":"{:.1f}%","%S":"{:.1f}%","%SA":"{:.1f}%","%OTHER":"{:.1f}%"})
+                .apply(style_percent_tables, id_col="Program", axis=None)
+                .hide(axis="index")
+            )
+            st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_p.to_html(escape=False)}</div>", unsafe_allow_html=True)
+        else:
+            idx_all = sorted(set(mod_agg_ps_p.index.tolist()) | set(mod_agg_tipo_p.index.tolist()))
+            p   = mod_agg_ps_p["P"].reindex(idx_all, fill_value=0.0)
+            s   = mod_agg_ps_p["S"].reindex(idx_all, fill_value=0.0)
+            sa  = mod_agg_tipo_p["SA"].reindex(idx_all, fill_value=0.0)
+            pa  = mod_agg_tipo_p["PA"].reindex(idx_all, fill_value=0.0)
+            sp  = mod_agg_tipo_p["SP"].reindex(idx_all, fill_value=0.0)
+            ip  = mod_agg_tipo_p["IP"].reindex(idx_all, fill_value=0.0)
+            oth = mod_agg_tipo_p["OTHER"].reindex(idx_all, fill_value=0.0)
 
-                    obj_lbl, tgt_area, tgt_overall = _objective_targets(objective_p)
-                    totals = {"P": float(p.sum()), "S": float(s.sum()),
-                              "SA": float(sa.sum()), "PA": float(pa.sum()),
-                              "SP": float(sp.sum()), "IP": float(ip.sum()),
-                              "OTHER": float(other.sum())}
+            totals = {
+                "P": float(p.sum()), "S": float(s.sum()),
+                "SA": float(sa.sum()), "PA": float(pa.sum()),
+                "SP": float(sp.sum()), "IP": float(ip.sum()),
+                "OTHER": float(oth.sum())
+            }
 
-                    rows = []
-                    label_name = "Program"
+            if objective_p == "%P":
+                main_col, aux_col = "Needed P (3cr)", "Needed S less (3cr)"
+            elif objective_p == "%SA":
+                main_col, aux_col = "Needed SA (3cr)", "Needed Non-SA less (3cr)"
+            else:
+                main_col, aux_col = "Needed OTHER less (3cr)", "Needed Non-OTHER more (3cr)"
 
-                    for label in list(idx) + ["TOTAL"]:
-                        if label == "TOTAL":
-                            P, S = totals["P"], totals["S"]
-                            SA_, PA_, SP_, IP_, OT_ = totals["SA"], totals["PA"], totals["SP"], totals["IP"], totals["OTHER"]
-                        else:
-                            P = float(p.get(label, 0.0)); S = float(s.get(label, 0.0))
-                            SA_ = float(sa.get(label, 0.0)); PA_ = float(pa.get(label, 0.0))
-                            SP_ = float(sp.get(label, 0.0)); IP_ = float(ip.get(label, 0.0))
-                            OT_ = float(other.get(label, 0.0))
+            rows = []
+            for label in idx_all:
+                Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
+                SAv, PAv = float(sa.get(label,0.0)), float(pa.get(label,0.0))
+                SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
+                OTv      = float(oth.get(label,0.0))
 
-                        area_vals = {"P":P,"S":S,"SA":SA_,"PA":PA_,"SP":SP_,"IP":IP_,"OTHER":OT_}
+                need1, need2 = _needed_pairs_for_obj(
+                    objective_p, scope_label_p,
+                    Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=3.0
+                )
+                area_vals = {"P":Pv,"S":Sv,"SA":SAv,"PA":PAv,"SP":SPv,"IP":IPv,"OTHER":OTv}
+                up_pp, down_pp = _impact_pair(objective_p, area_vals, totals, scope_label_p, credits_each=3.0)
 
-                        if scope_label_p == "By area" or label == "TOTAL":
-                            if objective_p == "%P":
-                                needA = _needed_for_pctP(P, S, tgt_area, 3.0)
-                                needB = _needed_S_less_for_pctP_area(P, S, tgt_area, 3.0)
-                                colA, colB = "Needed P (3cr)", "Needed S less (3cr)"
-                            elif objective_p == "%SA":
-                                rest = PA_+SP_+IP_+OT_
-                                needA = _needed_for_pctSA(SA_, rest, tgt_area, 3.0)
-                                needB = _needed_OTHERS_less_for_SA_area(SA_, rest, tgt_area, 3.0)
-                                colA, colB = "Needed SA (3cr)", "Needed OTHERS less (3cr)"
-                            else:
-                                TQ = SA_+PA_+SP_+IP_+OT_
-                                need_credits = (OT_ - 0.10*TQ) / 0.90
-                                needA = 0 if need_credits <= 0 else math.ceil(need_credits/3.0)
-                                rest = SA_+PA_+SP_+IP_
-                                needB = _needed_OTHERS_more_for_OTHER_area(OT_, rest, tgt_area, 3.0)
-                                colA, colB = "Needed OTHER less (3cr)", "Needed OTHERS more (3cr)"
-                        else:
-                            if objective_p == "%P":
-                                needA = _needed_for_overall_if_only_this_area_changes("%P", totals, area_vals, tgt_overall, 3.0)
-                                needB = _needed_S_less_for_pctP_overall(totals, area_vals, tgt_overall, 3.0)
-                                colA, colB = "Needed P (3cr)", "Needed S less (3cr)"
-                            elif objective_p == "%SA":
-                                needA = _needed_for_overall_if_only_this_area_changes("%SA", totals, area_vals, tgt_overall, 3.0)
-                                needB = _needed_OTHERS_less_for_SA_overall(totals, area_vals, tgt_overall, 3.0)
-                                colA, colB = "Needed SA (3cr)", "Needed OTHERS less (3cr)"
-                            else:
-                                needA = _needed_for_overall_if_only_this_area_changes("%OTHER", totals, area_vals, tgt_overall, 3.0)
-                                needB = _needed_OTHERS_more_for_OTHER_overall(totals, tgt_overall, 3.0)
-                                colA, colB = "Needed OTHER less (3cr)", "Needed OTHERS more (3cr)"
+                rows.append({
+                    "Program": label,
+                    main_col: int(need1),
+                    aux_col:  int(need2),
+                    "Impact +3cr (pp)": up_pp,
+                    "Impact -3cr (pp)": down_pp
+                })
 
-                        if show_impact_p:
-                            if scope_label_p == "By area":
-                                up_pp, down_pp = _impact_pp_area(objective_p, area_vals, 3.0)
-                                imp_plus = round(up_pp, 4); imp_txt = f"{up_pp:+.2f} / {down_pp:+.2f}"
-                                overall_heat = False
-                            else:
-                                up_pp, down_pp = _impact_pp_overall_if_area_changes(objective_p, totals, 3.0)
-                                imp_plus = round(up_pp, 4); imp_txt = f"{up_pp:+.2f} / {down_pp:+.2f}"
-                                overall_heat = True
-                        else:
-                            imp_plus = None; imp_txt = ""; overall_heat = False
-
-                        rows.append({label_name: label, colA: ("" if needA is None else int(needA)),
-                                     colB: ("" if needB is None else int(needB)),
-                                     "Impact (±3cr) [p.p.]": imp_txt, "__v__": imp_plus, "__overall__": overall_heat})
-
-                    need_tbl_p = pd.DataFrame(rows)
-                    _download_xlsx_button(
-                        need_tbl_p.drop(columns=["__v__","__overall__"]),
-                        f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label_p)}.xlsx",
-                        key=f"dl_need_prog_{_slugify(sel_label)}_{_slugify(obj_lbl)}_{_slugify(scope_label_p)}",
-                        label="⬇️ Descargar (Excel)"
-                    )
-
-                    if show_impact_p:
-                        vis = need_tbl_p.drop(columns=["__v__","__overall__"], errors="ignore")
-                        aux = pd.DataFrame({"Program": need_tbl_p["Program"], "Impact (±3cr) [p.p.]": pd.to_numeric(need_tbl_p["__v__"], errors="coerce")})
-                        styled_need_p = (
-                            vis.style
-                            .hide(axis="index")
-                            .apply(lambda _:
-                                _style_impact_heatmap(
-                                    aux, label_col="Program",
-                                    value_col="Impact (±3cr) [p.p.]", overall_mode=(scope_label_p=="Overall")
-                                ),
-                                axis=None
-                            )
-                        )
-                        st.markdown(f"<div class='scroll-wrap-400'>{styled_need_p.to_html(escape=False)}</div>", unsafe_allow_html=True)
-                    else:
-                        st.dataframe(need_tbl_p.drop(columns=["__v__","__overall__"], errors="ignore"),
-                                     use_container_width=True, hide_index=True)
+            need_tbl_p = pd.DataFrame(rows)
+            styled_p = (
+                need_tbl_p.style
+                .format({main_col:"{:.0f}", aux_col:"{:.0f}", "Impact +3cr (pp)":"{:+.2f}", "Impact -3cr (pp)":"{:+.2f}"})
+                .apply(_style_needed_impact, id_col="Program", axis=None)
+                .hide(axis="index")
+            )
+            _download_xlsx_button(need_tbl_p, f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(objective_p)}_{_slugify(scope_label_p)}.xlsx",
+                                  key=f"dl_need_prog_{_slugify(sel_label)}_{_slugify(objective_p)}_{_slugify(scope_label_p)}",
+                                  label="⬇️ Descargar (Excel)")
+            st.markdown(styled_p.to_html(escape=False), unsafe_allow_html=True)
         
             # ====== Series históricas por Program ======
             df_hist = df_car_global.copy()
@@ -2269,6 +2101,7 @@ if show_counts:
         _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                               key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                               label="Descargar datos (Excel)")
+
 
 
 
