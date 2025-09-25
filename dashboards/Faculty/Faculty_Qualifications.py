@@ -2508,8 +2508,8 @@ st.markdown("---")
 show_counts = st.checkbox("Show P/S counts", value=False)
 if show_counts:
     st.subheader(f"Participating vs Supporting — {st.session_state.get('sel_label','Selected')} (Counts & %)")
-    df_fd_f = df_fd_f.copy()
 
+    df_fd_f = df_fd_f.copy()
     # -------- columnas relevantes en Faculty Distribution --------
     if col_ps_fd:   df_fd_f["_PS"]   = _norm_str(df_fd_f[col_ps_fd]).map(normalize_ps)
     if col_area_fd: df_fd_f["_AREA"] = df_fd_f[col_area_fd].astype(str).str.strip()
@@ -2537,8 +2537,14 @@ if show_counts:
         if "CATEDRA" in v or "CÁTEDRA" in v: return "CÁTEDRA"   # Part-time
         return ""
 
+    # ---------------- Controles (lado a lado) ----------------
+    ctrl_left, ctrl_right = st.columns([6,6])
+    with ctrl_left:
+        pivot_rows = st.radio("Pivot by", ["AREA", "Qualification Type"], index=0, horizontal=True)
+    with ctrl_right:
+        bsq_mode = st.checkbox("BSQ Compensation", value=False, help="Switch to BSQ tables 7 & 8")
+
     # ---------------- PIVOT base (modo original) ----------------
-    pivot_rows = st.radio("Pivot by", ["AREA", "Qualification Type"], index=0, horizontal=True)
     if pivot_rows == "AREA":
         row_name = "AREA"; row_series = df_fd_f["_AREA"].astype(str).str.strip().replace({"": "N/A"})
         desired_order = None
@@ -2593,9 +2599,6 @@ if show_counts:
     chart_export = perc_df.melt(id_vars=row_name, value_vars=["%Participating", "%Supporting"],
                                 var_name="Group", value_name="Percent")
 
-    # ---------------- NUEVO: botón BSQ Compensation ----------------
-    bsq_mode = st.checkbox("BSQ Compensation", value=False)
-
     # ---------------- RENDER ----------------
     if not bsq_mode:
         # ===== Modo original (tabla izquierda + gráfica derecha) =====
@@ -2623,16 +2626,15 @@ if show_counts:
                                   label="Descargar datos (Excel)")
     else:
         # ===== Modo BSQ (dos tablas) =====
-        # -------- Validaciones mínimas --------
         if not all([col_genero, col_degree, col_ftpt]):
             st.error("Missing columns in 'Faculty Distribution' for BSQ tables: 'GÉNERO', 'Highest Degree', and/or 'PLANTA_CATEDRA'.")
         else:
             # Normalizaciones BSQ
-            g_series = df_fd_f[col_genero].map(_norm_gender)
+            g_series   = df_fd_f[col_genero].map(_norm_gender)
             deg_series = df_fd_f[col_degree].astype(str)
-            ftpt_series = df_fd_f[col_ftpt].map(_norm_ftpt)
-            ps_series = df_fd_f["_PS"].fillna("")
-            tipo_series = df_fd_f["_TIPO"].fillna("OTHER")
+            ftpt_series= df_fd_f[col_ftpt].map(_norm_ftpt)
+            ps_series  = df_fd_f["_PS"].fillna("")
+            tipo_series= df_fd_f["_TIPO"].fillna("OTHER")
 
             df_bsq = pd.DataFrame({
                 "Gender": g_series,
@@ -2663,6 +2665,14 @@ if show_counts:
                 {"Row": "d. Total number of supporting faculty members with doctoral degrees", **row7d},
             ])
 
+            def _bold_rows_7(df_):
+                # Poner en negrilla las filas b) y d)
+                sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+                mask = df_["Row"].str.startswith(("b.", "d."))
+                for c in df_.columns:
+                    sty.loc[mask, c] = 'font-weight:700;'
+                return sty
+
             # ---- Tabla 8: P/S x FT/PT por TIPO ----
             cats = ["SA","PA","SP","IP","OTHER"]
             def _row_qual(ps_code: str, ftpt_code: str | None):
@@ -2688,10 +2698,6 @@ if show_counts:
                 {"Row": "e. Part-time Supporting faculty members", **r8e},
                 {"Row": "f. Total Supporting faculty members", **r8f},
             ])[["Row"] + cats + ["TOTAL"]]
-
-            def _bold_rows_7(df_):
-                # no bolding here, render normal
-                return pd.DataFrame('', index=df_.index, columns=df_.columns)
 
             def _bold_rows_8(df_):
                 sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
