@@ -794,7 +794,7 @@ def draw_history(fig_title, level_name, level_values, metric_kind, total_series_
 
     export_df = pd.DataFrame({"Period": x_labels, **base_cols})
     fname = f"chart_{_slugify(fig_title)}_{_slugify(metric_choice)}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx"
-    _download_xlsx_button(export_df, fname, key=f"dl_hist_{_slugify(fig_title)}_{metric_choice}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}", label="⬇️ Datos de la gráfica (Excel)")
+    _download_xlsx_button(export_df, fname, key=f"dl_hist_{_slugify(fig_title)}_{metric_choice}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}", label="⬇️ Download (Excel)")
 
 
 # ============== NORMALIZACIÓN BÁSICA EN CARTELERA ==============
@@ -955,7 +955,7 @@ f = filter_df_fd(df_fd, time_mode, sel_year, sel_sem)
 if 'dl_bd_placeholder' in locals():
     safe = _sanitize_for_export(df_car_filt_all)
     dl_bd_placeholder.download_button(
-        "Download DB (Excel)",
+        f"Download 'Cartelera' {display_label} (Excel)",
         data=_xlsx_bytes(safe),
         file_name=f"BD_Cartelera_{_slugify(sel_label)}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1568,7 +1568,7 @@ else:
                         need_tbl,
                         f"needed_ByArea_{_slugify(sel_label)}_{_slugify(objective)}_{_slugify(scope_label)}.xlsx",
                         key=f"dl_need_area_{_slugify(sel_label)}_{_slugify(objective)}_{_slugify(scope_label)}",
-                        label="⬇️ Descargar (Excel)"
+                        label="⬇️ Download (Excel)"
                     )
                     st.markdown(styled.to_html(escape=False), unsafe_allow_html=True)
 
@@ -1775,7 +1775,7 @@ else:
                         need_tbl_f,
                         f"needed_ByField_{_slugify(sel_label)}_{_slugify(objective_f)}_{_slugify(scope_label_f)}.xlsx",
                         key=f"dl_need_field_{_slugify(sel_label)}_{_slugify(objective_f)}_{_slugify(scope_label_f)}",
-                        label="⬇️ Descargar (Excel)"
+                        label="⬇️ Download (Excel)"
                     )
                     
                     st.markdown(styled_f.to_html(escape=False), unsafe_allow_html=True)
@@ -1986,7 +1986,7 @@ else:
                         need_tbl_p,
                         f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(objective_p)}_{_slugify(scope_label_p)}.xlsx",
                         key=f"dl_need_prog_{_slugify(sel_label)}_{_slugify(objective_p)}_{_slugify(scope_label_p)}",
-                        label="⬇️ Descargar (Excel)"
+                        label="⬇️ Download (Excel)"
                     )
                     
                     st.markdown(styled_p.to_html(escape=False), unsafe_allow_html=True)
@@ -2137,7 +2137,7 @@ try:
             _download_xlsx_button(export_tbl,
                                   f"credit_sums_{_slugify(dim_label)}_{_slugify(display_label)}.xlsx",
                                   key=f"dl_credit_sums_{_slugify(dim_label)}_{_slugify(display_label)}",
-                                  label=f"⬇️ Descargar tabla {display_label} (Excel)")
+                                  label=f"⬇️ Download table {display_label} (Excel)")
             st.dataframe(tbl_out.style.format("{:,.0f}"), use_container_width=True)
 
             # ===== Selector propio de dimensión (independiente del gráfico superior) =====
@@ -2290,7 +2290,7 @@ try:
             # --- dibujar ---
             if mode_line == "Qualifications":
                 COL_SA = "#1FA89B"  # menta verdoso
-                COL_PA = "#C1C6CD"  # verde apagado
+                COL_PA = "#232D3C"  # verde apagado
                 COL_SP = "#565656"  # azul grisoso
                 COL_IP = "#8F8F8F"  # gris
                 COL_OT = "#A13B3B"  # rojo claro
@@ -2522,7 +2522,7 @@ if not SENS.get("on", False):
                     out,
                     f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
                     key=f"dl_tbl_detail_{_slugify(opt_val)}_{_slugify(display_label)}",
-                    label="⬇️ Descargar tabla (Excel)"
+                    label="⬇️ Download table (Excel)"
                 )
                 st.dataframe(out, use_container_width=True, hide_index=True)
 
@@ -2584,7 +2584,7 @@ if not SENS.get("on", False):
                         donut_df,
                         f"chart_donut_PS_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                         key=f"dl_donut_ps_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}",
-                        label="⬇️ Datos de la gráfica (Excel)"
+                        label="⬇️ Download (Excel)"
                     )
                 else:
                     labels_all = ["SA", "PA", "SP", "IP", "OTHER"]
@@ -2615,7 +2615,7 @@ if not SENS.get("on", False):
                             donut_df,
                             f"chart_donut_TIPO_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                             key=f"dl_donut_tipo_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}",
-                            label="⬇️ Datos de la gráfica (Excel)"
+                            label="⬇️ Download (Excel)"
                         )
                     else:
                         st.caption("No hay registros de TIPO para esta métrica en este período.")
@@ -2758,7 +2758,7 @@ if not SENS.get("on", False):
                 _download_xlsx_button(
                     tbl7, f"bsq_7_gender_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                     key=f"dl_bsq7_{_slugify(st.session_state.get('sel_label','sel'))}",
-                    label="Descargar tabla 7 (Excel)"
+                    label="Download table 7 (Excel)"
                 )
                 st.dataframe(
                     tbl7.style.apply(_bold_rows_7, axis=None).format({"Male":"{:,.0f}","Female":"{:,.0f}","Other":"{:,.0f}","Total":"{:,.0f}"}),
@@ -2770,7 +2770,7 @@ if not SENS.get("on", False):
                 _download_xlsx_button(
                     tbl8, f"bsq_8_qual_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                     key=f"dl_bsq8_{_slugify(st.session_state.get('sel_label','sel'))}",
-                    label="Descargar tabla 8 (Excel)"
+                    label="Download table 8 (Excel)"
                 )
                 st.dataframe(
                     tbl8.style.apply(_bold_rows_8, axis=None).format({c: "{:,.0f}" for c in cats + ["TOTAL"]}),
@@ -2851,7 +2851,7 @@ if not SENS.get("on", False):
                 df_counts_out,
                 f"ps_counts_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                 key=f"dl_ps_counts_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
-                label="Descargar tabla (Excel)"
+                label="Download table (Excel)"
             )
             styled_counts = (df_counts_out.style
                              .format({"Participating": "{:,.0f}", "Supporting": "{:,.0f}"})
@@ -2876,7 +2876,7 @@ if not SENS.get("on", False):
                 chart_export,
                 f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                 key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
-                label="Descargar datos (Excel)"
+                label="Download (Excel)"
             )
 
 
@@ -2890,7 +2890,7 @@ if not SENS.get("on", False):
     # ====== Título pegado a los controles ======
     head_l, head_r = st.columns([7,5], gap="large")
     with head_l:
-        st.markdown("#### Faculty credit highlights (current timeframe)")
+        st.markdown(f"#### Faculty credit highlights of {display_label}")
     with head_r:
         st.write("")
 
@@ -2962,7 +2962,7 @@ if not SENS.get("on", False):
 
     # ========= Controles de “Top / Zero” (izquierda) + Buscador (derecha) =========
     opt_highlight = st.radio(
-        "Show",
+        "",
         ["Top 5 most credits", "Top 5 least credits", "Full-time with 0 courses"],
         index=0, horizontal=True, label_visibility="visible", key="highlight_mode"
     )
@@ -2971,9 +2971,9 @@ if not SENS.get("on", False):
 
     # ======================= PANEL IZQUIERDO =======================
     with left:
-        if opt_highlight in {"Top 5 most credits", "Top 5 least credits"}:
+        if opt_highlight in {"Top 5 with most credits", "Top 5 with least credits"}:
             # switch PLANTA (por ID)
-            only_ft = st.toggle("Only full-time (PLANTA)", value=False, key="top_only_ft")
+            only_ft = st.toggle("Only Full-time Faculty", value=False, key="top_only_ft")
 
             if not col_prof_car or "_CRED" not in df_car_filt_all.columns:
                 st.info("Missing credits or professor column in Cartelera for this view.")
@@ -3011,7 +3011,7 @@ if not SENS.get("on", False):
                     out,
                     f"highlight_{_slugify(title)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                     key=f"dl_highlight_{_slugify(title)}_{_slugify(st.session_state.get('sel_label','sel'))}",
-                    label="Descargar (Excel)"
+                    label="Download (Excel)"
                 )
                 st.dataframe(out.style.format({"Credits":"{:,.1f}"}), use_container_width=True, hide_index=True)
 
@@ -3084,7 +3084,7 @@ if not SENS.get("on", False):
                     _download_xlsx_button(
                         out, f"ft_zero_courses_{_slugify(alcance_txt)}.xlsx",
                         key=f"dl_ft_zero_{_slugify(alcance_txt)}",
-                        label="Descargar (Excel)"
+                        label="Download (Excel)"
                     )
                     st.dataframe(out, use_container_width=True, hide_index=True)
 
@@ -3129,8 +3129,8 @@ if not SENS.get("on", False):
 
         # Selector de modo pegado al buscador
         search_mode = st.radio(
-            "Search mode",
-            ["Por Profesor", "Por Curso"],
+            "Search...",
+            ["By Faculty", "By Course"],
             index=0, horizontal=True, key="srch_mode_right",
             on_change=_on_mode_change
         )
@@ -3138,7 +3138,7 @@ if not SENS.get("on", False):
         # Control único a todo el ancho según modo
         if search_mode == "Por Profesor":
             st.selectbox(
-                "Profesor (Nombre) o ID",
+                "Faculty Name or ID",
                 options=prof_opts,
                 index=(prof_opts.index(st.session_state.get("srch_prof",""))
                        if st.session_state.get("srch_prof","") in prof_opts else 0),
@@ -3146,7 +3146,7 @@ if not SENS.get("on", False):
             )
         else:  # Por Curso
             st.selectbox(
-                "Curso (Nombre)",
+                "Course Name",
                 options=course_opts,
                 index=(course_opts.index(st.session_state.get("srch_course",""))
                        if st.session_state.get("srch_course","") in course_opts else 0),
@@ -3234,9 +3234,10 @@ if not SENS.get("on", False):
             res_out,
             f"search_results_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
             key=f"dl_search_{_slugify(st.session_state.get('sel_label','sel'))}",
-            label="Descargar resultados (Excel)"
+            label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
