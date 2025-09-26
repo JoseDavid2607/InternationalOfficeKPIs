@@ -897,7 +897,7 @@ with st.sidebar:
             st.success("Reset.")
 
     if not sens_mode:
-        st.markdown("### Go to KPI")
+        st.markdown("### 📊 Go to KPI:")
         options = {
             "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
             "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
@@ -3323,3 +3323,4 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
