@@ -2387,20 +2387,25 @@ if not SENS.get("on", False):
 
             cL, cR = st.columns([7,5], gap="large")
 
+            # -------- Tabla detalle (izquierda) --------
             with cL:
+                base_tbl = base.copy()
+                if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
+                    base_tbl = base_tbl[base_tbl[col_tag] == opt_val].copy()
+
                 if metric_choice == "%P":
-                    table_filter = st.radio("", ["All", "Only P", "Only S"], index=0, horizontal=True, key=f"table_filt_ps_{view}_{opt_val}")
-                    base_tbl = base.copy()
-                    if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
-                        base_tbl = base_tbl[base_tbl[col_tag] == opt_val].copy()
-                    if table_filter == "Only P": base_tbl = base_tbl[base_tbl["_PS"] == "P"]
+                    table_filter = st.radio(
+                        "", ["All", "Only P", "Only S"], index=0, horizontal=True,
+                        key=f"table_filt_ps_{view}_{opt_val}"
+                    )
+                    if table_filter == "Only P":   base_tbl = base_tbl[base_tbl["_PS"] == "P"]
                     elif table_filter == "Only S": base_tbl = base_tbl[base_tbl["_PS"] == "S"]
                 else:
-                    table_filter = st.radio("", ["All", "Only SA", "Only OTHER"], index=0, horizontal=True, key=f"table_filt_tipo_{view}_{opt_val}")
-                    base_tbl = base.copy()
-                    if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
-                        base_tbl = base_tbl[base_tbl[col_tag] == opt_val].copy()
-                    if table_filter == "Only SA": base_tbl = base_tbl[base_tbl["_TIPO"] == "SA"]
+                    table_filter = st.radio(
+                        "", ["All", "Only SA", "Only OTHER"], index=0, horizontal=True,
+                        key=f"table_filt_tipo_{view}_{opt_val}"
+                    )
+                    if table_filter == "Only SA":      base_tbl = base_tbl[base_tbl["_TIPO"] == "SA"]
                     elif table_filter == "Only OTHER": base_tbl = base_tbl[base_tbl["_TIPO"] == "OTHER"]
 
                 wanted_map = {
@@ -2413,6 +2418,8 @@ if not SENS.get("on", False):
 
                 display_label = st.session_state.get('sel_label','Selected Period')
                 n_courses = len(out)
+
+                # Título dinámico
                 if metric_choice == "%P":
                     if table_filter == "Only P":   title = f"{n_courses} courses taught in {display_label} by Participating Faculty"
                     elif table_filter == "Only S": title = f"{n_courses} courses taught in {display_label} by Supporting Faculty"
@@ -2427,10 +2434,15 @@ if not SENS.get("on", False):
                                  if opt_val in {"(TOTAL)", "(All)"} else f"{n_courses} courses of {opt_val} were taught in {display_label}")
 
                 st.markdown(f"### {title}")
-                _download_xlsx_button(out, f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
-                                      key=f"dl_tbl_detail_{_slugify(opt_val)}_{_slugify(display_label)}", label="⬇️ Descargar tabla (Excel)")
+                _download_xlsx_button(
+                    out,
+                    f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
+                    key=f"dl_tbl_detail_{_slugify(opt_val)}_{_slugify(display_label)}",
+                    label="⬇️ Descargar tabla (Excel)"
+                )
                 st.dataframe(out, use_container_width=True, hide_index=True)
 
+            # -------- Donut (derecha) --------
             with cR:
                 st.markdown("<div style='height: 110px'></div>", unsafe_allow_html=True)
 
@@ -2441,8 +2453,6 @@ if not SENS.get("on", False):
                 for k in ["P","S"]:
                     if k not in agg_ps.columns: agg_ps[k] = 0.0
                 agg_ps = agg_ps[["P","S"]]; agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
-
-                # (sin sensibilidad aquí porque está desactivada; si la activas, esta sección completa se oculta)
 
                 if opt_val in {"(TOTAL)", "(All)"} or col_tag not in base.columns:
                     p_val, s_val = float(agg_ps["P"].sum() if not agg_ps.empty else 0.0), float(agg_ps["S"].sum() if not agg_ps.empty else 0.0)
@@ -2473,14 +2483,20 @@ if not SENS.get("on", False):
                     color_map = {"P": ("#F5A3A3" if alert else MINT), "S": "#B0B0B0"}
                     fig = px.pie(names=["P","S"], values=[p_val, s_val], color=["P","S"], color_discrete_map=color_map, hole=0.55)
                     fig.update_traces(textinfo="percent+label", hovertemplate="%{label}: %{percent:.1%}<extra></extra>")
-                    fig.update_layout(title=f"% Participating Distribution — {title_suffix}",
-                                      height=donut_h, margin=dict(l=10, r=10, t=40, b=10),
-                                      legend=dict(orientation="v", yanchor="bottom", y=0.4, xanchor="center", x=0.9))
+                    fig.update_layout(
+                        title=f"% Participating Distribution — {title_suffix}",
+                        height=donut_h, margin=dict(l=10, r=10, t=40, b=10),
+                        legend=dict(orientation="v", yanchor="bottom", y=0.4, xanchor="center", x=0.9)
+                    )
                     st.plotly_chart(fig, use_container_width=True)
                     donut_df = pd.DataFrame({"Group": ["P","S"], "Credits": [p_val, s_val]})
                     donut_df["Percent"] = (donut_df["Credits"] / max(1e-9, donut_df["Credits"].sum()))*100
-                    _download_xlsx_button(donut_df, f"chart_donut_PS_{_slugify(title_suffix)}_{_slugify(display_label)}.xlsx",
-                                          key=f"dl_donut_ps_{_slugify(title_suffix)}_{_slugify(display_label)}", label="⬇️ Datos de la gráfica (Excel)")
+                    _download_xlsx_button(
+                        donut_df,
+                        f"chart_donut_PS_{_slugify(title_suffix)}_{_slugify(display_label)}.xlsx",
+                        key=f"dl_donut_ps_{_slugify(title_suffix)}_{_slugify(display_label)}",
+                        label="⬇️ Datos de la gráfica (Excel)"
+                    )
                 else:
                     labels_all  = ["SA", "PA", "SP", "IP", "OTHER"]
                     values_all  = [sa, pa, sp, ip, other]
@@ -2499,327 +2515,343 @@ if not SENS.get("on", False):
                         fig = px.pie(names=labels, values=values, color=labels, color_discrete_map=color_map, hole=0.55)
                         fig.update_traces(textinfo="percent+label", sort=False, hovertemplate="%{label}: %{percent:.1%}<extra></extra>")
                         title_txt = "%SA Distribution" if metric_choice == "%SA" else "%OTHER Distribution"
-                        fig.update_layout(title=f"{title_txt} — {title_suffix}",
-                                          height=donut_h, margin=dict(l=10, r=10, t=40, b=10),
-                                          legend=dict(orientation="v", yanchor="bottom", y=0.4, xanchor="center", x=0.9))
+                        fig.update_layout(
+                            title=f"{title_txt} — {title_suffix}",
+                            height=donut_h, margin=dict(l=10, r=10, t=40, b=10),
+                            legend=dict(orientation="v", yanchor="bottom", y=0.4, xanchor="center", x=0.9)
+                        )
                         st.plotly_chart(fig, use_container_width=True)
                         donut_df = pd.DataFrame({"Type": labels_all, "Credits": values_all})
                         donut_df["Percent"] = (donut_df["Credits"] / max(1e-9, donut_df["Credits"].sum()))*100
-                        _download_xlsx_button(donut_df, f"chart_donut_TIPO_{_slugify(title_suffix)}_{_slugify(display_label)}.xlsx",
-                                              key=f"dl_donut_tipo_{_slugify(title_suffix)}_{_slugify(display_label)}", label="⬇️ Datos de la gráfica (Excel)")
+                        _download_xlsx_button(
+                            donut_df,
+                            f"chart_donut_TIPO_{_slugify(title_suffix)}_{_slugify(display_label)}.xlsx",
+                            key=f"dl_donut_tipo_{_slugify(title_suffix)}_{_slugify(display_label)}",
+                            label="⬇️ Datos de la gráfica (Excel)"
+                        )
                     else:
                         st.caption("No hay registros de TIPO para esta métrica en este período.")
     except Exception:
         pass
 
 # --------------------------
-# COUNTS — PIVOT / BSQ (siempre visible)
+# COUNTS — PIVOT / BSQ
+# (Ahora oculto cuando Sensitivity mode está activo)
 # --------------------------
-st.markdown("---")
-st.subheader(f"Participating vs Supporting — {st.session_state.get('sel_label','Selected')}")
+if not SENS.get("on", False):
+    st.markdown("---")
+    st.subheader(f"Participating vs Supporting — {st.session_state.get('sel_label','Selected')}")
 
-# ===== helpers de tiempo y deduplicación (uso local) =====
-def _extract_year(s):
-    m = re.search(r"(19|20)\d{2}", str(s) if s is not None else "")
-    return int(m.group(0)) if m else None
+    # ===== helpers de tiempo y deduplicación (uso local) =====
+    def _extract_year(s):
+        m = re.search(r"(19|20)\d{2}", str(s) if s is not None else "")
+        return int(m.group(0)) if m else None
 
-def _filter_fd_scope(df_fd_raw: pd.DataFrame) -> pd.DataFrame:
-    """
-    Devuelve Faculty Distribution filtrada al alcance temporal actual:
-    - Semestral: solo el semestre seleccionado
-    - Anual: todas las filas del año seleccionado (10, 20 e Intersemestral), SIN duplicar personas en conteos
-    - Intersemestral: solo el 'YYYY Intersemestral'
-    (La deduplicación por persona se hace luego por tabla: por categoría)
-    """
-    if df_fd_raw.empty:
-        return df_fd_raw.copy()
-    out = df_fd_raw.copy()
-    semc = _get_any(out, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    if semc:
-        out["_SEM_SRC"] = out[semc].astype(str).str.strip()
-        out["_YEARX"] = out["_SEM_SRC"].map(_extract_year).astype("Int64")
-        out["_IS_INTER"] = out["_SEM_SRC"].str.lower().str.contains("inter", na=False)
+    def _filter_fd_scope(df_fd_raw: pd.DataFrame) -> pd.DataFrame:
+        """
+        Devuelve Faculty Distribution filtrada al alcance temporal actual:
+        - Semestral: solo el semestre seleccionado
+        - Anual: todas las filas del año seleccionado (10, 20 e Intersemestral)
+        - Intersemestral: solo el 'YYYY Intersemestral'
+        (La deduplicación por persona se hace luego por tabla)
+        """
+        if df_fd_raw.empty:
+            return df_fd_raw.copy()
+        out = df_fd_raw.copy()
+        semc = _get_any(out, "Semestre","Periodo","Periodo Académico","Periodo academico")
+        if semc:
+            out["_SEM_SRC"] = out[semc].astype(str).str.strip()
+            out["_YEARX"] = out["_SEM_SRC"].map(_extract_year).astype("Int64")
+            out["_IS_INTER"] = out["_SEM_SRC"].str.lower().str.contains("inter", na=False)
+        else:
+            out["_SEM_SRC"] = ""
+            out["_YEARX"] = pd.Series(dtype="Int64")
+            out["_IS_INTER"] = False
+
+        time_mode = st.session_state.get("time_mode", "Semestral")
+        sel_sem = st.session_state.get("sel_sem")
+        sel_year = st.session_state.get("sel_year")
+        if time_mode == "Semestral" and sel_sem is not None:
+            return out[out["_SEM_SRC"].eq(str(sel_sem))].copy()
+        if time_mode == "Intersemestral" and sel_year is not None:
+            return out[(out["_YEARX"] == int(sel_year)) & (out["_IS_INTER"])].copy()
+        if time_mode == "Anual" and sel_year is not None:
+            return out[out["_YEARX"] == int(sel_year)].copy()
+        return out
+
+    def _ensure_pid(df: pd.DataFrame) -> pd.DataFrame:
+        """Agrega _PID (persona) usando ID; de no haberlo, usa nombre."""
+        out = df.copy()
+        idc = _get_any(out, "ID","ID Nr.","Documento")
+        namec = _get_any(out, "Profesor","PROFESOR","Docente","Nombre")
+        if idc and idc in out:
+            out["_PID"] = out[idc].astype(str).str.strip()
+        elif namec and namec in out:
+            out["_PID"] = out[namec].astype(str).str.strip().str.lower()
+        else:
+            out["_PID"] = out.index.astype(str)  # fallback
+        return out
+
+    # ------------- base Faculty Distribution filtrada al alcance temporal -------------
+    df_fd_scope = _filter_fd_scope(df_fd)  # <- usa df_fd global cargado
+    df_fd_f = df_fd_scope.copy()           # mantenemos el nombre esperado en el resto
+
+    # -------- columnas base en Faculty Distribution --------
+    if col_ps_fd:   df_fd_f["_PS"]   = _norm_str(df_fd_f[col_ps_fd]).map(normalize_ps)
+    if col_area_fd: df_fd_f["_AREA"] = df_fd_f[col_area_fd].astype(str).str.strip()
+    if col_tipo_fd: df_fd_f["_TIPO"] = _norm_str(df_fd_f[col_tipo_fd]).map(normalize_tipo)
+
+    # -------- columnas extra para BSQ --------
+    col_genero = _get_any(df_fd_f, "GÉNERO", "GENERO", "Genero", "Gender")
+    col_degree = _get_any(df_fd_f, "Highest Degree", "HighestDegree", "DEGREE", "Grado máximo", "Grado")
+    col_ftpt   = _get_any(df_fd_f, "PLANTA_CATEDRA", "Planta_Catedra", "Planta/Catedra", "Full/Part")
+
+    def _norm_gender(x: str) -> str:
+        v = str(x).strip().lower()
+        if v in {"male","masculino","m","hombre"}:   return "Male"
+        if v in {"female","femenino","f","mujer"}:   return "Female"
+        return "Other"
+
+    def _is_doctoral(x: str) -> bool:
+        v = str(x).strip().lower().replace(".", "")
+        return ("phd" in v) or ("doctor" in v)
+
+    def _norm_ftpt(x: str) -> str:
+        v = str(x).strip().upper()
+        if "PLANTA" in v:                    return "PLANTA"     # Full-time
+        if "CATEDRA" in v or "CÁTEDRA" in v: return "CÁTEDRA"    # Part-time
+        return ""
+
+    # --------- Controles en una sola fila (3 botones) ----------
+    pivot_mode = st.radio(
+        "View",
+        ["BSQ Compensation", "AREA", "Qualification Type"],
+        index=0,  # BSQ por defecto y seleccionado
+        horizontal=True,
+        label_visibility="collapsed",
+        key="counts_view_mode"
+    )
+
+    # ===================== MODO BSQ =====================
+    if pivot_mode == "BSQ Compensation":
+        left, right = st.columns([6,6], gap="large")
+
+        if not all([col_genero, col_degree, col_ftpt]):
+            st.error("Missing columns in 'Faculty Distribution' for BSQ tables: 'GÉNERO', 'Highest Degree', and/or 'PLANTA_CATEDRA'.")
+        else:
+            # Normalizaciones + persona
+            df_bsq = df_fd_f.copy()
+            df_bsq = _ensure_pid(df_bsq)
+            df_bsq = df_bsq.assign(
+                Gender     = df_bsq[col_genero].map(_norm_gender),
+                IsDoctoral = df_bsq[col_degree].map(_is_doctoral),
+                FTPT       = df_bsq[col_ftpt].map(_norm_ftpt),  # PLANTA / CÁTEDRA
+                PS         = df_bsq["_PS"].fillna(""),
+                TIPO       = df_bsq["_TIPO"].fillna("OTHER")
+            )
+
+            # ---- Tabla 7: P/S x género (sin duplicar persona) ----
+            def _count_by_gender(mask) -> dict:
+                sub = df_bsq[mask].drop_duplicates(subset=["_PID"])
+                male   = int((sub["Gender"] == "Male").sum())
+                female = int((sub["Gender"] == "Female").sum())
+                other  = int((sub["Gender"] == "Other").sum())
+                return {"Male": male, "Female": female, "Other": other, "Total": male + female + other}
+
+            row7a = _count_by_gender(df_bsq["PS"] == "P")
+            row7b = _count_by_gender((df_bsq["PS"] == "P") & (df_bsq["IsDoctoral"]))
+            row7c = _count_by_gender(df_bsq["PS"] == "S")
+            row7d = _count_by_gender((df_bsq["PS"] == "S") & (df_bsq["IsDoctoral"]))
+
+            tbl7 = pd.DataFrame([
+                {"Row": "a. Total number of participating faculty members", **row7a},
+                {"Row": "b. Total number of participating faculty members with doctoral degrees", **row7b},
+                {"Row": "c. Total number of supporting faculty members", **row7c},
+                {"Row": "d. Total number of supporting faculty members with doctoral degrees", **row7d},
+            ])
+
+            def _bold_rows_7(df_):
+                sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+                mask = df_["Row"].str.startswith(("b.", "d."))
+                for c in df_.columns: sty.loc[mask, c] = 'font-weight:700;'
+                return sty
+
+            # ---- Tabla 8: P/S x FT/PT por TIPO (sin duplicar persona dentro de PS+FTPT+TIPO) ----
+            cats = ["SA","PA","SP","IP","OTHER"]
+            def _row_qual(ps_code: str, ftpt_code: str | None):
+                m = (df_bsq["PS"] == ps_code)
+                if ftpt_code is not None:
+                    m = m & (df_bsq["FTPT"] == ftpt_code)
+                sub = df_bsq[m].drop_duplicates(subset=["_PID","TIPO","PS","FTPT"])
+                counts = {c: int((sub["TIPO"] == c).sum()) for c in cats}
+                total = sum(counts.values())
+                return {**counts, "TOTAL": total}
+
+            r8a = _row_qual("P", "PLANTA")
+            r8b = _row_qual("P", "CÁTEDRA")
+            r8c = {k: r8a.get(k,0) + r8b.get(k,0) for k in cats + ["TOTAL"]}
+            r8d = _row_qual("S", "PLANTA")
+            r8e = _row_qual("S", "CÁTEDRA")
+            r8f = {k: r8d.get(k,0) + r8e.get(k,0) for k in cats + ["TOTAL"]}
+
+            tbl8 = pd.DataFrame([
+                {"Row": "a. Full-time Participating faculty members", **r8a},
+                {"Row": "b. Part-time Participating faculty members", **r8b},
+                {"Row": "c. Total Participating faculty members", **r8c},
+                {"Row": "d. Full-time Supporting faculty members", **r8d},
+                {"Row": "e. Part-time Supporting faculty members", **r8e},
+                {"Row": "f. Total Supporting faculty members", **r8f},
+            ])[["Row"] + cats + ["TOTAL"]]
+
+            def _bold_rows_8(df_):
+                sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+                mask = df_["Row"].str.startswith(("c.", "f."))
+                for c in df_.columns: sty.loc[mask, c] = 'font-weight:700;'
+                return sty
+
+            with left:
+                st.markdown("**7. Participating and Supporting Faculty Counts † (required for AACSB-accredited members only)**")
+                _download_xlsx_button(
+                    tbl7,
+                    f"bsq_7_gender_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                    key=f"dl_bsq7_{_slugify(st.session_state.get('sel_label','sel'))}",
+                    label="Descargar tabla 7 (Excel)"
+                )
+                st.dataframe(
+                    tbl7.style.apply(_bold_rows_7, axis=None).format({"Male":"{:,.0f}","Female":"{:,.0f}","Other":"{:,.0f}","Total":"{:,.0f}"}),
+                    use_container_width=True, hide_index=True
+                )
+
+            with right:
+                st.markdown("**8. Faculty Counts by Qualification Types †**")
+                _download_xlsx_button(
+                    tbl8,
+                    f"bsq_8_qual_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                    key=f"dl_bsq8_{_slugify(st.session_state.get('sel_label','sel'))}",
+                    label="Descargar tabla 8 (Excel)"
+                )
+                st.dataframe(
+                    tbl8.style.apply(_bold_rows_8, axis=None).format({c: "{:,.0f}" for c in cats + ["TOTAL"]}),
+                    use_container_width=True, hide_index=True
+                )
+
+    # ===================== MODO PIVOT ORIGINAL (AREA / TYPE) =====================
     else:
-        out["_SEM_SRC"] = ""
-        out["_YEARX"] = pd.Series(dtype="Int64")
-        out["_IS_INTER"] = False
+        # Define filas según modo
+        if pivot_mode == "AREA":
+            row_name = "AREA"
+            row_series = df_fd_f["_AREA"].astype(str).str.strip().replace({"": "N/A"})
+            desired_order = None
+        else:  # "Qualification Type"
+            row_name = "Type"
+            row_series = df_fd_f["_TIPO"].map(lambda v: str(v).upper())
+            desired_order = ["SA", "PA", "SP", "IP", "OTHER"]
 
-    time_mode = st.session_state.get("time_mode", "Semestral")
-    sel_sem = st.session_state.get("sel_sem")
-    sel_year = st.session_state.get("sel_year")
-    if time_mode == "Semestral" and sel_sem is not None:
-        return out[out["_SEM_SRC"].eq(str(sel_sem))].copy()
-    if time_mode == "Intersemestral" and sel_year is not None:
-        return out[(out["_YEARX"] == int(sel_year)) & (out["_IS_INTER"])].copy()
-    if time_mode == "Anual" and sel_year is not None:
-        # incluir 10, 20 e inter del año
-        return out[out["_YEARX"] == int(sel_year)].copy()
-    return out
+        # Persona + variables para deduplicar
+        df_cnt = _ensure_pid(df_fd_f)
+        df_cnt[row_name] = row_series
+        df_cnt["_PS2"] = df_cnt["_PS"].fillna("")
 
-def _ensure_pid(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Agrega _PID (persona) usando ID; de no haberlo, usa nombre.
-    """
-    out = df.copy()
-    idc = _get_any(out, "ID","ID Nr.","Documento")
-    namec = _get_any(out, "Profesor","PROFESOR","Docente","Nombre")
-    if idc and idc in out:
-        out["_PID"] = out[idc].astype(str).str.strip()
-    elif namec and namec in out:
-        out["_PID"] = out[namec].astype(str).str.strip().str.lower()
-    else:
-        out["_PID"] = out.index.astype(str)  # fallback
-    return out
+        # DEDUP: 1 vez por persona y categoría (row_name, _PS2)
+        df_cnt = df_cnt.drop_duplicates(subset=["_PID", row_name, "_PS2"])
 
-# ------------- base Faculty Distribution filtrada al alcance temporal -------------
-df_fd_scope = _filter_fd_scope(df_fd)  # <- usa df_fd global cargado
-df_fd_f = df_fd_scope.copy()           # mantenemos el nombre esperado en el resto
+        base = pd.DataFrame({row_name: df_cnt[row_name], "_PS": df_cnt["_PS2"]})
+        table = (base.groupby([row_name, "_PS"], dropna=False)
+                      .size()
+                      .unstack(fill_value=0)
+                      .rename(columns={"P": "Participating", "S": "Supporting"}))
+        for k in ["Participating", "Supporting"]:
+            if k not in table.columns: table[k] = 0
+        table["__Total__"] = table["Participating"] + table["Supporting"]
 
-# -------- columnas base en Faculty Distribution --------
-if col_ps_fd:   df_fd_f["_PS"]   = _norm_str(df_fd_f[col_ps_fd]).map(normalize_ps)
-if col_area_fd: df_fd_f["_AREA"] = df_fd_f[col_area_fd].astype(str).str.strip()
-if col_tipo_fd: df_fd_f["_TIPO"] = _norm_str(df_fd_f[col_tipo_fd]).map(normalize_tipo)
+        # Ajuste simple por sensibilidad (impacto total)
+        if SENS["on"] and SENS["ops"]:
+            add_P = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="P")
+            add_S = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="S")
+            incs = {"Participating": int(add_P), "Supporting": int(add_S)}
+        else:
+            incs = {"Participating": 0, "Supporting": 0}
 
-# -------- columnas extra para BSQ --------
-col_genero = _get_any(df_fd_f, "GÉNERO", "GENERO", "Genero", "Gender")
-col_degree = _get_any(df_fd_f, "Highest Degree", "HighestDegree", "DEGREE", "Grado máximo", "Grado")
-col_ftpt   = _get_any(df_fd_f, "PLANTA_CATEDRA", "Planta_Catedra", "Planta/Catedra", "Full/Part")
+        df_counts = table[["Participating", "Supporting"]].astype(int).reset_index()
+        total_row = pd.DataFrame([{row_name: "TOTAL",
+                                   "Participating": int(df_counts["Participating"].sum()) + incs["Participating"],
+                                   "Supporting":    int(df_counts["Supporting"].sum())    + incs["Supporting"]}])
+        df_counts_out = pd.concat([df_counts, total_row], ignore_index=True)
 
-def _norm_gender(x: str) -> str:
-    v = str(x).strip().lower()
-    if v in {"male","masculino","m","hombre"}:   return "Male"
-    if v in {"female","femenino","f","mujer"}:   return "Female"
-    return "Other"
+        def _bold_total(df_):
+            sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+            mask = df_[row_name].astype(str).str.upper().eq("TOTAL")
+            for c in df_.columns: sty.loc[mask, c] = 'font-weight:700;'
+            return sty
 
-def _is_doctoral(x: str) -> bool:
-    v = str(x).strip().lower().replace(".", "")
-    return ("phd" in v) or ("doctor" in v)
+        left, right = st.columns([6,6], gap="large")
 
-def _norm_ftpt(x: str) -> str:
-    v = str(x).strip().upper()
-    if "PLANTA" in v:                    return "PLANTA"     # Full-time
-    if "CATEDRA" in v or "CÁTEDRA" in v: return "CÁTEDRA"    # Part-time
-    return ""
+        # Porcentajes y orden para gráfica
+        denom = table["__Total__"].replace(0, pd.NA)
+        perc_df = pd.DataFrame({
+            row_name: table.index,
+            "%Participating": (table["Participating"] / denom * 100).round(1).fillna(0.0),
+            "%Supporting":    (table["Supporting"]    / denom * 100).round(1).fillna(0.0),
+        })
+        if desired_order:
+            for code in desired_order:
+                if code not in perc_df[row_name].tolist():
+                    perc_df.loc[len(perc_df)] = [code, 0.0, 0.0]
+            cat_order = desired_order
+        else:
+            cat_order = perc_df[row_name].tolist()
 
-# --------- Controles en una sola fila (3 botones) ----------
-pivot_mode = st.radio(
-    "View",
-    ["BSQ Compensation", "AREA", "Qualification Type"],
-    index=0,  # BSQ por defecto y seleccionado
-    horizontal=True,
-    label_visibility="collapsed",
-    key="counts_view_mode"
-)
-
-# ===================== MODO BSQ =====================
-if pivot_mode == "BSQ Compensation":
-    left, right = st.columns([6,6], gap="large")
-
-    if not all([col_genero, col_degree, col_ftpt]):
-        st.error("Missing columns in 'Faculty Distribution' for BSQ tables: 'GÉNERO', 'Highest Degree', and/or 'PLANTA_CATEDRA'.")
-    else:
-        # Normalizaciones + persona
-        df_bsq = df_fd_f.copy()
-        df_bsq = _ensure_pid(df_bsq)
-        df_bsq = df_bsq.assign(
-            Gender     = df_bsq[col_genero].map(_norm_gender),
-            IsDoctoral = df_bsq[col_degree].map(_is_doctoral),
-            FTPT       = df_bsq[col_ftpt].map(_norm_ftpt),  # PLANTA / CÁTEDRA
-            PS         = df_bsq["_PS"].fillna(""),
-            TIPO       = df_bsq["_TIPO"].fillna("OTHER")
+        chart_export = perc_df.melt(
+            id_vars=row_name, value_vars=["%Participating", "%Supporting"],
+            var_name="Group", value_name="Percent"
         )
-
-        # ---- Tabla 7: P/S x género (sin duplicar persona dentro de P o S) ----
-        def _count_by_gender(mask) -> dict:
-            sub = df_bsq[mask]
-            # dedup por persona dentro de esa categoría
-            sub = sub.drop_duplicates(subset=["_PID"])
-            male   = int((sub["Gender"] == "Male").sum())
-            female = int((sub["Gender"] == "Female").sum())
-            other  = int((sub["Gender"] == "Other").sum())
-            return {"Male": male, "Female": female, "Other": other, "Total": male + female + other}
-
-        row7a = _count_by_gender(df_bsq["PS"] == "P")
-        row7b = _count_by_gender((df_bsq["PS"] == "P") & (df_bsq["IsDoctoral"]))
-        row7c = _count_by_gender(df_bsq["PS"] == "S")
-        row7d = _count_by_gender((df_bsq["PS"] == "S") & (df_bsq["IsDoctoral"]))
-
-        tbl7 = pd.DataFrame([
-            {"Row": "a. Total number of participating faculty members", **row7a},
-            {"Row": "b. Total number of participating faculty members with doctoral degrees", **row7b},
-            {"Row": "c. Total number of supporting faculty members", **row7c},
-            {"Row": "d. Total number of supporting faculty members with doctoral degrees", **row7d},
-        ])
-
-        def _bold_rows_7(df_):
-            # b) y d) en negrilla
-            sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
-            mask = df_["Row"].str.startswith(("b.", "d."))
-            for c in df_.columns:
-                sty.loc[mask, c] = 'font-weight:700;'
-            return sty
-
-        # ---- Tabla 8: P/S x FT/PT por TIPO (sin duplicar persona dentro de PS+FTPT+TIPO) ----
-        cats = ["SA","PA","SP","IP","OTHER"]
-        def _row_qual(ps_code: str, ftpt_code: str | None):
-            m = (df_bsq["PS"] == ps_code)
-            if ftpt_code is not None:
-                m = m & (df_bsq["FTPT"] == ftpt_code)
-            sub = df_bsq[m].drop_duplicates(subset=["_PID","TIPO","PS","FTPT"])
-            counts = {c: int((sub["TIPO"] == c).sum()) for c in cats}
-            total = sum(counts.values())
-            return {**counts, "TOTAL": total}
-
-        r8a = _row_qual("P", "PLANTA")      # Full-time Participating
-        r8b = _row_qual("P", "CÁTEDRA")     # Part-time Participating
-        r8c = {k: r8a.get(k,0) + r8b.get(k,0) for k in cats + ["TOTAL"]}  # TOTAL Participating
-        r8d = _row_qual("S", "PLANTA")      # Full-time Supporting
-        r8e = _row_qual("S", "CÁTEDRA")     # Part-time Supporting
-        r8f = {k: r8d.get(k,0) + r8e.get(k,0) for k in cats + ["TOTAL"]}  # TOTAL Supporting
-
-        tbl8 = pd.DataFrame([
-            {"Row": "a. Full-time Participating faculty members", **r8a},
-            {"Row": "b. Part-time Participating faculty members", **r8b},
-            {"Row": "c. Total Participating faculty members", **r8c},
-            {"Row": "d. Full-time Supporting faculty members", **r8d},
-            {"Row": "e. Part-time Supporting faculty members", **r8e},
-            {"Row": "f. Total Supporting faculty members", **r8f},
-        ])[["Row"] + cats + ["TOTAL"]]
-
-        def _bold_rows_8(df_):
-            # Totales (c. y f.) en negrilla
-            sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
-            mask = df_["Row"].str.startswith(("c.", "f."))
-            for c in df_.columns:
-                sty.loc[mask, c] = 'font-weight:700;'
-            return sty
 
         with left:
-            st.markdown("**7. Participating and Supporting Faculty Counts † (required for AACSB-accredited members only)**")
-            _download_xlsx_button(tbl7, f"bsq_7_gender_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-                                  key=f"dl_bsq7_{_slugify(st.session_state.get('sel_label','sel'))}",
-                                  label="Descargar tabla 7 (Excel)")
-            st.dataframe(
-                tbl7.style.apply(_bold_rows_7, axis=None).format({"Male":"{:,.0f}","Female":"{:,.0f}","Other":"{:,.0f}","Total":"{:,.0f}"}),
-                use_container_width=True, hide_index=True
+            _download_xlsx_button(
+                df_counts_out,
+                f"ps_counts_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                key=f"dl_ps_counts_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
+                label="Descargar tabla (Excel)"
             )
+            styled_counts = (df_counts_out.style
+                             .format({"Participating": "{:,.0f}", "Supporting": "{:,.0f}"})
+                             .apply(_bold_total, axis=None))
+            st.dataframe(styled_counts, use_container_width=True, hide_index=True)
 
         with right:
-            st.markdown("**8. Faculty Counts by Qualification Types †**")
-            _download_xlsx_button(tbl8, f"bsq_8_qual_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-                                  key=f"dl_bsq8_{_slugify(st.session_state.get('sel_label','sel'))}",
-                                  label="Descargar tabla 8 (Excel)")
-            st.dataframe(
-                tbl8.style.apply(_bold_rows_8, axis=None).format({c: "{:,.0f}" for c in cats + ["TOTAL"]}),
-                use_container_width=True, hide_index=True
+            fig = px.bar(
+                chart_export, x=row_name, y="Percent", color="Group",
+                barmode="group", text="Percent",
+                color_discrete_map={"%Participating": MINT, "%Supporting": SUPPORTING},
+                category_orders={row_name: cat_order}
             )
-
-# ===================== MODO PIVOT ORIGINAL (AREA / TYPE) =====================
-else:
-    # Define filas según modo
-    if pivot_mode == "AREA":
-        row_name = "AREA"
-        row_series = df_fd_f["_AREA"].astype(str).str.strip().replace({"": "N/A"})
-        desired_order = None
-    else:  # "Qualification Type"
-        row_name = "Type"
-        row_series = df_fd_f["_TIPO"].map(lambda v: str(v).upper())
-        desired_order = ["SA", "PA", "SP", "IP", "OTHER"]
-
-    # Persona + variables para deduplicar
-    df_cnt = _ensure_pid(df_fd_f)
-    df_cnt[row_name] = row_series
-    df_cnt["_PS2"] = df_cnt["_PS"].fillna("")
-
-    # DEDUP: contamos 1 vez por persona y categoría (row_name, _PS2) en el alcance temporal
-    df_cnt = df_cnt.drop_duplicates(subset=["_PID", row_name, "_PS2"])
-
-    base = pd.DataFrame({row_name: df_cnt[row_name], "_PS": df_cnt["_PS2"]})
-    table = (base.groupby([row_name, "_PS"], dropna=False)
-                  .size()
-                  .unstack(fill_value=0)
-                  .rename(columns={"P": "Participating", "S": "Supporting"}))
-    for k in ["Participating", "Supporting"]:
-        if k not in table.columns: table[k] = 0
-    table["__Total__"] = table["Participating"] + table["Supporting"]
-
-    # Ajuste simple por sensibilidad (impacto total)
-    if SENS["on"] and SENS["ops"]:
-        add_P = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="P")
-        add_S = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="S")
-        incs = {"Participating": int(add_P), "Supporting": int(add_S)}
-    else:
-        incs = {"Participating": 0, "Supporting": 0}
-
-    df_counts = table[["Participating", "Supporting"]].astype(int).reset_index()
-    total_row = pd.DataFrame([{row_name: "TOTAL",
-                               "Participating": int(df_counts["Participating"].sum()) + incs["Participating"],
-                               "Supporting":    int(df_counts["Supporting"].sum())    + incs["Supporting"]}])
-    df_counts_out = pd.concat([df_counts, total_row], ignore_index=True)
-
-    def _bold_total(df_):
-        sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
-        mask = df_[row_name].astype(str).str.upper().eq("TOTAL")
-        for c in df_.columns: sty.loc[mask, c] = 'font-weight:700;'
-        return sty
-
-    left, right = st.columns([6,6], gap="large")
-
-    # Porcentajes y orden para gráfica
-    denom = table["__Total__"].replace(0, pd.NA)
-    perc_df = pd.DataFrame({
-        row_name: table.index,
-        "%Participating": (table["Participating"] / denom * 100).round(1).fillna(0.0),
-        "%Supporting":    (table["Supporting"]    / denom * 100).round(1).fillna(0.0),
-    })
-    if desired_order:
-        for code in desired_order:
-            if code not in perc_df[row_name].tolist():
-                perc_df.loc[len(perc_df)] = [code, 0.0, 0.0]
-        cat_order = desired_order
-    else:
-        cat_order = perc_df[row_name].tolist()
-
-    chart_export = perc_df.melt(id_vars=row_name, value_vars=["%Participating", "%Supporting"],
-                                var_name="Group", value_name="Percent")
-
-    with left:
-        _download_xlsx_button(df_counts_out, f"ps_counts_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-                              key=f"dl_ps_counts_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
-                              label="Descargar tabla (Excel)")
-        styled_counts = (df_counts_out.style
-                         .format({"Participating": "{:,.0f}", "Supporting": "{:,.0f}"})
-                         .apply(_bold_total, axis=None))
-        st.dataframe(styled_counts, use_container_width=True, hide_index=True)
-
-    with right:
-        fig = px.bar(chart_export, x=row_name, y="Percent", color="Group",
-                     barmode="group", text="Percent",
-                     color_discrete_map={"%Participating": MINT, "%Supporting": SUPPORTING},
-                     category_orders={row_name: cat_order})
-        fig.update_traces(texttemplate="%{text:.1f}%")
-        fig.update_layout(
-            xaxis_title=None, yaxis_title=None, height=340,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-            legend_title_text=None, margin=dict(l=20, r=10, t=10, b=40)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        _download_xlsx_button(chart_export, f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-                              key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
-                              label="Descargar datos (Excel)")
+            fig.update_traces(texttemplate="%{text:.1f}%")
+            fig.update_layout(
+                xaxis_title=None, yaxis_title=None, height=340,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                legend_title_text=None, margin=dict(l=20, r=10, t=10, b=40)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            _download_xlsx_button(
+                chart_export,
+                f"chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
+                label="Descargar datos (Excel)"
+            )
 
 # ==========================================================
 # MÓDULO FINAL: Top 5 (más/menos créditos) y FT sin cursos + Buscador
+# (Highlights ocultos cuando Sensitivity mode está activo; Buscador siempre visible)
 # ==========================================================
 st.markdown("---")
 
-# ====== Título pegado a los controles ======
-head_l, head_r = st.columns([7,5], gap="large")
-with head_l:
-    st.markdown("#### Faculty credit highlights (current timeframe)")
-with head_r:
-    # espacio mínimo para que el título quede “pegado”
-    st.write("")
+# ====== Título pegado a los controles (solo si no hay Sensitivity) ======
+if not SENS.get("on", False):
+    head_l, head_r = st.columns([7,5], gap="large")
+    with head_l:
+        st.markdown("#### Faculty credit highlights (current timeframe)")
+    with head_r:
+        st.write("")
 
 @st.cache_data(ttl=0)
 def _load_planta_sheet():
@@ -2853,10 +2885,6 @@ col_id_fd_all   = _get_any(df_fd, "ID","ID Nr.","Documento")
 col_sem_fd_all  = _get_any(df_fd, "Semestre","Periodo","Periodo Académico","Periodo academico")
 
 # ===== utilidades de tiempo/filtrado =====
-def _extract_year(s):
-    m = re.search(r"(19|20)\d{2}", str(s) if s is not None else "")
-    return int(m.group(0)) if m else None
-
 def _normalize_sem_str(x: str) -> str:
     return str(x).strip().replace("\xa0"," ")
 
@@ -2921,22 +2949,25 @@ def _first_map(df_, key_col, val_col):
 
 prof_to_id_map_by_name   = _first_map(df_fd_sem, "_PROF_N", "_ID")
 prof_to_area_map         = _first_map(df_fd_sem, "_PROF_N", "_AREA_PROF")
-prof_to_tipo_map         = _first_map(df_fd_sem, "_PROF_N", "_TIPO")      # literal (puede ser SA/PA/... o PLANTA/CÁTEDRA)
+prof_to_tipo_map         = _first_map(df_fd_sem, "_PROF_N", "_TIPO")
 prof_to_ps_map           = _first_map(df_fd_sem, "_PROF_N", "_PS")
 
 # Conjunto de IDs PLANTA (cruce por ID, como pediste)
 planta_ids = set(df_fd_sem.loc[df_fd_sem["_FTPT"] == "PLANTA", "_ID"].dropna().astype(str).unique().tolist())
 
-# ========= Controles de “Top / Zero” (izquierda) + Buscador (derecha) =========
-opt_highlight = st.radio(
-    "Show",
-    ["Top 5 most credits", "Top 5 least credits", "Full-time with 0 courses"],
-    index=0, horizontal=True, label_visibility="visible", key="highlight_mode"
-)
+# ========= Controles de “Top / Zero” (izquierda) + Buscador (derecha)
+# (Highlights sólo si no hay Sensitivity; Buscador siempre)
+if not SENS.get("on", False):
+    opt_highlight = st.radio(
+        "Show",
+        ["Top 5 most credits", "Top 5 least credits", "Full-time with 0 courses"],
+        index=0, horizontal=True, label_visibility="visible", key="highlight_mode"
+    )
+    left, right = st.columns([7,5], gap="large")
+else:
+    right = st.container()  # Buscador ocupará ancho completo cuando Sensitivity está activo
 
-left, right = st.columns([7,5], gap="large")
-
-# ======================= PANEL IZQUIERDO =======================
+# ======================= PANEL IZQUIERDO (HIGHLIGHTS) =======================
 with left:
     if opt_highlight in {"Top 5 most credits", "Top 5 least credits"}:
         # switch PLANTA (por ID)
@@ -3211,5 +3242,6 @@ if has_query:
         label="Descargar resultados (Excel)"
     )
     st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
