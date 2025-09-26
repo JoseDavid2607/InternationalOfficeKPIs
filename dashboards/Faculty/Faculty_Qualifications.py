@@ -952,6 +952,9 @@ base = df_fd.copy()
 df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
 f = filter_df_fd(df_fd, time_mode, sel_year, sel_sem)
 
+# Define display_label before using it
+display_label = st.session_state.get('sel_label', 'Selected Period')
+
 if 'dl_bd_placeholder' in locals():
     safe = _sanitize_for_export(df_car_filt_all)
     dl_bd_placeholder.download_button(
@@ -961,6 +964,7 @@ if 'dl_bd_placeholder' in locals():
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key=f"dl_bd_{_slugify(sel_label)}"
     )
+
 
 # --------- Sensitivity: “Apply to” ---------
 if st.session_state.get("sens_mode", False):
@@ -3237,6 +3241,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
