@@ -2754,7 +2754,7 @@ if not SENS.get("on", False):
                 return sty
 
             with left:
-                st.markdown("**7. Participating and Supporting Faculty Counts † (required for AACSB-accredited members only)**")
+                st.markdown("**7. Participating and Supporting Faculty Counts †**")
                 _download_xlsx_button(
                     tbl7, f"bsq_7_gender_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                     key=f"dl_bsq7_{_slugify(st.session_state.get('sel_label','sel'))}",
@@ -3237,6 +3237,7 @@ if not SENS.get("on", False):
             label="Descargar resultados (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
