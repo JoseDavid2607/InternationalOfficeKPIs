@@ -794,7 +794,7 @@ def draw_history(fig_title, level_name, level_values, metric_kind, total_series_
 
     export_df = pd.DataFrame({"Period": x_labels, **base_cols})
     fname = f"chart_{_slugify(fig_title)}_{_slugify(metric_choice)}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx"
-    _download_xlsx_button(export_df, fname, key=f"dl_hist_{_slugify(fig_title)}_{metric_choice}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}", label="⬇️ Download (Excel)")
+    _download_xlsx_button(export_df, fname, key=f"dl_hist_{_slugify(fig_title)}_{metric_choice}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}", label="⬇️ Datos de la gráfica (Excel)")
 
 
 # ============== NORMALIZACIÓN BÁSICA EN CARTELERA ==============
@@ -807,177 +807,41 @@ df_car["_YEAR"] = df_car["_SEM"].map(extract_year_from_period)
 df_car["_IS_INTER"] = df_car["_SEM"].str.lower().str.contains("inter", na=False)
 
 
-# ======================= FIXES + FILTROS INTERSEMESTRAL (DROP-IN) =======================
-# --- 1) Resolver de columnas (ARREGLADO) ---
-def _get_any(df: pd.DataFrame, *cands) -> str | None:
-    """
-    Devuelve el nombre REAL de la primera columna que coincide, ignorando mayúsculas/espacios.
-    """
-    targets = [str(c).strip().casefold() for c in cands]
-    for col in df.columns:
-        cnorm = str(col).strip().casefold()
-        if cnorm in targets:
-            return col
-    return None
-
-# --- 2) Normalizadores y máscara timeframe ---
-import re
-
-def _norm_sem_val(x: str) -> str:
-    """Recorta, compacta espacios internos y pasa a minúsculas (para comparar periodos)."""
-    return re.sub(r"\s+", " ", str(x).strip()).casefold()
-
-def _exact_inter_label(year: int | str) -> str:
-    """Etiqueta normalizada 'YYYY intersemestral'."""
-    return _norm_sem_val(f"{int(year)} Intersemestral")
-
+# ================== TIMEFRAME FILTERS ==================
 def mask_timeframe(series_sem: pd.Series, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.Series:
-    """
-    - Semestral:      coincidencia exacta con el código seleccionado (ej. '202520').
-    - Anual:          valores que empiezan por 'YYYY'.
-    - Intersemestral: coincidencia EXACTA con 'YYYY Intersemestral'
-                      (tolerante a mayúsculas/minúsculas y espacios múltiples).
-    """
-    s_norm = series_sem.astype(str).map(_norm_sem_val)
-
+    s = series_sem.astype(str)
     if mode == "Semestral" and selected_sem:
-        return s_norm.eq(_norm_sem_val(str(selected_sem)))
-
+        return s.str.strip().eq(str(selected_sem))
     if mode == "Anual" and selected_year is not None:
-        yy = str(int(selected_year))
-        return s_norm.str.startswith(yy)
-
+        return s.str.startswith(str(selected_year))
     if mode == "Intersemestral" and selected_year is not None:
-        return s_norm.eq(_exact_inter_label(selected_year))
+        return s.str.startswith(str(selected_year)) & s.str.lower().str.contains("inter")
+    return pd.Series([True]*len(s), index=series_sem.index)
 
-    # Sin filtro si falta info
-    return pd.Series(True, index=series_sem.index)
 
-# --- 3) Filtros por hoja (usa mask_timeframe) ---
-def filter_df_car(df_car_base: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
-    if df_car_base is None or df_car_base.empty:
-        return pd.DataFrame()
-    df = df_car_base.copy()
-    semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    if not semc:
-        return df
-    m = mask_timeframe(df[semc], mode, selected_year, selected_sem)
+def filter_df_car(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
+    if "_SEM" not in df.columns:
+        sc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
+        if sc:
+            df = df.assign(_SEM=df[sc].astype(str).str.strip())
+        else:
+            return df
+    m = mask_timeframe(df["_SEM"], mode, selected_year, selected_sem)
     return df[m].copy()
 
-def filter_df_fd(df_fd_base: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
-    if df_fd_base is None or df_fd_base.empty:
-        return pd.DataFrame()
-    df = df_fd_base.copy()
+
+def filter_df_fd(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
     semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
     ycol = _get_any(df, "Year","Año")
+    out = df.copy()
     if semc:
-        m = mask_timeframe(df[semc], mode, selected_year, selected_sem)
-        return df[m].copy()
-    # Fallback por año si no hay columna de semestre/periodo
-    if ycol and selected_year is not None:
-        yy = int(selected_year)
-        return df[pd.to_numeric(df[ycol], errors="coerce").astype("Int64") == yy].copy()
-    return df
+        sem_series = out[semc].astype(str).str.strip()
+        m = mask_timeframe(sem_series, mode, selected_year, selected_sem)
+        out = out[m].copy()
+    elif ycol and selected_year is not None:
+        out = out[pd.to_numeric(out[ycol], errors="coerce").astype("Int64") == int(selected_year)].copy()
+    return out
 
-def filter_df_planta(df_planta_base: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
-    """
-    En PLANTA la columna suele llamarse 'Periodo' (a veces 'PERIODO' o 'Semestre').
-    Para Intersemestral se exige match EXACTO 'YYYY Intersemestral'.
-    """
-    if df_planta_base is None or df_planta_base.empty:
-        return pd.DataFrame()
-    df = df_planta_base.copy()
-    per_col = _get_any(df, "Periodo","PERIODO","Semestre")
-    if not per_col:
-        return df
-    m = mask_timeframe(df[per_col], mode, selected_year, selected_sem)
-    return df[m].copy()
-
-# --- 4) Listas de años con intersemestral (consolida las 3 hojas) ---
-# ---- years_with_inter (compatible: con o sin argumentos) ----
-def years_with_inter(df_car_arg=None, df_fd_arg=None, df_planta_arg=None) -> list[int]:
-    """
-    Devuelve los años que tienen un periodo 'YYYY Intersemestral' buscando en:
-    - BD Cartelera 2020-2025  (col Semestre/Periodo/Periodo Académico)
-    - Faculty Distribution     (col Semestre/Periodo/Periodo Académico)
-    - BD PLANTA 2020-2025      (col Periodo/PERIODO/Semestre)
-    
-    Uso:
-      - years_with_inter()                          -> usa los dataframes globales df_car, df_fd, df_planta
-      - years_with_inter(df_car, df_fd, df_planta)  -> usa los dataframes pasados
-    """
-    # Usa los globals si no pasaron args
-    _car = df_car_arg if df_car_arg is not None else (df_car if 'df_car' in globals() else None)
-    _fd  = df_fd_arg  if df_fd_arg  is not None else (df_fd  if 'df_fd'  in globals() else None)
-    _pl  = df_planta_arg if df_planta_arg is not None else (df_planta if 'df_planta' in globals() else None)
-
-    years = set()
-
-    def _scan(df: pd.DataFrame, *cands):
-        if df is None or df.empty:
-            return
-        col = _get_any(df, *cands)
-        if not col:
-            return
-        ser = df[col].dropna().astype(str)
-        for s in ser:
-            sn = _norm_sem_val(s)  # usa tu normalizador existente
-            if "inter" in sn:
-                m = re.search(r"(19|20)\d{2}", sn)
-                if m:
-                    years.add(int(m.group(0)))
-
-    _scan(_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    _scan(_fd,  "Semestre","Periodo","Periodo Académico","Periodo academico")
-    _scan(_pl,  "Periodo","PERIODO","Semestre")
-
-    return sorted(years)
-
-# ======================= APLICACIÓN EN TU APP =======================
-# 1) Normaliza columna _SEM en CARTELERA (sin romper nada más que uses después)
-col_sem_car = _get_any(df_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
-if col_sem_car:
-    df_car["_SEM"] = df_car[col_sem_car].astype(str).str.strip()
-else:
-    df_car["_SEM"] = df_car.get("_SEM", pd.Series(dtype=str))
-
-# 2) Recalcula listas con intersemestral disponible (usa las 3 hojas)
-INTER_YEARS = years_with_inter(df_car, df_fd, df_planta)
-
-# 3) Sidebar (solo cambia la fuente de INTER_YEARS si la variable ya existía)
-#    — No toco tu UI; solo aseguro que INTER_YEARS tenga datos válidos —
-if st.session_state.get("time_mode", "Semestral") == "Intersemestral":
-    if not INTER_YEARS:
-        # fallback: todos los años detectados en cualquier hoja
-        def _all_years_from(*dfs):
-            ys = set()
-            for _df in dfs:
-                if _df is None or _df.empty:
-                    continue
-                c = _get_any(_df, "Semestre","Periodo","Periodo Académico","Periodo academico","Periodo","PERIODO","Year","Año")
-                if not c: 
-                    continue
-                ser = _df[c].astype(str)
-                for s in ser:
-                    m = re.search(r"(19|20)\d{2}", s)
-                    if m:
-                        ys.add(int(m.group(0)))
-            return sorted(ys)
-        INTER_YEARS = _all_years_from(df_car, df_fd, df_planta)
-
-# 4) APLICA FILTROS (reemplaza tus líneas actuales de filtrado base)
-time_mode = st.session_state.get("time_mode", "Semestral")
-sel_year = st.session_state.get("sel_year")
-sel_sem = st.session_state.get("sel_sem")
-df_car_filt_all = filter_df_car(df_car, time_mode, sel_year, sel_sem)
-f                = filter_df_fd(df_fd,  time_mode, sel_year, sel_sem)
-df_ft            = filter_df_planta(df_planta, time_mode, sel_year, sel_sem)
-
-# 5) (Opcional) Debug visual rápido para verificar conteos cuando es Intersemestral
-if time_mode == "Intersemestral" and sel_year is not None:
-    st.caption(
-        f"Intersemestral {sel_year} — Cartelera: {len(df_car_filt_all)} · FD: {len(f)} · PLANTA: {len(df_ft)}"
-    )
 
 # ================== SIDEBAR ==================
 SEMESTRAL_PERIODS = list_periods_semestral()
@@ -986,12 +850,7 @@ INTER_YEARS = years_with_inter()
 
 with st.sidebar:
     st.markdown("#### Sensitivity analysis")
-    sens_mode = st.toggle(
-        "Enable sensitivity mode",
-        value=st.session_state.get("sens_mode", False),
-        key="sens_mode",
-        help="Aquí podrás hacer un análisis de sensibilidad sin modificar los datos reales."
-    )
+    sens_mode = st.toggle("Enable sensitivity mode", value=st.session_state.get("sens_mode", False), key="sens_mode")
     sens_member_placeholder = st.empty()
     if "sens_ops" not in st.session_state:
         st.session_state.sens_ops = []
@@ -1037,7 +896,7 @@ with st.sidebar:
             st.success("Reset.")
 
     if not sens_mode:
-        st.markdown("### 📊 Go to KPI:")
+        st.markdown("### Go to KPI")
         options = {
             "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
             "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
@@ -1088,19 +947,15 @@ base = df_fd.copy()
 df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
 f = filter_df_fd(df_fd, time_mode, sel_year, sel_sem)
 
-# Define display_label before using it
-display_label = st.session_state.get('sel_label', 'Selected Period')
-
 if 'dl_bd_placeholder' in locals():
     safe = _sanitize_for_export(df_car_filt_all)
     dl_bd_placeholder.download_button(
-        f"Download 'Cartelera' {display_label} (Excel)",
+        "Download DB (Excel)",
         data=_xlsx_bytes(safe),
         file_name=f"BD_Cartelera_{_slugify(sel_label)}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key=f"dl_bd_{_slugify(sel_label)}"
     )
-
 
 # --------- Sensitivity: “Apply to” ---------
 if st.session_state.get("sens_mode", False):
@@ -3459,4 +3314,5 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
