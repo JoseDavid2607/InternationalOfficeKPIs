@@ -881,7 +881,7 @@ with st.sidebar:
         st.session_state.setdefault("sens_cat_qual", "None")
         st.selectbox("P/S Faculty category", ["None", "P", "S"], key="sens_cat_ps")
         st.selectbox("Faculty Qualification", ["None", "SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
-        st.number_input("# of courses", min_value=1, step=1, value=1, key="sens_count")
+        st.number_input("# N° of courses", min_value=1, step=1, value=1, key="sens_count")
         st.number_input("Course credits", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
 
         # ADD (suma)
@@ -3382,6 +3382,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
