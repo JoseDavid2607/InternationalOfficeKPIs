@@ -852,27 +852,20 @@ INTER_YEARS = years_with_inter()
 with st.sidebar:
     st.markdown("#### Sensitivity analysis")
 
-    # Tooltip corto (una línea)
     sens_mode = st.toggle(
         "Enable sensitivity mode",
         value=st.session_state.get("sens_mode", False),
         key="sens_mode",
-        help="Activa el análisis de sensibilidad (detalle abajo)."
-    )
-
-    # Texto multilínea con bullets (separado del tooltip)
-    with st.expander("¿Qué es y qué puedes hacer aquí?"):
-        st.markdown(
-            """
-**Esta vista** permite hacer un análisis de sensibilidad **sin modificar la data original**.
-
-**Puedes:**
-- Agregar o eliminar cursos (3 créditos) por área o a nivel global (overall).
-- Ver cambios reflejados en tablas y gráficas en tiempo real.
-- Calcular cuántos cursos se necesitan para alcanzar los objetivos.
-- Ver el impacto en puntos porcentuales de agregar o eliminar 1 curso de 3 créditos.
-            """
+        help=(
+            "Esta vista permite hacer un análisis de sensibilidad sin modificar la data original.\n"
+            "\n"
+            "Qué puedes hacer:\n"
+            "• Agregar o eliminar cursos (3 créditos) por área o a nivel global (overall).\n"
+            "• Ver cambios reflejados en tablas y gráficas en tiempo real.\n"
+            "• Calcular cuántos cursos se necesitan para alcanzar los objetivos.\n"
+            "• Ver el impacto en puntos porcentuales de agregar o eliminar 1 curso de 3 créditos."
         )
+    )
 
     sens_member_placeholder = st.empty()
 
@@ -3362,6 +3355,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
