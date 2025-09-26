@@ -2406,26 +2406,6 @@ def _norm_ftpt(x: str) -> str:
     if "CATEDRA" in v or "CÁTEDRA" in v: return "CÁTEDRA"
     return ""
 
-def filter_df_fd(df_fd_base: pd.DataFrame, time_mode: str, sel_year: int | None, sel_sem_code: str | int | None) -> pd.DataFrame:
-    """Filtra Faculty Distribution según alcance temporal actual."""
-    if df_fd_base is None or df_fd_base.empty:
-        return pd.DataFrame()
-    df = df_fd_base.copy()
-    semc_fd = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    if not semc_fd:
-        return df
-    df["_SEM_SRC"] = df[semc_fd].map(_normalize_sem_str)
-    df["_YEARX"]   = df["_SEM_SRC"].map(_extract_year).astype("Int64")
-    if time_mode == "Semestral" and sel_sem_code is not None:
-        goal = _normalize_sem_str(sel_sem_code)
-        return df[df["_SEM_SRC"].eq(goal)].copy()
-    if time_mode == "Intersemestral" and sel_year is not None:
-        goal = f"{int(sel_year)} Intersemestral"
-        return df[df["_SEM_SRC"].str.fullmatch(re.escape(goal), case=False, na=False)].copy()
-    if time_mode == "Anual" and sel_year is not None:
-        return df[df["_YEARX"] == int(sel_year)].copy()
-    return df
-
 def _first_map(df_, key_col, val_col):
     if key_col not in df_ or val_col not in df_:
         return {}
@@ -2436,6 +2416,79 @@ def _pick(df_, *cands):
     c = _get_any(df_, *cands)
     return df_[c] if c else pd.Series([None]*len(df_), index=df_.index)
 
+# ---------- Parser robusto de periodos ----------
+# Detecta: "YYYY", "YYYY 10", "YYYY 20", "YYYY Intersemestral"
+_SEM_RE = re.compile(r'^\s*(?P<y>(?:19|20)\d{2})\s*(?P<t>10|20|Intersemestral)?\s*$', re.IGNORECASE)
+
+def _year_term(x):
+    s = _normalize_sem_str(x)
+    m = _SEM_RE.match(s)
+    if not m:
+        return None, None, s
+    year = int(m.group('y'))
+    t = m.group('t')
+    if not t:
+        term = None
+    else:
+        term = 'INTER' if t.lower().startswith('inter') else t  # "10", "20", "INTER"
+    return year, term, s
+
+# ---------- Filtros de alcance (Distribution / Cartelera) ----------
+def filter_df_fd(df_fd_base: pd.DataFrame, time_mode: str, sel_year: int | None, sel_sem_code: str | int | None) -> pd.DataFrame:
+    """Filtra Faculty Distribution según alcance temporal actual (Semestral/Intersemestral/Anual)."""
+    if df_fd_base is None or df_fd_base.empty:
+        return pd.DataFrame()
+    df = df_fd_base.copy()
+    semc_fd = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    if not semc_fd:
+        return df
+
+    yt = df[semc_fd].map(_year_term)
+    df["_YEARX"]  = yt.map(lambda z: z[0]).astype("Int64")
+    df["_TERM"]   = yt.map(lambda z: z[1])   # "10" | "20" | "INTER" | None
+    df["_SEM_SRC"]= yt.map(lambda z: z[2])   # normalizado
+
+    if time_mode == "Semestral" and sel_sem_code is not None:
+        goal = _normalize_sem_str(sel_sem_code)
+        return df[df["_SEM_SRC"].eq(goal)].copy()
+
+    if time_mode == "Intersemestral" and sel_year is not None:
+        yr = int(sel_year)
+        return df[(df["_YEARX"] == yr) & (df["_TERM"].eq("INTER"))].copy()
+
+    if time_mode == "Anual" and sel_year is not None:
+        yr = int(sel_year)
+        return df[df["_YEARX"] == yr].copy()
+
+    return df
+
+def filter_df_car(df_car_base: pd.DataFrame, time_mode: str, sel_year: int | None, sel_sem_code: str | int | None) -> pd.DataFrame:
+    """Filtra Cartelera según alcance temporal actual (Semestral/Intersemestral/Anual)."""
+    if df_car_base is None or df_car_base.empty:
+        return pd.DataFrame()
+    df = df_car_base.copy()
+    semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    if not semc:
+        return df
+
+    yt = df[semc].map(_year_term)
+    df["_YEARX"]  = yt.map(lambda z: z[0]).astype("Int64")
+    df["_TERM"]   = yt.map(lambda z: z[1])
+    df["_SEM_SRC"]= yt.map(lambda z: z[2])
+
+    if time_mode == "Semestral" and sel_sem_code is not None:
+        goal = _normalize_sem_str(sel_sem_code)
+        return df[df["_SEM_SRC"].eq(goal)].copy()
+
+    if time_mode == "Intersemestral" and sel_year is not None:
+        yr = int(sel_year)
+        return df[(df["_YEARX"] == yr) & (df["_TERM"].eq("INTER"))].copy()
+
+    if time_mode == "Anual" and sel_year is not None:
+        yr = int(sel_year)
+        return df[df["_YEARX"] == yr].copy()
+
+    return df
 
 # --------------------------
 # DETAIL TABLE + DONUT + SEARCH
@@ -3304,3 +3357,4 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
