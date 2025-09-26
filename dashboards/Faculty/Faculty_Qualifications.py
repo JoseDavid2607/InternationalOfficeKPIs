@@ -87,210 +87,13 @@ TOTAL_SERIES_COLOR = "#D09E33"
 def _resolve(df: pd.DataFrame, target: str):
     t = target.strip().casefold()
     for c in df.columns:
-        if str(c).strip().casefold() == t:
+        if c.strip().casefold() == t:
             return c
-    return None
-
-def _get_any(df: pd.DataFrame, *cands) -> str | None:
-    """Return the REAL column name for the first candidate that matches (case/spacing-insensitive)."""
-    targets = [str(c).strip().casefold() for c in cands]
-    for col in df.columns:
-        if str(col).strip().casefold() in targets:
-            return col
     return None
 
 def _norm_str(s: pd.Series) -> pd.Series:
     return s.astype(str).str.strip().str.lower()
 
-def _slugify(s: str) -> str:
-    return re.sub(r'[^A-Za-z0-9]+', '_', str(s)).strip('_')
-
-def _norm_sem_val(x: str) -> str:
-    """Compact spaces and casefold for robust equality comparisons of period labels."""
-    return re.sub(r"\s+", " ", str(x).strip()).casefold()
-
-def extract_year_from_period(p: str) -> int | None:
-    if p is None:
-        return None
-    m = re.search(r"(19|20)\d{2}", str(p))
-    return int(m.group(0)) if m else None
-
-def period_suffix(p: str) -> str | None:
-    m = re.search(r"(?:19|20)\d{2}[-_/ ]?(\d+)", str(p))
-    return m.group(1) if m else None
-
-def is_regular_period(p) -> bool:
-    s = str(p).strip().lower()
-    if "inter" in s:
-        return False
-    suf = period_suffix(s)
-    return (suf in {"10", "20"}) or (suf is None)
-
-# —— utilidades de descarga ——
-from io import BytesIO
-def _sanitize_for_export(df: pd.DataFrame) -> pd.DataFrame:
-    return df[[c for c in df.columns if not str(c).startswith("_")]].copy()
-
-def _xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
-    buf = BytesIO()
-    with pd.ExcelWriter(buf) as writer:
-        df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
-    buf.seek(0)
-    return buf.getvalue()
-
-def _download_xlsx_button(df: pd.DataFrame, fname: str, key: str, label: str = "Download Excel"):
-    safe = _sanitize_for_export(df)
-    clean = re.sub(r"[^\w\sÁÉÍÓÚÜÑáéíóúüñ().%/-]+", "", label).strip()
-    st.download_button(
-        clean,
-        data=_xlsx_bytes(safe),
-        file_name=fname,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key=key,
-        use_container_width=False
-    )
-
-# ================== LISTAS DE PERIODOS ==================
-def list_periods_semestral():
-    sem_col = _get_any(df_car, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
-    vals = []
-    if sem_col:
-        vals = df_car[sem_col].dropna().astype(str).str.strip().tolist()
-    regs = [v for v in vals if is_regular_period(v) and period_suffix(v) in {"10","20"}]
-    def sort_key(p):
-        y = extract_year_from_period(p) or -1
-        suf = int(period_suffix(p) or 0)
-        return (y, suf)
-    return sorted(sorted(set(regs)), key=sort_key)
-
-def list_years_from_sem():
-    sem_col = _get_any(df_car, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
-    years = set()
-    if sem_col:
-        for s in df_car[sem_col].dropna().astype(str):
-            y = extract_year_from_period(s)
-            if y:
-                years.add(y)
-    ycol_fd = _get_any(df_fd, "Year", "Año")
-    if ycol_fd:
-        for y in pd.to_numeric(df_fd[ycol_fd], errors="coerce").dropna().astype(int):
-            years.add(int(y))
-    return sorted(years)
-
-def years_with_inter(df_car_arg=None, df_fd_arg=None, df_planta_arg=None) -> list[int]:
-    """
-    Devuelve los años que contienen EXACTAMENTE la etiqueta 'YYYY Intersemestral'
-    en cualquiera de las hojas: Cartelera, Faculty Distribution o BD PLANTA.
-    """
-    _car = df_car_arg if df_car_arg is not None else df_car
-    _fd  = df_fd_arg  if df_fd_arg  is not None else df_fd
-    _pl  = df_planta_arg if df_planta_arg is not None else df_planta
-
-    years = set()
-    def _scan(df: pd.DataFrame, *cands):
-        if df is None or df.empty:
-            return
-        col = _get_any(df, *cands)
-        if not col:
-            return
-        ser = df[col].dropna().astype(str)
-        for s in ser:
-            y = extract_year_from_period(s)
-            if not y:
-                continue
-            # igualdad exacta tras normalización
-            if _norm_sem_val(s) == _norm_sem_val(f"{y} Intersemestral"):
-                years.add(y)
-
-    _scan(_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    _scan(_fd,  "Semestre","Periodo","Periodo Académico","Periodo academico")
-    _scan(_pl,  "Periodo","PERIODO","Semestre")
-    return sorted(years)
-
-# ================== TIMEFRAME FILTER — EXACT MATCH ==================
-def mask_timeframe(series_sem: pd.Series, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.Series:
-    """
-    - Semestral:      igualdad exacta con el código seleccionado (ej. '202520').
-    - Anual:          valores que empiezan por 'YYYY'.
-    - Intersemestral: igualdad EXACTA con 'YYYY Intersemestral'.
-    """
-    s_norm = series_sem.astype(str).map(_norm_sem_val)
-
-    if mode == "Semestral" and selected_sem:
-        return s_norm.eq(_norm_sem_val(str(selected_sem)))
-
-    if mode == "Anual" and selected_year is not None:
-        yy = str(int(selected_year))
-        return s_norm.str.startswith(yy)
-
-    if mode == "Intersemestral" and selected_year is not None:
-        target = _norm_sem_val(f"{int(selected_year)} Intersemestral")
-        return s_norm.eq(target)
-
-    # Sin filtro
-    return pd.Series(True, index=series_sem.index)
-
-def filter_df_car(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
-    sc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    if not sc:
-        return df.copy()
-    sem_series = df[sc].astype(str)
-    m = mask_timeframe(sem_series, mode, selected_year, selected_sem)
-    return df[m].copy()
-
-def filter_df_fd(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
-    semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    ycol = _get_any(df, "Year","Año")
-    out = df.copy()
-    if semc:
-        sem_series = out[semc].astype(str)
-        m = mask_timeframe(sem_series, mode, selected_year, selected_sem)
-        return out[m].copy()
-    if ycol and selected_year is not None:
-        return out[pd.to_numeric(out[ycol], errors="coerce").astype("Int64") == int(selected_year)].copy()
-    return out
-
-def filter_df_planta(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
-    per_col = _get_any(df, "Periodo","PERIODO","Semestre")
-    if not per_col:
-        return df.copy()
-    sem_series = df[per_col].astype(str)
-    m = mask_timeframe(sem_series, mode, selected_year, selected_sem)
-    return df[m].copy()
-
-# ================== HISTORY (timeframe-aware) ==================
-def _period_sort_key(p: str) -> tuple[int,int]:
-    y = extract_year_from_period(p) or -1
-    suf = period_suffix(p)
-    try:
-        suf_i = int(suf) if suf is not None else 0
-    except Exception:
-        suf_i = 0
-    return (y, suf_i)
-
-def build_time_axis_for_history(df_hist: pd.DataFrame):
-    time_mode = st.session_state.get("time_mode", "Semestral")
-    sc = _get_any(df_hist, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    sem = df_hist[sc].astype(str).str.strip() if sc else pd.Series([], dtype=str)
-    if time_mode == "Semestral":
-        regs = sorted(
-            {s for s in sem.dropna().unique() if period_suffix(s) in {"10","20"}},
-            key=_period_sort_key
-        )
-        x_labels = regs
-    elif time_mode == "Anual":
-        years = sorted({extract_year_from_period(s) for s in sem if extract_year_from_period(s)}, key=int)
-        x_labels = years
-    else:  # Intersemestral
-        inter = sorted(
-            {f"{extract_year_from_period(s)} Intersemestral" for s in sem if "inter" in str(s).lower() and extract_year_from_period(s)},
-            key=lambda x: int(str(x).split()[0])
-        )
-        x_labels = inter
-    x_map = {lab: i for i, lab in enumerate(x_labels)}
-    return "_SEM", x_labels, x_map
-
-# ================== SENSITIVITY / NEEDS HELPERS (tal cual tu versión) ==================
 def normalize_ps(val: str) -> str:
     v = str(val).strip().lower()
     if v in {"p","participating","participante","participating faculty"}:
@@ -317,6 +120,94 @@ def normalize_tipo(val: str) -> str:
         return "OTHER" if code in {"O","OTHER"} else code
     return "OTHER"
 
+def _get_any(df: pd.DataFrame, *cands) -> str | None:
+    for c in cands:
+        got = _resolve(df, c)
+        if got:
+            return c
+    return None
+
+def extract_year_from_period(p: str) -> int | None:
+    if p is None:
+        return None
+    m = re.search(r"(19|20)\d{2}", str(p))
+    return int(m.group(0)) if m else None
+
+def period_suffix(p: str) -> str | None:
+    m = re.search(r"(?:19|20)\d{2}[-_/ ]?(\d+)", str(p))
+    return m.group(1) if m else None
+
+def is_regular_period(p) -> bool:
+    s = str(p).strip().lower()
+    if "inter" in s:
+        return False
+    suf = period_suffix(s)
+    return (suf in {"10", "20"}) or (suf is None)
+
+def list_periods_semestral():
+    sem_col = _get_any(df_car, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
+    vals = []
+    if sem_col:
+        vals = df_car[sem_col].dropna().astype(str).str.strip().tolist()
+    regs = [v for v in vals if is_regular_period(v) and period_suffix(v) in {"10","20"}]
+    def sort_key(p):
+        y = extract_year_from_period(p) or -1
+        suf = int(period_suffix(p) or 0)
+        return (y, suf)
+    return sorted(sorted(set(regs)), key=sort_key)
+
+def list_years_from_sem():
+    sem_col = _get_any(df_car, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
+    years = set()
+    if sem_col:
+        for s in df_car[sem_col].dropna().astype(str):
+            y = extract_year_from_period(s)
+            if y:
+                years.add(y)
+    ycol_fd = _get_any(df_fd, "Year", "Año")
+    if ycol_fd:
+        for y in pd.to_numeric(df_fd[ycol_fd], errors="coerce").dropna().astype(int):
+            years.add(int(y))
+    return sorted(years)
+
+def years_with_inter():
+    sem_col = _get_any(df_car, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
+    inter = set()
+    if sem_col:
+        for s in df_car[sem_col].dropna().astype(str):
+            if "inter" in s.lower():
+                y = extract_year_from_period(s)
+                if y:
+                    inter.add(y)
+    return sorted(inter)
+
+def _slugify(s: str) -> str:
+    return re.sub(r'[^A-Za-z0-9]+', '_', str(s)).strip('_')
+
+# —— utilidades de descarga ——
+def _sanitize_for_export(df: pd.DataFrame) -> pd.DataFrame:
+    return df[[c for c in df.columns if not str(c).startswith("_")]].copy()
+
+def _xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
+    buf = BytesIO()
+    with pd.ExcelWriter(buf) as writer:
+        df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+    buf.seek(0)
+    return buf.getvalue()
+
+def _download_xlsx_button(df: pd.DataFrame, fname: str, key: str, label: str = "Download Excel"):
+    safe = _sanitize_for_export(df)
+    clean = re.sub(r"[^\w\sÁÉÍÓÚÜÑáéíóúüñ().%/-]+", "", label).strip()
+    st.download_button(
+        clean,
+        data=_xlsx_bytes(safe),
+        file_name=fname,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=key,
+        use_container_width=False
+    )
+
+# ================== SENSITIVITY HELPERS ==================
 def build_member_list_for_view(df_period: pd.DataFrame, view_mode: str, col_areaCourse, col_field, program_col) -> list[str]:
     if view_mode == "By Academic Area" and col_areaCourse:
         items = sorted(df_period[col_areaCourse].astype(str).str.strip().dropna().unique().tolist())
@@ -361,8 +252,9 @@ def apply_ops_to_aggs(agg_ps: pd.DataFrame, agg_tipo: pd.DataFrame, ops: list, m
                     mod_tipo.at[member, cat] = max(0.0, float(mod_tipo.at[member, cat]) + delta)
     return mod_ps, mod_tipo
 
-# ===== Cálculos de “profesores necesarios” / impacto (tu bloque completo) =====
+# ===== Cálculo de “profesores necesarios” (3 créditos) por fila =====
 def _needed_for_pctP(p: float, s: float, target_pct: float, credits_each: float = 3.0) -> int:
+    # (p + c*n)/(p + s + c*n) >= t  ->  n >= (t*s - (1-t)*p) / (c*(1-t))
     t = target_pct / 100.0
     denom = credits_each * (1 - t)
     if denom <= 0:
@@ -371,6 +263,7 @@ def _needed_for_pctP(p: float, s: float, target_pct: float, credits_each: float 
     return max(0, math.ceil(rhs))
 
 def _needed_for_pctSA(sa: float, rest: float, target_pct: float, credits_each: float = 3.0) -> int:
+    # (sa + c*n)/(sa + rest + c*n) >= t -> n >= (t*rest - (1-t)*sa) / (c*(1-t))
     t = target_pct / 100.0
     denom = credits_each * (1 - t)
     if denom <= 0:
@@ -379,6 +272,7 @@ def _needed_for_pctSA(sa: float, rest: float, target_pct: float, credits_each: f
     return max(0, math.ceil(rhs))
 
 def _needed_for_other_leq10(other: float, rest: float, credits_each: float = 3.0) -> int:
+    # other/(other + rest + c*n) <= 0.10  ->  n >= (0.9*other - 0.1*rest) / (0.3*c) = (9*other - rest)/(3*c)
     num = 9*other - rest
     denom = 3 * credits_each
     if denom <= 0:
@@ -387,10 +281,12 @@ def _needed_for_other_leq10(other: float, rest: float, credits_each: float = 3.0
     return max(0, math.ceil(rhs))
 
 def _objective_targets(obj: str) -> tuple[str, float, float]:
+    # devuelve etiqueta y targets por scope (by_area, overall)
     if obj == "%P":   return ("%P", 60.0, 75.0)
     if obj == "%SA":  return ("%SA", 40.0, 40.0)
     return ("%OTHER", 10.0, 10.0)
 
+# ====== NUEVOS helpers para Overall/Impacto y secundarios ======
 def _needed_for_overall_if_only_this_area_changes(obj: str, totals: dict[str, float], area_vals: dict[str, float], target_overall: float, credits_each: float = 3.0) -> int | None:
     eps = 1e-9
     t = target_overall / 100.0
@@ -461,7 +357,9 @@ def _impact_pp_overall_if_area_changes(obj: str, totals: dict[str,float], credit
     down = ((max(0.0, OT - credits_each)) / max(eps, denQ - credits_each) - (OT / denQ)) * 100.0 if denQ > credits_each else 0.0
     return (round(up,2), round(down,2))
 
+# Secundarios para tablas "Needed"
 def _needed_S_less_for_pctP_area(p: float, s: float, target_pct: float, credits_each=3.0) -> int:
+    # P/(P + S - c*n) >= t  ->  n >= (t*(P+S) - P)/(t*c)
     t = target_pct/100.0
     if t <= 0: return 0
     den = t*credits_each
@@ -479,6 +377,7 @@ def _needed_S_less_for_pctP_overall(totals, area_vals, target_overall: float, cr
     return need_n if need_n <= max_remove else None
 
 def _needed_OTHERS_less_for_SA_area(sa, rest, target_pct, credits_each=3.0) -> int:
+    # SA/(SA + rest - c*n) >= t -> n >= (t*(SA+rest) - SA)/(t*c)
     t = target_pct/100.0
     if t <= 0: return 0
     rhs = (t*(sa+rest) - sa)/(t*credits_each)
@@ -496,6 +395,7 @@ def _needed_OTHERS_less_for_SA_overall(totals, area_vals, target_overall, credit
     return need_n if need_n <= max_remove else None
 
 def _needed_OTHERS_more_for_OTHER_area(other, rest, target_pct, credits_each=3.0) -> int:
+    # OTHER/(OTHER + rest + c*n) <= t -> c*n >= (OTHER - t*(OTHER+rest))/t
     t = target_pct/100.0
     if t <= 0: return 0
     need_credits = (other - t*(other+rest))/t
@@ -510,58 +410,576 @@ def _needed_OTHERS_more_for_OTHER_overall(totals, target_overall, credits_each=3
     need_credits = (OT - t*TQ)/t
     return 0 if need_credits <= 0 else math.ceil(need_credits/credits_each)
 
-def _style_impact_heatmap(df_: pd.DataFrame, id_col: str):
-    """
-    - Heatmap (verde→amarillo→naranja→rojo) para columnas 'Impact +3cr (pp)' y 'Impact -3cr (pp)' (por magnitud absoluta).
-    - Fondo rojo claro en columnas 'Needed ...' cuando el valor != 0.
-    """
+# Heatmap de impacto (+Δ p.p.)
+def _style_impact_heatmap(df_: pd.DataFrame, label_col: str, value_col: str, overall_mode: bool = False):
     sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+    vals = pd.to_numeric(df_[value_col], errors="coerce")
+    is_total = df_[label_col].astype(str).str.upper().eq("TOTAL")
 
-    # Needed -> rojo claro si != 0
-    needed_cols = [c for c in df_.columns if c.startswith("Needed ")]
-    for c in needed_cols:
-        vals = pd.to_numeric(df_[c], errors="coerce").fillna(0.0)
-        sty.loc[vals != 0, c] = sty.loc[vals != 0, c].astype(str) + 'background-color:#FDE2E2;'
+    if overall_mode:
+        # todo naranja en Overall
+        sty[value_col] = 'background-color:#FFA500;'
+        return sty
 
-    # Impact heatmap
-    impact_cols = [c for c in df_.columns if c.startswith("Impact ")]
-    if impact_cols:
-        if "Impact +3cr (pp)" in df_.columns:
-            base_vals = pd.to_numeric(df_["Impact +3cr (pp)"], errors="coerce").abs().fillna(0.0)
+    base = vals[~is_total]
+    if len(base) == 0 or base.max() == base.min():
+        sty[value_col] = 'background-color:#FFA500;'
+        return sty
+
+    vmin, vmax = float(base.min()), float(base.max())
+
+    def color_for(v):
+        if pd.isna(v): return ''
+        if vmin == vmax: return 'background-color:#FFA500;'
+        t = (v - vmin)/(vmax - vmin)
+        if t < 0.5:
+            g = int(77 + (221-77)*(t/0.5))   # rojo->amarillo
+            return f'background-color: rgb(255,{g},77);'
         else:
-            base_vals = df_[impact_cols].apply(pd.to_numeric, errors="coerce").abs().mean(axis=1).fillna(0.0)
+            r = int(255 - (178)*((t-0.5)/0.5))
+            g = int(221 - (37)*((t-0.5)/0.5))
+            return f'background-color: rgb({r},{g},77);'
 
-        vmin = float(base_vals.min()) if len(base_vals) else 0.0
-        vmax = float(base_vals.max()) if len(base_vals) else 0.0
-        rng = (vmax - vmin) if (vmax - vmin) > 1e-12 else 1.0
+    for i in df_.index:
+        if is_total.loc[i]:
+            sty.at[i, value_col] = 'background-color:#FFA500;'
+        else:
+            sty.at[i, value_col] = color_for(vals.loc[i])
 
-        def color_for(val_abs: float) -> str:
-            z = (val_abs - vmin) / rng  # 0..1
-            if z >= 0.60: return "#D9F2D9"  # verde claro
-            if z >= 0.40: return "#FFF6B3"  # amarillo
-            if z >= 0.20: return "#FFD6A6"  # naranja
-            return "#F5B5B5"               # rojo
-
-        for c in impact_cols:
-            col_vals = pd.to_numeric(df_[c], errors="coerce").abs().fillna(0.0)
-            for i, v in col_vals.items():
-                sty.at[i, c] = sty.at[i, c] + f'background-color:{color_for(float(v))};'
-
-    # Asegura que el id_col no reciba estilo accidental
-    if id_col in sty.columns:
-        sty[id_col] = ''
     return sty
 
-# ================== CARTELERA: normalización mínima interna ==================
+# ================== HISTORY (timeframe-aware) ==================
+def _period_sort_key(p: str) -> tuple[int,int]:
+    y = extract_year_from_period(p) or -1
+    suf = period_suffix(p)
+    try:
+        suf_i = int(suf) if suf is not None else 0
+    except Exception:
+        suf_i = 0
+    return (y, suf_i)
+
+
+def build_time_axis_for_history(df_hist: pd.DataFrame):
+    time_mode = st.session_state.get("time_mode", "Semestral")
+    if "_SEM" not in df_hist.columns:
+        sc = _get_any(df_hist, "Semestre","Periodo","Periodo Académico","Periodo academico")
+        sem = df_hist[sc].astype(str).str.strip() if sc else pd.Series([], dtype=str)
+    else:
+        sem = df_hist["_SEM"].astype(str).str.strip()
+    if time_mode == "Semestral":
+        regs = sorted(
+            {s for s in sem.dropna().unique() if period_suffix(s) in {"10","20"}},
+            key=_period_sort_key
+        )
+        x_labels = regs
+    elif time_mode == "Anual":
+        years = sorted({extract_year_from_period(s) for s in sem if extract_year_from_period(s)}, key=int)
+        x_labels = years
+    else:  # Intersemestral
+        inter = sorted(
+            {f"{extract_year_from_period(s)} Intersemestral" for s in sem if "inter" in str(s).lower() and extract_year_from_period(s)},
+            key=lambda x: int(str(x).split()[0])
+        )
+        x_labels = inter
+    x_map = {lab: i for i, lab in enumerate(x_labels)}
+    return "_SEM", x_labels, x_map
+
+
+def transform_for_time_mode_ps(df_ps: pd.DataFrame):
+    time_mode = st.session_state.get("time_mode", "Semestral")
+    base = df_ps.copy()
+    base["_YEAR"] = base["_SEM"].map(extract_year_from_period)
+    base["_INTER_LABEL"] = base["_SEM"].map(lambda s: f"{extract_year_from_period(s)} Intersemestral" if "inter" in str(s).lower() else None)
+    if time_mode == "Semestral":
+        return base
+    if time_mode == "Anual":
+        need_cols = [c for c in base.columns if c not in {"P_share"}]
+        g = base[need_cols].groupby(["_YEAR"] + [c for c in base.columns if c.startswith("_") and c not in {"_SEM","_YEAR","_INTER_LABEL"}], dropna=False).sum(numeric_only=True).reset_index()
+        if "P" in g and "S" in g:
+            g["P_share"] = (g["P"] / (g["P"] + g["S"]).replace(0, pd.NA)) * 100
+        return g.rename(columns={"_YEAR":"_SEM"})
+    # Intersemestral
+    base = base[~base["_INTER_LABEL"].isna()].copy()
+    g = base.groupby(["_INTER_LABEL"] + [c for c in base.columns if c.startswith("_") and c not in {"_SEM","_YEAR","_INTER_LABEL"}], dropna=False).sum(numeric_only=True).reset_index()
+    if "P" in g and "S" in g:
+        g["P_share"] = (g["P"] / (g["P"] + g["S"]).replace(0, pd.NA)) * 100
+    return g.rename(columns={"_INTER_LABEL":"_SEM"})
+
+
+def transform_for_time_mode_tipo(df_tipo: pd.DataFrame, share_col_name: str):
+    time_mode = st.session_state.get("time_mode", "Semestral")
+    base = df_tipo.copy()
+    base["_YEAR"] = base["_SEM"].map(extract_year_from_period)
+    base["_INTER_LABEL"] = base["_SEM"].map(lambda s: f"{extract_year_from_period(s)} Intersemestral" if "inter" in str(s).lower() else None)
+    cats = ["SA","PA","SP","IP","OTHER"]
+    if time_mode == "Semestral":
+        return base
+    if time_mode == "Anual":
+        keys = ["_YEAR"] + [c for c in base.columns if c.startswith("_") and c not in {"_SEM","_YEAR","_INTER_LABEL"}]
+        g = base.groupby(keys, dropna=False)[cats].sum().reset_index()
+        den = (g[cats].sum(axis=1)).replace(0, pd.NA)
+        if share_col_name == "SA_share":
+            g["SA_share"] = (g["SA"] / den) * 100
+        else:
+            g["OTHER_share"] = (g["OTHER"] / den) * 100
+        return g.rename(columns={"_YEAR":"_SEM"})
+    # Intersemestral
+    base = base[~base["_INTER_LABEL"].isna()].copy()
+    keys = ["_INTER_LABEL"] + [c for c in base.columns if c.startswith("_") and c not in {"_SEM","_YEAR","_INTER_LABEL"}]
+    g = base.groupby(keys, dropna=False)[cats].sum().reset_index()
+    den = (g[cats].sum(axis=1)).replace(0, pd.NA)
+    if share_col_name == "SA_share":
+        g["SA_share"] = (g["SA"] / den) * 100
+    else:
+        g["OTHER_share"] = (g["OTHER"] / den) * 100
+    return g.rename(columns={"_INTER_LABEL":"_SEM"})
+
+
+# === aplicar sensibilidad sobre series históricas SOLO en el período seleccionado ===
+def apply_sensitivity_to_history(
+    agg_ps_tm: pd.DataFrame,
+    agg_tipo_tm: pd.DataFrame,
+    tot_ps_tm: pd.DataFrame,
+    tot_tipo_tm: pd.DataFrame,
+    level_name: str,
+    sel_label_value,  # etiqueta exacta seleccionada en el eje X
+    ops: list,
+    member_all_label="All"
+):
+    if not ops or sel_label_value is None:
+        return agg_ps_tm, agg_tipo_tm, tot_ps_tm, tot_tipo_tm
+
+    ps = agg_ps_tm.copy()
+    tq = agg_tipo_tm.copy()
+    tps = tot_ps_tm.copy()
+    ttq = tot_tipo_tm.copy()
+
+    for k in ["P","S"]:
+        if k not in ps.columns:  ps[k] = 0.0
+        if k not in tps.columns: tps[k] = 0.0
+    for k in ["SA","PA","SP","IP","OTHER"]:
+        if k not in tq.columns:  tq[k] = 0.0
+        if k not in ttq.columns: ttq[k] = 0.0
+
+    mask_period_ps  = ps["_SEM"].eq(sel_label_value)
+    mask_period_tq  = tq["_SEM"].eq(sel_label_value)
+    mask_period_tps = tps["_SEM"].eq(sel_label_value)
+    mask_period_ttq = ttq["_SEM"].eq(sel_label_value)
+
+    for op in ops:
+        scope = op.get("scope")
+        cat   = op.get("cat")
+        member= op.get("member", member_all_label)
+        delta = float(op.get("credits", 0.0)) * int(op.get("count", 0))
+        if delta == 0:
+            continue
+
+        if scope == "PS" and cat in ["P","S"]:
+            if member == member_all_label:
+                ps.loc[mask_period_ps, cat]  = (ps.loc[mask_period_ps, cat].astype(float)  + delta).clip(lower=0.0)
+            else:
+                m = mask_period_ps & ps[level_name].eq(member)
+                ps.loc[m, cat] = (ps.loc[m, cat].astype(float) + delta).clip(lower=0.0)
+            tps.loc[mask_period_tps, cat] = (tps.loc[mask_period_tps, cat].astype(float) + delta).clip(lower=0.0)
+
+        if scope == "QUAL" and cat in ["SA","PA","SP","IP","OTHER"]:
+            if member == member_all_label:
+                tq.loc[mask_period_tq, cat]  = (tq.loc[mask_period_tq, cat].astype(float)  + delta).clip(lower=0.0)
+            else:
+                m = mask_period_tq & tq[level_name].eq(member)
+                tq.loc[m, cat] = (tq.loc[m, cat].astype(float) + delta).clip(lower=0.0)
+            ttq.loc[mask_period_ttq, cat] = (ttq.loc[mask_period_ttq, cat].astype(float) + delta).clip(lower=0.0)
+
+    den_ps = (ps.loc[mask_period_ps, "P"].astype(float) + ps.loc[mask_period_ps, "S"].astype(float)).replace(0, pd.NA)
+    ps.loc[mask_period_ps, "P_share"] = (ps.loc[mask_period_ps, "P"] / den_ps * 100).fillna(0.0)
+
+    cats = ["SA","PA","SP","IP","OTHER"]
+    den_q = tq.loc[mask_period_tq, cats].sum(axis=1).replace(0, pd.NA)
+    if "SA_share" in tq.columns:
+        tq.loc[mask_period_tq, "SA_share"]    = (tq.loc[mask_period_tq, "SA"]    / den_q * 100).fillna(0.0)
+    if "OTHER_share" in tq.columns:
+        tq.loc[mask_period_tq, "OTHER_share"] = (tq.loc[mask_period_tq, "OTHER"] / den_q * 100).fillna(0.0)
+
+    den_tps = (tps.loc[mask_period_tps, "P"].astype(float) + tps.loc[mask_period_tps, "S"].astype(float)).replace(0, pd.NA)
+    tps.loc[mask_period_tps, "P_share"] = (tps.loc[mask_period_tps, "P"] / den_tps * 100).fillna(0.0)
+
+    den_ttq = ttq.loc[mask_period_ttq, cats].sum(axis=1).replace(0, pd.NA)
+    if "SA_share" in ttq.columns:
+        ttq.loc[mask_period_ttq, "SA_share"]    = (ttq.loc[mask_period_ttq, "SA"]    / den_ttq * 100).fillna(0.0)
+    if "OTHER_share" in ttq.columns:
+        ttq.loc[mask_period_ttq, "OTHER_share"] = (ttq.loc[mask_period_ttq, "OTHER"] / den_ttq * 100).fillna(0.0)
+
+    return ps, tq, tps, ttq
+
+
+# --------- Gráfica histórica ---------
+def draw_history(fig_title, level_name, level_values, metric_kind, total_series_builders, agg_ps_all, agg_tipo_all, x_labels, x_map, sel_x):
+    palette = px.colors.qualitative.Safe + px.colors.qualitative.Bold + px.colors.qualitative.Pastel
+    color_map = {a: palette[i % len(palette)] for i, a in enumerate(level_values)}
+    st.markdown(f"<h4 style='margin:0 0 6px 0; font-weight:500;'>{fig_title}</h4>", unsafe_allow_html=True)
+    sel_col, radio_col = st.columns([6,4])
+    options = ["(All)", "(TOTAL)"] + level_values
+    with sel_col:
+        opt = st.selectbox("", options, index=0, key=f"{level_name}_filter", label_visibility="collapsed")
+    with radio_col:
+        metric_choice = st.radio("", ["%P", "%SA", "%OTHER"], index={"%P":0, "%SA":1, "%OTHER":2}[metric_kind], horizontal=True, key=f"metric_{level_name}", label_visibility="collapsed")
+
+    fig = go.Figure()
+
+    if metric_choice == "%P":
+        thr = 75 if opt == "(TOTAL)" else 60
+        if opt == "(All)":
+            for a in level_values:
+                sub = agg_ps_all[(agg_ps_all[level_name] == a)].copy()
+                sub["x"] = sub["_SEM"].map(x_map)
+                sub = sub.sort_values("x")
+                if sub.empty: continue
+                fig.add_trace(go.Scatter(
+                    x=sub["x"], y=sub["P_share"], mode="lines+markers", name=a,
+                    marker=dict(size=6, color=color_map[a]), line=dict(width=2, color=color_map[a]),
+                    hovertemplate=a + "<br>%{y:.1f}%<extra></extra>"
+                ))
+        elif opt == "(TOTAL)":
+            sub = total_series_builders["P"].copy()
+            sub["x"] = sub["_SEM"].map(x_map)
+            sub = sub.sort_values("x")
+            fig.add_trace(go.Scatter(
+                x=sub["x"], y=sub["P_share"], mode="lines+markers", name="TOTAL",
+                marker=dict(size=6, color=TOTAL_SERIES_COLOR), line=dict(width=2, color=TOTAL_SERIES_COLOR),
+                hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>"
+            ))
+        else:
+            sub = agg_ps_all[(agg_ps_all[level_name] == opt)].copy()
+            sub["x"] = sub["_SEM"].map(x_map)
+            sub = sub.sort_values("x")
+            fig.add_trace(go.Scatter(
+                x=sub["x"], y=sub["P_share"], mode="lines+markers", name=opt,
+                marker=dict(size=6, color=MINT), line=dict(width=2, color=MINT),
+                hovertemplate=opt + "<br>%{y:.1f}%<extra></extra>"
+            ))
+        y_min, bad_high = 40, False
+
+    elif metric_choice == "%SA":
+        thr = 40
+        share_col = "SA_share"
+        if opt == "(All)":
+            for a in level_values:
+                sub = agg_tipo_all[(agg_tipo_all[level_name] == a)].copy()
+                sub["x"] = sub["_SEM"].map(x_map)
+                sub = sub.sort_values("x")
+                if sub.empty: continue
+                fig.add_trace(go.Scatter(
+                    x=sub["x"], y=sub[share_col], mode="lines+markers", name=a,
+                    marker=dict(size=6, color=color_map[a]), line=dict(width=2, color=color_map[a]),
+                    hovertemplate=a + "<br>%{y:.1f}%<extra></extra>"
+                ))
+        elif opt == "(TOTAL)":
+            sub = total_series_builders["SA"].copy()
+            sub["x"] = sub["_SEM"].map(x_map)
+            sub = sub.sort_values("x")
+            fig.add_trace(go.Scatter(
+                x=sub["x"], y=sub[share_col], mode="lines+markers", name="TOTAL",
+                marker=dict(size=6, color=TOTAL_SERIES_COLOR), line=dict(width=2, color=TOTAL_SERIES_COLOR),
+                hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>"
+            ))
+        else:
+            sub = agg_tipo_all[(agg_tipo_all[level_name] == opt)].copy()
+            sub["x"] = sub["_SEM"].map(x_map)
+            sub = sub.sort_values("x")
+            fig.add_trace(go.Scatter(
+                x=sub["x"], y=sub[share_col], mode="lines+markers", name=opt,
+                marker=dict(size=6, color=MINT), line=dict(width=2, color=MINT),
+                hovertemplate=opt + "<br>%{y:.1f}%<extra></extra>"
+            ))
+        y_min, bad_high = 20, False
+
+    else:  # "%OTHER"
+        thr = 10
+        share_col = "OTHER_share"
+        if opt == "(All)":
+            for a in level_values:
+                sub = agg_tipo_all[(agg_tipo_all[level_name] == a)].copy()
+                sub["x"] = sub["_SEM"].map(x_map)
+                sub = sub.sort_values("x")
+                if sub.empty: continue
+                fig.add_trace(go.Scatter(
+                    x=sub["x"], y=sub[share_col], mode="lines+markers", name=a,
+                    marker=dict(size=6, color=color_map[a]), line=dict(width=2, color=color_map[a]),
+                    hovertemplate=a + "<br>%{y:.1f}%<extra></extra>"
+                ))
+        elif opt == "(TOTAL)":
+            sub = total_series_builders["OTHER"].copy()
+            sub["x"] = sub["_SEM"].map(x_map)
+            sub = sub.sort_values("x")
+            fig.add_trace(go.Scatter(
+                x=sub["x"], y=sub[share_col], mode="lines+markers", name="TOTAL",
+                marker=dict(size=6, color=TOTAL_SERIES_COLOR), line=dict(width=2, color=TOTAL_SERIES_COLOR),
+                hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>"
+            ))
+        else:
+            sub = agg_tipo_all[(agg_tipo_all[level_name] == opt)].copy()
+            sub["x"] = sub["_SEM"].map(x_map)
+            sub = sub.sort_values("x")
+            fig.add_trace(go.Scatter(
+                x=sub["x"], y=sub[share_col], mode="lines+markers", name=opt,
+                marker=dict(size=6, color=MINT), line=dict(width=2, color=MINT),
+                hovertemplate=opt + "<br>%{y:.1f}%<extra></extra>"
+            ))
+        y_min, bad_high = 0, True
+        y_max = 40
+
+    # Zonas de referencia
+    if bad_high:
+        fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=thr, y1=100, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
+        fig.add_hline(y=thr, line_color="#F5A3A3", line_dash="dash")
+    else:
+        fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=thr, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
+        fig.add_hline(y=thr, line_color="red", line_dash="dash")
+
+    if sel_x is not None:
+        fig.add_vrect(x0=sel_x-0.5, x1=sel_x+0.5, fillcolor="#E8FAF7", opacity=0.5, layer="below", line_width=0)
+
+    tickvals = list(range(len(x_labels)))
+    ticktext = [str(x) for x in x_labels]
+    if metric_choice == "%OTHER":
+        fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext), yaxis=dict(range=[y_min, y_max]))
+    else:
+        fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext), yaxis=dict(range=[y_min, 100]))
+    fig.update_xaxes(title=None)
+    fig.update_yaxes(title=None)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ===== Datos para descargar (lo visible) =====
+    def _series_for(level_val: str, ycol: str):
+        if ycol == "P_share":
+            sub = agg_ps_all[(agg_ps_all[level_name] == level_val)]
+        else:
+            sub = agg_tipo_all[(agg_tipo_all[level_name] == level_val)]
+        m = sub.set_index("_SEM")[ycol].to_dict()
+        return [m.get(x, None) for x in x_labels]
+
+    if metric_choice == "%P":
+        ycol = "P_share"
+        base_cols = {}
+        if opt == "(All)":
+            for a in level_values:
+                base_cols[a] = _series_for(a, ycol)
+        elif opt == "(TOTAL)":
+            sub = total_series_builders["P"].set_index("_SEM")["P_share"].to_dict()
+            base_cols["TOTAL"] = [sub.get(x, None) for x in x_labels]
+        else:
+            base_cols[opt] = _series_for(opt, ycol)
+    elif metric_choice == "%SA":
+        ycol = "SA_share"
+        base_cols = {}
+        if opt == "(All)":
+            for a in level_values:
+                base_cols[a] = _series_for(a, ycol)
+        elif opt == "(TOTAL)":
+            sub = total_series_builders["SA"].set_index("_SEM")[ycol].to_dict()
+            base_cols["TOTAL"] = [sub.get(x, None) for x in x_labels]
+        else:
+            base_cols[opt] = _series_for(opt, ycol)
+    else:
+        ycol = "OTHER_share"
+        base_cols = {}
+        if opt == "(All)":
+            for a in level_values:
+                base_cols[a] = _series_for(a, ycol)
+        elif opt == "(TOTAL)":
+            sub = total_series_builders["OTHER"].set_index("_SEM")[ycol].to_dict()
+            base_cols["TOTAL"] = [sub.get(x, None) for x in x_labels]
+        else:
+            base_cols[opt] = _series_for(opt, ycol)
+
+    export_df = pd.DataFrame({"Period": x_labels, **base_cols})
+    fname = f"chart_{_slugify(fig_title)}_{_slugify(metric_choice)}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx"
+    _download_xlsx_button(export_df, fname, key=f"dl_hist_{_slugify(fig_title)}_{metric_choice}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}", label="⬇️ Download (Excel)")
+
+
+# ============== NORMALIZACIÓN BÁSICA EN CARTELERA ==============
 col_sem = _get_any(df_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
-if col_sem and "_SEM" not in df_car.columns:
+if "_SEM" not in df_car.columns and col_sem:
     df_car["_SEM"] = df_car[col_sem].astype(str).str.strip()
-elif "_SEM" not in df_car.columns:
-    df_car["_SEM"] = pd.Series(dtype=str)
+else:
+    df_car["_SEM"] = df_car.get("_SEM", pd.Series(dtype=str))
 df_car["_YEAR"] = df_car["_SEM"].map(extract_year_from_period)
 df_car["_IS_INTER"] = df_car["_SEM"].str.lower().str.contains("inter", na=False)
 
-# ================== SIDEBAR (Timeframe + navegación + sensibilidad) ==================
+
+# ======================= FIXES + FILTROS INTERSEMESTRAL (DROP-IN) =======================
+# --- 1) Resolver de columnas (ARREGLADO) ---
+def _get_any(df: pd.DataFrame, *cands) -> str | None:
+    """
+    Devuelve el nombre REAL de la primera columna que coincide, ignorando mayúsculas/espacios.
+    """
+    targets = [str(c).strip().casefold() for c in cands]
+    for col in df.columns:
+        cnorm = str(col).strip().casefold()
+        if cnorm in targets:
+            return col
+    return None
+
+# --- 2) Normalizadores y máscara timeframe ---
+import re
+
+def _norm_sem_val(x: str) -> str:
+    """Recorta, compacta espacios internos y pasa a minúsculas (para comparar periodos)."""
+    return re.sub(r"\s+", " ", str(x).strip()).casefold()
+
+def _exact_inter_label(year: int | str) -> str:
+    """Etiqueta normalizada 'YYYY intersemestral'."""
+    return _norm_sem_val(f"{int(year)} Intersemestral")
+
+def mask_timeframe(series_sem: pd.Series, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.Series:
+    """
+    - Semestral:      coincidencia exacta con el código seleccionado (ej. '202520').
+    - Anual:          valores que empiezan por 'YYYY'.
+    - Intersemestral: coincidencia EXACTA con 'YYYY Intersemestral'
+                      (tolerante a mayúsculas/minúsculas y espacios múltiples).
+    """
+    s_norm = series_sem.astype(str).map(_norm_sem_val)
+
+    if mode == "Semestral" and selected_sem:
+        return s_norm.eq(_norm_sem_val(str(selected_sem)))
+
+    if mode == "Anual" and selected_year is not None:
+        yy = str(int(selected_year))
+        return s_norm.str.startswith(yy)
+
+    if mode == "Intersemestral" and selected_year is not None:
+        return s_norm.eq(_exact_inter_label(selected_year))
+
+    # Sin filtro si falta info
+    return pd.Series(True, index=series_sem.index)
+
+# --- 3) Filtros por hoja (usa mask_timeframe) ---
+def filter_df_car(df_car_base: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
+    if df_car_base is None or df_car_base.empty:
+        return pd.DataFrame()
+    df = df_car_base.copy()
+    semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    if not semc:
+        return df
+    m = mask_timeframe(df[semc], mode, selected_year, selected_sem)
+    return df[m].copy()
+
+def filter_df_fd(df_fd_base: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
+    if df_fd_base is None or df_fd_base.empty:
+        return pd.DataFrame()
+    df = df_fd_base.copy()
+    semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    ycol = _get_any(df, "Year","Año")
+    if semc:
+        m = mask_timeframe(df[semc], mode, selected_year, selected_sem)
+        return df[m].copy()
+    # Fallback por año si no hay columna de semestre/periodo
+    if ycol and selected_year is not None:
+        yy = int(selected_year)
+        return df[pd.to_numeric(df[ycol], errors="coerce").astype("Int64") == yy].copy()
+    return df
+
+def filter_df_planta(df_planta_base: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
+    """
+    En PLANTA la columna suele llamarse 'Periodo' (a veces 'PERIODO' o 'Semestre').
+    Para Intersemestral se exige match EXACTO 'YYYY Intersemestral'.
+    """
+    if df_planta_base is None or df_planta_base.empty:
+        return pd.DataFrame()
+    df = df_planta_base.copy()
+    per_col = _get_any(df, "Periodo","PERIODO","Semestre")
+    if not per_col:
+        return df
+    m = mask_timeframe(df[per_col], mode, selected_year, selected_sem)
+    return df[m].copy()
+
+# --- 4) Listas de años con intersemestral (consolida las 3 hojas) ---
+# ---- years_with_inter (compatible: con o sin argumentos) ----
+def years_with_inter(df_car_arg=None, df_fd_arg=None, df_planta_arg=None) -> list[int]:
+    """
+    Devuelve los años que tienen un periodo 'YYYY Intersemestral' buscando en:
+    - BD Cartelera 2020-2025  (col Semestre/Periodo/Periodo Académico)
+    - Faculty Distribution     (col Semestre/Periodo/Periodo Académico)
+    - BD PLANTA 2020-2025      (col Periodo/PERIODO/Semestre)
+    
+    Uso:
+      - years_with_inter()                          -> usa los dataframes globales df_car, df_fd, df_planta
+      - years_with_inter(df_car, df_fd, df_planta)  -> usa los dataframes pasados
+    """
+    # Usa los globals si no pasaron args
+    _car = df_car_arg if df_car_arg is not None else (df_car if 'df_car' in globals() else None)
+    _fd  = df_fd_arg  if df_fd_arg  is not None else (df_fd  if 'df_fd'  in globals() else None)
+    _pl  = df_planta_arg if df_planta_arg is not None else (df_planta if 'df_planta' in globals() else None)
+
+    years = set()
+
+    def _scan(df: pd.DataFrame, *cands):
+        if df is None or df.empty:
+            return
+        col = _get_any(df, *cands)
+        if not col:
+            return
+        ser = df[col].dropna().astype(str)
+        for s in ser:
+            sn = _norm_sem_val(s)  # usa tu normalizador existente
+            if "inter" in sn:
+                m = re.search(r"(19|20)\d{2}", sn)
+                if m:
+                    years.add(int(m.group(0)))
+
+    _scan(_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    _scan(_fd,  "Semestre","Periodo","Periodo Académico","Periodo academico")
+    _scan(_pl,  "Periodo","PERIODO","Semestre")
+
+    return sorted(years)
+
+# ======================= APLICACIÓN EN TU APP =======================
+# 1) Normaliza columna _SEM en CARTELERA (sin romper nada más que uses después)
+col_sem_car = _get_any(df_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
+if col_sem_car:
+    df_car["_SEM"] = df_car[col_sem_car].astype(str).str.strip()
+else:
+    df_car["_SEM"] = df_car.get("_SEM", pd.Series(dtype=str))
+
+# 2) Recalcula listas con intersemestral disponible (usa las 3 hojas)
+INTER_YEARS = years_with_inter(df_car, df_fd, df_planta)
+
+# 3) Sidebar (solo cambia la fuente de INTER_YEARS si la variable ya existía)
+#    — No toco tu UI; solo aseguro que INTER_YEARS tenga datos válidos —
+if st.session_state.get("time_mode", "Semestral") == "Intersemestral":
+    if not INTER_YEARS:
+        # fallback: todos los años detectados en cualquier hoja
+        def _all_years_from(*dfs):
+            ys = set()
+            for _df in dfs:
+                if _df is None or _df.empty:
+                    continue
+                c = _get_any(_df, "Semestre","Periodo","Periodo Académico","Periodo academico","Periodo","PERIODO","Year","Año")
+                if not c: 
+                    continue
+                ser = _df[c].astype(str)
+                for s in ser:
+                    m = re.search(r"(19|20)\d{2}", s)
+                    if m:
+                        ys.add(int(m.group(0)))
+            return sorted(ys)
+        INTER_YEARS = _all_years_from(df_car, df_fd, df_planta)
+
+# 4) APLICA FILTROS (reemplaza tus líneas actuales de filtrado base)
+time_mode = st.session_state.get("time_mode", "Semestral")
+sel_year = st.session_state.get("sel_year")
+sel_sem = st.session_state.get("sel_sem")
+df_car_filt_all = filter_df_car(df_car, time_mode, sel_year, sel_sem)
+f                = filter_df_fd(df_fd,  time_mode, sel_year, sel_sem)
+df_ft            = filter_df_planta(df_planta, time_mode, sel_year, sel_sem)
+
+# 5) (Opcional) Debug visual rápido para verificar conteos cuando es Intersemestral
+if time_mode == "Intersemestral" and sel_year is not None:
+    st.caption(
+        f"Intersemestral {sel_year} — Cartelera: {len(df_car_filt_all)} · FD: {len(f)} · PLANTA: {len(df_ft)}"
+    )
+
+# ================== SIDEBAR ==================
 SEMESTRAL_PERIODS = list_periods_semestral()
 YEARS_ALL = list_years_from_sem()
 INTER_YEARS = years_with_inter()
@@ -586,27 +1004,29 @@ with st.sidebar:
         st.number_input("Professors", min_value=1, step=1, value=1, key="sens_count")
         st.number_input("Credits per professor", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
 
+        # ADD (suma)
         if st.button("Add", use_container_width=True, key="sens_add"):
             ops_to_add = []
             member_val = st.session_state.get("sens_member", "All")
             cnt  = int(st.session_state.get("sens_count", 1))
             cred = float(st.session_state.get("sens_credits", 3.0))
-            if st.session_state["sens_cat_ps"] != "None":
+            if st.session_state.get("sens_cat_ps") and st.session_state["sens_cat_ps"] != "None":
                 ops_to_add.append({"scope": "PS", "cat": st.session_state["sens_cat_ps"], "member": member_val, "credits": cred, "count": cnt})
-            if st.session_state["sens_cat_qual"] != "None":
+            if st.session_state.get("sens_cat_qual") and st.session_state["sens_cat_qual"] != "None":
                 ops_to_add.append({"scope": "QUAL", "cat": st.session_state["sens_cat_qual"], "member": member_val, "credits": cred, "count": cnt})
             if ops_to_add:
                 st.session_state.sens_ops.extend(ops_to_add)
                 st.success("Added.")
 
+        # REMOVE (resta)
         if st.button("Remove", use_container_width=True, key="sens_remove_btn"):
             ops_to_add = []
             member_val = st.session_state.get("sens_member", "All")
             cnt  = -abs(int(st.session_state.get("sens_count", 1)))
             cred = float(st.session_state.get("sens_credits", 3.0))
-            if st.session_state["sens_cat_ps"] != "None":
+            if st.session_state.get("sens_cat_ps") and st.session_state["sens_cat_ps"] != "None":
                 ops_to_add.append({"scope": "PS", "cat": st.session_state["sens_cat_ps"], "member": member_val, "credits": cred, "count": cnt})
-            if st.session_state["sens_cat_qual"] != "None":
+            if st.session_state.get("sens_cat_qual") and st.session_state["sens_cat_qual"] != "None":
                 ops_to_add.append({"scope": "QUAL", "cat": st.session_state["sens_cat_qual"], "member": member_val, "credits": cred, "count": cnt})
             if ops_to_add:
                 st.session_state.sens_ops.extend(ops_to_add)
@@ -650,10 +1070,9 @@ with st.sidebar:
         sel_sem = None
         sel_label = f"{sel_year} (Annual)"
     else:
-        inter_years = INTER_YEARS or YEARS_ALL  # fallback si no hay etiqueta exacta en datos
-        default_i = inter_years[-1] if inter_years else 2025
+        default_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
         st.session_state.setdefault("sel_inter_year", default_i)
-        sel_year = st.selectbox("Year (Intersemestral)", inter_years or [default_i], key="sel_inter_year")
+        sel_year = st.selectbox("Year (Intersemestral)", INTER_YEARS or YEARS_ALL or [default_i], key="sel_inter_year")
         sel_sem = None
         sel_label = f"{sel_year} Intersemestral"
 
@@ -661,6 +1080,7 @@ with st.sidebar:
     st.session_state.setdefault("view_mode", "By Academic Area")
     view_mode = st.selectbox("View", ["By Program", "By Academic Area", "By Field"], key="view_mode")
     dl_bd_placeholder = st.empty()
+
 
 # ================== FILTROS BASE ==================
 df_car_base = df_car.copy()
@@ -680,6 +1100,7 @@ if 'dl_bd_placeholder' in locals():
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key=f"dl_bd_{_slugify(sel_label)}"
     )
+
 
 # --------- Sensitivity: “Apply to” ---------
 if st.session_state.get("sens_mode", False):
@@ -723,9 +1144,11 @@ def style_percent_tables(df_, id_col):
         sty.loc[is_total, c] = (sty.loc[is_total, c].astype(str) + 'font-weight:700;').str.replace(';;',';', regex=False)
     return sty
 
+# ---------- util de estilo para la tabla de "Needed + Impact" ----------
 def _style_needed_impact(df_, id_col):
     sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
     numeric_cols = [c for c in df_.columns if c != id_col]
+    # rojo claro para todo valor != 0
     for c in numeric_cols:
         vals = pd.to_numeric(df_[c], errors="coerce").fillna(0)
         sty.loc[vals != 0, c] = 'background-color:#FDE2E2;'
@@ -739,14 +1162,25 @@ def _needed_pairs_for_obj(
     totals: dict[str,float],
     credits_each: float = 3.0
 ) -> tuple[int, int]:
+    """
+    Devuelve dos números (enteros >= 0) según el objetivo:
+      - %P   -> (Need_P_more, Need_S_less)
+      - %SA  -> (Need_SA_more, Need_NonSA_less)
+      - %OTHER -> (Need_OTHER_less, Need_NonOTHER_more)
+
+    Si scope="Overall", calcula con TOT (global) y limita por factibilidad del renglón cuando es "quitar".
+    Nunca devuelve None; si no alcanza, devuelve el máximo posible (capped).
+    """
     t_map = {"%P": (60.0, 75.0), "%SA": (40.0, 40.0), "%OTHER": (10.0, 10.0)}
     tgt_area, tgt_overall = t_map[objective]
     t = (tgt_area if scope_label == "By area" else tgt_overall) / 100.0
 
+    # valores por fila
     TQ = SA_ + PA_ + SP_ + IP_ + OT_
     nonSA = PA_ + SP_ + IP_ + OT_
     nonOTHER = SA_ + PA_ + SP_ + IP_
 
+    # totales
     Ptot = totals.get("P",0.0); Stot = totals.get("S",0.0)
     SAt  = totals.get("SA",0.0); PAt = totals.get("PA",0.0)
     SPt  = totals.get("SP",0.0); IPt = totals.get("IP",0.0)
@@ -755,29 +1189,40 @@ def _needed_pairs_for_obj(
     nonSAt = PAt + SPt + IPt + OTt
     nonOTHERt = SAt + PAt + SPt + IPt
 
+    # --- %P ---
     if objective == "%P":
+        # Aumentar P (+3cr cada profesor)
         if scope_label == "By area":
             nP = _needed_for_pctP(P, S, tgt_area, credits_each)
         else:
+            # (Ptot + c*n)/(Ptot + Stot + c*n) >= t  ->  n >= (t*(P+S) - P)/( (1-t)*c )
             den = credits_each * (1 - t)
             rhs = 0 if den <= 0 else (t*(Ptot+Stot) - Ptot) / den
             nP  = max(0, math.ceil(rhs))
 
+        # Quitar S (-3cr)
         if scope_label == "By area":
+            #  P/(P + S - c*n) >= t  ->  n >= (t*(P+S) - P)/(t*c)
             den = credits_each * t if t > 0 else float('inf')
             rhs = 0 if den == float('inf') else (t*(P+S) - P) / den
             nS_less = max(0, math.ceil(rhs))
+            # factibilidad
             nmax = math.floor(S / credits_each) if credits_each > 0 else 0
             nS_less = min(nS_less, max(0, nmax))
         else:
+            # overall: Ptot/(Ptot + Stot - c*n) >= t
             den = credits_each * t if t > 0 else float('inf')
             rhs = 0 if den == float('inf') else (t*(Ptot+Stot) - Ptot) / den
             nS_less = max(0, math.ceil(rhs))
+            # factibilidad: solo puedo quitar del renglón actual
             nmax = math.floor(S / credits_each) if credits_each > 0 else 0
             nS_less = min(nS_less, max(0, nmax))
+
         return (nP, nS_less)
 
+    # --- %SA ---
     if objective == "%SA":
+        # Aumentar SA (+3cr)
         if scope_label == "By area":
             nSA = _needed_for_pctSA(SA_, nonSA, tgt_area, credits_each)
         else:
@@ -785,7 +1230,9 @@ def _needed_pairs_for_obj(
             rhs = 0 if den <= 0 else (t*TQt - SAt) / den
             nSA = max(0, math.ceil(rhs))
 
+        # Quitar No-SA (PA+SP+IP+OTHER) (-3cr)
         if scope_label == "By area":
+            # SA/(SA + nonSA - c*n) >= t -> n >= (t*(SA+nonSA) - SA)/(t*c)
             den = credits_each * t if t > 0 else float('inf')
             rhs = 0 if den == float('inf') else (t*(SA_+nonSA) - SA_) / den
             nNonSA_less = max(0, math.ceil(rhs))
@@ -797,21 +1244,27 @@ def _needed_pairs_for_obj(
             nNonSA_less = max(0, math.ceil(rhs))
             nmax = math.floor(nonSA / credits_each) if credits_each > 0 else 0
             nNonSA_less = min(nNonSA_less, max(0, nmax))
+
         return (nSA, nNonSA_less)
 
-    # %OTHER
+    # --- %OTHER ---
+    # Quitar OTHER (-3cr)
     if scope_label == "By area":
+        # (OT - c*n)/(TQ - c*n) <= 0.10  ->  c*n >= (OT - 0.10*TQ)/0.90
         need_credits = (OT_ - 0.10*TQ) / 0.90
         nOT_less = 0 if need_credits <= 0 else math.ceil(need_credits / credits_each)
         nmax = math.floor(OT_ / credits_each) if credits_each > 0 else 0
         nOT_less = min(nOT_less, max(0, nmax))
     else:
+        # overall
         need_credits = (OTt - 0.10*TQt) / 0.90
         nOT_less = 0 if need_credits <= 0 else math.ceil(need_credits / credits_each)
         nmax = math.floor(OT_ / credits_each) if credits_each > 0 else 0
         nOT_less = min(nOT_less, max(0, nmax))
 
+    # Aumentar No-OTHER (+3cr) -> OT/(OT + nonOTHER + c*n) <= 0.10
     if scope_label == "By area":
+        # n >= (0.90*OT - 0.10*nonOTHER)/(0.10*c) = (9*OT - nonOTHER)/c
         num = (9*OT_ - nonOTHER)
         den = credits_each
         nNonOT_more = 0 if num <= 0 else math.ceil(num / den)
@@ -822,15 +1275,99 @@ def _needed_pairs_for_obj(
 
     return (nOT_less, nNonOT_more)
 
+# ---------- impacto (siempre visible) ----------
 def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], scope_label: str, credits_each: float = 3.0):
     if scope_label == "By area":
         up_pp, down_pp = _impact_pp_area(obj, area_vals, credits_each)
     else:
         up_pp, down_pp = _impact_pp_overall_if_area_changes(obj, totals, credits_each)
+    # devolver números (no strings)
     return round(up_pp, 2), round(down_pp, 2)
 
-# ================== PRINCIPAL ==================
+# === HEATMAP + ROJO-CLARO PARA "Needed" ===
+def _style_impact_heatmap(df: pd.DataFrame, id_col: str):
+    """
+    - Heatmap (verde→amarillo→naranja→rojo) para columnas 'Impact +3cr (pp)' y 'Impact -3cr (pp)'.
+      Se colorea por magnitud absoluta (mayor impacto = más rojo).
+    - Fondo rojo claro en columnas 'Needed ...' cuando el valor != 0.
+    - No toca la columna del identificador (id_col) ni otras columnas.
+    """
+    # DataFrame de estilos vacío
+    sty = pd.DataFrame('', index=df.index, columns=df.columns)
 
+    # --- 1) Rojo claro para "Needed ..." cuando != 0 ---
+    needed_cols = [c for c in df.columns if c.startswith("Needed ")]
+    for c in needed_cols:
+        if c in df:
+            vals = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
+            sty.loc[vals != 0, c] = sty.loc[vals != 0, c].astype(str) + 'background-color:#FDE2E2;'
+
+    # --- 2) Heatmap para columnas de Impact ---
+    impact_cols = [c for c in df.columns if c.startswith("Impact ")]
+    if impact_cols:
+        # Usamos por defecto la magnitud del "+3cr" si existe; si no, el promedio abs de todas
+        if "Impact +3cr (pp)" in df.columns:
+            base_vals = pd.to_numeric(df["Impact +3cr (pp)"], errors="coerce").abs()
+        else:
+            base_vals = (
+                df[impact_cols]
+                .apply(pd.to_numeric, errors="coerce")
+                .abs()
+                .mean(axis=1)
+            )
+        base_vals = base_vals.fillna(0.0)
+        vmin = float(np.nanmin(base_vals.values)) if base_vals.size else 0.0
+        vmax = float(np.nanmax(base_vals.values)) if base_vals.size else 0.0
+        rng = (vmax - vmin) if (vmax - vmin) > 1e-12 else 1.0  # evita división por cero
+
+        # Paleta suave: verde → amarillo → naranja → rojo
+        # (cuanto mayor el impacto, más "caliente")
+        def color_for(val_abs: float) -> str:
+            z = (val_abs - vmin) / rng  # 0..1  (0 = menor impacto, 1 = mayor impacto)
+            if z >= 0.60:
+                return "#D9F2D9"  # verde claro
+            elif z >= 0.40:
+                return "#FFF6B3"  # amarillo
+            elif z >= 0.20:
+                return "#FFD6A6"  # naranja
+            else:
+                return "#F5B5B5"  # rojo
+
+        # Aplica la paleta a TODAS las columnas de impacto (según la misma escala)
+        for c in impact_cols:
+            col_vals = pd.to_numeric(df[c], errors="coerce").abs().fillna(0.0)
+            for i, v in col_vals.items():
+                sty.at[i, c] = sty.at[i, c] + f'background-color:{color_for(float(v))};'
+
+    # Asegura que el id_col no reciba estilo accidental
+    if id_col in sty.columns:
+        sty[id_col] = ''
+
+    return sty
+
+    # Magnitudes absolutas
+    vals_abs = pd.concat(
+        [pd.to_numeric(df_[c], errors="coerce").abs() for c in impact_cols],
+        axis=1
+    )
+    # vmax a partir del conjunto completo (evita escala por-columna)
+    vmax = float(np.nanmax(vals_abs.values)) if vals_abs.size else 0.0
+    if not np.isfinite(vmax) or vmax <= 0:
+        # todos 0 o NaN: colorear todo como rojo para los impact cols
+        for c in impact_cols:
+            sty[c] = 'background-color:#FF0000;'
+        return sty
+
+    # Asignar color por celda
+    for c in impact_cols:
+        col = pd.to_numeric(df_[c], errors="coerce").abs()
+        t = (col / vmax).clip(lower=0.0, upper=1.0).fillna(0.0)
+        sty[c] = t.map(_interp_color).radd('background-color:')
+
+    return sty
+
+
+# ================== PRINCIPAL ==================
 st.markdown("---")
 
 # --- helpers específicos para el cabezote ---
@@ -2922,5 +3459,4 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
-
 
