@@ -2285,12 +2285,12 @@ try:
 
             # --- dibujar ---
             if mode_line == "Qualifications":
-                COL_SA = "#F5A3A3"  # (MINT)
-                COL_PA = "#6BBF59"
-                COL_SP = "#6C8CA1"
-                COL_IP = "#9E9E9E"
-                COL_OT = "#F5A3A3"  # (DARK GREY)
-                CMAP_TIPO = {"SA": COL_SA, "PA": COL_PA, "SP": COL_SP, "IP": COL_IP, "OTHER": COL_OT}
+                COL_SA = "#1FA89B"  # menta verdoso
+                COL_PA = "#B1D2FF"  # verde apagado
+                COL_SP = "#9F9F9F"  # azul grisoso
+                COL_IP = "#B0B0B0"  # gris
+                COL_OT = "#FF6B6B"  # rojo claro
+                cmap = {"SA":COL_SA, "PA":COL_PA, "SP":COL_SP, "IP":COL_IP, "OTHER":COL_OT}
 
                 fig = go.Figure()
                 for k in ["SA","PA","SP","IP","OTHER"]:
@@ -3233,4 +3233,5 @@ if not SENS.get("on", False):
             label="Descargar resultados (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
