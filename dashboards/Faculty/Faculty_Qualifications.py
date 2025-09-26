@@ -951,6 +951,9 @@ if st.session_state.get("time_mode", "Semestral") == "Intersemestral":
         INTER_YEARS = _all_years_from(df_car, df_fd, df_planta)
 
 # 4) APLICA FILTROS (reemplaza tus líneas actuales de filtrado base)
+time_mode = st.session_state.get("time_mode", "Semestral")
+sel_year = st.session_state.get("sel_year")
+sel_sem = st.session_state.get("sel_sem")
 df_car_filt_all = filter_df_car(df_car, time_mode, sel_year, sel_sem)
 f                = filter_df_fd(df_fd,  time_mode, sel_year, sel_sem)
 df_ft            = filter_df_planta(df_planta, time_mode, sel_year, sel_sem)
@@ -960,8 +963,6 @@ if time_mode == "Intersemestral" and sel_year is not None:
     st.caption(
         f"Intersemestral {sel_year} — Cartelera: {len(df_car_filt_all)} · FD: {len(f)} · PLANTA: {len(df_ft)}"
     )
-
-
 
 # ================== SIDEBAR ==================
 SEMESTRAL_PERIODS = list_periods_semestral()
@@ -3443,5 +3444,3 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
-
-
