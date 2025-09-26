@@ -3182,7 +3182,7 @@ if not SENS.get("on", False):
         base = df_car_filt_all.copy()
         if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
         if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
-        if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()  # ← FIX
+        if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
         if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
         if "_PROF" in base and prof_to_id_map_by_name:
             base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
@@ -3255,5 +3255,6 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
