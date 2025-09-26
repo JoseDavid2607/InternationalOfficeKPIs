@@ -2892,8 +2892,8 @@ if not SENS.get("on", False):
     st.markdown("---")
 
     # ====== Constantes para evitar errores de texto en radios ======
-    HL_MOST   = "Top 5 most credits"
-    HL_LEAST  = "Top 5 least credits"
+    HL_MOST   = "Top 5 with most credits"
+    HL_LEAST  = "Top 5 with least credits"
     HL_ZERO   = "Full-time with 0 courses"
 
     SM_FAC    = "By Faculty"
@@ -3233,11 +3233,11 @@ if not SENS.get("on", False):
                 profs = sorted(res["_PROF"].dropna().unique().tolist())
                 if len(profs) == 1:
                     prof_label = profs[0]
-            st.info(f"**El profesor {prof_label} ha dictado {tot_cr:,.1f} créditos con {tot_courses} cursos en {periodo_txt}.**")
+            st.info(f"*Professor {prof_label} has taught {tot_cr:,.1f} credits with {tot_courses} courses in {periodo_txt}.**")
     
         if search_mode == SM_COURSE and sel_course:
             profs_cnt = res["_PROF"].nunique() if "_PROF" in res else 0
-            st.info(f"**El curso {sel_course} ha sido dictado por {profs_cnt} profesor(es) en {periodo_txt}.**")
+            st.info(f"**The course {sel_course} has been taught {profs_cnt} professor/s in {periodo_txt}.**")
     
         # Salida
         show_cols = {
@@ -3272,3 +3272,4 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
