@@ -860,9 +860,13 @@ with st.sidebar:
             "Esta vista permite hacer un análisis de sensibilidad sin modificar la data original.\n"
             "\n"
             "Qué puedes hacer:\n"
+            "\n"
             "• Agregar o eliminar cursos (3 créditos) por área o a nivel global (overall).\n"
+            "\n"
             "• Ver cambios reflejados en tablas y gráficas en tiempo real.\n"
+            "\n"
             "• Calcular cuántos cursos se necesitan para alcanzar los objetivos.\n"
+            "\n"
             "• Ver el impacto en puntos porcentuales de agregar o eliminar 1 curso de 3 créditos."
         )
     )
@@ -3355,6 +3359,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
