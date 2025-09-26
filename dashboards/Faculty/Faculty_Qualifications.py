@@ -2290,10 +2290,10 @@ try:
             # --- dibujar ---
             if mode_line == "Qualifications":
                 COL_SA = "#1FA89B"  # menta verdoso
-                COL_PA = "#B6B9BD"  # verde apagado
-                COL_SP = "#565656"  # azul grisoso
-                COL_IP = "#797878"  # gris
-                COL_OT = "#A13B3B"  # rojo claro
+                COL_PA = "#B2BECD"  # gris claro
+                COL_SP = "#B2B2B2"  # gris medio
+                COL_IP = "#757575"  # gris
+                COL_OT = "#353535"  # gris oscuro
                 cmap = {"SA":COL_SA, "PA":COL_PA, "SP":COL_SP, "IP":COL_IP, "OTHER":COL_OT}
 
                 fig = go.Figure()
@@ -3237,6 +3237,7 @@ if not SENS.get("on", False):
             label="Descargar resultados (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
