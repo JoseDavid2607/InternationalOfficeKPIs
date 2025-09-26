@@ -894,27 +894,42 @@ def filter_df_planta(df_planta_base: pd.DataFrame, mode: str, selected_year: int
     return df[m].copy()
 
 # --- 4) Listas de años con intersemestral (consolida las 3 hojas) ---
-def years_with_inter(df_car: pd.DataFrame, df_fd: pd.DataFrame, df_planta: pd.DataFrame) -> list[int]:
+# ---- years_with_inter (compatible: con o sin argumentos) ----
+def years_with_inter(df_car_arg=None, df_fd_arg=None, df_planta_arg=None) -> list[int]:
+    """
+    Devuelve los años que tienen un periodo 'YYYY Intersemestral' buscando en:
+    - BD Cartelera 2020-2025  (col Semestre/Periodo/Periodo Académico)
+    - Faculty Distribution     (col Semestre/Periodo/Periodo Académico)
+    - BD PLANTA 2020-2025      (col Periodo/PERIODO/Semestre)
+    
+    Uso:
+      - years_with_inter()                          -> usa los dataframes globales df_car, df_fd, df_planta
+      - years_with_inter(df_car, df_fd, df_planta)  -> usa los dataframes pasados
+    """
+    # Usa los globals si no pasaron args
+    _car = df_car_arg if df_car_arg is not None else (df_car if 'df_car' in globals() else None)
+    _fd  = df_fd_arg  if df_fd_arg  is not None else (df_fd  if 'df_fd'  in globals() else None)
+    _pl  = df_planta_arg if df_planta_arg is not None else (df_planta if 'df_planta' in globals() else None)
+
     years = set()
 
     def _scan(df: pd.DataFrame, *cands):
+        if df is None or df.empty:
+            return
         col = _get_any(df, *cands)
         if not col:
             return
         ser = df[col].dropna().astype(str)
         for s in ser:
-            sn = _norm_sem_val(s)
+            sn = _norm_sem_val(s)  # usa tu normalizador existente
             if "inter" in sn:
                 m = re.search(r"(19|20)\d{2}", sn)
                 if m:
                     years.add(int(m.group(0)))
 
-    if df_car is not None and not df_car.empty:
-        _scan(df_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    if df_fd is not None and not df_fd.empty:
-        _scan(df_fd, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    if df_planta is not None and not df_planta.empty:
-        _scan(df_planta, "Periodo","PERIODO","Semestre")
+    _scan(_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    _scan(_fd,  "Semestre","Periodo","Periodo Académico","Periodo academico")
+    _scan(_pl,  "Periodo","PERIODO","Semestre")
 
     return sorted(years)
 
@@ -3444,3 +3459,4 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
