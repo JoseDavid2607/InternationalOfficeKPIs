@@ -808,20 +808,40 @@ df_car["_IS_INTER"] = df_car["_SEM"].str.lower().str.contains("inter", na=False)
 
 
 # ================== TIMEFRAME FILTERS ==================
+def _is_inter_label(p: str) -> bool:
+    return bool(re.fullmatch(r"\d{4}\s+Intersemestral", str(p).strip()))
+
 def mask_timeframe(series_sem: pd.Series, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.Series:
-    s = series_sem.astype(str)
+    """
+    Filtro unificado por timeframe.
+    - Semestral: etiqueta exacta (e.g., '202510' / '202520' / '2025-20' → normaliza con .eq)
+    - Anual: cualquier registro cuyo texto contenga el año YYYY al inicio
+    - Intersemestral: cualquier texto que contenga el año YYYY (por regex) y la palabra 'inter' en cualquier parte
+      (esto captura variantes como '2025 Inter', 'Intersemestral 2025', '2025-Inter', etc.)
+    """
+    s = series_sem.astype(str).str.strip()
     if mode == "Semestral" and selected_sem:
-        return s.str.strip().eq(str(selected_sem))
+        # Igualdad exacta vs la cadena visible del selector
+        return s.eq(str(selected_sem))
+
     if mode == "Anual" and selected_year is not None:
-        return s.str.startswith(str(selected_year))
+        y = str(selected_year)
+        # Acepta cualquier "Semestre/Periodo" que empiece con el año: 'YYYY...' (soporta espacios/guiones)
+        return s.str.startswith(y)
+
     if mode == "Intersemestral" and selected_year is not None:
-        return s.str.startswith(str(selected_year)) & s.str.lower().str.contains("inter")
-    return pd.Series([True]*len(s), index=series_sem.index)
+        y = str(selected_year)
+        # Debe contener el año (en cualquier posición) y alguna variante de 'inter'
+        has_year = s.str.contains(rf"(?:^|[^0-9]){re.escape(y)}(?:[^0-9]|$)", case=False, regex=True)
+        has_inter = s.str.contains("inter", case=False, na=False)
+        return has_year & has_inter
+
+    return pd.Series([True] * len(s), index=series_sem.index)
 
 
 def filter_df_car(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
     if "_SEM" not in df.columns:
-        sc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
+        sc = _get_any(df, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
         if sc:
             df = df.assign(_SEM=df[sc].astype(str).str.strip())
         else:
@@ -831,8 +851,8 @@ def filter_df_car(df: pd.DataFrame, mode: str, selected_year: int | None, select
 
 
 def filter_df_fd(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
-    semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    ycol = _get_any(df, "Year","Año")
+    semc = _get_any(df, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
+    ycol = _get_any(df, "Year", "Año")
     out = df.copy()
     if semc:
         sem_series = out[semc].astype(str).str.strip()
@@ -863,7 +883,6 @@ with st.sidebar:
         st.number_input("Professors", min_value=1, step=1, value=1, key="sens_count")
         st.number_input("Credits per professor", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
 
-        # ADD (suma)
         if st.button("Add", use_container_width=True, key="sens_add"):
             ops_to_add = []
             member_val = st.session_state.get("sens_member", "All")
@@ -877,7 +896,6 @@ with st.sidebar:
                 st.session_state.sens_ops.extend(ops_to_add)
                 st.success("Added.")
 
-        # REMOVE (resta)
         if st.button("Remove", use_container_width=True, key="sens_remove_btn"):
             ops_to_add = []
             member_val = st.session_state.get("sens_member", "All")
@@ -929,6 +947,7 @@ with st.sidebar:
         sel_sem = None
         sel_label = f"{sel_year} (Annual)"
     else:
+        # Intersemestral: lista años que tienen ANY 'inter' en df_car (fallback a YEARS_ALL)
         default_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
         st.session_state.setdefault("sel_inter_year", default_i)
         sel_year = st.selectbox("Year (Intersemestral)", INTER_YEARS or YEARS_ALL or [default_i], key="sel_inter_year")
@@ -1221,7 +1240,6 @@ def _style_impact_heatmap(df: pd.DataFrame, id_col: str):
 
     return sty
 
-
 # ================== PRINCIPAL ==================
 st.markdown("---")
 
@@ -1272,7 +1290,8 @@ def _filter_fd_by_timeframe(df_fd: pd.DataFrame, time_mode: str, sel_year, sel_s
 
     - Semestral:        == sel_sem (p.ej. '202520')
     - Anual:            empieza por sel_year (incluye 10, 20 e intersemestral)
-    - Intersemestral:   == 'YYYY Intersemestral' (match tolerante a espacios y mayúsculas)
+    - Intersemestral:   contiene el año (en cualquier posición) y 'inter' en el texto
+                        (soporta '2025 Intersemestral', 'Intersemestral 2025', '2025-Inter', etc.)
     """
     if df_fd is None or df_fd.empty:
         return df_fd.iloc[0:0]
@@ -1281,27 +1300,26 @@ def _filter_fd_by_timeframe(df_fd: pd.DataFrame, time_mode: str, sel_year, sel_s
     if not sem_col:
         return df_fd.iloc[0:0]
 
-    s = df_fd[sem_col].astype(str)
+    s = df_fd[sem_col].astype(str).str.strip()
     tm = (time_mode or "Semestral").strip()
 
     if tm == "Semestral" and sel_sem:
-        m = s.str.strip().eq(str(sel_sem))
+        m = s.eq(str(sel_sem))
         return df_fd[m].copy()
 
     if tm == "Anual" and sel_year is not None:
-        m = s.str.strip().str.startswith(str(sel_year))
+        m = s.str.startswith(str(sel_year))
         return df_fd[m].copy()
 
     if tm == "Intersemestral" and sel_year is not None:
-        # Coincidencia EXACTA a "YYYY Intersemestral" (tolerante a espacios múltiples/caso)
-        target = f"{sel_year} intersemestral"
-        m = s.str.strip().str.casefold().eq(target)
-        # tolerancia: permitir variantes con espacios extra entre año y palabra
-        m = m | s.str.casefold().str.contains(rf"^\s*{sel_year}\s+intersemestral\s*$", regex=True)
+        y = str(sel_year)
+        has_year  = s.str.contains(rf"(?:^|[^0-9]){re.escape(y)}(?:[^0-9]|$)", case=False, regex=True)
+        has_inter = s.str.contains("inter", case=False, na=False)
+        m = has_year & has_inter
         return df_fd[m].copy()
 
-    # Fallback: sin filtro
     return df_fd.copy()
+
 
 def _count_teaching_from_fd_timeaware(df_fd: pd.DataFrame, time_mode: str, sel_year, sel_sem) -> dict[str,int]:
     """
@@ -2248,16 +2266,13 @@ try:
             plot_ps   = plot_ps.sort_values("_xi")
 
             # --- sensibilidad SOLO en el período seleccionado ---
-            sel_label_exact = None
             if tm == "Semestral":
-                sel_sem_ = st.session_state.get("sel_sem")
-                sel_label_exact = str(sel_sem_) if sel_sem_ else None
+                sel_label_exact = st.session_state.get("sel_sem")  # 'YYYY10' / 'YYYY20' (str)
             elif tm == "Anual":
-                sel_year_ = st.session_state.get("sel_year")
-                sel_label_exact = sel_year_
-            else:
-                sel_year_ = st.session_state.get("sel_inter_year")
-                sel_label_exact = f"{sel_year_} Intersemestral" if sel_year_ else None
+                sel_label_exact = st.session_state.get("sel_year")  # año (int)
+            else:  # Intersemestral
+                y = st.session_state.get("sel_year")                # usa el MISMO sel_year
+                sel_label_exact = f"{y} Intersemestral" if y else None  # 'YYYY Intersemestral' (str)
 
             if SENS.get("on") and SENS.get("ops") and sel_label_exact is not None:
                 # Qualifications
@@ -2302,7 +2317,7 @@ try:
                         hovertemplate=f"{k}<br>%{{y:.0f}} cr<extra></extra>"
                     ))
 
-                sel_x = x_map_q.get(str(sel_label_exact)) if (sel_label_exact is not None) else None
+                sel_x  = x_map_q.get(sel_label_exact)  if (sel_label_exact is not None) else None
                 if sel_x is not None:
                     fig.add_vrect(x0=sel_x-0.5, x1=sel_x+0.5, fillcolor="#E8FAF7", opacity=0.5, layer="below", line_width=0)
 
@@ -2339,7 +2354,7 @@ try:
                     hovertemplate="S<br>%{y:.0f} cr<extra></extra>"
                 ))
 
-                sel_x2 = x_map_ps.get(str(sel_label_exact)) if (sel_label_exact is not None) else None
+                sel_x2 = x_map_ps.get(sel_label_exact) if (sel_label_exact is not None) else None
                 if sel_x2 is not None:
                     fig2.add_vrect(x0=sel_x2-0.5, x1=sel_x2+0.5, fillcolor="#E8FAF7", opacity=0.5, layer="below", line_width=0)
 
@@ -3314,5 +3329,6 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
