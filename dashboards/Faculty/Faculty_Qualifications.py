@@ -1488,7 +1488,7 @@ else:
                 if SENS["on"]:
                     r1c1, r1c2, r1c3 = st.columns([1.8, 1.1, 1.6])
                     with r1c1:
-                        needed_mode = st.toggle("# N° of courses needed for…", value=False, key="area_needed_mode", help="La tabla muestra la cantidad de cursos de 3 créditos que se necesitan para llegar al objetivo")
+                        needed_mode = st.toggle("# N° of courses needed for…", value=False, key="area_needed_mode", help="La tabla muestra la cantidad de cursos de 3 créditos que se necesitan para llegar al objetivo y el impacto en puntos porcentuales de agregar o eliminar un curso de 3 cr.")
                     if needed_mode:
                         with r1c2:
                             objective = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="area_objective")
@@ -3359,6 +3359,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
