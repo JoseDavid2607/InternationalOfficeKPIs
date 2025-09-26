@@ -1861,7 +1861,6 @@ else:
                     agg_tipo_all=agg_tipo_all_tm,
                     x_labels=x_labels, x_map=x_map, sel_x=sel_x
                 )
-
         # -------------- BY PROGRAM --------------
         elif view_mode == "By Program" and col_prog:
             colP_L, colP_R = st.columns([6,6], gap="large")
@@ -2072,6 +2071,12 @@ else:
 # --------------------------
 # CREDIT SUMS (EXPANDER)
 # --------------------------
+
+st.markdown("""
+#### Faculty credit highlights (current timeframe) 
+<span style="color:#888; cursor:help;" title="Esta sección muestra un ranking de profesores según los créditos dictados.">❓</span>
+""", unsafe_allow_html=True)
+
 try:
     period_df = df_car_filt_all.copy()
     if "_CRED"  not in period_df.columns and col_cred:  period_df["_CRED"]  = pd.to_numeric(period_df[col_cred], errors="coerce").fillna(0.0)
@@ -3233,5 +3238,6 @@ if not SENS.get("on", False):
             label="Descargar resultados (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
