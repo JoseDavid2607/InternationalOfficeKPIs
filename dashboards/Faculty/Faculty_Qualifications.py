@@ -1478,15 +1478,18 @@ else:
                                 ["By area", "Overall"],
                                 horizontal=True,
                                 key="area_scope",
-                                help=("Objective by Area:\n"
-                                      "• %P > 60%\n"
-                                      "• %SA > 40%\n"
-                                      "• %OTHER < 10%"
-                                      "Overall Objective:\n"
-                                      "• %P > 75%\n"
-                                      "• %SA > 40%\n"
-                                      "• %OTHER < 10%")
+                                help=(
+                                    "**Objective by Area**\n"
+                                    "- %P > 60%\n"
+                                    "- %SA > 40%\n"
+                                    "- %OTHER < 10%\n\n"
+                                    "**Overall Objective**\n"
+                                    "- %P > 75%\n"
+                                    "- %SA > 40%\n"
+                                    "- %OTHER < 10%"
+                                )
                             )
+
                     else:
                         objective = st.session_state.get("area_objective", "%P")
                         scope_label = st.session_state.get("area_scope", "By area")
@@ -3336,5 +3339,6 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
