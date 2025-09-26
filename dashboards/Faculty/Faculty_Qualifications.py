@@ -857,11 +857,11 @@ with st.sidebar:
         value=st.session_state.get("sens_mode", False),
         key="sens_mode",
         help=(
-            "Esta vista permite hacer un análisis de sensibilidad sin modificar la data original.\n"
+            "Esta vista permite hacer un **análisis de sensibilidad** SIN modificar la data original.\n"
             "\n"
             "Qué puedes hacer:\n"
             "\n"
-            "• Agregar o eliminar cursos (3 créditos) por área o a nivel global (overall).\n"
+            "• Agregar o eliminar cursos por área o a nivel global.\n"
             "\n"
             "• Ver cambios reflejados en tablas y gráficas en tiempo real.\n"
             "\n"
@@ -3359,6 +3359,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
