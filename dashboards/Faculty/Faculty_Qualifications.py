@@ -807,16 +807,33 @@ df_car["_YEAR"] = df_car["_SEM"].map(extract_year_from_period)
 df_car["_IS_INTER"] = df_car["_SEM"].str.lower().str.contains("inter", na=False)
 
 
-# ================== TIMEFRAME FILTERS ==================
+# ================== TIMEFRAME FILTER — FIX INTERSEMESTRAL ==================
+def _norm_sem_val(x: str) -> str:
+    """Normaliza el texto del periodo: recorta, compacta espacios y pasa a minúsculas."""
+    return re.sub(r"\s+", " ", str(x).strip()).casefold()
+
 def mask_timeframe(series_sem: pd.Series, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.Series:
-    s = series_sem.astype(str)
+    """
+    - Semestral:      coincidencia exacta con el código seleccionado (ej. '202520')
+    - Anual:          valores que empiezan por 'YYYY'
+    - Intersemestral: coincidencia EXACTA con 'YYYY Intersemestral'
+                      (tolerante a mayúsculas/minúsculas y a espacios múltiples)
+    """
+    s_norm = series_sem.astype(str).map(_norm_sem_val)
+
     if mode == "Semestral" and selected_sem:
-        return s.str.strip().eq(str(selected_sem))
+        return s_norm.eq(_norm_sem_val(str(selected_sem)))
+
     if mode == "Anual" and selected_year is not None:
-        return s.str.startswith(str(selected_year))
+        yy = str(selected_year)
+        return s_norm.str.startswith(yy)
+
     if mode == "Intersemestral" and selected_year is not None:
-        return s.str.startswith(str(selected_year)) & s.str.lower().str.contains("inter")
-    return pd.Series([True]*len(s), index=series_sem.index)
+        target = _norm_sem_val(f"{selected_year} Intersemestral")
+        return s_norm.eq(target)
+
+    # Sin filtro
+    return pd.Series(True, index=series_sem.index)
 
 
 def filter_df_car(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
@@ -3323,3 +3340,4 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
