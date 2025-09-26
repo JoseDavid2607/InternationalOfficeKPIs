@@ -3172,28 +3172,33 @@ if not SENS.get("on", False):
             )
 
     # ======================= RESULTADOS BUSQUEDA — FULL WIDTH =======================
-    sel_prof   = st.session_state.get("srch_prof", "")
-    sel_course = st.session_state.get("srch_course", "")
-    search_mode = st.session_state.get("srch_mode_right", SM_FAC)
+    sel_prof    = st.session_state.get("srch_prof", "")
+    sel_course  = st.session_state.get("srch_course", "")
+    search_mode = st.session_state.get("srch_mode_right", SM_FAC)  # SM_FAC = "By Faculty", SM_COURSE = "By Course"
     
     has_query = (search_mode == SM_FAC and bool(sel_prof)) or (search_mode == SM_COURSE and bool(sel_course))
     
     if has_query:
         base = df_car_filt_all.copy()
+    
+        # Normalizaciones base
         if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
         if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
-        if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
+        if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()  # <-- FIX AQUÍ
         if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
+    
+        # Enriquecer con ID/AREA por nombre (para mostrar)
         if "_PROF" in base and prof_to_id_map_by_name:
             base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
         if "_PROF" in base and prof_to_area_map:
             base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
     
+        # Filtro según modo
         mask_all = pd.Series(True, index=base.index)
     
         if search_mode == SM_FAC and sel_prof:
             if sel_prof.startswith("ID:"):
-                qid = sel_prof.split(":",1)[1].strip()
+                qid = sel_prof.split(":", 1)[1].strip()
                 m = base["_ID"].astype(str).str.fullmatch(re.escape(qid), case=False) if "_ID" in base else pd.Series(False, index=base.index)
             else:
                 m = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) if "_PROF" in base else pd.Series(False, index=base.index)
@@ -3206,7 +3211,8 @@ if not SENS.get("on", False):
     
         res = base[mask_all].copy()
     
-        periodo_txt = display_label
+        # Resumen
+        periodo_txt = st.session_state.get("sel_label", "Selected")
         if search_mode == SM_FAC and sel_prof:
             if "_CRED" not in res.columns and col_cred_car:
                 res["_CRED"] = pd.to_numeric(res[col_cred_car], errors="coerce").fillna(0.0)
@@ -3223,6 +3229,7 @@ if not SENS.get("on", False):
             profs_cnt = res["_PROF"].nunique() if "_PROF" in res else 0
             st.info(f"**El curso {sel_course} ha sido dictado por {profs_cnt} profesor(es) en {periodo_txt}.**")
     
+        # Salida
         show_cols = {
             "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd_all),
             "Profesor": col_prof_car or col_prof_fd,
@@ -3250,11 +3257,8 @@ if not SENS.get("on", False):
     
         _download_xlsx_button(
             res_out,
-            f"search_results_{_slugify(display_label)}.xlsx",
-            key=f"dl_search_{_slugify(display_label)}",
+            f"search_results_{_slugify(periodo_txt)}.xlsx",
+            key=f"dl_search_{_slugify(periodo_txt)}",
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
-
-
-
