@@ -2137,8 +2137,7 @@ try:
             _download_xlsx_button(export_tbl,
                                   f"credit_sums_{_slugify(dim_label)}_{_slugify(display_label)}.xlsx",
                                   key=f"dl_credit_sums_{_slugify(dim_label)}_{_slugify(display_label)}",
-                                  label="⬇️ Descargar tabla (Excel)")
-            st.markdown(f"#### {display_label}")
+                                  label=f"⬇️ Descargar tabla {display_label} (Excel)")
             st.dataframe(tbl_out.style.format("{:,.0f}"), use_container_width=True)
 
             # ===== Selector propio de dimensión (independiente del gráfico superior) =====
@@ -3238,6 +3237,7 @@ if not SENS.get("on", False):
             label="Descargar resultados (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
