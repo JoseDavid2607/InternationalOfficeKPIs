@@ -2549,32 +2549,44 @@ if not SENS.get("on", False):
             cL, cR = st.columns([7,5], gap="large")
 
             # ==================================================
-            # IZQUIERDA: Tabla detalle + descarga
+            # IZQUIERDA: Tabla detalle + descarga  (SIEMPRE con 2 filtros visibles)
             # ==================================================
             with cL:
-                # Selector de filtro de tabla según métrica
-                if metric_choice == "%P":
-                    table_filter = st.radio(
-                        "", ["All", "Only P", "Only S"], index=0, horizontal=True,
+                # --- 2 grupos de filtros, siempre visibles ---
+                colF1, colF2 = st.columns([1,1])
+                with colF1:
+                    table_filter_ps = st.radio(
+                        "Filter by P/S",
+                        ["All", "Only P", "Only S"],
+                        index=0, horizontal=True,
                         key=f"table_filt_ps_{view}_{opt_val}"
                     )
-                else:
-                    table_filter = st.radio(
-                        "", ["All", "Only SA", "Only OTHER"], index=0, horizontal=True,
+                with colF2:
+                    table_filter_tipo = st.radio(
+                        "Filter by Qualification",
+                        ["All", "Only SA", "Only OTHER"],
+                        index=0, horizontal=True,
                         key=f"table_filt_tipo_{view}_{opt_val}"
                     )
-
+            
+                # --- Base de la tabla y scope por etiqueta seleccionada ---
                 base_tbl = base.copy()
                 if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
                     base_tbl = base_tbl[base_tbl[col_tag] == opt_val].copy()
-
-                if metric_choice == "%P":
-                    if table_filter == "Only P":   base_tbl = base_tbl[base_tbl["_PS"] == "P"]
-                    elif table_filter == "Only S": base_tbl = base_tbl[base_tbl["_PS"] == "S"]
-                else:
-                    if table_filter == "Only SA":        base_tbl = base_tbl[base_tbl["_TIPO"] == "SA"]
-                    elif table_filter == "Only OTHER":   base_tbl = base_tbl[base_tbl["_TIPO"] == "OTHER"]
-
+            
+                # --- Aplicar filtro P/S ---
+                if table_filter_ps == "Only P":
+                    base_tbl = base_tbl[base_tbl["_PS"] == "P"]
+                elif table_filter_ps == "Only S":
+                    base_tbl = base_tbl[base_tbl["_PS"] == "S"]
+            
+                # --- Aplicar filtro TIPO ---
+                if table_filter_tipo == "Only SA":
+                    base_tbl = base_tbl[base_tbl["_TIPO"] == "SA"]
+                elif table_filter_tipo == "Only OTHER":
+                    base_tbl = base_tbl[base_tbl["_TIPO"] == "OTHER"]
+            
+                # --- Selección de columnas amigables ---
                 wanted_map = {
                     "Semestre": col_sem, "Código Materia": col_code, "Créditos": col_cred,
                     "Nombre largo curso": col_name, "Program": col_prog, "Profesor": col_prof,
@@ -2582,25 +2594,35 @@ if not SENS.get("on", False):
                 }
                 present = {nice: col for nice, col in wanted_map.items() if col in base_tbl.columns}
                 out = base_tbl[list(present.values())].rename(columns={v: k for k, v in present.items()})
-
-                display_label = st.session_state.get('sel_label','Selected Period')
+            
+                # --- Título SIEMPRE informativo (incluye “0 courses …” si aplica) ---
+                display_label = st.session_state.get('sel_label', 'Selected Period')
                 n_courses = len(out)
-
-                # Título dinámico
-                def _title_generic(n):
-                    return (f"{n} courses were taught in {display_label}"
-                            if opt_val in {"(TOTAL)", "(All)"} else f"{n} courses of {opt_val} were taught in {display_label}")
-
-                if metric_choice == "%P":
-                    if   table_filter == "Only P":   title = f"{n_courses} courses taught in {display_label} by Participating Faculty"
-                    elif table_filter == "Only S":   title = f"{n_courses} courses taught in {display_label} by Supporting Faculty"
-                    else:                             title = _title_generic(n_courses)
+            
+                # Descriptores legibles de los filtros
+                desc_parts = []
+                if table_filter_ps == "Only P":
+                    desc_parts.append("by Participating Faculty")
+                elif table_filter_ps == "Only S":
+                    desc_parts.append("by Supporting Faculty")
+            
+                if table_filter_tipo == "Only SA":
+                    desc_parts.append("by Scholarly Academics")
+                elif table_filter_tipo == "Only OTHER":
+                    desc_parts.append("by Others")
+            
+                desc_suffix = ""
+                if desc_parts:
+                    # unir con " and "
+                    desc_suffix = " " + " and ".join(desc_parts)
+            
+                if opt_val in {"(TOTAL)", "(All)"}:
+                    title = f"{n_courses} courses were taught in {display_label}{desc_suffix}"
                 else:
-                    if   table_filter == "Only SA":     title = f"{n_courses} courses taught in {display_label} by Scholarly Academics"
-                    elif table_filter == "Only OTHER":  title = f"{n_courses} courses taught in {display_label} by Others"
-                    else:                                title = _title_generic(n_courses)
-
+                    title = f"{n_courses} courses of {opt_val} were taught in {display_label}{desc_suffix}"
+            
                 st.markdown(f"### {title}")
+            
                 _download_xlsx_button(
                     out,
                     f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
@@ -2608,6 +2630,7 @@ if not SENS.get("on", False):
                     label="⬇️ Download table (Excel)"
                 )
                 st.dataframe(out, use_container_width=True, hide_index=True)
+
 
             # ==================================================
             # DERECHA: Donut %P o %TIPO + descarga
@@ -3359,6 +3382,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
