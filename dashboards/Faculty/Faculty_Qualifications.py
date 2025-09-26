@@ -851,7 +851,20 @@ INTER_YEARS = years_with_inter()
 
 with st.sidebar:
     st.markdown("#### Sensitivity analysis")
-    sens_mode = st.toggle("Enable sensitivity mode", value=st.session_state.get("sens_mode", False), key="sens_mode", help="Esta vista permite hacer un análisis de sensibilidad en los datos, sin afectar la información original")
+    sens_help = (
+        "Esta vista permite hacer un **análisis de sensibilidad** sin modificar la data original.\n\n"
+        "Qué puedes hacer:\n"
+        "• Agregar o eliminar cursos (3 créditos) por área o a nivel global (overall).\n"
+        "• Ver cambios reflejados en tablas y gráficas en tiempo real.\n"
+        "• Calcular cuántos cursos se necesitan para alcanzar los objetivos.\n"
+        "• Ver el impacto en puntos porcentuales de ±1 curso (3 cr), por área u overall."
+    )
+    sens_mode = st.toggle(
+        "Enable sensitivity mode",
+        value=st.session_state.get("sens_mode", False),
+        key="sens_mode",
+        help=sens_help
+    )
     sens_member_placeholder = st.empty()
     if "sens_ops" not in st.session_state:
         st.session_state.sens_ops = []
@@ -3339,6 +3352,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
