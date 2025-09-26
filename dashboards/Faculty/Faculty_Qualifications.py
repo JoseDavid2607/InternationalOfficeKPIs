@@ -3175,22 +3175,22 @@ if not SENS.get("on", False):
     sel_prof   = st.session_state.get("srch_prof", "")
     sel_course = st.session_state.get("srch_course", "")
     search_mode = st.session_state.get("srch_mode_right", SM_FAC)
-
+    
     has_query = (search_mode == SM_FAC and bool(sel_prof)) or (search_mode == SM_COURSE and bool(sel_course))
-
+    
     if has_query:
         base = df_car_filt_all.copy()
         if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
         if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
-        if col_code_car: base["_CODE"] = base[col_code_car].astype str).str.strip()  # <-- Asegúrate de no tener typos
+        if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()  # ← FIX
         if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
         if "_PROF" in base and prof_to_id_map_by_name:
             base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
         if "_PROF" in base and prof_to_area_map:
             base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
-
+    
         mask_all = pd.Series(True, index=base.index)
-
+    
         if search_mode == SM_FAC and sel_prof:
             if sel_prof.startswith("ID:"):
                 qid = sel_prof.split(":",1)[1].strip()
@@ -3198,14 +3198,14 @@ if not SENS.get("on", False):
             else:
                 m = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) if "_PROF" in base else pd.Series(False, index=base.index)
             mask_all &= m
-
+    
         if search_mode == SM_COURSE and sel_course:
             m_name = base["_NAME"].str.contains(re.escape(sel_course), case=False, na=False) if "_NAME" in base else pd.Series(False, index=base.index)
             m_code = base["_CODE"].str.contains(re.escape(sel_course), case=False, na=False) if "_CODE" in base else pd.Series(False, index=base.index)
             mask_all &= (m_name | m_code)
-
+    
         res = base[mask_all].copy()
-
+    
         periodo_txt = display_label
         if search_mode == SM_FAC and sel_prof:
             if "_CRED" not in res.columns and col_cred_car:
@@ -3218,11 +3218,11 @@ if not SENS.get("on", False):
                 if len(profs) == 1:
                     prof_label = profs[0]
             st.info(f"**El profesor {prof_label} ha dictado {tot_cr:,.1f} créditos con {tot_courses} cursos en {periodo_txt}.**")
-
+    
         if search_mode == SM_COURSE and sel_course:
             profs_cnt = res["_PROF"].nunique() if "_PROF" in res else 0
             st.info(f"**El curso {sel_course} ha sido dictado por {profs_cnt} profesor(es) en {periodo_txt}.**")
-
+    
         show_cols = {
             "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd_all),
             "Profesor": col_prof_car or col_prof_fd,
@@ -3237,17 +3237,17 @@ if not SENS.get("on", False):
             "Créditos": col_cred_car,
             "Campus": col_campus
         }
-
+    
         data = {}
         out_cols = []
         for nice, col in show_cols.items():
             data[nice] = res[col] if (col in res.columns) else None
             out_cols.append(nice)
-
+    
         res_out = pd.DataFrame(data, columns=out_cols).copy()
         if "Créditos" in res_out.columns:
             res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
-
+    
         _download_xlsx_button(
             res_out,
             f"search_results_{_slugify(display_label)}.xlsx",
@@ -3255,3 +3255,5 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
+
