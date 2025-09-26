@@ -808,40 +808,20 @@ df_car["_IS_INTER"] = df_car["_SEM"].str.lower().str.contains("inter", na=False)
 
 
 # ================== TIMEFRAME FILTERS ==================
-def _is_inter_label(p: str) -> bool:
-    return bool(re.fullmatch(r"\d{4}\s+Intersemestral", str(p).strip()))
-
 def mask_timeframe(series_sem: pd.Series, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.Series:
-    """
-    Filtro unificado por timeframe.
-    - Semestral: etiqueta exacta (e.g., '202510' / '202520' / '2025-20' → normaliza con .eq)
-    - Anual: cualquier registro cuyo texto contenga el año YYYY al inicio
-    - Intersemestral: cualquier texto que contenga el año YYYY (por regex) y la palabra 'inter' en cualquier parte
-      (esto captura variantes como '2025 Inter', 'Intersemestral 2025', '2025-Inter', etc.)
-    """
-    s = series_sem.astype(str).str.strip()
+    s = series_sem.astype(str)
     if mode == "Semestral" and selected_sem:
-        # Igualdad exacta vs la cadena visible del selector
-        return s.eq(str(selected_sem))
-
+        return s.str.strip().eq(str(selected_sem))
     if mode == "Anual" and selected_year is not None:
-        y = str(selected_year)
-        # Acepta cualquier "Semestre/Periodo" que empiece con el año: 'YYYY...' (soporta espacios/guiones)
-        return s.str.startswith(y)
-
+        return s.str.startswith(str(selected_year))
     if mode == "Intersemestral" and selected_year is not None:
-        y = str(selected_year)
-        # Debe contener el año (en cualquier posición) y alguna variante de 'inter'
-        has_year = s.str.contains(rf"(?:^|[^0-9]){re.escape(y)}(?:[^0-9]|$)", case=False, regex=True)
-        has_inter = s.str.contains("inter", case=False, na=False)
-        return has_year & has_inter
-
-    return pd.Series([True] * len(s), index=series_sem.index)
+        return s.str.startswith(str(selected_year)) & s.str.lower().str.contains("inter")
+    return pd.Series([True]*len(s), index=series_sem.index)
 
 
 def filter_df_car(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
     if "_SEM" not in df.columns:
-        sc = _get_any(df, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
+        sc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
         if sc:
             df = df.assign(_SEM=df[sc].astype(str).str.strip())
         else:
@@ -851,8 +831,8 @@ def filter_df_car(df: pd.DataFrame, mode: str, selected_year: int | None, select
 
 
 def filter_df_fd(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
-    semc = _get_any(df, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
-    ycol = _get_any(df, "Year", "Año")
+    semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    ycol = _get_any(df, "Year","Año")
     out = df.copy()
     if semc:
         sem_series = out[semc].astype(str).str.strip()
@@ -883,6 +863,7 @@ with st.sidebar:
         st.number_input("Professors", min_value=1, step=1, value=1, key="sens_count")
         st.number_input("Credits per professor", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
 
+        # ADD (suma)
         if st.button("Add", use_container_width=True, key="sens_add"):
             ops_to_add = []
             member_val = st.session_state.get("sens_member", "All")
@@ -896,6 +877,7 @@ with st.sidebar:
                 st.session_state.sens_ops.extend(ops_to_add)
                 st.success("Added.")
 
+        # REMOVE (resta)
         if st.button("Remove", use_container_width=True, key="sens_remove_btn"):
             ops_to_add = []
             member_val = st.session_state.get("sens_member", "All")
@@ -947,7 +929,6 @@ with st.sidebar:
         sel_sem = None
         sel_label = f"{sel_year} (Annual)"
     else:
-        # Intersemestral: lista años que tienen ANY 'inter' en df_car (fallback a YEARS_ALL)
         default_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
         st.session_state.setdefault("sel_inter_year", default_i)
         sel_year = st.selectbox("Year (Intersemestral)", INTER_YEARS or YEARS_ALL or [default_i], key="sel_inter_year")
@@ -1239,6 +1220,7 @@ def _style_impact_heatmap(df: pd.DataFrame, id_col: str):
         sty[c] = t.map(_interp_color).radd('background-color:')
 
     return sty
+
 
 # ================== PRINCIPAL ==================
 st.markdown("---")
@@ -3329,6 +3311,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
