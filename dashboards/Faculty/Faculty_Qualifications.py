@@ -2974,63 +2974,16 @@ if not SENS.get("on", False):
 
     df_planta = _load_planta_sheet()
 
-    # -------- helpers de columnas en Cartelera & Distribution --------
-    # (Ojo: las columnas se detectan sobre el DF filtrado más abajo)
-    col_sem_fd_all  = _get_any(df_fd, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    col_id_fd_all   = _get_any(df_fd, "ID","ID Nr.","Documento")
-
     # ====== Parámetros de alcance temporal ======
     time_mode    = st.session_state.get("time_mode","Semestral")
     sel_year     = st.session_state.get("sel_year")
     sel_sem_code = st.session_state.get("sel_sem")
 
-    # ====== Filtro para Distribution (ya lo tienes) ======
-    df_fd_sem = filter_df_fd(df_fd, time_mode, sel_year, sel_sem_code).copy()
-
-    # ====== Filtro para Cartelera (NUEVO) ======
-    def filter_df_car(df_car_base: pd.DataFrame,
-                      time_mode: str,
-                      sel_year: int | None,
-                      sel_sem_code: str | int | None) -> pd.DataFrame:
-        if df_car_base is None or df_car_base.empty:
-            return pd.DataFrame()
-        df = df_car_base.copy()
-        semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
-        if not semc:
-            return df
-        # Normaliza el texto del período
-        df["_SEM_SRC"] = df[semc].map(_normalize_sem_str)
-        if time_mode == "Semestral" and sel_sem_code is not None:
-            goal = _normalize_sem_str(sel_sem_code)
-            return df[df["_SEM_SRC"].eq(goal)].copy()
-        elif time_mode == "Intersemestral" and sel_year is not None:
-            goal = f"{int(sel_year)} Intersemestral"
-            # Coincidencia exacta: SOLO intersemestral del año
-            return df[df["_SEM_SRC"].str.fullmatch(re.escape(goal), case=False, na=False)].copy()
-        elif time_mode == "Anual" and sel_year is not None:
-            # Cualquier período del año (10, 20 e Intersemestral)
-            return df[df["_SEM_SRC"].str.contains(str(sel_year), na=False)].copy()
-        return df
-
+    # ====== Aplicar filtros robustos ======
+    df_fd_sem    = filter_df_fd(df_fd, time_mode, sel_year, sel_sem_code).copy()
     df_car_scope = filter_df_car(df_car_filt_all, time_mode, sel_year, sel_sem_code)
 
-    # -------- Detecta columnas sobre el DF DE CARTELERA FILTRADO --------
-    col_prof_car = _get_any(df_car_scope, "Profesor","PROFESOR","Docente")
-    col_cred_car = _get_any(df_car_scope, "Créditos","Creditos","Credits")
-    col_sem_car  = _get_any(df_car_scope, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    col_code_car = _get_any(df_car_scope, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
-    col_name_car = _get_any(df_car_scope, "Nombre largo curso","Nombre Curso","Nombre del curso","Course Name")
-    col_secc_car = _get_any(df_car_scope, "Secc","Sección","Seccion","Section")
-    col_acar_car = _get_any(df_car_scope, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
-    col_field_car= _get_any(df_car_scope, "Field","FIELD","Campo","Área de conocimiento")
-    col_prog_car = _get_any(df_car_scope, "Program","PROGRAM","program","Materia")
-    col_campus   = _get_any(df_car_scope, "Campus","CAMPUS","Sede")
-
-    # Créditos calculados sobre el DF filtrado
-    if col_cred_car and "_CRED" not in df_car_scope.columns:
-        df_car_scope["_CRED"] = pd.to_numeric(df_car_scope[col_cred_car], errors="coerce").fillna(0.0)
-
-    # --- Normalizaciones base para enrichment (después de filtrar df_fd_sem) ---
+    # -------- Distribution (para enriquecer con ID/AREA/TIPO/P-S y FT/PT) --------
     col_prof_fd = _get_any(df_fd_sem, "Profesor","PROFESOR","Docente","Nombre")
     col_id_fd   = _get_any(df_fd_sem, "ID","ID Nr.","Documento")
     col_area_fd = _get_any(df_fd_sem, "AREA_PROFESOR","Area_Profesor","Area Profesor","Área","Area")
@@ -3058,6 +3011,21 @@ if not SENS.get("on", False):
 
     # Conjunto de IDs PLANTA (cruce por ID)
     planta_ids = set(df_fd_sem.loc[df_fd_sem["_FTPT"] == "PLANTA", "_ID"].dropna().astype(str).unique().tolist())
+
+    # -------- helpers de columnas en Cartelera (sobre df_car_scope) --------
+    col_prof_car = _get_any(df_car_scope, "Profesor","PROFESOR","Docente")
+    col_cred_car = _get_any(df_car_scope, "Créditos","Creditos","Credits")
+    col_sem_car  = _get_any(df_car_scope, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    col_code_car = _get_any(df_car_scope, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
+    col_name_car = _get_any(df_car_scope, "Nombre largo curso","Nombre Curso","Nombre del curso","Course Name")
+    col_secc_car = _get_any(df_car_scope, "Secc","Sección","Seccion","Section")
+    col_acar_car = _get_any(df_car_scope, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
+    col_field_car= _get_any(df_car_scope, "Field","FIELD","Campo","Área de conocimiento")
+    col_prog_car = _get_any(df_car_scope, "Program","PROGRAM","program","Materia")
+    col_campus   = _get_any(df_car_scope, "Campus","CAMPUS","Sede")
+
+    if col_cred_car and "_CRED" not in df_car_scope.columns:
+        df_car_scope["_CRED"] = pd.to_numeric(df_car_scope[col_cred_car], errors="coerce").fillna(0.0)
 
     # ========= Controles de “Top / Zero” (izquierda) + Buscador (derecha) =========
     opt_highlight = st.radio(
@@ -3126,6 +3094,9 @@ if not SENS.get("on", False):
                 st.info("Load 'BD PLANTA 2020-2025' to compute FT with 0 courses.")
             else:
                 # Alcance temporal para PLANTA y DISTRIBUTION
+                col_sem_fd_all = _get_any(df_fd, "Semestre","Periodo","Periodo Académico","Periodo academico")
+                col_id_fd_all  = _get_any(df_fd, "ID","ID Nr.","Documento")
+
                 if time_mode == "Semestral" and sel_sem_code is not None:
                     df_ft = df_planta[df_planta[col_period_pl].astype(str).str.strip().eq(str(sel_sem_code))].copy()
                     alcance_txt = str(sel_sem_code)
@@ -3196,14 +3167,10 @@ if not SENS.get("on", False):
         # Base: Cartelera YA FILTRADA (alcance de tiempo)
         base = df_car_scope.copy()
 
-        if col_prof_car:
-            base["_PROF"] = base[col_prof_car].astype(str).str.strip()
-        if col_sem_car:
-            base["_SEM"] = base[col_sem_car].astype(str).str.strip()
-        if col_code_car:
-            base["_CODE"] = base[col_code_car].astype(str).str.strip()
-        if col_name_car:
-            base["_NAME"] = base[col_name_car].astype(str).str.strip()
+        if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
+        if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
+        if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
+        if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
 
         # Enriquecer con ID/AREA por nombre (para mostrar)
         if "_PROF" in base and prof_to_id_map_by_name:
@@ -3272,15 +3239,11 @@ if not SENS.get("on", False):
         # Base: Cartelera YA FILTRADA (no sumar periodos fuera del alcance)
         base = df_car_scope.copy()
 
-        # Normalizaciones base (cada una en su propia línea)
-        if col_prof_car:
-            base["_PROF"] = base[col_prof_car].astype(str).str.strip()
-        if col_sem_car:
-            base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
-        if col_code_car:
-            base["_CODE"] = base[col_code_car].astype(str).str.strip()
-        if col_name_car:
-            base["_NAME"] = base[col_name_car].astype(str).str.strip()
+        # Normalizaciones base
+        if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
+        if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
+        if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
+        if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
 
         # Enriquecer con ID/AREA por nombre (para mostrar)
         if "_PROF" in base and prof_to_id_map_by_name:
@@ -3325,6 +3288,9 @@ if not SENS.get("on", False):
             st.info(f"**The course has been taught by {profs_cnt} professor{'s' if profs_cnt!=1 else ''} in {periodo_txt}.**")
 
         # Salida
+        col_sem_fd_all = _get_any(df_fd, "Semestre","Periodo","Periodo Académico","Periodo academico")
+        col_id_fd_all  = _get_any(df_fd, "ID","ID Nr.","Documento")
+
         show_cols = {
             "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd_all),
             "Profesor": col_prof_car or col_prof_fd,
@@ -3357,4 +3323,3 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
-
