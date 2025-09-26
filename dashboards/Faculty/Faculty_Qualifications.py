@@ -3156,34 +3156,46 @@ if not SENS.get("on", False):
     with right:
         # Base: Cartelera YA FILTRADA (alcance de tiempo)
         base = df_car_scope.copy()
-
+    
         if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
         if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
         if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
         if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
-
-        # Enriquecer con ID/AREA por nombre (para mostrar)
+    
+        # Enriquecer con ID (para cruzar con PLANTA) y Área (solo visual)
         if "_PROF" in base and prof_to_id_map_by_name:
-            base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
+            base["_ID_FROM_NAME"] = base["_PROF"].map(prof_to_id_map_by_name)
         if "_PROF" in base and prof_to_area_map:
             base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
-
-        # Opciones autocompletar
-        prof_opts = [""] + (sorted(base["_PROF"].dropna().unique().tolist()) if "_PROF" in base else [])
-        if "_ID" in base:
-            prof_opts = [""] + sorted(set(prof_opts[1:] + [f"ID:{v}" for v in base["_ID"].dropna().astype(str).tolist()]))
-
-        if "_NAME" in base and base["_NAME"].notna().any():
-            course_opts = sorted(base["_NAME"].dropna().unique().tolist())
-        elif "_CODE" in base:
-            course_opts = sorted(base["_CODE"].dropna().unique().tolist())
+    
+        # ===== Opciones autocompletar =====
+        # Profes (por timeframe). Si "Only Full-time" ON, limitar a PLANTA
+        only_ft_toggle = bool(st.session_state.get("top_only_ft", False))
+        if "_PROF" in base:
+            if only_ft_toggle and planta_ids:
+                prof_opts_core = (
+                    base.loc[base["_ID_FROM_NAME"].astype(str).isin(planta_ids), "_PROF"]
+                    .dropna().unique().tolist()
+                )
+            else:
+                prof_opts_core = base["_PROF"].dropna().unique().tolist()
+            prof_opts_core = sorted(prof_opts_core)
         else:
-            course_opts = []
-        course_opts = [""] + course_opts
-
+            prof_opts_core = []
+        prof_opts = [""] + prof_opts_core  # primer elemento vacío
+    
+        # Cursos (por timeframe) — sin filtrar por PLANTA (solo aplica en modo Faculty)
+        if "_NAME" in base and base["_NAME"].notna().any():
+            course_opts_core = sorted(base["_NAME"].dropna().unique().tolist())
+        elif "_CODE" in base:
+            course_opts_core = sorted(base["_CODE"].dropna().unique().tolist())
+        else:
+            course_opts_core = []
+        course_opts = [""] + course_opts_core
+    
         # Espaciador para alinear hacia abajo
         st.markdown("<div style='min-height:140px'></div>", unsafe_allow_html=True)
-
+    
         # Callback: al cambiar el modo, limpiar el otro selector
         def _on_mode_change():
             mode = st.session_state.get("srch_mode_right", SM_FAC)
@@ -3191,7 +3203,7 @@ if not SENS.get("on", False):
                 st.session_state["srch_course"] = ""
             else:
                 st.session_state["srch_prof"] = ""
-
+    
         # Selector de modo pegado al buscador
         search_mode = st.radio(
             "Search...",
@@ -3199,11 +3211,11 @@ if not SENS.get("on", False):
             index=0, horizontal=True, key="srch_mode_right",
             on_change=_on_mode_change
         )
-
+    
         # Control único a todo el ancho según modo
         if search_mode == SM_FAC:
             st.selectbox(
-                "Faculty Name or ID",
+                "Faculty Name",
                 options=prof_opts,
                 index=(prof_opts.index(st.session_state.get("srch_prof",""))
                        if st.session_state.get("srch_prof","") in prof_opts else 0),
@@ -3217,74 +3229,72 @@ if not SENS.get("on", False):
                        if st.session_state.get("srch_course","") in course_opts else 0),
                 key="srch_course"
             )
-
+    
     # ======================= RESULTADOS BUSQUEDA — FULL WIDTH =======================
     sel_prof    = st.session_state.get("srch_prof", "")
     sel_course  = st.session_state.get("srch_course", "")
     search_mode = st.session_state.get("srch_mode_right", SM_FAC)  # SM_FAC = "By Faculty", SM_COURSE = "By Course"
-
+    
     has_query = (search_mode == SM_FAC and bool(sel_prof)) or (search_mode == SM_COURSE and bool(sel_course))
-
+    
     if has_query:
         # Base: Cartelera YA FILTRADA (no sumar periodos fuera del alcance)
         base = df_car_scope.copy()
-
+    
         # Normalizaciones base
         if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
         if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
         if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
         if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
-
-        # Enriquecer con ID/AREA por nombre (para mostrar)
+    
+        # Enriquecer con ID/AREA por nombre (para filtrar PLANTA y mostrar)
         if "_PROF" in base and prof_to_id_map_by_name:
-            base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
+            base["_ID_FROM_NAME"] = base["_PROF"].map(prof_to_id_map_by_name)
         if "_PROF" in base and prof_to_area_map:
             base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
-
+    
         # Filtro según modo
         mask_all = pd.Series(True, index=base.index)
-
+    
         if search_mode == SM_FAC and sel_prof:
-            if sel_prof.startswith("ID:"):
-                qid = sel_prof.split(":", 1)[1].strip()
-                m = base["_ID"].astype(str).str.fullmatch(re.escape(qid), case=False) if "_ID" in base else pd.Series(False, index=base.index)
-            else:
-                m = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) if "_PROF" in base else pd.Series(False, index=base.index)
-            mask_all &= m
-
+            # Solo por nombre (sin ID)
+            m_name = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) if "_PROF" in base else pd.Series(False, index=base.index)
+            mask_all &= m_name
+    
+            # Si "Only Full-time" está activo, limitar a PLANTA
+            only_ft_toggle = bool(st.session_state.get("top_only_ft", False))
+            if only_ft_toggle and planta_ids:
+                m_ft = base["_ID_FROM_NAME"].astype(str).isin(planta_ids) if "_ID_FROM_NAME" in base else pd.Series(False, index=base.index)
+                mask_all &= m_ft
+    
         if search_mode == SM_COURSE and sel_course:
             m_name = base["_NAME"].str.contains(re.escape(sel_course), case=False, na=False) if "_NAME" in base else pd.Series(False, index=base.index)
             m_code = base["_CODE"].str.contains(re.escape(sel_course), case=False, na=False) if "_CODE" in base else pd.Series(False, index=base.index)
             mask_all &= (m_name | m_code)
-
+    
         res = base[mask_all].copy()
-
+    
         # Resumen
-        periodo_txt = display_label
+        display_label = st.session_state.get("sel_label", "Selected")
         if search_mode == SM_FAC and sel_prof:
             if "_CRED" not in res.columns and col_cred_car:
                 res["_CRED"] = pd.to_numeric(res[col_cred_car], errors="coerce").fillna(0.0)
             tot_cr = float(res.get("_CRED", pd.Series([0]*len(res))).sum())
             tot_courses = int(res.shape[0])
-            prof_label = sel_prof
-            if sel_prof.startswith("ID:") and "_PROF" in res and not res.empty:
-                profs = sorted(res["_PROF"].dropna().unique().tolist())
-                if len(profs) == 1:
-                    prof_label = profs[0]
-            st.info(f"**The professor has taught {tot_cr:,.1f} credits in {tot_courses} course{'s' if tot_courses!=1 else ''} in {periodo_txt}.**")
-
+            st.info(f"**The professor has taught {tot_cr:,.1f} credits in {tot_courses} course{'s' if tot_courses!=1 else ''} in {display_label}.**")
+    
         if search_mode == SM_COURSE and sel_course:
             profs_cnt = res["_PROF"].nunique() if "_PROF" in res else 0
-            st.info(f"**The course has been taught by {profs_cnt} professor{'s' if profs_cnt!=1 else ''} in {periodo_txt}.**")
-
+            st.info(f"**The course has been taught by {profs_cnt} professor{'s' if profs_cnt!=1 else ''} in {display_label}.**")
+    
         # Salida
         col_sem_fd_all = _get_any(df_fd, "Semestre","Periodo","Periodo Académico","Periodo academico")
         col_id_fd_all  = _get_any(df_fd, "ID","ID Nr.","Documento")
-
+    
         show_cols = {
             "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd_all),
             "Profesor": col_prof_car or col_prof_fd,
-            "ID": "_ID" if "_ID" in res else col_id_fd_all,
+            "ID": "_ID_FROM_NAME" if "_ID_FROM_NAME" in res else col_id_fd_all,
             "AREA_PROFESOR": "_AREA_PROF" if "_AREA_PROF" in res else _get_any(df_fd, "AREA_PROFESOR","Area_Profesor","Area Profesor","Área","Area"),
             "Código Materia": col_code_car,
             "Nombre largo curso": col_name_car,
@@ -3295,26 +3305,21 @@ if not SENS.get("on", False):
             "Créditos": col_cred_car,
             "Campus": col_campus
         }
-
+    
         data = {}
         out_cols = []
         for nice, col in show_cols.items():
             data[nice] = res[col] if (col in res.columns) else None
             out_cols.append(nice)
-
+    
         res_out = pd.DataFrame(data, columns=out_cols).copy()
         if "Créditos" in res_out.columns:
             res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
-
+    
         _download_xlsx_button(
             res_out,
-            f"search_results_{_slugify(periodo_txt)}.xlsx",
-            key=f"dl_search_{_slugify(periodo_txt)}",
+            f"search_results_{_slugify(display_label)}.xlsx",
+            key=f"dl_search_{_slugify(display_label)}",
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
-
-
-
-
-
