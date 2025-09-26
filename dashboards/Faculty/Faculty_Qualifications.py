@@ -2359,12 +2359,83 @@ except Exception:
     # Evita romper la app si algo falla en este bloque
     pass
 
+# ==========================================================
+# HELPERS (únicos en este módulo, sin duplicados)
+# ==========================================================
+def _extract_year(s):
+    m = re.search(r"(19|20)\d{2}", str(s) if s is not None else "")
+    return int(m.group(0)) if m else None
+
+def _normalize_sem_str(x: str) -> str:
+    return str(x).strip().replace("\xa0", " ")
+
+def _ensure_pid(df: pd.DataFrame) -> pd.DataFrame:
+    """Agrega _PID (persona) usando ID; si no hay, usa nombre; si no, índice."""
+    out = df.copy()
+    idc   = _get_any(out, "ID","ID Nr.","Documento")
+    namec = _get_any(out, "Profesor","PROFESOR","Docente","Nombre")
+    if idc and idc in out:
+        out["_PID"] = out[idc].astype(str).str.strip()
+    elif namec and namec in out:
+        out["_PID"] = out[namec].astype(str).str.strip().str.lower()
+    else:
+        out["_PID"] = out.index.astype(str)
+    return out
+
+def _norm_gender(x: str) -> str:
+    v = str(x).strip().lower()
+    if v in {"male","masculino","m","hombre"}:   return "Male"
+    if v in {"female","femenino","f","mujer"}:   return "Female"
+    return "Other"
+
+def _is_doctoral(x: str) -> bool:
+    v = str(x).strip().lower().replace(".", "")
+    return ("phd" in v) or ("doctor" in v)
+
+def _norm_ftpt(x: str) -> str:
+    v = str(x).strip().upper()
+    if "PLANTA"  in v: return "PLANTA"
+    if "CATEDRA" in v or "CÁTEDRA" in v: return "CÁTEDRA"
+    return ""
+
+def filter_df_fd(df_fd_base: pd.DataFrame, time_mode: str, sel_year: int | None, sel_sem_code: str | int | None) -> pd.DataFrame:
+    """Filtra Faculty Distribution según alcance temporal actual."""
+    if df_fd_base is None or df_fd_base.empty:
+        return pd.DataFrame()
+    df = df_fd_base.copy()
+    semc_fd = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    if not semc_fd:
+        return df
+    df["_SEM_SRC"] = df[semc_fd].map(_normalize_sem_str)
+    df["_YEARX"]   = df["_SEM_SRC"].map(_extract_year).astype("Int64")
+    if time_mode == "Semestral" and sel_sem_code is not None:
+        goal = _normalize_sem_str(sel_sem_code)
+        return df[df["_SEM_SRC"].eq(goal)].copy()
+    if time_mode == "Intersemestral" and sel_year is not None:
+        goal = f"{int(sel_year)} Intersemestral"
+        return df[df["_SEM_SRC"].str.fullmatch(re.escape(goal), case=False, na=False)].copy()
+    if time_mode == "Anual" and sel_year is not None:
+        return df[df["_YEARX"] == int(sel_year)].copy()
+    return df
+
+def _first_map(df_, key_col, val_col):
+    if key_col not in df_ or val_col not in df_:
+        return {}
+    tmp = df_[[key_col, val_col]].dropna()
+    return tmp.drop_duplicates(subset=[key_col]).set_index(key_col)[val_col].to_dict()
+
+def _pick(df_, *cands):
+    c = _get_any(df_, *cands)
+    return df_[c] if c else pd.Series([None]*len(df_), index=df_.index)
+
+
 # --------------------------
 # DETAIL TABLE + DONUT + SEARCH
 # (Oculto automáticamente cuando Sensitivity mode está activo)
 # --------------------------
 if not SENS.get("on", False):
     try:
+        # ---------- Config vista ----------
         cfg = {
             "By Academic Area": {"key": "_AREA_filter",  "col": "_AREA", "label": "area",    "metric_key": "metric__AREA"},
             "By Field":         {"key": "_FIELD_filter", "col": "_FIELD","label": "campo",   "metric_key": "metric__FIELD"},
@@ -2373,10 +2444,13 @@ if not SENS.get("on", False):
         view = st.session_state.view_mode
 
         if view in cfg:
-            key = cfg[view]["key"]; col_tag = cfg[view]["col"]; label = cfg[view]["label"]
-            metric_choice = st.session_state.get(cfg[view]["metric_key"], "%P")
-            opt_val = st.session_state.get(key, "(All)")
+            key        = cfg[view]["key"]
+            col_tag    = cfg[view]["col"]
+            metric_key = cfg[view]["metric_key"]
+            metric_choice = st.session_state.get(metric_key, "%P")
+            opt_val    = st.session_state.get(key, "(All)")
 
+            # ---------- Base Cartelera enriquecida mínima ----------
             base = df_car_filt_all.copy()
             if "_AREA"  not in base.columns and col_areaCourse: base["_AREA"]  = base[col_areaCourse].astype(str).str.strip()
             if "_FIELD" not in base.columns and col_field:      base["_FIELD"] = base[col_field].astype(str).str.strip()
@@ -2387,51 +2461,57 @@ if not SENS.get("on", False):
 
             cL, cR = st.columns([7,5], gap="large")
 
-            # -------- Tabla detalle (izquierda) --------
+            # ==================================================
+            # IZQUIERDA: Tabla detalle + descarga
+            # ==================================================
             with cL:
-                base_tbl = base.copy()
-                if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
-                    base_tbl = base_tbl[base_tbl[col_tag] == opt_val].copy()
-
+                # Selector de filtro de tabla según métrica
                 if metric_choice == "%P":
                     table_filter = st.radio(
                         "", ["All", "Only P", "Only S"], index=0, horizontal=True,
                         key=f"table_filt_ps_{view}_{opt_val}"
                     )
-                    if table_filter == "Only P":   base_tbl = base_tbl[base_tbl["_PS"] == "P"]
-                    elif table_filter == "Only S": base_tbl = base_tbl[base_tbl["_PS"] == "S"]
                 else:
                     table_filter = st.radio(
                         "", ["All", "Only SA", "Only OTHER"], index=0, horizontal=True,
                         key=f"table_filt_tipo_{view}_{opt_val}"
                     )
-                    if table_filter == "Only SA":      base_tbl = base_tbl[base_tbl["_TIPO"] == "SA"]
-                    elif table_filter == "Only OTHER": base_tbl = base_tbl[base_tbl["_TIPO"] == "OTHER"]
+
+                base_tbl = base.copy()
+                if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
+                    base_tbl = base_tbl[base_tbl[col_tag] == opt_val].copy()
+
+                if metric_choice == "%P":
+                    if table_filter == "Only P":   base_tbl = base_tbl[base_tbl["_PS"] == "P"]
+                    elif table_filter == "Only S": base_tbl = base_tbl[base_tbl["_PS"] == "S"]
+                else:
+                    if table_filter == "Only SA":        base_tbl = base_tbl[base_tbl["_TIPO"] == "SA"]
+                    elif table_filter == "Only OTHER":   base_tbl = base_tbl[base_tbl["_TIPO"] == "OTHER"]
 
                 wanted_map = {
                     "Semestre": col_sem, "Código Materia": col_code, "Créditos": col_cred,
                     "Nombre largo curso": col_name, "Program": col_prog, "Profesor": col_prof,
                     "Area del curso": col_areaCourse, "Field": col_field, "TIPO": col_tipoC, "P/S": col_ps_C,
                 }
-                present_tbl = {k: v for k, v in wanted_map.items() if v in base_tbl.columns}
-                out = base_tbl[list(present_tbl.values())].rename(columns={v: k for k, v in present_tbl.items()})
+                present = {nice: col for nice, col in wanted_map.items() if col in base_tbl.columns}
+                out = base_tbl[list(present.values())].rename(columns={v: k for k, v in present.items()})
 
                 display_label = st.session_state.get('sel_label','Selected Period')
                 n_courses = len(out)
 
                 # Título dinámico
+                def _title_generic(n):
+                    return (f"{n} courses were taught in {display_label}"
+                            if opt_val in {"(TOTAL)", "(All)"} else f"{n} courses of {opt_val} were taught in {display_label}")
+
                 if metric_choice == "%P":
-                    if table_filter == "Only P":   title = f"{n_courses} courses taught in {display_label} by Participating Faculty"
-                    elif table_filter == "Only S": title = f"{n_courses} courses taught in {display_label} by Supporting Faculty"
-                    else:
-                        title = (f"{n_courses} courses were taught in {display_label}"
-                                 if opt_val in {"(TOTAL)", "(All)"} else f"{n_courses} courses of {opt_val} were taught in {display_label}")
+                    if   table_filter == "Only P":   title = f"{n_courses} courses taught in {display_label} by Participating Faculty"
+                    elif table_filter == "Only S":   title = f"{n_courses} courses taught in {display_label} by Supporting Faculty"
+                    else:                             title = _title_generic(n_courses)
                 else:
-                    if table_filter == "Only SA":       title = f"{n_courses} courses taught in {display_label} by Scholarly Academics"
+                    if   table_filter == "Only SA":     title = f"{n_courses} courses taught in {display_label} by Scholarly Academics"
                     elif table_filter == "Only OTHER":  title = f"{n_courses} courses taught in {display_label} by Others"
-                    else:
-                        title = (f"{n_courses} courses were taught in {display_label}"
-                                 if opt_val in {"(TOTAL)", "(All)"} else f"{n_courses} courses of {opt_val} were taught in {display_label}")
+                    else:                                title = _title_generic(n_courses)
 
                 st.markdown(f"### {title}")
                 _download_xlsx_button(
@@ -2442,17 +2522,21 @@ if not SENS.get("on", False):
                 )
                 st.dataframe(out, use_container_width=True, hide_index=True)
 
-            # -------- Donut (derecha) --------
+            # ==================================================
+            # DERECHA: Donut %P o %TIPO + descarga
+            # ==================================================
             with cR:
                 st.markdown("<div style='height: 110px'></div>", unsafe_allow_html=True)
 
+                # Aggregates
                 agg_tipo = (base.groupby([col_tag,"_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0)) if col_tag in base.columns else pd.DataFrame()
                 for k in ["SA","PA","SP","IP","OTHER"]:
                     if k not in agg_tipo.columns: agg_tipo[k] = 0.0
                 agg_ps = (base.groupby([col_tag,"_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0)) if col_tag in base.columns else pd.DataFrame()
                 for k in ["P","S"]:
                     if k not in agg_ps.columns: agg_ps[k] = 0.0
-                agg_ps = agg_ps[["P","S"]]; agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
+                agg_ps = agg_ps[["P","S"]]
+                agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
 
                 if opt_val in {"(TOTAL)", "(All)"} or col_tag not in base.columns:
                     p_val, s_val = float(agg_ps["P"].sum() if not agg_ps.empty else 0.0), float(agg_ps["S"].sum() if not agg_ps.empty else 0.0)
@@ -2473,7 +2557,7 @@ if not SENS.get("on", False):
                     other = float(row_q["OTHER"].sum() if not row_q.empty else 0.0)
                     title_suffix = opt_val
 
-                donut_h   = 360
+                donut_h = 360
                 thrP = 75.0 if title_suffix == "TOTAL" else 60.0
 
                 if metric_choice == "%P":
@@ -2489,30 +2573,29 @@ if not SENS.get("on", False):
                         legend=dict(orientation="v", yanchor="bottom", y=0.4, xanchor="center", x=0.9)
                     )
                     st.plotly_chart(fig, use_container_width=True)
+
                     donut_df = pd.DataFrame({"Group": ["P","S"], "Credits": [p_val, s_val]})
                     donut_df["Percent"] = (donut_df["Credits"] / max(1e-9, donut_df["Credits"].sum()))*100
                     _download_xlsx_button(
                         donut_df,
-                        f"chart_donut_PS_{_slugify(title_suffix)}_{_slugify(display_label)}.xlsx",
-                        key=f"dl_donut_ps_{_slugify(title_suffix)}_{_slugify(display_label)}",
+                        f"chart_donut_PS_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                        key=f"dl_donut_ps_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                         label="⬇️ Datos de la gráfica (Excel)"
                     )
                 else:
-                    labels_all  = ["SA", "PA", "SP", "IP", "OTHER"]
-                    values_all  = [sa, pa, sp, ip, other]
-                    filtered    = [(l, v) for l, v in zip(labels_all, values_all) if v > 0]
+                    labels_all = ["SA", "PA", "SP", "IP", "OTHER"]
+                    values_all = [sa, pa, sp, ip, other]
+                    filtered   = [(l, v) for l, v in zip(labels_all, values_all) if v > 0]
                     if filtered:
                         labels = [l for l, _ in filtered]; values = [v for _, v in filtered]
                         den = sum(values_all) or 1.0
                         sa_share    = sa/den*100
                         other_share = other/den*100
-                        color_map = {}
-                        for l in labels:
-                            if l == "SA": color_map[l] = ("#F5A3A3" if sa_share < 40.0 else MINT)
-                            elif l == "OTHER": color_map[l] = ("#F5A3A3" if other_share > 10.0 else "#6B7280")
-                            else: color_map[l] = "#B0B0B0"
+                        cmap = {l: "#B0B0B0" for l in labels}
+                        if "SA" in labels:    cmap["SA"]    = ("#F5A3A3" if sa_share   < 40.0 else MINT)
+                        if "OTHER" in labels: cmap["OTHER"] = ("#F5A3A3" if other_share > 10.0 else "#6B7280")
 
-                        fig = px.pie(names=labels, values=values, color=labels, color_discrete_map=color_map, hole=0.55)
+                        fig = px.pie(names=labels, values=values, color=labels, color_discrete_map=cmap, hole=0.55)
                         fig.update_traces(textinfo="percent+label", sort=False, hovertemplate="%{label}: %{percent:.1%}<extra></extra>")
                         title_txt = "%SA Distribution" if metric_choice == "%SA" else "%OTHER Distribution"
                         fig.update_layout(
@@ -2521,12 +2604,13 @@ if not SENS.get("on", False):
                             legend=dict(orientation="v", yanchor="bottom", y=0.4, xanchor="center", x=0.9)
                         )
                         st.plotly_chart(fig, use_container_width=True)
+
                         donut_df = pd.DataFrame({"Type": labels_all, "Credits": values_all})
                         donut_df["Percent"] = (donut_df["Credits"] / max(1e-9, donut_df["Credits"].sum()))*100
                         _download_xlsx_button(
                             donut_df,
-                            f"chart_donut_TIPO_{_slugify(title_suffix)}_{_slugify(display_label)}.xlsx",
-                            key=f"dl_donut_tipo_{_slugify(title_suffix)}_{_slugify(display_label)}",
+                            f"chart_donut_TIPO_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                            key=f"dl_donut_tipo_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                             label="⬇️ Datos de la gráfica (Excel)"
                         )
                     else:
@@ -2534,43 +2618,33 @@ if not SENS.get("on", False):
     except Exception:
         pass
 
+
 # --------------------------
-# COUNTS — PIVOT / BSQ
-# (Ahora oculto cuando Sensitivity mode está activo)
+# COUNTS — PIVOT / BSQ (Oculto cuando Sensitivity mode está activo)
 # --------------------------
 if not SENS.get("on", False):
     st.markdown("---")
     st.subheader(f"Participating vs Supporting — {st.session_state.get('sel_label','Selected')}")
 
-    # ===== helpers de tiempo y deduplicación (uso local) =====
-    def _extract_year(s):
-        m = re.search(r"(19|20)\d{2}", str(s) if s is not None else "")
-        return int(m.group(0)) if m else None
-
+    # ------- Base Faculty Distribution filtrada -------
     def _filter_fd_scope(df_fd_raw: pd.DataFrame) -> pd.DataFrame:
-        """
-        Devuelve Faculty Distribution filtrada al alcance temporal actual:
-        - Semestral: solo el semestre seleccionado
-        - Anual: todas las filas del año seleccionado (10, 20 e Intersemestral)
-        - Intersemestral: solo el 'YYYY Intersemestral'
-        (La deduplicación por persona se hace luego por tabla)
-        """
         if df_fd_raw.empty:
             return df_fd_raw.copy()
         out = df_fd_raw.copy()
         semc = _get_any(out, "Semestre","Periodo","Periodo Académico","Periodo academico")
         if semc:
-            out["_SEM_SRC"] = out[semc].astype(str).str.strip()
-            out["_YEARX"] = out["_SEM_SRC"].map(_extract_year).astype("Int64")
-            out["_IS_INTER"] = out["_SEM_SRC"].str.lower().str.contains("inter", na=False)
+            out["_SEM_SRC"]   = out[semc].astype(str).str.strip()
+            out["_YEARX"]     = out["_SEM_SRC"].map(_extract_year).astype("Int64")
+            out["_IS_INTER"]  = out["_SEM_SRC"].str.lower().str.contains("inter", na=False)
         else:
-            out["_SEM_SRC"] = ""
-            out["_YEARX"] = pd.Series(dtype="Int64")
+            out["_SEM_SRC"]  = ""
+            out["_YEARX"]    = pd.Series(dtype="Int64")
             out["_IS_INTER"] = False
 
         time_mode = st.session_state.get("time_mode", "Semestral")
-        sel_sem = st.session_state.get("sel_sem")
-        sel_year = st.session_state.get("sel_year")
+        sel_sem   = st.session_state.get("sel_sem")
+        sel_year  = st.session_state.get("sel_year")
+
         if time_mode == "Semestral" and sel_sem is not None:
             return out[out["_SEM_SRC"].eq(str(sel_sem))].copy()
         if time_mode == "Intersemestral" and sel_year is not None:
@@ -2579,48 +2653,17 @@ if not SENS.get("on", False):
             return out[out["_YEARX"] == int(sel_year)].copy()
         return out
 
-    def _ensure_pid(df: pd.DataFrame) -> pd.DataFrame:
-        """Agrega _PID (persona) usando ID; de no haberlo, usa nombre."""
-        out = df.copy()
-        idc = _get_any(out, "ID","ID Nr.","Documento")
-        namec = _get_any(out, "Profesor","PROFESOR","Docente","Nombre")
-        if idc and idc in out:
-            out["_PID"] = out[idc].astype(str).str.strip()
-        elif namec and namec in out:
-            out["_PID"] = out[namec].astype(str).str.strip().str.lower()
-        else:
-            out["_PID"] = out.index.astype(str)  # fallback
-        return out
+    df_fd_scope = _filter_fd_scope(df_fd)
+    df_fd_f = df_fd_scope.copy()
 
-    # ------------- base Faculty Distribution filtrada al alcance temporal -------------
-    df_fd_scope = _filter_fd_scope(df_fd)  # <- usa df_fd global cargado
-    df_fd_f = df_fd_scope.copy()           # mantenemos el nombre esperado en el resto
-
-    # -------- columnas base en Faculty Distribution --------
+    # -------- columnas base y extra --------
     if col_ps_fd:   df_fd_f["_PS"]   = _norm_str(df_fd_f[col_ps_fd]).map(normalize_ps)
     if col_area_fd: df_fd_f["_AREA"] = df_fd_f[col_area_fd].astype(str).str.strip()
     if col_tipo_fd: df_fd_f["_TIPO"] = _norm_str(df_fd_f[col_tipo_fd]).map(normalize_tipo)
 
-    # -------- columnas extra para BSQ --------
     col_genero = _get_any(df_fd_f, "GÉNERO", "GENERO", "Genero", "Gender")
     col_degree = _get_any(df_fd_f, "Highest Degree", "HighestDegree", "DEGREE", "Grado máximo", "Grado")
     col_ftpt   = _get_any(df_fd_f, "PLANTA_CATEDRA", "Planta_Catedra", "Planta/Catedra", "Full/Part")
-
-    def _norm_gender(x: str) -> str:
-        v = str(x).strip().lower()
-        if v in {"male","masculino","m","hombre"}:   return "Male"
-        if v in {"female","femenino","f","mujer"}:   return "Female"
-        return "Other"
-
-    def _is_doctoral(x: str) -> bool:
-        v = str(x).strip().lower().replace(".", "")
-        return ("phd" in v) or ("doctor" in v)
-
-    def _norm_ftpt(x: str) -> str:
-        v = str(x).strip().upper()
-        if "PLANTA" in v:                    return "PLANTA"     # Full-time
-        if "CATEDRA" in v or "CÁTEDRA" in v: return "CÁTEDRA"    # Part-time
-        return ""
 
     # --------- Controles en una sola fila (3 botones) ----------
     pivot_mode = st.radio(
@@ -2639,18 +2682,14 @@ if not SENS.get("on", False):
         if not all([col_genero, col_degree, col_ftpt]):
             st.error("Missing columns in 'Faculty Distribution' for BSQ tables: 'GÉNERO', 'Highest Degree', and/or 'PLANTA_CATEDRA'.")
         else:
-            # Normalizaciones + persona
-            df_bsq = df_fd_f.copy()
-            df_bsq = _ensure_pid(df_bsq)
-            df_bsq = df_bsq.assign(
-                Gender     = df_bsq[col_genero].map(_norm_gender),
-                IsDoctoral = df_bsq[col_degree].map(_is_doctoral),
-                FTPT       = df_bsq[col_ftpt].map(_norm_ftpt),  # PLANTA / CÁTEDRA
-                PS         = df_bsq["_PS"].fillna(""),
-                TIPO       = df_bsq["_TIPO"].fillna("OTHER")
+            df_bsq = _ensure_pid(df_fd_f).assign(
+                Gender     = df_fd_f[col_genero].map(_norm_gender),
+                IsDoctoral = df_fd_f[col_degree].map(_is_doctoral),
+                FTPT       = df_fd_f[col_ftpt].map(_norm_ftpt),
+                PS         = df_fd_f["_PS"].fillna(""),
+                TIPO       = df_fd_f["_TIPO"].fillna("OTHER")
             )
 
-            # ---- Tabla 7: P/S x género (sin duplicar persona) ----
             def _count_by_gender(mask) -> dict:
                 sub = df_bsq[mask].drop_duplicates(subset=["_PID"])
                 male   = int((sub["Gender"] == "Male").sum())
@@ -2673,10 +2712,10 @@ if not SENS.get("on", False):
             def _bold_rows_7(df_):
                 sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
                 mask = df_["Row"].str.startswith(("b.", "d."))
-                for c in df_.columns: sty.loc[mask, c] = 'font-weight:700;'
+                for c in df_.columns:
+                    sty.loc[mask, c] = 'font-weight:700;'
                 return sty
 
-            # ---- Tabla 8: P/S x FT/PT por TIPO (sin duplicar persona dentro de PS+FTPT+TIPO) ----
             cats = ["SA","PA","SP","IP","OTHER"]
             def _row_qual(ps_code: str, ftpt_code: str | None):
                 m = (df_bsq["PS"] == ps_code)
@@ -2706,14 +2745,14 @@ if not SENS.get("on", False):
             def _bold_rows_8(df_):
                 sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
                 mask = df_["Row"].str.startswith(("c.", "f."))
-                for c in df_.columns: sty.loc[mask, c] = 'font-weight:700;'
+                for c in df_.columns:
+                    sty.loc[mask, c] = 'font-weight:700;'
                 return sty
 
             with left:
                 st.markdown("**7. Participating and Supporting Faculty Counts † (required for AACSB-accredited members only)**")
                 _download_xlsx_button(
-                    tbl7,
-                    f"bsq_7_gender_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                    tbl7, f"bsq_7_gender_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                     key=f"dl_bsq7_{_slugify(st.session_state.get('sel_label','sel'))}",
                     label="Descargar tabla 7 (Excel)"
                 )
@@ -2725,8 +2764,7 @@ if not SENS.get("on", False):
             with right:
                 st.markdown("**8. Faculty Counts by Qualification Types †**")
                 _download_xlsx_button(
-                    tbl8,
-                    f"bsq_8_qual_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                    tbl8, f"bsq_8_qual_counts_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
                     key=f"dl_bsq8_{_slugify(st.session_state.get('sel_label','sel'))}",
                     label="Descargar tabla 8 (Excel)"
                 )
@@ -2739,18 +2777,18 @@ if not SENS.get("on", False):
     else:
         # Define filas según modo
         if pivot_mode == "AREA":
-            row_name = "AREA"
+            row_name   = "AREA"
             row_series = df_fd_f["_AREA"].astype(str).str.strip().replace({"": "N/A"})
             desired_order = None
         else:  # "Qualification Type"
-            row_name = "Type"
+            row_name   = "Type"
             row_series = df_fd_f["_TIPO"].map(lambda v: str(v).upper())
             desired_order = ["SA", "PA", "SP", "IP", "OTHER"]
 
         # Persona + variables para deduplicar
         df_cnt = _ensure_pid(df_fd_f)
         df_cnt[row_name] = row_series
-        df_cnt["_PS2"] = df_cnt["_PS"].fillna("")
+        df_cnt["_PS2"]   = df_cnt["_PS"].fillna("")
 
         # DEDUP: 1 vez por persona y categoría (row_name, _PS2)
         df_cnt = df_cnt.drop_duplicates(subset=["_PID", row_name, "_PS2"])
@@ -2764,8 +2802,8 @@ if not SENS.get("on", False):
             if k not in table.columns: table[k] = 0
         table["__Total__"] = table["Participating"] + table["Supporting"]
 
-        # Ajuste simple por sensibilidad (impacto total)
-        if SENS["on"] and SENS["ops"]:
+        # Ajuste por sensibilidad (impacto total) — si hubiera operaciones cargadas
+        if SENS["on"] and SENS.get("ops"):
             add_P = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="P")
             add_S = sum(op.get("count",0) for op in SENS["ops"] if op.get("scope")=="PS" and op.get("cat")=="S")
             incs = {"Participating": int(add_P), "Supporting": int(add_S)}
@@ -2801,10 +2839,8 @@ if not SENS.get("on", False):
         else:
             cat_order = perc_df[row_name].tolist()
 
-        chart_export = perc_df.melt(
-            id_vars=row_name, value_vars=["%Participating", "%Supporting"],
-            var_name="Group", value_name="Percent"
-        )
+        chart_export = perc_df.melt(id_vars=row_name, value_vars=["%Participating", "%Supporting"],
+                                    var_name="Group", value_name="Percent")
 
         with left:
             _download_xlsx_button(
@@ -2839,409 +2875,361 @@ if not SENS.get("on", False):
                 label="Descargar datos (Excel)"
             )
 
+
 # ==========================================================
 # MÓDULO FINAL: Top 5 (más/menos créditos) y FT sin cursos + Buscador
-# (Highlights ocultos cuando Sensitivity mode está activo; Buscador siempre visible)
+# (Oculto cuando Sensitivity mode está activo)
 # ==========================================================
-st.markdown("---")
-
-# ====== Título pegado a los controles (solo si no hay Sensitivity) ======
 if not SENS.get("on", False):
+    st.markdown("---")
+
+    # ====== Título pegado a los controles ======
     head_l, head_r = st.columns([7,5], gap="large")
     with head_l:
         st.markdown("#### Faculty credit highlights (current timeframe)")
     with head_r:
         st.write("")
 
-@st.cache_data(ttl=0)
-def _load_planta_sheet():
-    try:
-        xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
-        dfp = pd.read_excel(xls, sheet_name="BD PLANTA 2020-2025")
-        dfp.columns = dfp.columns.str.strip()
-        return dfp
-    except Exception:
-        return pd.DataFrame()
+    @st.cache_data(ttl=0)
+    def _load_planta_sheet():
+        try:
+            xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
+            dfp = pd.read_excel(xls, sheet_name="BD PLANTA 2020-2025")
+            dfp.columns = dfp.columns.str.strip()
+            return dfp
+        except Exception:
+            return pd.DataFrame()
 
-df_planta = _load_planta_sheet()
+    df_planta = _load_planta_sheet()
 
-# -------- helpers de columnas en Cartelera & Distribution --------
-col_prof_car = _get_any(df_car_filt_all, "Profesor","PROFESOR","Docente")
-col_cred_car = _get_any(df_car_filt_all, "Créditos","Creditos","Credits")
-col_sem_car  = _get_any(df_car_filt_all, "Semestre","Periodo","Periodo Académico","Periodo academico")
-col_code_car = _get_any(df_car_filt_all, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
-col_name_car = _get_any(df_car_filt_all, "Nombre largo curso","Nombre Curso","Nombre del curso","Course Name")
-col_secc_car = _get_any(df_car_filt_all, "Secc","Sección","Seccion","Section")
-col_acar_car = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
-col_field_car= _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
-col_prog_car = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
-col_campus   = _get_any(df_car_filt_all, "Campus","CAMPUS","Sede")
+    # -------- helpers de columnas en Cartelera & Distribution --------
+    col_prof_car = _get_any(df_car_filt_all, "Profesor","PROFESOR","Docente")
+    col_cred_car = _get_any(df_car_filt_all, "Créditos","Creditos","Credits")
+    col_sem_car  = _get_any(df_car_filt_all, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    col_code_car = _get_any(df_car_filt_all, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
+    col_name_car = _get_any(df_car_filt_all, "Nombre largo curso","Nombre Curso","Nombre del curso","Course Name")
+    col_secc_car = _get_any(df_car_filt_all, "Secc","Sección","Seccion","Section")
+    col_acar_car = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
+    col_field_car= _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
+    col_prog_car = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
+    col_campus   = _get_any(df_car_filt_all, "Campus","CAMPUS","Sede")
 
-if col_cred_car and "_CRED" not in df_car_filt_all.columns:
-    df_car_filt_all["_CRED"] = pd.to_numeric(df_car_filt_all[col_cred_car], errors="coerce").fillna(0.0)
+    if col_cred_car and "_CRED" not in df_car_filt_all.columns:
+        df_car_filt_all["_CRED"] = pd.to_numeric(df_car_filt_all[col_cred_car], errors="coerce").fillna(0.0)
 
-# -------- Distribution (para enriquecer con ID/AREA/TIPO/P-S y FT/PT) --------
-col_id_fd_all   = _get_any(df_fd, "ID","ID Nr.","Documento")
-col_sem_fd_all  = _get_any(df_fd, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    # -------- Distribution (para enriquecer con ID/AREA/TIPO/P-S y FT/PT) --------
+    col_id_fd_all   = _get_any(df_fd, "ID","ID Nr.","Documento")
+    col_sem_fd_all  = _get_any(df_fd, "Semestre","Periodo","Periodo Académico","Periodo academico")
 
-# ===== utilidades de tiempo/filtrado =====
-def _normalize_sem_str(x: str) -> str:
-    return str(x).strip().replace("\xa0"," ")
+    time_mode    = st.session_state.get("time_mode","Semestral")
+    sel_year     = st.session_state.get("sel_year")
+    sel_sem_code = st.session_state.get("sel_sem")
 
-def filter_df_fd(df_fd_base: pd.DataFrame, time_mode: str, sel_year: int | None, sel_sem_code: str | int | None) -> pd.DataFrame:
-    if df_fd_base is None or df_fd_base.empty:
-        return pd.DataFrame()
-    df = df_fd_base.copy()
-    semc_fd = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
-    if not semc_fd:
-        return df
-    df["_SEM_SRC"]  = df[semc_fd].map(_normalize_sem_str)
-    df["_YEARX"]    = df["_SEM_SRC"].map(_extract_year).astype("Int64")
-    if time_mode == "Semestral" and sel_sem_code is not None:
-        goal = _normalize_sem_str(sel_sem_code)
-        return df[df["_SEM_SRC"].eq(goal)].copy()
-    elif time_mode == "Intersemestral" and sel_year is not None:
-        goal = f"{int(sel_year)} Intersemestral"
-        return df[df["_SEM_SRC"].str.fullmatch(re.escape(goal), case=False, na=False)].copy()
-    elif time_mode == "Anual" and sel_year is not None:
-        return df[df["_YEARX"] == int(sel_year)].copy()
-    return df
+    df_fd_sem = filter_df_fd(df_fd, time_mode, sel_year, sel_sem_code).copy()
 
-time_mode    = st.session_state.get("time_mode","Semestral")
-sel_year     = st.session_state.get("sel_year")
-sel_sem_code = st.session_state.get("sel_sem")
+    # --- Normalizaciones base para enrichment (después de filtrar df_fd_sem) ---
+    col_prof_fd = _get_any(df_fd_sem, "Profesor","PROFESOR","Docente","Nombre")
+    col_id_fd   = _get_any(df_fd_sem, "ID","ID Nr.","Documento")
+    col_area_fd = _get_any(df_fd_sem, "AREA_PROFESOR","Area_Profesor","Area Profesor","Área","Area")
+    col_tipo_fd = _get_any(df_fd_sem, "TIPO","Tipo","Ranking","Tipo Ranking")
+    col_ps_fd   = _get_any(df_fd_sem, "P/S","P - S","Participating/Supporting")
+    col_ftpt    = _get_any(df_fd_sem, "PLANTA_CATEDRA", "Planta_Catedra", "Planta/Catedra", "Full/Part")
 
-df_fd_sem = filter_df_fd(df_fd, time_mode, sel_year, sel_sem_code).copy()
+    if col_prof_fd: df_fd_sem["_PROF_N"]    = df_fd_sem[col_prof_fd].astype(str).str.strip()
+    if col_id_fd:   df_fd_sem["_ID"]        = df_fd_sem[col_id_fd].astype(str).str.strip()
+    if col_area_fd: df_fd_sem["_AREA_PROF"] = df_fd_sem[col_area_fd].astype(str).str.strip()
+    if col_tipo_fd: df_fd_sem["_TIPO"]      = df_fd_sem[col_tipo_fd].astype(str).str.strip()
+    if col_ps_fd:   df_fd_sem["_PS"]        = _norm_str(df_fd_sem[col_ps_fd]).map(normalize_ps)
 
-# --- Normalizaciones base para enrichment (después de filtrar df_fd_sem) ---
-col_prof_fd = _get_any(df_fd_sem, "Profesor","PROFESOR","Docente","Nombre")
-col_id_fd   = _get_any(df_fd_sem, "ID","ID Nr.","Documento")
-col_area_fd = _get_any(df_fd_sem, "AREA_PROFESOR","Area_Profesor","Area Profesor","Área","Area")
-col_tipo_fd = _get_any(df_fd_sem, "TIPO","Tipo","Ranking","Tipo Ranking")
-col_ps_fd   = _get_any(df_fd_sem, "P/S","P - S","Participating/Supporting")
-col_ftpt    = _get_any(df_fd_sem, "PLANTA_CATEDRA", "Planta_Catedra", "Planta/Catedra", "Full/Part")
+    # FT/PT directo o fallback por TIPO
+    if col_ftpt:
+        df_fd_sem["_FTPT"] = df_fd_sem[col_ftpt].map(_norm_ftpt)
+    else:
+        df_fd_sem["_FTPT"] = df_fd_sem["_TIPO"].map(_norm_ftpt) if "_TIPO" in df_fd_sem else ""
 
-if col_prof_fd: df_fd_sem["_PROF_N"]    = df_fd_sem[col_prof_fd].astype(str).str.strip()
-if col_id_fd:   df_fd_sem["_ID"]        = df_fd_sem[col_id_fd].astype(str).str.strip()
-if col_area_fd: df_fd_sem["_AREA_PROF"] = df_fd_sem[col_area_fd].astype(str).str.strip()
-if col_tipo_fd: df_fd_sem["_TIPO"]      = df_fd_sem[col_tipo_fd].astype(str).str.strip()
-if col_ps_fd:   df_fd_sem["_PS"]        = _norm_str(df_fd_sem[col_ps_fd]).map(normalize_ps)
+    # --- Maps por profesor (primera coincidencia) ---
+    prof_to_id_map_by_name = _first_map(df_fd_sem, "_PROF_N", "_ID")
+    prof_to_area_map       = _first_map(df_fd_sem, "_PROF_N", "_AREA_PROF")
+    prof_to_tipo_map       = _first_map(df_fd_sem, "_PROF_N", "_TIPO")
+    prof_to_ps_map         = _first_map(df_fd_sem, "_PROF_N", "_PS")
 
-def _norm_ftpt(x: str) -> str:
-    v = str(x).strip().upper()
-    if "PLANTA" in v:                    return "PLANTA"
-    if "CATEDRA" in v or "CÁTEDRA" in v: return "CÁTEDRA"
-    return ""
+    # Conjunto de IDs PLANTA (cruce por ID)
+    planta_ids = set(df_fd_sem.loc[df_fd_sem["_FTPT"] == "PLANTA", "_ID"].dropna().astype(str).unique().tolist())
 
-# 1) FT/PT directo desde PLANTA_CATEDRA si existe
-if col_ftpt:
-    df_fd_sem["_FTPT"] = df_fd_sem[col_ftpt].map(_norm_ftpt)
-else:
-    # 2) fallback: intentar detectar FT/PT desde TIPO si ahí vienen esas palabras
-    df_fd_sem["_FTPT"] = df_fd_sem["_TIPO"].map(_norm_ftpt) if "_TIPO" in df_fd_sem else ""
-
-# --- Maps por profesor (primera coincidencia) ---
-def _first_map(df_, key_col, val_col):
-    if key_col not in df_ or val_col not in df_:
-        return {}
-    tmp = df_[[key_col, val_col]].dropna()
-    return tmp.drop_duplicates(subset=[key_col]).set_index(key_col)[val_col].to_dict()
-
-prof_to_id_map_by_name   = _first_map(df_fd_sem, "_PROF_N", "_ID")
-prof_to_area_map         = _first_map(df_fd_sem, "_PROF_N", "_AREA_PROF")
-prof_to_tipo_map         = _first_map(df_fd_sem, "_PROF_N", "_TIPO")
-prof_to_ps_map           = _first_map(df_fd_sem, "_PROF_N", "_PS")
-
-# Conjunto de IDs PLANTA (cruce por ID, como pediste)
-planta_ids = set(df_fd_sem.loc[df_fd_sem["_FTPT"] == "PLANTA", "_ID"].dropna().astype(str).unique().tolist())
-
-# ========= Controles de “Top / Zero” (izquierda) + Buscador (derecha)
-# (Highlights sólo si no hay Sensitivity; Buscador siempre)
-if not SENS.get("on", False):
+    # ========= Controles de “Top / Zero” (izquierda) + Buscador (derecha) =========
     opt_highlight = st.radio(
         "Show",
         ["Top 5 most credits", "Top 5 least credits", "Full-time with 0 courses"],
         index=0, horizontal=True, label_visibility="visible", key="highlight_mode"
     )
+
     left, right = st.columns([7,5], gap="large")
-else:
-    right = st.container()  # Buscador ocupará ancho completo cuando Sensitivity está activo
 
-# ======================= PANEL IZQUIERDO (HIGHLIGHTS) =======================
-with left:
-    if opt_highlight in {"Top 5 most credits", "Top 5 least credits"}:
-        # switch PLANTA (por ID)
-        only_ft = st.toggle("Only full-time (PLANTA)", value=False, key="top_only_ft")
+    # ======================= PANEL IZQUIERDO =======================
+    with left:
+        if opt_highlight in {"Top 5 most credits", "Top 5 least credits"}:
+            # switch PLANTA (por ID)
+            only_ft = st.toggle("Only full-time (PLANTA)", value=False, key="top_only_ft")
 
-        if not col_prof_car or "_CRED" not in df_car_filt_all.columns:
-            st.info("Missing credits or professor column in Cartelera for this view.")
+            if not col_prof_car or "_CRED" not in df_car_filt_all.columns:
+                st.info("Missing credits or professor column in Cartelera for this view.")
+            else:
+                df_top = (
+                    df_car_filt_all
+                    .assign(_PROF=df_car_filt_all[col_prof_car].astype(str).str.strip())
+                    .groupby("_PROF")
+                    .agg(Credits=("_CRED","sum"), nCourses=(col_prof_car,"count"))
+                    .reset_index()
+                )
+                df_top["ID"] = df_top["_PROF"].map(prof_to_id_map_by_name)
+
+                if only_ft:
+                    if planta_ids:
+                        df_top = df_top[df_top["ID"].astype(str).isin(planta_ids)]
+                    else:
+                        df_top = df_top.iloc[0:0]
+
+                asc = (opt_highlight == "Top 5 least credits")
+                df_top = df_top.sort_values("Credits", ascending=asc).head(5).copy()
+
+                # Enriquecer
+                df_top["AREA_PROFESOR"] = df_top["_PROF"].map(prof_to_area_map)
+                df_top["TIPO"]          = df_top["_PROF"].map(prof_to_tipo_map)
+                df_top["P/S"]           = df_top["_PROF"].map(prof_to_ps_map)
+
+                out = (
+                    df_top.rename(columns={"_PROF":"Profesor"})
+                          [["Profesor","ID","AREA_PROFESOR","TIPO","P/S","Credits","nCourses"]]
+                          .rename(columns={"nCourses":"#Cursos"})
+                )
+                title = "Top 5 professors by credits (most)" if not asc else "Top 5 professors by credits (least)"
+                _download_xlsx_button(
+                    out,
+                    f"highlight_{_slugify(title)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                    key=f"dl_highlight_{_slugify(title)}_{_slugify(st.session_state.get('sel_label','sel'))}",
+                    label="Descargar (Excel)"
+                )
+                st.dataframe(out.style.format({"Credits":"{:,.1f}"}), use_container_width=True, hide_index=True)
+
         else:
-            # Agregar profesor + mapear ID por nombre (para cruzar con PLANTA por ID)
-            df_top = (
-                df_car_filt_all
-                .assign(_PROF=df_car_filt_all[col_prof_car].astype(str).str.strip())
-                .groupby("_PROF")
-                .agg(Credits=("_CRED","sum"), nCourses=(col_prof_car,"count"))
-                .reset_index()
-            )
-            # Mapear ID por nombre (best-effort) —> para filtrar por PLANTA (ID)
-            df_top["ID"] = df_top["_PROF"].map(prof_to_id_map_by_name)
-
-            # Filtrar por PLANTA usando ID (de Faculty Distribution)
-            if only_ft:
-                if planta_ids:
-                    df_top = df_top[df_top["ID"].astype(str).isin(planta_ids)]
+            # ========= Full-time con 0 cursos =========
+            col_period_pl = _get_any(df_planta, "Periodo","PERIODO","Semestre")
+            col_id_pl     = _get_any(df_planta, "ID Nr.","ID","Documento")
+            if df_planta.empty or not all([col_period_pl, col_id_pl]):
+                st.info("Load 'BD PLANTA 2020-2025' to compute FT with 0 courses.")
+            else:
+                # Alcance temporal para PLANTA y DISTRIBUTION
+                if time_mode == "Semestral" and sel_sem_code is not None:
+                    df_ft = df_planta[df_planta[col_period_pl].astype(str).str.strip().eq(str(sel_sem_code))].copy()
+                    alcance_txt = str(sel_sem_code)
+                    taught_ids = set()
+                    if col_sem_fd_all and col_id_fd_all:
+                        taught_ids = set(
+                            df_fd.loc[df_fd[col_sem_fd_all].astype(str).str.strip().eq(str(sel_sem_code)), col_id_fd_all]
+                                 .astype(str).str.strip()
+                        )
+                elif time_mode == "Intersemestral" and sel_year is not None:
+                    goal = f"{int(sel_year)} Intersemestral"
+                    mask_inter = df_planta[col_period_pl].map(_normalize_sem_str).str.fullmatch(re.escape(goal), case=False, na=False)
+                    df_ft = df_planta[mask_inter].copy()
+                    alcance_txt = goal
+                    taught_ids = set()
+                    if col_sem_fd_all and col_id_fd_all:
+                        taught_ids = set(
+                            df_fd.loc[
+                                df_fd[col_sem_fd_all].map(_normalize_sem_str).str.fullmatch(re.escape(goal), case=False, na=False),
+                                col_id_fd_all
+                            ].astype(str).str.strip()
+                        )
+                elif time_mode == "Anual" and sel_year is not None:
+                    df_ft = df_planta[df_planta[col_period_pl].astype(str).str.contains(str(sel_year), na=False)].copy()
+                    alcance_txt = f"{sel_year} (annual)"
+                    taught_ids = set()
+                    if col_sem_fd_all and col_id_fd_all:
+                        taught_ids = set(
+                            df_fd.loc[df_fd[col_sem_fd_all].astype(str).str.contains(str(sel_year), na=False), col_id_fd_all]
+                                 .astype(str).str.strip()
+                        )
                 else:
-                    # si no tenemos IDs PLANTA en el alcance, mostramos vacío explícitamente
-                    df_top = df_top.iloc[0:0]
+                    df_ft = pd.DataFrame()
+                    taught_ids = set()
+                    alcance_txt = st.session_state.get('sel_label','Selected')
 
-            asc = (opt_highlight == "Top 5 least credits")
-            df_top = df_top.sort_values("Credits", ascending=asc).head(5).copy()
+                if df_ft.empty:
+                    st.info(f"No full-time data found for {alcance_txt}.")
+                else:
+                    df_ft["_ID"] = df_ft[col_id_pl].astype(str).str.strip()
+                    ft_ids = set(df_ft["_ID"])
+                    ft_total = len(ft_ids)
+                    ft_teaching = len(ft_ids & taught_ids)
+                    st.markdown(f"**De los {ft_total} profesores de planta, {ft_teaching} están dictando en {alcance_txt}.**")
 
-            # Enriquecer con AREA/TIPO/P-S por nombre
-            df_top["AREA_PROFESOR"] = df_top["_PROF"].map(prof_to_area_map)
-            df_top["TIPO"]          = df_top["_PROF"].map(prof_to_tipo_map)
-            df_top["P/S"]           = df_top["_PROF"].map(prof_to_ps_map)
+                    missing_ids = sorted(ft_ids - taught_ids)
+                    sub = df_ft[df_ft["_ID"].isin(missing_ids)].copy()
 
-            out = (
-                df_top.rename(columns={"_PROF":"Profesor"})
-                      [["Profesor","ID","AREA_PROFESOR","TIPO","P/S","Credits","nCourses"]]
-                      .rename(columns={"nCourses":"#Cursos"})
+                    out = pd.DataFrame({
+                        "ID Nr.":        sub["_ID"],
+                        "First Name":    _pick(sub, "First Name","Nombre","Nombres"),
+                        "Last Name":     _pick(sub, "Last Name","Apellidos","Apellido"),
+                        "Academic Area": _pick(sub, "Academic Area","Área Académica","Area Académica","AREA_PROFESOR","Área"),
+                        "Faculty Ranking": _pick(sub, "Faculty Ranking","Ranking","Rango"),
+                        "Faculty Qualific.": _pick(sub, "Faculty Qualific.","Qualification","Qualific.","Qualif.","Tipo Ranking","TIPO"),
+                        "P/S": _pick(sub, "P/S","P - S","Participating/Supporting")
+                    })
+
+                    _download_xlsx_button(
+                        out, f"ft_zero_courses_{_slugify(alcance_txt)}.xlsx",
+                        key=f"dl_ft_zero_{_slugify(alcance_txt)}",
+                        label="Descargar (Excel)"
+                    )
+                    st.dataframe(out, use_container_width=True, hide_index=True)
+
+    # ======================= PANEL DERECHO — BUSCADOR (modo único; control pegado) =======================
+    with right:
+        # Base: Cartelera (alcance ya filtrado en df_car_filt_all)
+        base = df_car_filt_all.copy()
+        if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
+        if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
+        if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
+        if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
+
+        # Enriquecer con ID/AREA por nombre (para mostrar)
+        if "_PROF" in base and prof_to_id_map_by_name:
+            base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
+        if "_PROF" in base and prof_to_area_map:
+            base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
+
+        # Opciones autocompletar
+        prof_opts = [""] + (sorted(base["_PROF"].dropna().unique().tolist()) if "_PROF" in base else [])
+        if "_ID" in base:
+            prof_opts = [""] + sorted(set(prof_opts[1:] + [f"ID:{v}" for v in base["_ID"].dropna().astype(str).tolist()]))
+
+        if "_NAME" in base and base["_NAME"].notna().any():
+            course_opts = sorted(base["_NAME"].dropna().unique().tolist())
+        elif "_CODE" in base:
+            course_opts = sorted(base["_CODE"].dropna().unique().tolist())
+        else:
+            course_opts = []
+        course_opts = [""] + course_opts
+
+        # Espaciador para alinear hacia abajo
+        st.markdown("<div style='min-height:140px'></div>", unsafe_allow_html=True)
+
+        # Callback: al cambiar el modo, limpiar el otro selector
+        def _on_mode_change():
+            mode = st.session_state.get("srch_mode_right", "Por Profesor")
+            if mode == "Por Profesor":
+                st.session_state["srch_course"] = ""
+            else:
+                st.session_state["srch_prof"] = ""
+
+        # Selector de modo pegado al buscador
+        search_mode = st.radio(
+            "Search mode",
+            ["Por Profesor", "Por Curso"],
+            index=0, horizontal=True, key="srch_mode_right",
+            on_change=_on_mode_change
+        )
+
+        # Control único a todo el ancho según modo
+        if search_mode == "Por Profesor":
+            st.selectbox(
+                "Profesor (Nombre) o ID",
+                options=prof_opts,
+                index=(prof_opts.index(st.session_state.get("srch_prof",""))
+                       if st.session_state.get("srch_prof","") in prof_opts else 0),
+                key="srch_prof"
             )
-            title = "Top 5 professors by credits (most)" if not asc else "Top 5 professors by credits (least)"
-            _download_xlsx_button(out, f"highlight_{_slugify(title)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-                                  key=f"dl_highlight_{_slugify(title)}_{_slugify(st.session_state.get('sel_label','sel'))}",
-                                  label="Descargar (Excel)")
-            st.dataframe(out.style.format({"Credits":"{:,.1f}"}), use_container_width=True, hide_index=True)
+        else:  # Por Curso
+            st.selectbox(
+                "Curso (Nombre)",
+                options=course_opts,
+                index=(course_opts.index(st.session_state.get("srch_course",""))
+                       if st.session_state.get("srch_course","") in course_opts else 0),
+                key="srch_course"
+            )
 
-    else:
-        # ========= Full-time con 0 cursos =========
-        col_period_pl = _get_any(df_planta, "Periodo","PERIODO","Semestre")
-        col_id_pl     = _get_any(df_planta, "ID Nr.","ID","Documento")
-        if df_planta.empty or not all([col_period_pl, col_id_pl]):
-            st.info("Load 'BD PLANTA 2020-2025' to compute FT with 0 courses.")
-        else:
-            # Alcance temporal para PLANTA y DISTRIBUTION
-            if time_mode == "Semestral" and sel_sem_code is not None:
-                df_ft = df_planta[df_planta[col_period_pl].astype(str).str.strip().eq(str(sel_sem_code))].copy()
-                alcance_txt = str(sel_sem_code)
-                taught_ids = set()
-                if col_sem_fd_all and col_id_fd_all:
-                    taught_ids = set(
-                        df_fd.loc[df_fd[col_sem_fd_all].astype(str).str.strip().eq(str(sel_sem_code)), col_id_fd_all]
-                             .astype(str).str.strip()
-                    )
-            elif time_mode == "Intersemestral" and sel_year is not None:
-                goal = f"{int(sel_year)} Intersemestral"
-                mask_inter = df_planta[col_period_pl].map(_normalize_sem_str).str.fullmatch(re.escape(goal), case=False, na=False)
-                df_ft = df_planta[mask_inter].copy()
-                alcance_txt = goal
-                taught_ids = set()
-                if col_sem_fd_all and col_id_fd_all:
-                    taught_ids = set(
-                        df_fd.loc[
-                            df_fd[col_sem_fd_all].map(_normalize_sem_str).str.fullmatch(re.escape(goal), case=False, na=False),
-                            col_id_fd_all
-                        ].astype(str).str.strip()
-                    )
-            elif time_mode == "Anual" and sel_year is not None:
-                df_ft = df_planta[df_planta[col_period_pl].astype(str).str.contains(str(sel_year), na=False)].copy()
-                alcance_txt = f"{sel_year} (annual)"
-                taught_ids = set()
-                if col_sem_fd_all and col_id_fd_all:
-                    taught_ids = set(
-                        df_fd.loc[df_fd[col_sem_fd_all].astype(str).str.contains(str(sel_year), na=False), col_id_fd_all]
-                             .astype(str).str.strip()
-                    )
+    # ======================= RESULTADOS BUSQUEDA — FULL WIDTH =======================
+    sel_prof   = st.session_state.get("srch_prof", "")
+    sel_course = st.session_state.get("srch_course", "")
+    search_mode = st.session_state.get("srch_mode_right", "Por Profesor")
+
+    has_query = (search_mode == "Por Profesor" and bool(sel_prof)) or (search_mode == "Por Curso" and bool(sel_course))
+
+    if has_query:
+        base = df_car_filt_all.copy()
+        if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
+        if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
+        if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
+        if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
+        if "_PROF" in base and prof_to_id_map_by_name:
+            base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
+        if "_PROF" in base and prof_to_area_map:
+            base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
+
+        mask_all = pd.Series(True, index=base.index)
+
+        if search_mode == "Por Profesor" and sel_prof:
+            if sel_prof.startswith("ID:"):
+                qid = sel_prof.split(":",1)[1].strip()
+                m = base["_ID"].astype(str).str.fullmatch(re.escape(qid), case=False) if "_ID" in base else pd.Series(False, index=base.index)
             else:
-                df_ft = pd.DataFrame()
-                taught_ids = set()
-                alcance_txt = st.session_state.get('sel_label','Selected')
+                m = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) if "_PROF" in base else pd.Series(False, index=base.index)
+            mask_all &= m
 
-            if df_ft.empty:
-                st.info(f"No full-time data found for {alcance_txt}.")
-            else:
-                df_ft["_ID"] = df_ft[col_id_pl].astype(str).str.strip()
-                ft_ids = set(df_ft["_ID"])
-                ft_total = len(ft_ids)
-                ft_teaching = len(ft_ids & taught_ids)
-                st.markdown(f"**De los {ft_total} profesores de planta, {ft_teaching} están dictando en {alcance_txt}.**")
+        if search_mode == "Por Curso" and sel_course:
+            m_name = base["_NAME"].str.contains(re.escape(sel_course), case=False, na=False) if "_NAME" in base else pd.Series(False, index=base.index)
+            m_code = base["_CODE"].str.contains(re.escape(sel_course), case=False, na=False) if "_CODE" in base else pd.Series(False, index=base.index)
+            mask_all &= (m_name | m_code)
 
-                missing_ids = sorted(ft_ids - taught_ids)
-                sub = df_ft[df_ft["_ID"].isin(missing_ids)].copy()
+        res = base[mask_all].copy()
 
-                # columnas de salida (best-effort)
-                def pick(df_, *cands):
-                    c = _get_any(df_, *cands)
-                    return df_[c] if c else pd.Series([None]*len(df_), index=df_.index)
+        periodo_txt = st.session_state.get('sel_label','Selected')
+        if search_mode == "Por Profesor" and sel_prof:
+            if "_CRED" not in res.columns and col_cred_car:
+                res["_CRED"] = pd.to_numeric(res[col_cred_car], errors="coerce").fillna(0.0)
+            tot_cr = float(res.get("_CRED", pd.Series([0]*len(res))).sum())
+            tot_courses = int(res.shape[0])
+            prof_label = sel_prof
+            if sel_prof.startswith("ID:") and "_PROF" in res and not res.empty:
+                profs = sorted(res["_PROF"].dropna().unique().tolist())
+                if len(profs) == 1:
+                    prof_label = profs[0]
+            st.info(f"**El profesor {prof_label} ha dictado {tot_cr:,.1f} créditos con {tot_courses} cursos en {periodo_txt}.**")
 
-                out = pd.DataFrame({
-                    "ID Nr.":        sub["_ID"],
-                    "First Name":    pick(sub, "First Name","Nombre","Nombres"),
-                    "Last Name":     pick(sub, "Last Name","Apellidos","Apellido"),
-                    "Academic Area": pick(sub, "Academic Area","Área Académica","Area Académica","AREA_PROFESOR","Área"),
-                    "Faculty Ranking": pick(sub, "Faculty Ranking","Ranking","Rango"),
-                    "Faculty Qualific.": pick(sub, "Faculty Qualific.","Qualification","Qualific.","Qualif.","Tipo Ranking","TIPO"),
-                    "P/S": pick(sub, "P/S","P - S","Participating/Supporting")
-                })
+        if search_mode == "Por Curso" and sel_course:
+            profs_cnt = res["_PROF"].nunique() if "_PROF" in res else 0
+            st.info(f"**El curso {sel_course} ha sido dictado por {profs_cnt} profesor(es) en {periodo_txt}.**")
 
-                _download_xlsx_button(out, f"ft_zero_courses_{_slugify(alcance_txt)}.xlsx",
-                                      key=f"dl_ft_zero_{_slugify(alcance_txt)}",
-                                      label="Descargar (Excel)")
-                st.dataframe(out, use_container_width=True, hide_index=True)
+        show_cols = {
+            "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd_all),
+            "Profesor": col_prof_car or col_prof_fd,
+            "ID": "_ID" if "_ID" in res else col_id_fd_all,
+            "AREA_PROFESOR": "_AREA_PROF" if "_AREA_PROF" in res else _get_any(df_fd, "AREA_PROFESOR","Area_Profesor","Area Profesor","Área","Area"),
+            "Código Materia": col_code_car,
+            "Nombre largo curso": col_name_car,
+            "Secc": col_secc_car,
+            "Area del curso": col_acar_car,
+            "Field": col_field_car,
+            "Program": col_prog_car,
+            "Créditos": col_cred_car,
+            "Campus": col_campus
+        }
 
-# ======================= PANEL DERECHO — BUSCADOR (modo único; control pegado) =======================
-with right:
-    # Base: Cartelera (alcance ya filtrado en df_car_filt_all)
-    base = df_car_filt_all.copy()
-    if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
-    if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
-    if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
-    if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
+        data = {}
+        out_cols = []
+        for nice, col in show_cols.items():
+            data[nice] = res[col] if (col in res.columns) else None
+            out_cols.append(nice)
 
-    # Enriquecer con ID/AREA por nombre (para mostrar)
-    if "_PROF" in base and prof_to_id_map_by_name:
-        base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
-    if "_PROF" in base and prof_to_area_map:
-        base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
+        res_out = pd.DataFrame(data, columns=out_cols).copy()
+        if "Créditos" in res_out.columns:
+            res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
 
-    # Opciones autocompletar
-    prof_opts = [""] + (sorted(base["_PROF"].dropna().unique().tolist()) if "_PROF" in base else [])
-    if "_ID" in base:
-        prof_opts = [""] + sorted(set(prof_opts[1:] + [f"ID:{v}" for v in base["_ID"].dropna().astype(str).tolist()]))
-
-    if "_NAME" in base and base["_NAME"].notna().any():
-        course_opts = sorted(base["_NAME"].dropna().unique().tolist())  # mostrar NOMBRE
-    elif "_CODE" in base:
-        course_opts = sorted(base["_CODE"].dropna().unique().tolist())
-    else:
-        course_opts = []
-    course_opts = [""] + course_opts
-
-    # Espaciador para empujar los controles hacia abajo (alineación inferior)
-    st.markdown("<div style='min-height:140px'></div>", unsafe_allow_html=True)
-
-    # Callback: al cambiar el modo, limpiar el otro selector
-    def _on_mode_change():
-        mode = st.session_state.get("srch_mode_right", "Por Profesor")
-        if mode == "Por Profesor":
-            st.session_state["srch_course"] = ""
-        else:
-            st.session_state["srch_prof"] = ""
-
-    # Selector de modo pegado al buscador (debajo del espaciador)
-    search_mode = st.radio(
-        "Search mode",
-        ["Por Profesor", "Por Curso"],
-        index=0, horizontal=True, key="srch_mode_right",
-        on_change=_on_mode_change
-    )
-
-    # Controles: UNO solo y a todo el ancho, según modo
-    if search_mode == "Por Profesor":
-        st.selectbox(
-            "Profesor (Nombre) o ID",
-            options=prof_opts,
-            index=(prof_opts.index(st.session_state.get("srch_prof",""))
-                   if st.session_state.get("srch_prof","") in prof_opts else 0),
-            key="srch_prof"
+        _download_xlsx_button(
+            res_out,
+            f"search_results_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+            key=f"dl_search_{_slugify(st.session_state.get('sel_label','sel'))}",
+            label="Descargar resultados (Excel)"
         )
-    else:  # Por Curso
-        st.selectbox(
-            "Curso (Nombre)",
-            options=course_opts,
-            index=(course_opts.index(st.session_state.get("srch_course",""))
-                   if st.session_state.get("srch_course","") in course_opts else 0),
-            key="srch_course"
-        )
-
-# ======================= RESULTADOS BUSQUEDA — FULL WIDTH (debajo; sólo si hay búsqueda) =======================
-sel_prof   = st.session_state.get("srch_prof", "")
-sel_course = st.session_state.get("srch_course", "")
-search_mode = st.session_state.get("srch_mode_right", "Por Profesor")
-
-# Mostrar resultados SOLO si hay valor en el control activo
-has_query = (search_mode == "Por Profesor" and bool(sel_prof)) or (search_mode == "Por Curso" and bool(sel_course))
-
-if has_query:
-    base = df_car_filt_all.copy()
-    if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
-    if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
-    if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
-    if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
-    if "_PROF" in base and prof_to_id_map_by_name:
-        base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
-    if "_PROF" in base and prof_to_area_map:
-        base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
-
-    # Máscaras
-    mask_all = pd.Series(True, index=base.index)
-    if search_mode == "Por Profesor" and sel_prof:
-        if sel_prof.startswith("ID:"):
-            qid = sel_prof.split(":",1)[1].strip()
-            m = base["_ID"].astype(str).str.fullmatch(re.escape(qid), case=False) if "_ID" in base else pd.Series(False, index=base.index)
-        else:
-            m = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) if "_PROF" in base else pd.Series(False, index=base.index)
-        mask_all &= m
-
-    if search_mode == "Por Curso" and sel_course:
-        m_name = base["_NAME"].str.contains(re.escape(sel_course), case=False, na=False) if "_NAME" in base else pd.Series(False, index=base.index)
-        m_code = base["_CODE"].str.contains(re.escape(sel_course), case=False, na=False) if "_CODE" in base else pd.Series(False, index=base.index)
-        mask_all &= (m_name | m_code)
-
-    res = base[mask_all].copy()
-
-    # Mensajes-resumen
-    periodo_txt = st.session_state.get('sel_label','Selected')
-    if search_mode == "Por Profesor" and sel_prof:
-        if "_CRED" not in res.columns and col_cred_car:
-            res["_CRED"] = pd.to_numeric(res[col_cred_car], errors="coerce").fillna(0.0)
-        tot_cr = float(res.get("_CRED", pd.Series([0]*len(res))).sum())
-        tot_courses = int(res.shape[0])
-        prof_label = sel_prof
-        if sel_prof.startswith("ID:") and "_PROF" in res and not res.empty:
-            profs = sorted(res["_PROF"].dropna().unique().tolist())
-            if len(profs) == 1:
-                prof_label = profs[0]
-        st.info(f"**El profesor {prof_label} ha dictado {tot_cr:,.1f} créditos con {tot_courses} cursos en {periodo_txt}.**")
-
-    if search_mode == "Por Curso" and sel_course:
-        profs_cnt = res["_PROF"].nunique() if "_PROF" in res else 0
-        st.info(f"**El curso {sel_course} ha sido dictado por {profs_cnt} profesor(es) en {periodo_txt}.**")
-
-    # Tabla final (sólo si hay búsqueda), a todo el ancho de la página (fuera de columnas)
-    show_cols = {
-        "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd_all),
-        "Profesor": col_prof_car or col_prof_fd,
-        "ID": "_ID" if "_ID" in res else col_id_fd_all,
-        "AREA_PROFESOR": "_AREA_PROF" if "_AREA_PROF" in res else _get_any(df_fd, "AREA_PROFESOR","Area_Profesor","Area Profesor","Área","Area"),
-        "Código Materia": col_code_car,
-        "Nombre largo curso": col_name_car,
-        "Secc": col_secc_car,
-        "Area del curso": col_acar_car,
-        "Field": col_field_car,
-        "Program": col_prog_car,
-        "Créditos": col_cred_car,
-        "Campus": col_campus
-    }
-
-    data = {}
-    out_cols = []
-    for nice, col in show_cols.items():
-        data[nice] = res[col] if (col in res.columns) else None
-        out_cols.append(nice)
-
-    res_out = pd.DataFrame(data, columns=out_cols).copy()
-    if "Créditos" in res_out.columns:
-        res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
-
-    _download_xlsx_button(
-        res_out,
-        f"search_results_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-        key=f"dl_search_{_slugify(st.session_state.get('sel_label','sel'))}",
-        label="Descargar resultados (Excel)"
-    )
-    st.dataframe(res_out, use_container_width=True, hide_index=True)
-
-
-
+        st.dataframe(res_out, use_container_width=True, hide_index=True)
