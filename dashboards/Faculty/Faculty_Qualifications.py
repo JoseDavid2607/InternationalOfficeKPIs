@@ -2132,12 +2132,13 @@ try:
         tbl_out = pd.concat([tbl, total_row], axis=0)
 
         display_label = st.session_state.get('sel_label','Selected Period')
-        with st.expander(f"Credit sums by {dim_label} — {display_label}", expanded=False):
+        with st.expander(f"Credit sums by {dim_label}", expanded=False):
             export_tbl = tbl_out.reset_index().rename(columns={"index": dim_label})
             _download_xlsx_button(export_tbl,
                                   f"credit_sums_{_slugify(dim_label)}_{_slugify(display_label)}.xlsx",
                                   key=f"dl_credit_sums_{_slugify(dim_label)}_{_slugify(display_label)}",
                                   label="⬇️ Descargar tabla (Excel)")
+            st.markdown(f"####{display_label}")
             st.dataframe(tbl_out.style.format("{:,.0f}"), use_container_width=True)
 
             # ===== Selector propio de dimensión (independiente del gráfico superior) =====
@@ -3237,6 +3238,7 @@ if not SENS.get("on", False):
             label="Descargar resultados (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
