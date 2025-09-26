@@ -2989,8 +2989,8 @@ if not SENS.get("on", False):
         if opt_highlight in {HL_MOST, HL_LEAST}:
             # switch PLANTA (por ID)
             only_ft = st.toggle("Only Full-time Faculty", value=False, key="top_only_ft")
-
-            if not col_prof_car or "_CRED" not in df_car_filt_all.columns:
+    
+            if (not col_prof_car) or ("_CRED" not in df_car_filt_all.columns):
                 st.info("Missing credits or professor column in Cartelera for this view.")
             else:
                 df_top = (
@@ -2999,31 +2999,32 @@ if not SENS.get("on", False):
                     .groupby("_PROF", as_index=False)
                     .agg(Credits=("_CRED","sum"), nCourses=(col_prof_car,"count"))
                 )
+    
                 # ID por nombre (para filtrar PLANTA)
                 df_top["ID"] = df_top["_PROF"].map(prof_to_id_map_by_name)
-
+    
                 # Filtrar por PLANTA si aplica
                 if only_ft:
                     if planta_ids:
                         df_top = df_top[df_top["ID"].astype(str).isin(planta_ids)]
                     else:
                         df_top = df_top.iloc[0:0]
-
+    
                 # Orden asc/desc según modo
                 asc = (opt_highlight == HL_LEAST)
                 df_top = df_top.sort_values("Credits", ascending=asc).head(5).copy()
-
+    
                 # Enriquecer
                 df_top["AREA_PROFESOR"] = df_top["_PROF"].map(prof_to_area_map)
                 df_top["TIPO"]          = df_top["_PROF"].map(prof_to_tipo_map)
                 df_top["P/S"]           = df_top["_PROF"].map(prof_to_ps_map)
-
+    
                 out = (
                     df_top.rename(columns={"_PROF":"Profesor"})
                           [["Profesor","ID","AREA_PROFESOR","TIPO","P/S","Credits","nCourses"]]
                           .rename(columns={"nCourses":"#Cursos"})
                 )
-
+    
                 title = "Top 5 professors by credits (most)" if not asc else "Top 5 professors by credits (least)"
                 _download_xlsx_button(
                     out,
@@ -3032,7 +3033,7 @@ if not SENS.get("on", False):
                     label="Download (Excel)"
                 )
                 st.dataframe(out.style.format({"Credits":"{:,.1f}"}), use_container_width=True, hide_index=True)
-
+    
         else:
             # ========= Full-time con 0 cursos =========
             col_period_pl = _get_any(df_planta, "Periodo","PERIODO","Semestre")
@@ -3076,7 +3077,7 @@ if not SENS.get("on", False):
                     df_ft = pd.DataFrame()
                     taught_ids = set()
                     alcance_txt = display_label
-
+    
                 if df_ft.empty:
                     st.info(f"No full-time data found for {alcance_txt}.")
                 else:
@@ -3085,10 +3086,10 @@ if not SENS.get("on", False):
                     ft_total = len(ft_ids)
                     ft_teaching = len(ft_ids & taught_ids)
                     st.markdown(f"**Of the {ft_total} full-time Faculty, {ft_teaching} are teaching in {alcance_txt}.**")
-
+    
                     missing_ids = sorted(ft_ids - taught_ids)
                     sub = df_ft[df_ft["_ID"].isin(missing_ids)].copy()
-
+    
                     out = pd.DataFrame({
                         "ID Nr.":        sub["_ID"],
                         "First Name":    _pick(sub, "First Name","Nombre","Nombres"),
@@ -3098,34 +3099,39 @@ if not SENS.get("on", False):
                         "Faculty Qualific.": _pick(sub, "Faculty Qualific.","Qualification","Qualific.","Qualif.","Tipo Ranking","TIPO"),
                         "P/S": _pick(sub, "P/S","P - S","Participating/Supporting")
                     })
-
+    
                     _download_xlsx_button(
                         out, f"ft_zero_courses_{_slugify(alcance_txt)}.xlsx",
                         key=f"dl_ft_zero_{_slugify(alcance_txt)}",
                         label="Download (Excel)"
                     )
                     st.dataframe(out, use_container_width=True, hide_index=True)
-
-    # ======================= PANEL DERECHO — BUSCADOR (modo único; control pegado) =======================
+    
+    # ======================= PANEL DERECHO — BUSCADOR =======================
     with right:
         # Base: Cartelera (alcance ya filtrado en df_car_filt_all)
         base = df_car_filt_all.copy()
-        if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
-        if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
-        if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()
-        if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
-
+    
+        if col_prof_car:
+            base["_PROF"] = base[col_prof_car].astype(str).str.strip()
+        if col_sem_car:
+            base["_SEM"] = base[col_sem_car].astype(str).str.strip()
+        if col_code_car:
+            base["_CODE"] = base[col_code_car].astype(str).str.strip()
+        if col_name_car:
+            base["_NAME"] = base[col_name_car].astype(str).str.strip()
+    
         # Enriquecer con ID/AREA por nombre (para mostrar)
         if "_PROF" in base and prof_to_id_map_by_name:
             base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
         if "_PROF" in base and prof_to_area_map:
             base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
-
+    
         # Opciones autocompletar
         prof_opts = [""] + (sorted(base["_PROF"].dropna().unique().tolist()) if "_PROF" in base else [])
         if "_ID" in base:
             prof_opts = [""] + sorted(set(prof_opts[1:] + [f"ID:{v}" for v in base["_ID"].dropna().astype(str).tolist()]))
-
+    
         if "_NAME" in base and base["_NAME"].notna().any():
             course_opts = sorted(base["_NAME"].dropna().unique().tolist())
         elif "_CODE" in base:
@@ -3133,10 +3139,10 @@ if not SENS.get("on", False):
         else:
             course_opts = []
         course_opts = [""] + course_opts
-
+    
         # Espaciador para alinear hacia abajo
         st.markdown("<div style='min-height:140px'></div>", unsafe_allow_html=True)
-
+    
         # Callback: al cambiar el modo, limpiar el otro selector
         def _on_mode_change():
             mode = st.session_state.get("srch_mode_right", SM_FAC)
@@ -3144,7 +3150,7 @@ if not SENS.get("on", False):
                 st.session_state["srch_course"] = ""
             else:
                 st.session_state["srch_prof"] = ""
-
+    
         # Selector de modo pegado al buscador
         search_mode = st.radio(
             "Search...",
@@ -3152,7 +3158,7 @@ if not SENS.get("on", False):
             index=0, horizontal=True, key="srch_mode_right",
             on_change=_on_mode_change
         )
-
+    
         # Control único a todo el ancho según modo
         if search_mode == SM_FAC:
             st.selectbox(
@@ -3170,96 +3176,99 @@ if not SENS.get("on", False):
                        if st.session_state.get("srch_course","") in course_opts else 0),
                 key="srch_course"
             )
-
-# ======================= RESULTADOS BUSQUEDA — FULL WIDTH =======================
-sel_prof    = st.session_state.get("srch_prof", "")
-sel_course  = st.session_state.get("srch_course", "")
-search_mode = st.session_state.get("srch_mode_right", SM_FAC)  # SM_FAC = "By Faculty", SM_COURSE = "By Course"
-
-has_query = (search_mode == SM_FAC and bool(sel_prof)) or (search_mode == SM_COURSE and bool(sel_course))
-
-if has_query:
-    base = df_car_filt_all.copy()
-
-    # Normalizaciones base
-    if col_prof_car: base["_PROF"] = base[col_prof_car].astype(str).str.strip()
-    if col_sem_car:  base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
-    if col_code_car: base["_CODE"] = base[col_code_car].astype(str).str.strip()  # <-- FIX AQUÍ
-    if col_name_car: base["_NAME"] = base[col_name_car].astype(str).str.strip()
-
-    # Enriquecer con ID/AREA por nombre (para mostrar)
-    if "_PROF" in base and prof_to_id_map_by_name:
-        base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
-    if "_PROF" in base and prof_to_area_map:
-        base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
-
-    # Filtro según modo
-    mask_all = pd.Series(True, index=base.index)
-
-    if search_mode == SM_FAC and sel_prof:
-        if sel_prof.startswith("ID:"):
-            qid = sel_prof.split(":", 1)[1].strip()
-            m = base["_ID"].astype(str).str.fullmatch(re.escape(qid), case=False) if "_ID" in base else pd.Series(False, index=base.index)
-        else:
-            m = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) if "_PROF" in base else pd.Series(False, index=base.index)
-        mask_all &= m
-
-    if search_mode == SM_COURSE and sel_course:
-        m_name = base["_NAME"].str.contains(re.escape(sel_course), case=False, na=False) if "_NAME" in base else pd.Series(False, index=base.index)
-        m_code = base["_CODE"].str.contains(re.escape(sel_course), case=False, na=False) if "_CODE" in base else pd.Series(False, index=base.index)
-        mask_all &= (m_name | m_code)
-
-    res = base[mask_all].copy()
-
-    # Resumen
-    periodo_txt = st.session_state.get("sel_label", "Selected")
-    if search_mode == SM_FAC and sel_prof:
-        if "_CRED" not in res.columns and col_cred_car:
-            res["_CRED"] = pd.to_numeric(res[col_cred_car], errors="coerce").fillna(0.0)
-        tot_cr = float(res.get("_CRED", pd.Series([0]*len(res))).sum())
-        tot_courses = int(res.shape[0])
-        prof_label = sel_prof
-        if sel_prof.startswith("ID:") and "_PROF" in res and not res.empty:
-            profs = sorted(res["_PROF"].dropna().unique().tolist())
-            if len(profs) == 1:
-                prof_label = profs[0]
-        st.info(f"**El profesor {prof_label} ha dictado {tot_cr:,.1f} créditos con {tot_courses} cursos en {periodo_txt}.**")
-
-    if search_mode == SM_COURSE and sel_course:
-        profs_cnt = res["_PROF"].nunique() if "_PROF" in res else 0
-        st.info(f"**El curso {sel_course} ha sido dictado por {profs_cnt} profesor(es) en {periodo_txt}.**")
-
-    # Salida
-    show_cols = {
-        "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd_all),
-        "Profesor": col_prof_car or col_prof_fd,
-        "ID": "_ID" if "_ID" in res else col_id_fd_all,
-        "AREA_PROFESOR": "_AREA_PROF" if "_AREA_PROF" in res else _get_any(df_fd, "AREA_PROFESOR","Area_Profesor","Area Profesor","Área","Area"),
-        "Código Materia": col_code_car,
-        "Nombre largo curso": col_name_car,
-        "Secc": col_secc_car,
-        "Area del curso": col_acar_car,
-        "Field": col_field_car,
-        "Program": col_prog_car,
-        "Créditos": col_cred_car,
-        "Campus": col_campus
-    }
-
-    data = {}
-    out_cols = []
-    for nice, col in show_cols.items():
-        data[nice] = res[col] if (col in res.columns) else None
-        out_cols.append(nice)
-
-    res_out = pd.DataFrame(data, columns=out_cols).copy()
-    if "Créditos" in res_out.columns:
-        res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
-
-    _download_xlsx_button(
-        res_out,
-        f"search_results_{_slugify(periodo_txt)}.xlsx",
-        key=f"dl_search_{_slugify(periodo_txt)}",
-        label="Download Results (Excel)"
-    )
-    st.dataframe(res_out, use_container_width=True, hide_index=True)
-
+    
+    # ======================= RESULTADOS BUSQUEDA — FULL WIDTH =======================
+    sel_prof    = st.session_state.get("srch_prof", "")
+    sel_course  = st.session_state.get("srch_course", "")
+    search_mode = st.session_state.get("srch_mode_right", SM_FAC)  # SM_FAC = "By Faculty", SM_COURSE = "By Course"
+    
+    has_query = (search_mode == SM_FAC and bool(sel_prof)) or (search_mode == SM_COURSE and bool(sel_course))
+    
+    if has_query:
+        base = df_car_filt_all.copy()
+    
+        # Normalizaciones base (cada una en su propia línea)
+        if col_prof_car:
+            base["_PROF"] = base[col_prof_car].astype(str).str.strip()
+        if col_sem_car:
+            base["_SEM"]  = base[col_sem_car].astype(str).str.strip()
+        if col_code_car:
+            base["_CODE"] = base[col_code_car].astype(str).str.strip()   # <- AQUÍ YA SIN TYPO
+        if col_name_car:
+            base["_NAME"] = base[col_name_car].astype(str).str.strip()
+    
+        # Enriquecer con ID/AREA por nombre (para mostrar)
+        if "_PROF" in base and prof_to_id_map_by_name:
+            base["_ID"] = base["_PROF"].map(prof_to_id_map_by_name)
+        if "_PROF" in base and prof_to_area_map:
+            base["_AREA_PROF"] = base["_PROF"].map(prof_to_area_map)
+    
+        # Filtro según modo
+        mask_all = pd.Series(True, index=base.index)
+    
+        if search_mode == SM_FAC and sel_prof:
+            if sel_prof.startswith("ID:"):
+                qid = sel_prof.split(":", 1)[1].strip()
+                m = base["_ID"].astype(str).str.fullmatch(re.escape(qid), case=False) if "_ID" in base else pd.Series(False, index=base.index)
+            else:
+                m = base["_PROF"].str.contains(re.escape(sel_prof), case=False, na=False) if "_PROF" in base else pd.Series(False, index=base.index)
+            mask_all &= m
+    
+        if search_mode == SM_COURSE and sel_course:
+            m_name = base["_NAME"].str.contains(re.escape(sel_course), case=False, na=False) if "_NAME" in base else pd.Series(False, index=base.index)
+            m_code = base["_CODE"].str.contains(re.escape(sel_course), case=False, na=False) if "_CODE" in base else pd.Series(False, index=base.index)
+            mask_all &= (m_name | m_code)
+    
+        res = base[mask_all].copy()
+    
+        # Resumen
+        periodo_txt = st.session_state.get("sel_label", "Selected")
+        if search_mode == SM_FAC and sel_prof:
+            if "_CRED" not in res.columns and col_cred_car:
+                res["_CRED"] = pd.to_numeric(res[col_cred_car], errors="coerce").fillna(0.0)
+            tot_cr = float(res.get("_CRED", pd.Series([0]*len(res))).sum())
+            tot_courses = int(res.shape[0])
+            prof_label = sel_prof
+            if sel_prof.startswith("ID:") and "_PROF" in res and not res.empty:
+                profs = sorted(res["_PROF"].dropna().unique().tolist())
+                if len(profs) == 1:
+                    prof_label = profs[0]
+            st.info(f"**El profesor {prof_label} ha dictado {tot_cr:,.1f} créditos con {tot_courses} cursos en {periodo_txt}.**")
+    
+        if search_mode == SM_COURSE and sel_course:
+            profs_cnt = res["_PROF"].nunique() if "_PROF" in res else 0
+            st.info(f"**El curso {sel_course} ha sido dictado por {profs_cnt} profesor(es) en {periodo_txt}.**")
+    
+        # Salida
+        show_cols = {
+            "Periodo": "_SEM" if "_SEM" in res else (col_sem_car or col_sem_fd_all),
+            "Profesor": col_prof_car or col_prof_fd,
+            "ID": "_ID" if "_ID" in res else col_id_fd_all,
+            "AREA_PROFESOR": "_AREA_PROF" if "_AREA_PROF" in res else _get_any(df_fd, "AREA_PROFESOR","Area_Profesor","Area Profesor","Área","Area"),
+            "Código Materia": col_code_car,
+            "Nombre largo curso": col_name_car,
+            "Secc": col_secc_car,
+            "Area del curso": col_acar_car,
+            "Field": col_field_car,
+            "Program": col_prog_car,
+            "Créditos": col_cred_car,
+            "Campus": col_campus
+        }
+    
+        data = {}
+        out_cols = []
+        for nice, col in show_cols.items():
+            data[nice] = res[col] if (col in res.columns) else None
+            out_cols.append(nice)
+    
+        res_out = pd.DataFrame(data, columns=out_cols).copy()
+        if "Créditos" in res_out.columns:
+            res_out["Créditos"] = pd.to_numeric(res_out["Créditos"], errors="coerce").fillna(0.0)
+    
+        _download_xlsx_button(
+            res_out,
+            f"search_results_{_slugify(periodo_txt)}.xlsx",
+            key=f"dl_search_{_slugify(periodo_txt)}",
+            label="Download Results (Excel)"
+        )
+        st.dataframe(res_out, use_container_width=True, hide_index=True)
