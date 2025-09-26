@@ -816,7 +816,8 @@ def mask_timeframe(series_sem: pd.Series, mode: str, selected_year: int | None, 
         return s.str.startswith(str(selected_year))
     if mode == "Intersemestral" and selected_year is not None:
         return s.str.startswith(str(selected_year)) & s.str.lower().str.contains("inter")
-    return pd.Series([True]*len(s), index=series_sem.index)
+    # <<< antes: devolvías todo True (muestra TODO el histórico)
+    return pd.Series([False]*len(s), index=series_sem.index)
 
 
 def filter_df_car(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
@@ -930,8 +931,9 @@ with st.sidebar:
         sel_label = f"{sel_year} (Annual)"
     else:
         default_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
-        st.session_state.setdefault("sel_inter_year", default_i)
-        sel_year = st.selectbox("Year (Intersemestral)", INTER_YEARS or YEARS_ALL or [default_i], key="sel_inter_year")
+        # usa SIEMPRE "sel_year" como fuente de verdad
+        st.session_state.setdefault("sel_year", default_i)
+        sel_year = st.selectbox("Year (Intersemestral)", INTER_YEARS or YEARS_ALL or [default_i], key="sel_year")
         sel_sem = None
         sel_label = f"{sel_year} Intersemestral"
 
@@ -3311,6 +3313,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
