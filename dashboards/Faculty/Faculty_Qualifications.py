@@ -851,7 +851,7 @@ INTER_YEARS = years_with_inter()
 
 with st.sidebar:
     st.markdown("#### Sensitivity analysis")
-    sens_mode = st.toggle("Enable sensitivity mode", value=st.session_state.get("sens_mode", False), key="sens_mode")
+    sens_mode = st.toggle("Enable sensitivity mode", value=st.session_state.get("sens_mode", False), key="sens_mode", help="Esta vista permite hacer un análisis de sensibilidad en los datos, sin afectar la información original")
     sens_member_placeholder = st.empty()
     if "sens_ops" not in st.session_state:
         st.session_state.sens_ops = []
@@ -859,10 +859,10 @@ with st.sidebar:
     if sens_mode:
         st.session_state.setdefault("sens_cat_ps", "None")
         st.session_state.setdefault("sens_cat_qual", "None")
-        st.selectbox("P/S category", ["None", "P", "S"], key="sens_cat_ps")
-        st.selectbox("Qualification", ["None", "SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
-        st.number_input("Professors", min_value=1, step=1, value=1, key="sens_count")
-        st.number_input("Credits per professor", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
+        st.selectbox("P/S Faculty category", ["None", "P", "S"], key="sens_cat_ps")
+        st.selectbox("Faculty Qualification", ["None", "SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
+        st.number_input("# of courses", min_value=1, step=1, value=1, key="sens_count")
+        st.number_input("Course credits", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
 
         # ADD (suma)
         if st.button("Add", use_container_width=True, key="sens_add"):
@@ -1468,7 +1468,7 @@ else:
                 if SENS["on"]:
                     r1c1, r1c2, r1c3 = st.columns([1.8, 1.1, 1.6])
                     with r1c1:
-                        needed_mode = st.toggle("# of courses needed for…", value=False, key="area_needed_mode")
+                        needed_mode = st.toggle("# N° of courses needed for…", value=False, key="area_needed_mode", help="La tabla muestra la cantidad de cursos de 3 créditos que se necesitan para llegar al objetivo)
                     if needed_mode:
                         with r1c2:
                             objective = st.selectbox("Objective", ["%P", "%SA", "%OTHER"], key="area_objective")
@@ -1529,11 +1529,11 @@ else:
         
                     # nombres de columnas según objetivo
                     if objective == "%P":
-                        main_col, aux_col = "Needed P (3cr)", "Needed S less (3cr)"
+                        main_col, aux_col = "P courses needed (3cr)", "Less S courses needed (3cr)"
                     elif objective == "%SA":
-                        main_col, aux_col = "Needed SA (3cr)", "Needed Non-SA less (3cr)"
+                        main_col, aux_col = "SA courses needed (3cr)", "Less other Qualific. courses needed (3cr)"
                     else:
-                        main_col, aux_col = "Needed OTHER less (3cr)", "Needed Non-OTHER more (3cr)"
+                        main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
         
                     rows = []
                     for label in idx_all:
@@ -1555,8 +1555,8 @@ else:
                             "Academic Area": label,
                             main_col: int(need1),
                             aux_col:  int(need2),
-                            "Impact +3cr (pp)": up_pp,
-                            "Impact -3cr (pp)": down_pp
+                            "Impact increasing 1 course in %p.p.": up_pp,
+                            "Impact decreasing 1 course %p.p.": down_pp
                         })
         
                     need_tbl = pd.DataFrame(rows)
@@ -1567,7 +1567,7 @@ else:
                     for col in ['Needed P (3cr)', 'Needed S less (3cr)', 'Needed SA (3cr)', 'Needed OTHER less (3cr)', 'Needed OTHER more (3cr)']:
                         if col in need_tbl.columns:
                             fmt_map[col] = '{:.0f}'
-                    for col in ['Impact +3cr (pp)', 'Impact -3cr (pp)']:
+                    for col in ['Impact increasing 1 course in %p.p.', 'Impact decreasing 1 course %p.p.']:
                         if col in need_tbl.columns:
                             fmt_map[col] = '{:+.2f}'
                     
@@ -1737,11 +1737,11 @@ else:
                     }
         
                     if objective_f == "%P":
-                        main_col, aux_col = "Needed P (3cr)", "Needed S less (3cr)"
+                        main_col, aux_col = "P courses needed (3cr)", "Less S courses needed (3cr)"
                     elif objective_f == "%SA":
-                        main_col, aux_col = "Needed SA (3cr)", "Needed Non-SA less (3cr)"
+                        main_col, aux_col = "SA courses needed (3cr)", "Less other Qualific. courses needed (3cr)"
                     else:
-                        main_col, aux_col = "Needed OTHER less (3cr)", "Needed Non-OTHER more (3cr)"
+                        main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
         
                     rows = []
                     for label in idx_all:
@@ -1761,8 +1761,8 @@ else:
                             "Field": label,
                             main_col: int(need1),
                             aux_col:  int(need2),
-                            "Impact +3cr (pp)": up_pp,
-                            "Impact -3cr (pp)": down_pp
+                            "Impact increasing 1 course %p.p.": up_pp,
+                            "Impact decreasing 1 course %p.p.": down_pp
                         })
         
                     need_tbl_f = pd.DataFrame(rows)
@@ -1773,7 +1773,7 @@ else:
                     for col in ['Needed P (3cr)', 'Needed S less (3cr)', 'Needed SA (3cr)', 'Needed OTHER less (3cr)', 'Needed OTHER more (3cr)']:
                         if col in need_tbl_f.columns:
                             fmt_map_f[col] = '{:.0f}'
-                    for col in ['Impact +3cr (pp)', 'Impact -3cr (pp)']:
+                    for col in ['Impact increasing 1 course %p.p.', 'Impact decreasing 1 course %p.p.']:
                         if col in need_tbl_f.columns:
                             fmt_map_f[col] = '{:+.2f}'
                     
@@ -1949,11 +1949,11 @@ else:
                     }
         
                     if objective_p == "%P":
-                        main_col, aux_col = "Needed P (3cr)", "Needed S less (3cr)"
+                        main_col, aux_col = "P courses needed (3cr)", "Less S courses needed (3cr)"
                     elif objective_p == "%SA":
-                        main_col, aux_col = "Needed SA (3cr)", "Needed Non-SA less (3cr)"
+                        main_col, aux_col = "SA courses needed (3cr)", "Less other Qualific. courses needed (3cr)"
                     else:
-                        main_col, aux_col = "Needed OTHER less (3cr)", "Needed Non-OTHER more (3cr)"
+                        main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
         
                     rows = []
                     for label in idx_all:
@@ -1973,8 +1973,8 @@ else:
                             "Program": label,
                             main_col: int(need1),
                             aux_col:  int(need2),
-                            "Impact +3cr (pp)": up_pp,
-                            "Impact -3cr (pp)": down_pp
+                            "Impact increasing 1 course %p.p.": up_pp,
+                            "Impact decreasing 1 course %p.p.": down_pp
                         })
         
                     need_tbl_p = pd.DataFrame(rows)
@@ -1984,7 +1984,7 @@ else:
                     for col in ['Needed P (3cr)', 'Needed S less (3cr)', 'Needed SA (3cr)', 'Needed OTHER less (3cr)', 'Needed OTHER more (3cr)']:
                         if col in need_tbl_p.columns:
                             fmt_map_p[col] = '{:.0f}'
-                    for col in ['Impact +3cr (pp)', 'Impact -3cr (pp)']:
+                    for col in ['Impact increasing 1 course %p.p.', 'Impact decreasing 1 course %p.p.']:
                         if col in need_tbl_p.columns:
                             fmt_map_p[col] = '{:+.2f}'
                     
@@ -3339,6 +3339,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
