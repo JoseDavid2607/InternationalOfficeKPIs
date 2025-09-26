@@ -850,7 +850,12 @@ INTER_YEARS = years_with_inter()
 
 with st.sidebar:
     st.markdown("#### Sensitivity analysis")
-    sens_mode = st.toggle("Enable sensitivity mode", value=st.session_state.get("sens_mode", False), key="sens_mode")
+    sens_mode = st.toggle(
+        "Enable sensitivity mode",
+        value=st.session_state.get("sens_mode", False),
+        key="sens_mode",
+        help="Aquí podrás hacer un análisis de sensibilidad sin modificar los datos reales."
+    )
     sens_member_placeholder = st.empty()
     if "sens_ops" not in st.session_state:
         st.session_state.sens_ops = []
@@ -2071,12 +2076,6 @@ else:
 # --------------------------
 # CREDIT SUMS (EXPANDER)
 # --------------------------
-
-st.markdown("""
-#### Faculty credit highlights (current timeframe) 
-<span style="color:#888; cursor:help;" title="Esta sección muestra un ranking de profesores según los créditos dictados.">❓</span>
-""", unsafe_allow_html=True)
-
 try:
     period_df = df_car_filt_all.copy()
     if "_CRED"  not in period_df.columns and col_cred:  period_df["_CRED"]  = pd.to_numeric(period_df[col_cred], errors="coerce").fillna(0.0)
@@ -3238,6 +3237,7 @@ if not SENS.get("on", False):
             label="Descargar resultados (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
