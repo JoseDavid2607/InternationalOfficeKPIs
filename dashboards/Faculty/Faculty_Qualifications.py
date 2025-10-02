@@ -1424,9 +1424,8 @@ else:
     df_car_filt_all = fil.copy()  # usar en expander/tabla/dona
 
 
-# O si ya lo hiciste antes, simplemente:
-if "_PROG" not in df_hist.columns and col_prog:
-    df_hist["_PROG"] = df_hist[col_prog].astype(str).str.strip()
+    # Al principio, o justo antes del bloque relevante:
+    col_prog = _get_any(df_car, "Program","PROGRAM","program","Materia")
 
     # Normalización base robusta
 if "_PROG" not in df_hist.columns and col_prog:
@@ -3398,6 +3397,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
