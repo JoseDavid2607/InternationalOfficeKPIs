@@ -2526,7 +2526,7 @@ if not SENS.get("on", False):
         cfg = {
             "By Academic Area": {"key": "_AREA_filter",  "col": "_AREA", "label": "area",    "metric_key": "metric__AREA"},
             "By Field":         {"key": "_FIELD_filter", "col": "_FIELD","label": "campo",   "metric_key": "metric__FIELD"},
-            "By Program":       {"key": "_MAT_filter",   "col": "_MAT",  "label": "programa","metric_key": "metric__MAT"},
+            "By Program":       {"key": "_PROG_filter",   "col": "_PROG",  "label": "programa","metric_key": "metric__PROG"},
         }
         view = st.session_state.view_mode
 
@@ -2541,7 +2541,7 @@ if not SENS.get("on", False):
             base = df_car_filt_all.copy()
             if "_AREA"  not in base.columns and col_areaCourse: base["_AREA"]  = base[col_areaCourse].astype(str).str.strip()
             if "_FIELD" not in base.columns and col_field:      base["_FIELD"] = base[col_field].astype(str).str.strip()
-            if "_MAT"   not in base.columns and col_prog:       base["_MAT"]   = base[col_prog].astype(str).str.strip()
+            if "_PROG"   not in base.columns and col_prog:       base["_PROG"]   = base[col_prog].astype(str).str.strip()
             if "_TIPO"  not in base.columns and col_tipoC:      base["_TIPO"]  = _norm_str(base[col_tipoC]).map(normalize_tipo)
             if "_PS"    not in base.columns and col_ps_C:       base["_PS"]    = _norm_str(base[col_ps_C]).map(normalize_ps)
             if "_CRED"  not in base.columns and col_cred:       base["_CRED"]  = pd.to_numeric(base[col_cred], errors="coerce").fillna(0.0)
@@ -3070,7 +3070,7 @@ if not SENS.get("on", False):
     col_secc_car = _get_any(df_car_scope, "Secc","Sección","Seccion","Section")
     col_acar_car = _get_any(df_car_scope, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
     col_field_car= _get_any(df_car_scope, "Field","FIELD","Campo","Área de conocimiento")
-    col_prog_car = _get_any(df_car_scope, "Program","PROGRAM","program","Materia")
+    col_prog_car = _get_any(df_car_scope, "Program","PROGRAM","program")
     col_campus   = _get_any(df_car_scope, "Campus","CAMPUS","Sede")
 
     if col_cred_car and "_CRED" not in df_car_scope.columns:
@@ -3382,6 +3382,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
