@@ -1916,14 +1916,18 @@ else:
                 fil_prog["_CRED"] = pd.to_numeric(fil_prog[col_cred], errors="coerce").fillna(0.0)
         
             # Aggregations por Programa
-            agg_tipo_p = (fil_prog.groupby(["_PROG","_TIPO"], dropna=False)["_CRED"]
-                                 .sum().unstack(fill_value=0.0))
+            agg_tipo_p = (
+                fil_prog.groupby(["_PROG","_TIPO"], dropna=False)["_CRED"]
+                        .sum().unstack(fill_value=0.0)
+            )
             for k in ["SA","PA","SP","IP","OTHER"]:
                 if k not in agg_tipo_p.columns: agg_tipo_p[k] = 0.0
             agg_tipo_p = agg_tipo_p[["SA","PA","SP","IP","OTHER"]]
         
-            agg_ps_p = (fil_prog.groupby(["_PROG","_PS"], dropna=False)["_CRED"]
-                               .sum().unstack(fill_value=0.0))
+            agg_ps_p = (
+                fil_prog.groupby(["_PROG","_PS"], dropna=False)["_CRED"]
+                        .sum().unstack(fill_value=0.0)
+            )
             for k in ["P","S"]:
                 if k not in agg_ps_p.columns: agg_ps_p[k] = 0.0
             agg_ps_p = agg_ps_p[["P","S"]]
@@ -1948,10 +1952,10 @@ else:
                         with r1c3:
                             scope_label_p = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="prog_scope")
                     else:
-                        objective_p  = st.session_state.get("prog_objective", "%P")
+                        objective_p   = st.session_state.get("prog_objective", "%P")
                         scope_label_p = st.session_state.get("prog_scope", "By area")
                 else:
-                    objective_p  = st.session_state.get("prog_objective", "%P")
+                    objective_p   = st.session_state.get("prog_objective", "%P")
                     scope_label_p = st.session_state.get("prog_scope", "By area")
         
                 if not needed_mode_p:
@@ -1967,7 +1971,7 @@ else:
                     )
                     st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_p.to_html(escape=False)}</div>", unsafe_allow_html=True)
                 else:
-                    # Tabla "needed" + impacto (siempre visible, sin botón) con heatmap
+                    # Tabla "needed" + impacto (heatmap)
                     idx_all = sorted(set(mod_agg_ps_p.index.tolist()) | set(mod_agg_tipo_p.index.tolist()))
                     p   = mod_agg_ps_p["P"].reindex(idx_all, fill_value=0.0)
                     s   = mod_agg_ps_p["S"].reindex(idx_all, fill_value=0.0)
@@ -2016,19 +2020,20 @@ else:
                     need_tbl_p = pd.DataFrame(rows)
         
                     # Formato dinámico según columnas presentes
-                    fmt_map_p = {"Program": "{}", 
-                                 "Impact increasing 1 course %p.p.": "{:+.2f}",
-                                 "Impact decreasing 1 course %p.p.": "{:+.2f}"}
+                    fmt_map_p = {
+                        "Program": "{}",
+                        "Impact increasing 1 course %p.p.": "{:+.2f}",
+                        "Impact decreasing 1 course %p.p.": "{:+.2f}"
+                    }
                     if main_col in need_tbl_p.columns: fmt_map_p[main_col] = "{:.0f}"
                     if aux_col  in need_tbl_p.columns: fmt_map_p[aux_col]  = "{:.0f}"
         
                     styled_p = (
                         need_tbl_p.style
                         .format(fmt_map_p)
-                        .apply(_style_impact_heatmap, id_col="Program", axis=None)  # heatmap verde→amarillo→naranja→rojo
+                        .apply(_style_impact_heatmap, id_col="Program", axis=None)
                         .hide(axis="index")
                     )
-        
                     _download_xlsx_button(
                         need_tbl_p,
                         f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(objective_p)}_{_slugify(scope_label_p)}.xlsx",
@@ -2038,32 +2043,84 @@ else:
                     st.markdown(styled_p.to_html(escape=False), unsafe_allow_html=True)
         
             # ====== Series históricas por Program ======
+            # Normalización previa (por si df_car_global no trae las columnas _SEM/_PROG/_PS/_TIPO/_CRED)
             df_hist = df_car_global.copy()
-            agg_ps_all_p = (df_hist.groupby(["_SEM","_PROG","_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+        
+            semH  = _get_any(df_hist, "Semestre","Periodo","Periodo Académico","Periodo academico")
+            psH   = _get_any(df_hist, "P/S","P - S","Participating/Supporting")
+            credH = _get_any(df_hist, "Créditos","Creditos","Credits")
+            tipoH = _get_any(df_hist, "TIPO","Tipo","Ranking","Tipo Ranking")
+            progH = _get_any(df_hist, "Program","PROGRAM","Programa","Program Code","ProgramName","Materia","Plan de estudios")
+        
+            if "_SEM" not in df_hist.columns:
+                df_hist["_SEM"] = df_hist[semH].astype(str).str.strip() if semH else ""
+            else:
+                df_hist["_SEM"] = df_hist["_SEM"].astype(str).str.strip()
+        
+            if "_PS" not in df_hist.columns:
+                df_hist["_PS"] = _norm_str(df_hist[psH]).map(normalize_ps) if psH else ""
+            else:
+                df_hist["_PS"] = _norm_str(df_hist["_PS"]).map(normalize_ps)
+        
+            if "_CRED" not in df_hist.columns:
+                df_hist["_CRED"] = pd.to_numeric(df_hist[credH], errors="coerce").fillna(0.0) if credH else 0.0
+            else:
+                df_hist["_CRED"] = pd.to_numeric(df_hist["_CRED"], errors="coerce").fillna(0.0)
+        
+            if "_TIPO" not in df_hist.columns:
+                df_hist["_TIPO"] = _norm_str(df_hist[tipoH]).map(normalize_tipo) if tipoH else "OTHER"
+            else:
+                df_hist["_TIPO"] = _norm_str(df_hist["_TIPO"]).map(normalize_tipo)
+        
+            if "_PROG" not in df_hist.columns:
+                if progH:
+                    df_hist["_PROG"] = df_hist[progH].astype(str).str.strip().replace({"": "N/A"})
+                elif "_MAT" in df_hist.columns:
+                    df_hist["_PROG"] = df_hist["_MAT"].astype(str).str.strip().replace({"": "N/A"})
+                else:
+                    df_hist["_PROG"] = "N/A"
+            else:
+                df_hist["_PROG"] = df_hist["_PROG"].astype(str).str.strip().replace({"": "N/A"})
+            df_hist["_PROG"] = df_hist["_PROG"].fillna("N/A")
+        
+            # Agregaciones
+            agg_ps_all_p = (
+                df_hist.groupby(["_SEM","_PROG","_PS"], dropna=False)["_CRED"]
+                       .sum().unstack(fill_value=0.0)
+            )
             for k in ["P","S"]:
                 if k not in agg_ps_all_p.columns: agg_ps_all_p[k] = 0.0
             agg_ps_all_p["P_share"] = (agg_ps_all_p["P"] / (agg_ps_all_p["P"] + agg_ps_all_p["S"]).replace(0, pd.NA)) * 100
             agg_ps_all_p = agg_ps_all_p.reset_index()
         
-            agg_tipo_all_p = (df_hist.groupby(["_SEM","_PROG","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
+            agg_tipo_all_p = (
+                df_hist.groupby(["_SEM","_PROG","_TIPO"], dropna=False)["_CRED"]
+                       .sum().unstack(fill_value=0.0)
+            )
             for k in ["SA","PA","SP","IP","OTHER"]:
                 if k not in agg_tipo_all_p.columns: agg_tipo_all_p[k] = 0.0
             den_all_p = (agg_tipo_all_p[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
-            agg_tipo_all_p["SA_share"] = (agg_tipo_all_p["SA"] / den_all_p) * 100
+            agg_tipo_all_p["SA_share"]    = (agg_tipo_all_p["SA"]    / den_all_p) * 100
             agg_tipo_all_p["OTHER_share"] = (agg_tipo_all_p["OTHER"] / den_all_p) * 100
             agg_tipo_all_p = agg_tipo_all_p.reset_index()
         
-            tot_by_sem_P_p = (df_hist.groupby(["_SEM","_PS"])["_CRED"].sum().unstack(fill_value=0.0))
+            tot_by_sem_P_p = (
+                df_hist.groupby(["_SEM","_PS"])["_CRED"]
+                       .sum().unstack(fill_value=0.0)
+            )
             for k in ["P","S"]:
                 if k not in tot_by_sem_P_p.columns: tot_by_sem_P_p[k] = 0.0
             tot_by_sem_P_p["P_share"] = (tot_by_sem_P_p["P"] / (tot_by_sem_P_p["P"] + tot_by_sem_P_p["S"]).replace(0, pd.NA)) * 100
             tot_by_sem_P_p = tot_by_sem_P_p.reset_index()
         
-            tot_by_sem_tipo_p = (df_hist.groupby(["_SEM","_TIPO"])["_CRED"].sum().unstack(fill_value=0.0))
+            tot_by_sem_tipo_p = (
+                df_hist.groupby(["_SEM","_TIPO"])["_CRED"]
+                       .sum().unstack(fill_value=0.0)
+            )
             for k in ["SA","PA","SP","IP","OTHER"]:
                 if k not in tot_by_sem_tipo_p.columns: tot_by_sem_tipo_p[k] = 0.0
             den_tot_p = (tot_by_sem_tipo_p[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
-            tot_by_sem_tipo_p["SA_share"] = (tot_by_sem_tipo_p["SA"] / den_tot_p) * 100
+            tot_by_sem_tipo_p["SA_share"]    = (tot_by_sem_tipo_p["SA"]    / den_tot_p) * 100
             tot_by_sem_tipo_p["OTHER_share"] = (tot_by_sem_tipo_p["OTHER"] / den_tot_p) * 100
             tot_by_sem_tipo_p = tot_by_sem_tipo_p.reset_index()
         
@@ -2097,7 +2154,7 @@ else:
                 sel_x_p = x_map_p.get(inter_label_p) if inter_label_p else None
                 sel_label_exact_p = inter_label_p
         
-            if SENS["on"] and SENS["ops"] and sel_label_exact_p is not None:
+            if SENS.get("on") and SENS.get("ops") and sel_label_exact_p is not None:
                 agg_ps_all_p_tm, agg_tipo_all_p_tm, tot_by_sem_P_p_tm, tot_by_sem_tipo_p_tm = apply_sensitivity_to_history(
                     agg_ps_all_p_tm, agg_tipo_all_p_tm, tot_by_sem_P_p_tm, tot_by_sem_tipo_p_tm,
                     level_name="_PROG",
@@ -2106,7 +2163,8 @@ else:
                     member_all_label="All"
                 )
         
-            progs_all = sorted(set(agg_ps_all_p_tm["_PROG"].astype(str).unique()) | set(agg_tipo_all_p_tm["_PROG"].astype(str).unique()))
+            progs_all = sorted(set(agg_ps_all_p_tm["_PROG"].astype(str).unique()) |
+                               set(agg_tipo_all_p_tm["_PROG"].astype(str).unique()))
             with colP_R:
                 draw_history(
                     "Evolution by Program",
@@ -2118,6 +2176,7 @@ else:
                     agg_tipo_all=agg_tipo_all_p_tm,
                     x_labels=x_labels_p, x_map=x_map_p, sel_x=sel_x_p
                 )
+
 
 # --------------------------
 # CREDIT SUMS (EXPANDER)
@@ -3395,6 +3454,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
