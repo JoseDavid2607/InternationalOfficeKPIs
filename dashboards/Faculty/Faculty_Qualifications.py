@@ -2641,13 +2641,6 @@ if not SENS.get("on", False):
                         key=f"table_filt_tipo_{view}_{opt_val}"
                     )
 
-                # --- Switch para tabla por profesor ---
-                show_faculty_counts = st.toggle(
-                    "Show faculty by course count",
-                    value=False,
-                    key=f"show_faculty_counts_{view}_{opt_val}"
-                )
-
                 # --- Base de la tabla y scope por etiqueta seleccionada ---
                 base_tbl = base.copy()
                 if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
@@ -2665,11 +2658,76 @@ if not SENS.get("on", False):
                 elif table_filter_tipo == "Only OTHER":
                     base_tbl = base_tbl[base_tbl["_TIPO"] == "OTHER"]
 
-                # ---------- Titulado y tablas ----------
-                display_label = st.session_state.get('sel_label', 'Selected Period')
+                # ---------- Botón (esquina superior derecha) para POPUP ----------
+                # Color menta diamante (más claro)
+                MINT_DIAMOND = "#D6FFF2"
 
-                if not show_faculty_counts:
-                    # ===== Tabla de cursos (detalle) =====
+                # Función del modal (usa st.dialog si existe; si no, expander como fallback)
+                def _show_faculty_popup(df_in, display_label, opt_val_local):
+                    # Helper: modo (valor más frecuente) por profesor para P/S y TIPO
+                    def _first_mode(s: pd.Series):
+                        try:
+                            m = s.mode(dropna=True)
+                            return m.iloc[0] if not m.empty else None
+                        except Exception:
+                            return None
+
+                    col_prof_safe = col_prof if col_prof in df_in.columns else None
+                    if not col_prof_safe:
+                        st.info("No 'Profesor' column available to compute faculty counts.")
+                        return
+
+                    grp = (df_in
+                           .groupby(df_in[col_prof_safe].astype(str).str.strip(), dropna=False)
+                           .agg(
+                               **{
+                                   "P/S":      ("_PS",   _first_mode),
+                                   "TIPO":     ("_TIPO", _first_mode),
+                                   "#Cursos":  (col_prof_safe, "count"),
+                                   "Créditos": ("_CRED", "sum"),
+                               }
+                           )
+                           .reset_index()
+                           .rename(columns={col_prof_safe: "Profesor"}))
+
+                    grp = grp.sort_values(["#Cursos", "Créditos"], ascending=[False, False]).reset_index(drop=True)
+
+                    # Título en inglés (según área/field/program)
+                    if opt_val_local in {"(TOTAL)", "(All)"}:
+                        fac_title = f"Faculty con más cursos en {display_label}"
+                    else:
+                        fac_title = f"Faculty con más cursos de {opt_val_local} en {display_label}"
+                    st.markdown(f"### {fac_title}")
+
+                    # Estilo: Top 5 en verde menta diamante
+                    def _style_top5(df_):
+                        sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+                        top_mask = df_.index < 5
+                        for c in df_.columns:
+                            sty.loc[top_mask, c] = f'background-color: {MINT_DIAMOND}; font-weight:600;'
+                        return sty
+
+                    _download_xlsx_button(
+                        grp,
+                        f"faculty_by_courses_{_slugify(opt_val_local)}_{_slugify(display_label)}.xlsx",
+                        key=f"dl_fac_by_courses_{_slugify(opt_val_local)}_{_slugify(display_label)}",
+                        label="⬇️ Download table (Excel)"
+                    )
+                    st.dataframe(
+                        grp.style.format({"Créditos": "{:,.1f}"}).apply(_style_top5, axis=None),
+                        use_container_width=True, hide_index=True
+                    )
+
+                # Fila con TÍTULO + BOTÓN a la derecha
+                header_l, header_r = st.columns([0.78, 0.22])
+                with header_r:
+                    # El botón abre el popup
+                    open_popup = st.button("👤 Faculty by course count", key=f"open_popup_{view}_{opt_val}", use_container_width=True)
+                with header_l:
+                    # Construcción del título para la tabla de cursos
+                    display_label = st.session_state.get('sel_label', 'Selected Period')
+
+                    # Tabla de cursos (detalle)
                     wanted_map = {
                         "Semestre": col_sem, "Código Materia": col_code, "Créditos": col_cred,
                         "Nombre largo curso": col_name, "Program": col_prog, "Profesor": col_prof,
@@ -2695,71 +2753,30 @@ if not SENS.get("on", False):
                         title = f"{n_courses} courses were taught in {display_label}{desc_suffix}"
                     else:
                         title = f"{n_courses} courses of {opt_val} were taught in {display_label}{desc_suffix}"
-
                     st.markdown(f"### {title}")
-                    _download_xlsx_button(
-                        out,
-                        f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
-                        key=f"dl_tbl_detail_{_slugify(opt_val)}_{_slugify(display_label)}",
-                        label="⬇️ Download table (Excel)"
-                    )
-                    st.dataframe(out, use_container_width=True, hide_index=True)
 
-                else:
-                    # ===== Tabla por profesor (#Cursos y Créditos) =====
-                    # Helper: modo (valor más frecuente) por profesor para P/S y TIPO
-                    def _first_mode(s: pd.Series):
-                        try:
-                            m = s.mode(dropna=True)
-                            return m.iloc[0] if not m.empty else None
-                        except Exception:
-                            return None
-
-                    col_prof_safe = col_prof if col_prof in base_tbl.columns else None
-                    if not col_prof_safe:
-                        st.info("No 'Profesor' column available to compute faculty counts.")
+                # Si se hizo clic en el botón, abrir popup
+                if open_popup:
+                    if hasattr(st, "dialog"):
+                        @st.dialog("Faculty by course count")
+                        def _dlg():
+                            _show_faculty_popup(base_tbl, display_label, opt_val)
+                            if st.button("Close"):
+                                st.rerun()
+                        _dlg()
                     else:
-                        grp = (base_tbl
-                               .groupby(base_tbl[col_prof_safe].astype(str).str.strip(), dropna=False)
-                               .agg(
-                                   **{
-                                       "P/S":    ("_PS",   _first_mode),
-                                       "TIPO":   ("_TIPO", _first_mode),
-                                       "#Cursos": (col_prof_safe, "count"),
-                                       "Créditos": ("_CRED", "sum"),
-                                   }
-                               )
-                               .reset_index()
-                               .rename(columns={col_prof_safe: "Profesor"}))
+                        # Fallback elegante si no existe st.dialog (p. ej. versiones antiguas)
+                        with st.expander("Faculty by course count", expanded=True):
+                            _show_faculty_popup(base_tbl, display_label, opt_val)
 
-                        # Ordenar por #Cursos desc, luego Créditos desc
-                        grp = grp.sort_values(["#Cursos", "Créditos"], ascending=[False, False]).reset_index(drop=True)
-
-                        # Título en inglés (según área/field/program)
-                        if opt_val in {"(TOTAL)", "(All)"}:
-                            fac_title = f"Faculty con más cursos en {display_label}"
-                        else:
-                            fac_title = f"Faculty con más cursos de {opt_val} en {display_label}"
-                        st.markdown(f"### {fac_title}")
-
-                        # Estilo: Top 5 en verde menta
-                        def _style_top5(df_):
-                            sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
-                            top_mask = df_.index < 5
-                            for c in df_.columns:
-                                sty.loc[top_mask, c] = 'background-color: %s; font-weight:600;' % MINT
-                            return sty
-
-                        _download_xlsx_button(
-                            grp,
-                            f"faculty_by_courses_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
-                            key=f"dl_fac_by_courses_{_slugify(opt_val)}_{_slugify(display_label)}",
-                            label="⬇️ Download table (Excel)"
-                        )
-                        st.dataframe(
-                            grp.style.format({"Créditos": "{:,.1f}"}).apply(_style_top5, axis=None),
-                            use_container_width=True, hide_index=True
-                        )
+                # Descargar + Tabla detalle
+                _download_xlsx_button(
+                    out,
+                    f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
+                    key=f"dl_tbl_detail_{_slugify(opt_val)}_{_slugify(display_label)}",
+                    label="⬇️ Download table (Excel)"
+                )
+                st.dataframe(out, use_container_width=True, hide_index=True)
 
             # ==================================================
             # DERECHA: Donut %P o %TIPO (usa la MISMA base_tbl filtrada)
@@ -3518,6 +3535,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
