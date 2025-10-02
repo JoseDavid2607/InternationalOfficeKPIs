@@ -1002,7 +1002,7 @@ col_prof       = _get_any(df_car, "Profesor","PROFESOR","Docente")
 col_code       = _get_any(df_car, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
 col_name       = _get_any(df_car, "Nombre largo curso","Nombre Curso","Nombre del curso","Course Name")
 col_field      = _get_any(df_car, "Field","FIELD","Campo","Área de conocimiento")
-col_prog       = _get_any(df_car, "Program","PROGRAM","program","Materia")
+col_prog       = _get_any(df_car, "Program","PROGRAM","program")
 col_ps_C       = _get_any(df_car, "P/S","P - S","Participating/Supporting")
 
 # ---------- Stylers ----------
@@ -3382,6 +3382,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
