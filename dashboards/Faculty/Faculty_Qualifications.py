@@ -2589,16 +2589,16 @@ def filter_df_car(df_car_base: pd.DataFrame, time_mode: str, sel_year: int | Non
     return df
 
 # --------------------------
-# DETAIL TABLE + DONUT  (sin buscador)
-# (Oculto automáticamente cuando Sensitivity mode está activo)
+# DETAIL TABLE + DONUT  (no search)
+# (Hidden automatically when Sensitivity mode is active)
 # --------------------------
 if not SENS.get("on", False):
     try:
-        # ---------- Config vista ----------
+        # ---------- View config ----------
         cfg = {
-            "By Academic Area": {"key": "_AREA_filter",  "col": "_AREA",  "label": "area",     "metric_key": "metric__AREA"},
-            "By Field":         {"key": "_FIELD_filter", "col": "_FIELD", "label": "field",    "metric_key": "metric__FIELD"},
-            "By Program":       {"key": "_PROG_filter",  "col": "_PROG",  "label": "program",  "metric_key": "metric__PROG"},
+            "By Academic Area": {"key": "_AREA_filter",  "col": "_AREA",  "label": "area",    "metric_key": "metric__AREA"},
+            "By Field":         {"key": "_FIELD_filter", "col": "_FIELD", "label": "field",   "metric_key": "metric__FIELD"},
+            "By Program":       {"key": "_PROG_filter",  "col": "_PROG",  "label": "program", "metric_key": "metric__PROG"},
         }
         view = st.session_state.view_mode
 
@@ -2609,7 +2609,7 @@ if not SENS.get("on", False):
             metric_choice = st.session_state.get(metric_key, "%P")
             opt_val    = st.session_state.get(key, "(All)")
 
-            # ---------- Base Cartelera enriquecida mínima (ya filtrada por período arriba) ----------
+            # ---------- Minimal enriched Cartelera base (already time-filtered above) ----------
             base = df_car_filt_all.copy()
             if "_AREA"  not in base.columns and col_areaCourse: base["_AREA"]  = base[col_areaCourse].astype(str).str.strip()
             if "_FIELD" not in base.columns and col_field:      base["_FIELD"] = base[col_field].astype(str).str.strip()
@@ -2618,13 +2618,17 @@ if not SENS.get("on", False):
             if "_PS"    not in base.columns and col_ps_C:       base["_PS"]    = _norm_str(base[col_ps_C]).map(normalize_ps)
             if "_CRED"  not in base.columns and col_cred:       base["_CRED"]  = pd.to_numeric(base[col_cred], errors="coerce").fillna(0.0)
 
+            # Safe default for mint if not globally set
+            MINT = globals().get("MINT", "#2DD4BF")
+            MINT_DIAMOND = "#D6FFF2"  # lighter mint for highlights
+
             cL, cR = st.columns([7,5], gap="large")
 
             # ==================================================
-            # IZQUIERDA: Filtros + Tabla
+            # LEFT: Filters + Detail Table (+ popup trigger)
             # ==================================================
             with cL:
-                # --- Filtros (siempre visibles) ---
+                # --- Filters (always visible) ---
                 colF1, colF2 = st.columns([1,1])
                 with colF1:
                     table_filter_ps = st.radio(
@@ -2641,30 +2645,26 @@ if not SENS.get("on", False):
                         key=f"table_filt_tipo_{view}_{opt_val}"
                     )
 
-                # --- Base de la tabla y scope por etiqueta seleccionada ---
+                # --- Scope by selected tag (Area/Field/Program) ---
                 base_tbl = base.copy()
                 if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
                     base_tbl = base_tbl[base_tbl[col_tag] == opt_val].copy()
 
-                # --- Aplicar filtro P/S ---
+                # --- Apply P/S filter ---
                 if table_filter_ps == "Only P":
                     base_tbl = base_tbl[base_tbl["_PS"] == "P"]
                 elif table_filter_ps == "Only S":
                     base_tbl = base_tbl[base_tbl["_PS"] == "S"]
 
-                # --- Aplicar filtro TIPO ---
+                # --- Apply Qualification filter ---
                 if table_filter_tipo == "Only SA":
                     base_tbl = base_tbl[base_tbl["_TIPO"] == "SA"]
                 elif table_filter_tipo == "Only OTHER":
                     base_tbl = base_tbl[base_tbl["_TIPO"] == "OTHER"]
 
-                # ---------- Botón (esquina superior derecha) para POPUP ----------
-                # Color menta diamante (más claro)
-                MINT_DIAMOND = "#D6FFF2"
-
-                # Función del modal (usa st.dialog si existe; si no, expander como fallback)
+                # ---------- Popup function (faculty by course count) ----------
                 def _show_faculty_popup(df_in, display_label, opt_val_local):
-                    # Helper: modo (valor más frecuente) por profesor para P/S y TIPO
+                    # Helper: most frequent value per professor (for _PS and _TIPO)
                     def _first_mode(s: pd.Series):
                         try:
                             m = s.mode(dropna=True)
@@ -2672,34 +2672,34 @@ if not SENS.get("on", False):
                         except Exception:
                             return None
 
-                    col_prof_safe = col_prof if col_prof in df_in.columns else None
+                    col_prof_safe = col_prof if (col_prof and col_prof in df_in.columns) else None
                     if not col_prof_safe:
-                        st.info("No 'Profesor' column available to compute faculty counts.")
+                        st.info("No 'Professor' column available to compute faculty counts.")
                         return
 
-                    grp = (df_in
-                           .groupby(df_in[col_prof_safe].astype(str).str.strip(), dropna=False)
-                           .agg(
-                               **{
-                                   "P/S":      ("_PS",   _first_mode),
-                                   "TIPO":     ("_TIPO", _first_mode),
-                                   "#Cursos":  (col_prof_safe, "count"),
-                                   "Créditos": ("_CRED", "sum"),
-                               }
-                           )
-                           .reset_index()
-                           .rename(columns={col_prof_safe: "Profesor"}))
+                    grp = (
+                        df_in
+                        .groupby(df_in[col_prof_safe].astype(str).str.strip(), dropna=False)
+                        .agg(
+                            **{
+                                "P/S":      ("_PS",   _first_mode),
+                                "Type":     ("_TIPO", _first_mode),
+                                "#Courses": (col_prof_safe, "count"),
+                                "Credits":  ("_CRED", "sum"),
+                            }
+                        )
+                        .reset_index()
+                        .rename(columns={col_prof_safe: "Professor"})
+                    ).sort_values(["#Courses", "Credits"], ascending=[False, False]).reset_index(drop=True)
 
-                    grp = grp.sort_values(["#Cursos", "Créditos"], ascending=[False, False]).reset_index(drop=True)
-
-                    # Título en inglés (según área/field/program)
+                    # English title (respecting the selected scope)
                     if opt_val_local in {"(TOTAL)", "(All)"}:
-                        fac_title = f"Faculty con más cursos en {display_label}"
+                        fac_title = f"Faculty with the most courses in {display_label}"
                     else:
-                        fac_title = f"Faculty con más cursos de {opt_val_local} en {display_label}"
+                        fac_title = f"Faculty with the most {cfg[view]['label']} courses in {display_label}: {opt_val_local}"
                     st.markdown(f"### {fac_title}")
 
-                    # Estilo: Top 5 en verde menta diamante
+                    # Style top 5 (mint diamond)
                     def _style_top5(df_):
                         sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
                         top_mask = df_.index < 5
@@ -2714,48 +2714,58 @@ if not SENS.get("on", False):
                         label="⬇️ Download table (Excel)"
                     )
                     st.dataframe(
-                        grp.style.format({"Créditos": "{:,.1f}"}).apply(_style_top5, axis=None),
+                        grp.style.format({"Credits": "{:,.1f}"}).apply(_style_top5, axis=None),
                         use_container_width=True, hide_index=True
                     )
 
-                # Fila con TÍTULO + BOTÓN a la derecha
-                header_l, header_r = st.columns([0.78, 0.22])
-                with header_r:
-                    # El botón abre el popup
-                    open_popup = st.button("👤 Faculty by course count", key=f"open_popup_{view}_{opt_val}", use_container_width=True)
-                with header_l:
-                    # Construcción del título para la tabla de cursos
-                    display_label = st.session_state.get('sel_label', 'Selected Period')
+                # ---------- Title (only) ----------
+                display_label = st.session_state.get('sel_label', 'Selected Period')
 
-                    # Tabla de cursos (detalle)
-                    wanted_map = {
-                        "Semestre": col_sem, "Código Materia": col_code, "Créditos": col_cred,
-                        "Nombre largo curso": col_name, "Program": col_prog, "Profesor": col_prof,
-                        "Area del curso": col_areaCourse, "Field": col_field, "TIPO": col_tipoC, "P/S": col_ps_C,
-                    }
-                    present = {nice: col for nice, col in wanted_map.items() if col in base_tbl.columns}
-                    out = base_tbl[list(present.values())].rename(columns={v: k for k, v in present.items()})
-                    n_courses = len(out)
+                # Build detail table
+                wanted_map = {
+                    "Term": col_sem, "Course Code": col_code, "Credits": col_cred,
+                    "Course Name": col_name, "Program": col_prog, "Professor": col_prof,
+                    "Course Area": col_areaCourse, "Field": col_field, "Type": col_tipoC, "P/S": col_ps_C,
+                }
+                present = {nice: col for nice, col in wanted_map.items() if col in base_tbl.columns}
+                out = base_tbl[list(present.values())].rename(columns={v: k for k, v in present.items()})
+                n_courses = len(out)
 
-                    # Descriptores legibles de los filtros para el título
-                    desc_parts = []
-                    if table_filter_ps == "Only P":
-                        desc_parts.append("by Participating Faculty")
-                    elif table_filter_ps == "Only S":
-                        desc_parts.append("by Supporting Faculty")
-                    if table_filter_tipo == "Only SA":
-                        desc_parts.append("by Scholarly Academics")
-                    elif table_filter_tipo == "Only OTHER":
-                        desc_parts.append("by Others")
-                    desc_suffix = (" " + " and ".join(desc_parts)) if desc_parts else ""
+                # Human-readable filter suffix for the title
+                desc_parts = []
+                if table_filter_ps == "Only P":
+                    desc_parts.append("by Participating Faculty")
+                elif table_filter_ps == "Only S":
+                    desc_parts.append("by Supporting Faculty")
+                if table_filter_tipo == "Only SA":
+                    desc_parts.append("by Scholarly Academics")
+                elif table_filter_tipo == "Only OTHER":
+                    desc_parts.append("by Others")
+                desc_suffix = (" " + " and ".join(desc_parts)) if desc_parts else ""
 
-                    if opt_val in {"(TOTAL)", "(All)"}:
-                        title = f"{n_courses} courses were taught in {display_label}{desc_suffix}"
-                    else:
-                        title = f"{n_courses} courses of {opt_val} were taught in {display_label}{desc_suffix}"
-                    st.markdown(f"### {title}")
+                if opt_val in {"(TOTAL)", "(All)"}:
+                    title = f"{n_courses} courses were taught in {display_label}{desc_suffix}"
+                else:
+                    title = f"{n_courses} {cfg[view]['label']} courses were taught in {display_label}: {opt_val}{desc_suffix}"
+                st.markdown(f"### {title}")
 
-                # Si se hizo clic en el botón, abrir popup
+                # ---------- Action row (left: download, right: popup button) ----------
+                act_l, act_r = st.columns([0.70, 0.30])
+                with act_l:
+                    _download_xlsx_button(
+                        out,
+                        f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
+                        key=f"dl_tbl_detail_{_slugify(opt_val)}_{_slugify(display_label)}",
+                        label="⬇️ Download table (Excel)"
+                    )
+                with act_r:
+                    open_popup = st.button(
+                        "Faculty by course count",
+                        key=f"open_popup_{view}_{opt_val}",
+                        use_container_width=True
+                    )
+
+                # ---------- Popup (modal if available; else expander fallback) ----------
                 if open_popup:
                     if hasattr(st, "dialog"):
                         @st.dialog("Faculty by course count")
@@ -2765,17 +2775,10 @@ if not SENS.get("on", False):
                                 st.rerun()
                         _dlg()
                     else:
-                        # Fallback elegante si no existe st.dialog (p. ej. versiones antiguas)
                         with st.expander("Faculty by course count", expanded=True):
                             _show_faculty_popup(base_tbl, display_label, opt_val)
 
-                # Descargar + Tabla detalle
-                _download_xlsx_button(
-                    out,
-                    f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
-                    key=f"dl_tbl_detail_{_slugify(opt_val)}_{_slugify(display_label)}",
-                    label="⬇️ Download table (Excel)"
-                )
+                # ---------- Final detail table ----------
                 st.dataframe(out, use_container_width=True, hide_index=True)
 
             # ==================================================
@@ -3535,6 +3538,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
