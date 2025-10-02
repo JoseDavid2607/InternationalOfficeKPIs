@@ -2589,16 +2589,16 @@ def filter_df_car(df_car_base: pd.DataFrame, time_mode: str, sel_year: int | Non
     return df
 
 # --------------------------
-# DETAIL TABLE + DONUT + SEARCH
+# DETAIL TABLE + DONUT  (sin buscador)
 # (Oculto automáticamente cuando Sensitivity mode está activo)
 # --------------------------
 if not SENS.get("on", False):
     try:
         # ---------- Config vista ----------
         cfg = {
-            "By Academic Area": {"key": "_AREA_filter",  "col": "_AREA", "label": "area",    "metric_key": "metric__AREA"},
-            "By Field":         {"key": "_FIELD_filter", "col": "_FIELD","label": "campo",   "metric_key": "metric__FIELD"},
-            "By Program":       {"key": "_PROG_filter",   "col": "_PROG",  "label": "programa","metric_key": "metric__PROG"},
+            "By Academic Area": {"key": "_AREA_filter",  "col": "_AREA",  "label": "area",     "metric_key": "metric__AREA"},
+            "By Field":         {"key": "_FIELD_filter", "col": "_FIELD", "label": "field",    "metric_key": "metric__FIELD"},
+            "By Program":       {"key": "_PROG_filter",  "col": "_PROG",  "label": "program",  "metric_key": "metric__PROG"},
         }
         view = st.session_state.view_mode
 
@@ -2609,11 +2609,11 @@ if not SENS.get("on", False):
             metric_choice = st.session_state.get(metric_key, "%P")
             opt_val    = st.session_state.get(key, "(All)")
 
-            # ---------- Base Cartelera enriquecida mínima ----------
+            # ---------- Base Cartelera enriquecida mínima (ya filtrada por período arriba) ----------
             base = df_car_filt_all.copy()
             if "_AREA"  not in base.columns and col_areaCourse: base["_AREA"]  = base[col_areaCourse].astype(str).str.strip()
             if "_FIELD" not in base.columns and col_field:      base["_FIELD"] = base[col_field].astype(str).str.strip()
-            if "_PROG"   not in base.columns and col_prog:       base["_PROG"]   = base[col_prog].astype(str).str.strip()
+            if "_PROG"  not in base.columns and col_prog:       base["_PROG"]  = base[col_prog].astype(str).str.strip()
             if "_TIPO"  not in base.columns and col_tipoC:      base["_TIPO"]  = _norm_str(base[col_tipoC]).map(normalize_tipo)
             if "_PS"    not in base.columns and col_ps_C:       base["_PS"]    = _norm_str(base[col_ps_C]).map(normalize_ps)
             if "_CRED"  not in base.columns and col_cred:       base["_CRED"]  = pd.to_numeric(base[col_cred], errors="coerce").fillna(0.0)
@@ -2621,10 +2621,10 @@ if not SENS.get("on", False):
             cL, cR = st.columns([7,5], gap="large")
 
             # ==================================================
-            # IZQUIERDA: Tabla detalle + descarga  (SIEMPRE con 2 filtros visibles)
+            # IZQUIERDA: Filtros + Tabla
             # ==================================================
             with cL:
-                # --- 2 grupos de filtros, siempre visibles ---
+                # --- Filtros (siempre visibles) ---
                 colF1, colF2 = st.columns([1,1])
                 with colF1:
                     table_filter_ps = st.radio(
@@ -2640,93 +2640,158 @@ if not SENS.get("on", False):
                         index=0, horizontal=True,
                         key=f"table_filt_tipo_{view}_{opt_val}"
                     )
-            
+
+                # --- Switch para tabla por profesor ---
+                show_faculty_counts = st.toggle(
+                    "Show faculty by course count",
+                    value=False,
+                    key=f"show_faculty_counts_{view}_{opt_val}"
+                )
+
                 # --- Base de la tabla y scope por etiqueta seleccionada ---
                 base_tbl = base.copy()
                 if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
                     base_tbl = base_tbl[base_tbl[col_tag] == opt_val].copy()
-            
+
                 # --- Aplicar filtro P/S ---
                 if table_filter_ps == "Only P":
                     base_tbl = base_tbl[base_tbl["_PS"] == "P"]
                 elif table_filter_ps == "Only S":
                     base_tbl = base_tbl[base_tbl["_PS"] == "S"]
-            
+
                 # --- Aplicar filtro TIPO ---
                 if table_filter_tipo == "Only SA":
                     base_tbl = base_tbl[base_tbl["_TIPO"] == "SA"]
                 elif table_filter_tipo == "Only OTHER":
                     base_tbl = base_tbl[base_tbl["_TIPO"] == "OTHER"]
-            
-                # --- Selección de columnas amigables ---
-                wanted_map = {
-                    "Semestre": col_sem, "Código Materia": col_code, "Créditos": col_cred,
-                    "Nombre largo curso": col_name, "Program": col_prog, "Profesor": col_prof,
-                    "Area del curso": col_areaCourse, "Field": col_field, "TIPO": col_tipoC, "P/S": col_ps_C,
-                }
-                present = {nice: col for nice, col in wanted_map.items() if col in base_tbl.columns}
-                out = base_tbl[list(present.values())].rename(columns={v: k for k, v in present.items()})
-            
-                # --- Título SIEMPRE informativo (incluye “0 courses …” si aplica) ---
-                display_label = st.session_state.get('sel_label', 'Selected Period')
-                n_courses = len(out)
-            
-                # Descriptores legibles de los filtros
-                desc_parts = []
-                if table_filter_ps == "Only P":
-                    desc_parts.append("by Participating Faculty")
-                elif table_filter_ps == "Only S":
-                    desc_parts.append("by Supporting Faculty")
-            
-                if table_filter_tipo == "Only SA":
-                    desc_parts.append("by Scholarly Academics")
-                elif table_filter_tipo == "Only OTHER":
-                    desc_parts.append("by Others")
-            
-                desc_suffix = ""
-                if desc_parts:
-                    # unir con " and "
-                    desc_suffix = " " + " and ".join(desc_parts)
-            
-                if opt_val in {"(TOTAL)", "(All)"}:
-                    title = f"{n_courses} courses were taught in {display_label}{desc_suffix}"
-                else:
-                    title = f"{n_courses} courses of {opt_val} were taught in {display_label}{desc_suffix}"
-            
-                st.markdown(f"### {title}")
-            
-                _download_xlsx_button(
-                    out,
-                    f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
-                    key=f"dl_tbl_detail_{_slugify(opt_val)}_{_slugify(display_label)}",
-                    label="⬇️ Download table (Excel)"
-                )
-                st.dataframe(out, use_container_width=True, hide_index=True)
 
+                # ---------- Titulado y tablas ----------
+                display_label = st.session_state.get('sel_label', 'Selected Period')
+
+                if not show_faculty_counts:
+                    # ===== Tabla de cursos (detalle) =====
+                    wanted_map = {
+                        "Semestre": col_sem, "Código Materia": col_code, "Créditos": col_cred,
+                        "Nombre largo curso": col_name, "Program": col_prog, "Profesor": col_prof,
+                        "Area del curso": col_areaCourse, "Field": col_field, "TIPO": col_tipoC, "P/S": col_ps_C,
+                    }
+                    present = {nice: col for nice, col in wanted_map.items() if col in base_tbl.columns}
+                    out = base_tbl[list(present.values())].rename(columns={v: k for k, v in present.items()})
+                    n_courses = len(out)
+
+                    # Descriptores legibles de los filtros para el título
+                    desc_parts = []
+                    if table_filter_ps == "Only P":
+                        desc_parts.append("by Participating Faculty")
+                    elif table_filter_ps == "Only S":
+                        desc_parts.append("by Supporting Faculty")
+                    if table_filter_tipo == "Only SA":
+                        desc_parts.append("by Scholarly Academics")
+                    elif table_filter_tipo == "Only OTHER":
+                        desc_parts.append("by Others")
+                    desc_suffix = (" " + " and ".join(desc_parts)) if desc_parts else ""
+
+                    if opt_val in {"(TOTAL)", "(All)"}:
+                        title = f"{n_courses} courses were taught in {display_label}{desc_suffix}"
+                    else:
+                        title = f"{n_courses} courses of {opt_val} were taught in {display_label}{desc_suffix}"
+
+                    st.markdown(f"### {title}")
+                    _download_xlsx_button(
+                        out,
+                        f"table_detail_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
+                        key=f"dl_tbl_detail_{_slugify(opt_val)}_{_slugify(display_label)}",
+                        label="⬇️ Download table (Excel)"
+                    )
+                    st.dataframe(out, use_container_width=True, hide_index=True)
+
+                else:
+                    # ===== Tabla por profesor (#Cursos y Créditos) =====
+                    # Helper: modo (valor más frecuente) por profesor para P/S y TIPO
+                    def _first_mode(s: pd.Series):
+                        try:
+                            m = s.mode(dropna=True)
+                            return m.iloc[0] if not m.empty else None
+                        except Exception:
+                            return None
+
+                    col_prof_safe = col_prof if col_prof in base_tbl.columns else None
+                    if not col_prof_safe:
+                        st.info("No 'Profesor' column available to compute faculty counts.")
+                    else:
+                        grp = (base_tbl
+                               .groupby(base_tbl[col_prof_safe].astype(str).str.strip(), dropna=False)
+                               .agg(
+                                   **{
+                                       "P/S":    ("_PS",   _first_mode),
+                                       "TIPO":   ("_TIPO", _first_mode),
+                                       "#Cursos": (col_prof_safe, "count"),
+                                       "Créditos": ("_CRED", "sum"),
+                                   }
+                               )
+                               .reset_index()
+                               .rename(columns={col_prof_safe: "Profesor"}))
+
+                        # Ordenar por #Cursos desc, luego Créditos desc
+                        grp = grp.sort_values(["#Cursos", "Créditos"], ascending=[False, False]).reset_index(drop=True)
+
+                        # Título en inglés (según área/field/program)
+                        if opt_val in {"(TOTAL)", "(All)"}:
+                            fac_title = f"Faculty con más cursos en {display_label}"
+                        else:
+                            fac_title = f"Faculty con más cursos de {opt_val} en {display_label}"
+                        st.markdown(f"### {fac_title}")
+
+                        # Estilo: Top 5 en verde menta
+                        def _style_top5(df_):
+                            sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
+                            top_mask = df_.index < 5
+                            for c in df_.columns:
+                                sty.loc[top_mask, c] = 'background-color: %s; font-weight:600;' % MINT
+                            return sty
+
+                        _download_xlsx_button(
+                            grp,
+                            f"faculty_by_courses_{_slugify(opt_val)}_{_slugify(display_label)}.xlsx",
+                            key=f"dl_fac_by_courses_{_slugify(opt_val)}_{_slugify(display_label)}",
+                            label="⬇️ Download table (Excel)"
+                        )
+                        st.dataframe(
+                            grp.style.format({"Créditos": "{:,.1f}"}).apply(_style_top5, axis=None),
+                            use_container_width=True, hide_index=True
+                        )
 
             # ==================================================
-            # DERECHA: Donut %P o %TIPO + descarga
+            # DERECHA: Donut %P o %TIPO (usa la MISMA base_tbl filtrada)
             # ==================================================
             with cR:
                 st.markdown("<div style='height: 110px'></div>", unsafe_allow_html=True)
 
-                # Aggregates
-                agg_tipo = (base.groupby([col_tag,"_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0)) if col_tag in base.columns else pd.DataFrame()
+                # Aggregates sobre base_tbl (no sobre base) para respetar filtros
+                if col_tag in base_tbl.columns:
+                    agg_tipo = (base_tbl.groupby([col_tag,"_TIPO"], dropna=False)["_CRED"]
+                                       .sum().unstack(fill_value=0.0))
+                    agg_ps   = (base_tbl.groupby([col_tag,"_PS"], dropna=False)["_CRED"]
+                                       .sum().unstack(fill_value=0.0))
+                else:
+                    # Si por alguna razón falta col_tag, agrupar todo junto
+                    agg_tipo = base_tbl.groupby("_TIPO")["_CRED"].sum().to_frame().T
+                    agg_ps   = base_tbl.groupby("_PS")["_CRED"].sum().to_frame().T
+
+                # Completar columnas esperadas
                 for k in ["SA","PA","SP","IP","OTHER"]:
                     if k not in agg_tipo.columns: agg_tipo[k] = 0.0
-                agg_ps = (base.groupby([col_tag,"_PS"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0)) if col_tag in base.columns else pd.DataFrame()
                 for k in ["P","S"]:
                     if k not in agg_ps.columns: agg_ps[k] = 0.0
                 agg_ps = agg_ps[["P","S"]]
                 agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
 
-                if opt_val in {"(TOTAL)", "(All)"} or col_tag not in base.columns:
-                    p_val, s_val = float(agg_ps["P"].sum() if not agg_ps.empty else 0.0), float(agg_ps["S"].sum() if not agg_ps.empty else 0.0)
-                    sa = float(agg_tipo["SA"].sum() if not agg_tipo.empty else 0.0)
-                    pa = float(agg_tipo["PA"].sum() if not agg_tipo.empty else 0.0)
-                    sp = float(agg_tipo["SP"].sum() if not agg_tipo.empty else 0.0)
-                    ip = float(agg_tipo["IP"].sum() if not agg_tipo.empty else 0.0)
-                    other = float(agg_tipo["OTHER"].sum() if not agg_tipo.empty else 0.0)
+                # Tomar la fila del elemento seleccionado (o TOTAL)
+                if opt_val in {"(TOTAL)", "(All)"} or col_tag not in base_tbl.columns:
+                    p_val, s_val = float(agg_ps["P"].sum()), float(agg_ps["S"].sum())
+                    sa = float(agg_tipo["SA"].sum()); pa = float(agg_tipo["PA"].sum())
+                    sp = float(agg_tipo["SP"].sum()); ip = float(agg_tipo["IP"].sum())
+                    other = float(agg_tipo["OTHER"].sum())
                     title_suffix = "TOTAL"
                 else:
                     row_ps = agg_ps.loc[[opt_val]] if opt_val in agg_ps.index else pd.DataFrame(columns=["P","S"])
@@ -2746,8 +2811,9 @@ if not SENS.get("on", False):
                     den = p_val + s_val
                     p_share = (p_val/den*100) if den else 0.0
                     alert = (p_share < thrP)
-                    color_map = {"P": ("#F5A3A3" if alert else MINT), "S": "#B0B0B0"}
-                    fig = px.pie(names=["P","S"], values=[p_val, s_val], color=["P","S"], color_discrete_map=color_map, hole=0.55)
+                    color_map = {"P": ( "#F5A3A3" if alert else MINT ), "S": "#B0B0B0"}
+                    fig = px.pie(names=["P","S"], values=[p_val, s_val],
+                                 color=["P","S"], color_discrete_map=color_map, hole=0.55)
                     fig.update_traces(textinfo="percent+label", hovertemplate="%{label}: %{percent:.1%}<extra></extra>")
                     fig.update_layout(
                         title=f"% Participating Distribution — {title_suffix}",
@@ -2799,8 +2865,6 @@ if not SENS.get("on", False):
                         st.caption("No hay registros de TIPO para esta métrica en este período.")
     except Exception:
         pass
-
-
 # --------------------------
 # COUNTS — PIVOT / BSQ (Oculto cuando Sensitivity mode está activo)
 # --------------------------
@@ -3454,6 +3518,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
