@@ -2028,32 +2028,32 @@ else:
             def _ensure_hist_dims(df_in: pd.DataFrame) -> pd.DataFrame:
                 df = df_in.copy()
             
-                # SEM
+                # _SEM (Semestre/Periodo)
                 if "_SEM" not in df.columns:
                     semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
                     df["_SEM"] = df[semc].astype(str).str.strip() if semc else ""
             
-                # PS
+                # _PS (Participating/Supporting)
                 if "_PS" not in df.columns:
                     colps = _get_any(df, "P/S","P - S","Participating/Supporting")
                     df["_PS"] = _norm_str(df[colps]).map(normalize_ps) if colps else ""
             
-                # CRED
+                # _CRED (Créditos numéricos)
                 if "_CRED" not in df.columns:
                     credc = _get_any(df, "Créditos","Creditos","Credits")
                     df["_CRED"] = pd.to_numeric(df[credc], errors="coerce").fillna(0.0) if credc else 0.0
             
-                # AREA
+                # _AREA (área del curso)
                 if "_AREA" not in df.columns:
                     area = _get_any(df, "Area del curso","Área del curso","Academic Area","AREA","Área")
                     df["_AREA"] = (df[area].astype(str).str.strip().replace({"": "N/A"})) if area else "N/A"
             
-                # FIELD
+                # _FIELD (campo)
                 if "_FIELD" not in df.columns:
                     fld = _get_any(df, "Field","FIELD","Área de conocimiento","Campo")
                     df["_FIELD"] = (df[fld].astype(str).str.strip().replace({"": "N/A"})) if fld else "N/A"
             
-                # PROG (preferido) o _MAT, o N/A
+                # _PROG (programa) — usar Program; si no, _MAT; si no, "N/A"
                 if "_PROG" not in df.columns:
                     prog = _get_any(df, "Program","PROGRAM","Programa","Program Code","ProgramName","Materia","Plan de estudios")
                     if prog:
@@ -2064,11 +2064,13 @@ else:
                         df["_PROG"] = "N/A"
             
                 return df
+
             
-            # ====== Series históricas por Program ======
+            # preparar df_hist ANTES de agrupar (especialmente para "By Program")
             df_hist = _ensure_hist_dims(df_hist)
             df_hist["_PROG"] = df_hist["_PROG"].fillna("N/A")
-
+            
+            # ejemplo de agrupación por programa
             agg_ps_all_p = (
                 df_hist.groupby(["_SEM","_PROG","_PS"], dropna=False)["_CRED"]
                        .sum()
@@ -3428,6 +3430,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
