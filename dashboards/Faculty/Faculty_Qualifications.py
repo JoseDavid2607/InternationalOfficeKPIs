@@ -2024,47 +2024,46 @@ else:
                     
                     st.markdown(styled_p.to_html(escape=False), unsafe_allow_html=True)
 
-
             # ------- DROP-IN: asegurador de columnas históricas para evoluciones -------
-def _ensure_hist_dims(df_in: pd.DataFrame) -> pd.DataFrame:
-    df = df_in.copy()
-
-    # SEM
-    if "_SEM" not in df.columns:
-        semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
-        df["_SEM"] = df[semc].astype(str).str.strip() if semc else ""
-
-    # PS
-    if "_PS" not in df.columns:
-        colps = _get_any(df, "P/S","P - S","Participating/Supporting")
-        df["_PS"] = _norm_str(df[colps]).map(normalize_ps) if colps else ""
-
-    # CRED
-    if "_CRED" not in df.columns:
-        credc = _get_any(df, "Créditos","Creditos","Credits")
-        df["_CRED"] = pd.to_numeric(df[credc], errors="coerce").fillna(0.0) if credc else 0.0
-
-    # AREA
-    if "_AREA" not in df.columns:
-        area = _get_any(df, "Area del curso","Área del curso","Academic Area","AREA","Área")
-        df["_AREA"] = (df[area].astype(str).str.strip().replace({"": "N/A"})) if area else "N/A"
-
-    # FIELD
-    if "_FIELD" not in df.columns:
-        fld = _get_any(df, "Field","FIELD","Área de conocimiento","Campo")
-        df["_FIELD"] = (df[fld].astype(str).str.strip().replace({"": "N/A"})) if fld else "N/A"
-
-    # PROG (preferir columna de programa; si no, usa _MAT si existía; si no, N/A)
-    if "_PROG" not in df.columns:
-        prog = _get_any(df, "Program","PROGRAM","Programa","Program Code","ProgramName","Materia","Plan de estudios")
-        if prog:
-            df["_PROG"] = df[prog].astype(str).str.strip().replace({"": "N/A"})
-        elif "_MAT" in df.columns:
-            df["_PROG"] = df["_MAT"].astype(str).str.strip().replace({"": "N/A"})
-        else:
-            df["_PROG"] = "N/A"
-
-    return df
+            def _ensure_hist_dims(df_in: pd.DataFrame) -> pd.DataFrame:
+                df = df_in.copy()
+            
+                # SEM
+                if "_SEM" not in df.columns:
+                    semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
+                    df["_SEM"] = df[semc].astype(str).str.strip() if semc else ""
+            
+                # PS
+                if "_PS" not in df.columns:
+                    colps = _get_any(df, "P/S","P - S","Participating/Supporting")
+                    df["_PS"] = _norm_str(df[colps]).map(normalize_ps) if colps else ""
+            
+                # CRED
+                if "_CRED" not in df.columns:
+                    credc = _get_any(df, "Créditos","Creditos","Credits")
+                    df["_CRED"] = pd.to_numeric(df[credc], errors="coerce").fillna(0.0) if credc else 0.0
+            
+                # AREA
+                if "_AREA" not in df.columns:
+                    area = _get_any(df, "Area del curso","Área del curso","Academic Area","AREA","Área")
+                    df["_AREA"] = (df[area].astype(str).str.strip().replace({"": "N/A"})) if area else "N/A"
+            
+                # FIELD
+                if "_FIELD" not in df.columns:
+                    fld = _get_any(df, "Field","FIELD","Área de conocimiento","Campo")
+                    df["_FIELD"] = (df[fld].astype(str).str.strip().replace({"": "N/A"})) if fld else "N/A"
+            
+                # PROG (preferido) o _MAT, o N/A
+                if "_PROG" not in df.columns:
+                    prog = _get_any(df, "Program","PROGRAM","Programa","Program Code","ProgramName","Materia","Plan de estudios")
+                    if prog:
+                        df["_PROG"] = df[prog].astype(str).str.strip().replace({"": "N/A"})
+                    elif "_MAT" in df.columns:
+                        df["_PROG"] = df["_MAT"].astype(str).str.strip().replace({"": "N/A"})
+                    else:
+                        df["_PROG"] = "N/A"
+            
+                return df
             
             # ====== Series históricas por Program ======
             df_hist = _ensure_hist_dims(df_hist)
@@ -3429,6 +3428,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
