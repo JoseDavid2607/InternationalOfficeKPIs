@@ -2667,8 +2667,8 @@ if not SENS.get("on", False):
                     # Wider dialog (white box) so the table fits
                     st.markdown("""
                         <style>
-                        [data-testid="stDialog"] .stDialog { width: 60vw; max-width: 60vw; }
-                        [role="dialog"] { width: 60vw !important; max-width: 60vw !important; }
+                        [data-testid="stDialog"] .stDialog { width: 30vw; max-width: 40vw; }
+                        [role="dialog"] { width: 30vw !important; max-width: 40vw !important; }
                         </style>
                     """, unsafe_allow_html=True)
 
@@ -3542,6 +3542,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
