@@ -2038,125 +2038,147 @@ else:
                     st.markdown(styled_p.to_html(escape=False), unsafe_allow_html=True)
         
             # === Evolución histórica por Programa (lado derecho) ===
-            # Origen histórico: usa el mismo dataset base de cursos (antes de 'fil'), si no existe, usa 'fil'
-            try:
-                df_hist = df_hist.copy()  # si ya existe preparado arriba
-            except Exception:
-                df_hist = fil.copy()
-        
-            # Saneo inline de columnas necesarias en df_hist
-            if "_SEM" not in df_hist.columns:
-                semc = _get_any(df_hist, "Semestre","Periodo","Periodo Académico","Periodo academico")
-                df_hist["_SEM"] = df_hist[semc].astype(str).str.strip() if semc else ""
-            if "_PS" not in df_hist.columns:
-                colpsH = _get_any(df_hist, "P/S","P - S","Participating/Supporting")
-                df_hist["_PS"] = _norm_str(df_hist[colpsH]).map(normalize_ps) if colpsH else ""
-            if "_CRED" not in df_hist.columns:
+            with colP_R:
+                # 1) Tomar fuente NO filtrada (histórica)
+                try:
+                    df_hist_src = df_car.copy()  # ya cargado arriba con load_cartelera()
+                except Exception:
+                    # fallback extremo: si no existe df_car por algún motivo, usa df_fd (menos ideal)
+                    df_hist_src = df_fd.copy()
+            
+                df_hist = df_hist_src.copy()
+            
+                # 2) Saneo de columnas
+                semH  = _get_any(df_hist, "Semestre","Periodo","Periodo Académico","Periodo academico")
+                psH   = _get_any(df_hist, "P/S","P - S","Participating/Supporting")
                 credH = _get_any(df_hist, "Créditos","Creditos","Credits")
-                df_hist["_CRED"] = pd.to_numeric(df_hist[credH], errors="coerce").fillna(0.0) if credH else 0.0
-            if "_TIPO" not in df_hist.columns:
                 tipoH = _get_any(df_hist, "TIPO","Tipo","Ranking","Tipo Ranking")
-                df_hist["_TIPO"] = _norm_str(df_hist[tipoH]).map(normalize_tipo) if tipoH else "OTHER"
-            if "_PROG" not in df_hist.columns:
                 progH = _get_any(df_hist, "Program","PROGRAM","Programa","Program Code","ProgramName","Materia","Plan de estudios")
+                if semH:  df_hist["_SEM"]  = df_hist[semH].astype(str).str.strip()
+                else:     df_hist["_SEM"]  = ""
+                if psH:   df_hist["_PS"]   = _norm_str(df_hist[psH]).map(normalize_ps)
+                else:     df_hist["_PS"]   = ""
+                if credH: df_hist["_CRED"] = pd.to_numeric(df_hist[credH], errors="coerce").fillna(0.0)
+                else:     df_hist["_CRED"] = 0.0
+                if tipoH: df_hist["_TIPO"] = _norm_str(df_hist[tipoH]).map(normalize_tipo)
+                else:     df_hist["_TIPO"] = "OTHER"
                 if progH:
                     df_hist["_PROG"] = df_hist[progH].astype(str).str.strip().replace({"": "N/A"})
                 elif "_MAT" in df_hist.columns:
                     df_hist["_PROG"] = df_hist["_MAT"].astype(str).str.strip().replace({"": "N/A"})
                 else:
                     df_hist["_PROG"] = "N/A"
-            df_hist["_PROG"] = df_hist["_PROG"].fillna("N/A")
-        
-            # Aggregations históricas por programa
-            agg_ps_all_p = (
-                df_hist.groupby(["_SEM","_PROG","_PS"], dropna=False)["_CRED"]
-                       .sum().unstack(fill_value=0.0)
-            )
-            for k in ["P","S"]:
-                if k not in agg_ps_all_p.columns: agg_ps_all_p[k] = 0.0
-            agg_ps_all_p["P_share"] = (agg_ps_all_p["P"] / (agg_ps_all_p["P"] + agg_ps_all_p["S"]).replace(0, pd.NA)) * 100
-            agg_ps_all_p = agg_ps_all_p.reset_index()
-        
-            agg_tipo_all_p = (
-                df_hist.groupby(["_SEM","_PROG","_TIPO"], dropna=False)["_CRED"]
-                       .sum().unstack(fill_value=0.0)
-            )
-            for k in ["SA","PA","SP","IP","OTHER"]:
-                if k not in agg_tipo_all_p.columns: agg_tipo_all_p[k] = 0.0
-            den_all_p = (agg_tipo_all_p[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
-            agg_tipo_all_p["SA_share"]    = (agg_tipo_all_p["SA"]    / den_all_p) * 100
-            agg_tipo_all_p["OTHER_share"] = (agg_tipo_all_p["OTHER"] / den_all_p) * 100
-            agg_tipo_all_p = agg_tipo_all_p.reset_index()
-        
-            tot_by_sem_P_p = (df_hist.groupby(["_SEM","_PS"])["_CRED"].sum().unstack(fill_value=0.0))
-            for k in ["P","S"]:
-                if k not in tot_by_sem_P_p.columns: tot_by_sem_P_p[k] = 0.0
-            tot_by_sem_P_p["P_share"] = (tot_by_sem_P_p["P"] / (tot_by_sem_P_p["P"] + tot_by_sem_P_p["S"]).replace(0, pd.NA)) * 100
-            tot_by_sem_P_p = tot_by_sem_P_p.reset_index()
-        
-            tot_by_sem_tipo_p = (df_hist.groupby(["_SEM","_TIPO"])["_CRED"].sum().unstack(fill_value=0.0))
-            for k in ["SA","PA","SP","IP","OTHER"]:
-                if k not in tot_by_sem_tipo_p.columns: tot_by_sem_tipo_p[k] = 0.0
-            den_tot_p = (tot_by_sem_tipo_p[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
-            tot_by_sem_tipo_p["SA_share"]    = (tot_by_sem_tipo_p["SA"]    / den_tot_p) * 100
-            tot_by_sem_tipo_p["OTHER_share"] = (tot_by_sem_tipo_p["OTHER"] / den_tot_p) * 100
-            tot_by_sem_tipo_p = tot_by_sem_tipo_p.reset_index()
-        
-            # Adaptación al modo temporal (Semestral / Anual / Intersemestral)
-            agg_ps_all_p_tm   = transform_for_time_mode_ps(agg_ps_all_p.rename(columns={"_PROG":"__LEVEL__"})).rename(columns={"__LEVEL__":"_PROG"})
-            agg_tipo_sa_p_tm  = transform_for_time_mode_tipo(agg_tipo_all_p.rename(columns={"_PROG":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_PROG"})
-            agg_tipo_ot_p_tm  = transform_for_time_mode_tipo(agg_tipo_all_p.rename(columns={"_PROG":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_PROG"})
-            agg_tipo_all_p_tm = (
-                agg_tipo_sa_p_tm.drop(columns=[c for c in ["OTHER_share"] if c in agg_tipo_sa_p_tm], errors="ignore")
-                .merge(agg_tipo_ot_p_tm[["_SEM","_PROG","OTHER","SA","PA","SP","IP","OTHER_share"]],
-                       on=["_SEM","_PROG","SA","PA","SP","IP","OTHER"], how="outer")
-            )
-            tot_by_sem_P_p_tm  = transform_for_time_mode_ps(tot_by_sem_P_p.copy())
-            tot_tipo_sa_p_tm   = transform_for_time_mode_tipo(tot_by_sem_tipo_p.copy(), "SA_share")
-            tot_tipo_ot_p_tm   = transform_for_time_mode_tipo(tot_by_sem_tipo_p.copy(), "OTHER_share")
-            tot_by_sem_tipo_p_tm = (
-                tot_tipo_sa_p_tm.drop(columns=[c for c in ["OTHER_share"] if c in tot_tipo_sa_p_tm], errors="ignore")
-                .merge(tot_tipo_ot_p_tm[["_SEM","SA","PA","SP","IP","OTHER","OTHER_share"]],
-                       on=["_SEM","SA","PA","SP","IP","OTHER"], how="outer")
-            )
-        
-            # Eje temporal y selección actual
-            key_col_p, x_labels_p, x_map_p = build_time_axis_for_history(df_hist)
-            if time_mode == "Semestral":
-                sel_x_p = x_map_p.get(str(sel_sem)) if sel_sem else None
-                sel_label_exact_p = str(sel_sem) if sel_sem else None
-            elif time_mode == "Anual":
-                sel_x_p = x_map_p.get(sel_year) if sel_year is not None else None
-                sel_label_exact_p = sel_year
-            else:
-                inter_label_p = f"{sel_year} Intersemestral" if sel_year else None
-                sel_x_p = x_map_p.get(inter_label_p) if inter_label_p else None
-                sel_label_exact_p = inter_label_p
-        
-            # Sensibilidad en histórico solo en la etiqueta seleccionada
-            if SENS.get("on") and SENS.get("ops") and sel_label_exact_p is not None:
-                agg_ps_all_p_tm, agg_tipo_all_p_tm, tot_by_sem_P_p_tm, tot_by_sem_tipo_p_tm = apply_sensitivity_to_history(
-                    agg_ps_all_p_tm, agg_tipo_all_p_tm, tot_by_sem_P_p_tm, tot_by_sem_tipo_p_tm,
-                    level_name="_PROG",
-                    sel_label_value=sel_label_exact_p,
-                    ops=SENS["ops"],
-                    member_all_label="All"
+                df_hist["_PROG"] = df_hist["_PROG"].fillna("N/A")
+            
+                # 3) Aggregations históricas por programa
+                # %P por programa y semestre
+                agg_ps_all_p = (
+                    df_hist.groupby(["_SEM","_PROG","_PS"], dropna=False)["_CRED"]
+                           .sum().unstack(fill_value=0.0)
                 )
-        
-            # Programas disponibles
-            progs_all = sorted(set(agg_ps_all_p_tm["_PROG"].astype(str).unique()) |
-                               set(agg_tipo_all_p_tm["_PROG"].astype(str).unique()))
-            with colP_R:
-                draw_history(
-                    "Evolution by Program",
-                    level_name="_PROG",
-                    level_values=progs_all,
-                    metric_kind="%P",
-                    total_series_builders={"P": tot_by_sem_P_p_tm, "SA": tot_by_sem_tipo_p_tm, "OTHER": tot_by_sem_tipo_p_tm},
-                    agg_ps_all=agg_ps_all_p_tm,
-                    agg_tipo_all=agg_tipo_all_p_tm,
-                    x_labels=x_labels_p, x_map=x_map_p, sel_x=sel_x_p
+                for k in ["P","S"]:
+                    if k not in agg_ps_all_p.columns: agg_ps_all_p[k] = 0.0
+                agg_ps_all_p["P_share"] = (agg_ps_all_p["P"] / (agg_ps_all_p["P"] + agg_ps_all_p["S"]).replace(0, pd.NA)) * 100
+                ts_ps = agg_ps_all_p.reset_index()[["_SEM","_PROG","P_share"]]
+            
+                # %SA y %OTHER por programa y semestre
+                agg_tipo_all_p = (
+                    df_hist.groupby(["_SEM","_PROG","_TIPO"], dropna=False)["_CRED"]
+                           .sum().unstack(fill_value=0.0)
                 )
+                for k in ["SA","PA","SP","IP","OTHER"]:
+                    if k not in agg_tipo_all_p.columns: agg_tipo_all_p[k] = 0.0
+                den_all_p = (agg_tipo_all_p[["SA","PA","SP","IP","OTHER"]].sum(axis=1)).replace(0, pd.NA)
+                agg_tipo_all_p["SA_share"]    = (agg_tipo_all_p["SA"]    / den_all_p) * 100
+                agg_tipo_all_p["OTHER_share"] = (agg_tipo_all_p["OTHER"] / den_all_p) * 100
+                ts_sa    = agg_tipo_all_p.reset_index()[["_SEM","_PROG","SA_share"]]
+                ts_other = agg_tipo_all_p.reset_index()[["_SEM","_PROG","OTHER_share"]]
+            
+                # 4) Adaptación temporal (Anual / Inter / Semestral)
+                ts_ps_tm    = transform_for_time_mode_ps(ts_ps.rename(columns={"_PROG":"__LEVEL__"})).rename(columns={"__LEVEL__":"_PROG"})
+                ts_sa_tm    = transform_for_time_mode_tipo(ts_sa.rename(columns={"_PROG":"__LEVEL__"}), "SA_share").rename(columns={"__LEVEL__":"_PROG"})
+                ts_other_tm = transform_for_time_mode_tipo(ts_other.rename(columns={"_PROG":"__LEVEL__"}), "OTHER_share").rename(columns={"__LEVEL__":"_PROG"})
+            
+                # 5) Eje temporal y selección actual (sin filtrar la serie: solo pintamos una franja)
+                key_col_p, x_labels_p, x_map_p = build_time_axis_for_history(df_hist)
+                if time_mode == "Semestral":
+                    sel_x_p = x_map_p.get(str(sel_sem)) if sel_sem else None
+                    sel_label_exact_p = str(sel_sem) if sel_sem else None
+                elif time_mode == "Anual":
+                    sel_x_p = x_map_p.get(sel_year) if sel_year is not None else None
+                    sel_label_exact_p = sel_year
+                else:
+                    inter_label_p = f"{sel_year} Intersemestral" if sel_year else None
+                    sel_x_p = x_map_p.get(inter_label_p) if inter_label_p else None
+                    sel_label_exact_p = inter_label_p
+            
+                # 6) (Opcional) aplicar sensibilidad SOLO al label seleccionado
+                if SENS.get("on") and SENS.get("ops") and sel_label_exact_p is not None:
+                    # Reconstruimos dataframes con la misma interfaz que espera tu helper:
+                    agg_ps_all_p_tm   = ts_ps_tm.rename(columns={"P_share":"P_share"})
+                    agg_tipo_all_p_tm = (ts_sa_tm.merge(ts_other_tm, on=["_SEM","_PROG"], how="outer"))
+                    tot_by_sem_P_p_tm = None  # no requerido para dibujar líneas de programas
+                    tot_by_sem_tipo_p_tm = None
+                    agg_ps_all_p_tm, agg_tipo_all_p_tm, _, _ = apply_sensitivity_to_history(
+                        agg_ps_all_p_tm, agg_tipo_all_p_tm, tot_by_sem_P_p_tm, tot_by_sem_tipo_p_tm,
+                        level_name="_PROG", sel_label_value=sel_label_exact_p,
+                        ops=SENS["ops"], member_all_label="All"
+                    )
+                    # Volver a separar
+                    ts_ps_tm    = agg_ps_all_p_tm[["_SEM","_PROG","P_share"]]
+                    # Asegurar columnas si faltan
+                    if "SA_share" not in agg_tipo_all_p_tm:  agg_tipo_all_p_tm["SA_share"] = pd.NA
+                    if "OTHER_share" not in agg_tipo_all_p_tm: agg_tipo_all_p_tm["OTHER_share"] = pd.NA
+                    ts_sa_tm    = agg_tipo_all_p_tm[["_SEM","_PROG","SA_share"]]
+                    ts_other_tm = agg_tipo_all_p_tm[["_SEM","_PROG","OTHER_share"]]
+            
+                # 7) Construir gráfico de líneas (Plotly)
+                # Selección de programas (todos disponibles en la serie temporal final)
+                progs_all = sorted(set(ts_ps_tm["_PROG"].astype(str)))
+                default_sel = progs_all[:10]  # muestra hasta 10 por defecto
+                chosen = st.multiselect("Programs", options=progs_all, default=default_sel, key="hist_prog_sel")
+            
+                metric = st.radio("Metric", ["%P","%SA","%OTHER"], index=0, horizontal=True, key="hist_prog_metric")
+            
+                if metric == "%P":
+                    df_plot = ts_ps_tm.rename(columns={"P_share":"Value"})
+                elif metric == "%SA":
+                    df_plot = ts_sa_tm.rename(columns={"SA_share":"Value"})
+                else:
+                    df_plot = ts_other_tm.rename(columns={"OTHER_share":"Value"})
+            
+                df_plot = df_plot[df_plot["_PROG"].isin(chosen)].copy()
+            
+                # Orden del eje X según x_labels_p
+                import plotly.express as px
+                fig = px.line(
+                    df_plot, x="_SEM", y="Value", color="_PROG",
+                    category_orders={"_SEM": x_labels_p},
+                    markers=True
+                )
+                fig.update_traces(mode="lines+markers", connectgaps=True)
+                fig.update_layout(
+                    height=420, xaxis_title=None, yaxis_title=metric,
+                    legend_title_text=None, margin=dict(l=10, r=10, t=10, b=10)
+                )
+            
+                # Franja azul (periodo seleccionado)
+                if sel_x_p is not None:
+                    # usar una línea vertical en el label exacto
+                    fig.add_vline(x=sel_label_exact_p, line_width=2, line_dash="dot", line_color="#0ea5e9")  # azul
+            
+                # Línea objetivo 60% si aplica a %P
+                if metric == "%P":
+                    fig.add_hline(y=60, line_width=2, line_dash="dash", line_color="red")
+            
+                st.plotly_chart(fig, use_container_width=True)
+                _download_xlsx_button(
+                    df_plot.rename(columns={"Value": metric}),
+                    f"history_by_program_{metric}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                    key=f"dl_hist_prog_{metric}_{_slugify(st.session_state.get('sel_label','sel'))}",
+                    label="Datos de la gráfica (Excel)"
+                )
+
 
 # --------------------------
 # CREDIT SUMS (EXPANDER)
@@ -3434,6 +3456,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
