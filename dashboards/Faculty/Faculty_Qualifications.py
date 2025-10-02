@@ -2645,18 +2645,18 @@ if not SENS.get("on", False):
                         key=f"table_filt_tipo_{view}_{opt_val}"
                     )
 
-                # --- Scope by selected tag (Area/Field/Program) ---
+                # --- Scope by selected tag (Area/Field/Program) for the TABLE ONLY ---
                 base_tbl = base.copy()
                 if opt_val not in {"(All)", "(TOTAL)"} and col_tag in base_tbl.columns:
                     base_tbl = base_tbl[base_tbl[col_tag] == opt_val].copy()
 
-                # --- Apply P/S filter ---
+                # --- Apply P/S filter (TABLE ONLY) ---
                 if table_filter_ps == "Only P":
                     base_tbl = base_tbl[base_tbl["_PS"] == "P"]
                 elif table_filter_ps == "Only S":
                     base_tbl = base_tbl[base_tbl["_PS"] == "S"]
 
-                # --- Apply Qualification filter ---
+                # --- Apply Qualification filter (TABLE ONLY) ---
                 if table_filter_tipo == "Only SA":
                     base_tbl = base_tbl[base_tbl["_TIPO"] == "SA"]
                 elif table_filter_tipo == "Only OTHER":
@@ -2664,6 +2664,14 @@ if not SENS.get("on", False):
 
                 # ---------- Popup function (faculty by course count) ----------
                 def _show_faculty_popup(df_in, display_label, opt_val_local):
+                    # Wider dialog (white box) so the table fits
+                    st.markdown("""
+                        <style>
+                        [data-testid="stDialog"] .stDialog { width: 92vw; max-width: 92vw; }
+                        [role="dialog"] { width: 92vw !important; max-width: 92vw !important; }
+                        </style>
+                    """, unsafe_allow_html=True)
+
                     # Helper: most frequent value per professor (for _PS and _TIPO)
                     def _first_mode(s: pd.Series):
                         try:
@@ -2780,6 +2788,105 @@ if not SENS.get("on", False):
 
                 # ---------- Final detail table ----------
                 st.dataframe(out, use_container_width=True, hide_index=True)
+
+            # ==================================================
+            # RIGHT: Donut %P or %Type + download
+            # ==================================================
+            with cR:
+                st.markdown("<div style='height: 110px'></div>", unsafe_allow_html=True)
+
+                # Build a SCOPE for the donut that ignores the table's P/S and Type filters:
+                # -> Use the time-filtered base; narrow ONLY by Area/Field/Program selection.
+                if opt_val in {"(TOTAL)", "(All)"} or col_tag not in base.columns:
+                    base_scoped = base.copy()
+                    title_suffix = "TOTAL"
+                else:
+                    base_scoped = base[base[col_tag] == opt_val].copy()
+                    title_suffix = opt_val
+
+                # Aggregates for donut (from base_scoped ONLY)
+                agg_tipo = base_scoped.groupby("_TIPO", dropna=False)["_CRED"].sum() if "_TIPO" in base_scoped else pd.Series(dtype=float)
+                agg_ps   = base_scoped.groupby("_PS",   dropna=False)["_CRED"].sum() if "_PS"   in base_scoped else pd.Series(dtype=float)
+
+                # Fill missing categories
+                p_val = float(agg_ps.get("P", 0.0))
+                s_val = float(agg_ps.get("S", 0.0))
+                sa = float(agg_tipo.get("SA", 0.0))
+                pa = float(agg_tipo.get("PA", 0.0))
+                sp = float(agg_tipo.get("SP", 0.0))
+                ip = float(agg_tipo.get("IP", 0.0))
+                other = float(agg_tipo.get("OTHER", 0.0))
+
+                donut_h = 360
+                thrP = 75.0 if title_suffix == "TOTAL" else 60.0  # optional alert threshold
+
+                if metric_choice == "%P":
+                    den = p_val + s_val
+                    p_share = (p_val/den*100) if den else 0.0
+                    alert = (p_share < thrP)
+                    color_map = {"P": ( "#F5A3A3" if alert else MINT ), "S": "#B0B0B0"}
+                    fig = px.pie(
+                        names=["P","S"],
+                        values=[p_val, s_val],
+                        color=["P","S"],
+                        color_discrete_map=color_map,
+                        hole=0.55
+                    )
+                    fig.update_traces(textinfo="percent+label", hovertemplate="%{label}: %{percent:.1%}<extra></extra>")
+                    fig.update_layout(
+                        title=f"% Participating Distribution — {title_suffix}",
+                        height=donut_h, margin=dict(l=10, r=10, t=40, b=10),
+                        legend=dict(orientation="v", yanchor="bottom", y=0.4, xanchor="center", x=0.9)
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    donut_df = pd.DataFrame({"Group": ["P","S"], "Credits": [p_val, s_val]})
+                    donut_df["Percent"] = (donut_df["Credits"] / max(1e-9, donut_df["Credits"].sum()))*100
+                    _download_xlsx_button(
+                        donut_df,
+                        f"chart_donut_PS_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                        key=f"dl_donut_ps_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}",
+                        label="⬇️ Download (Excel)"
+                    )
+                else:
+                    labels_all = ["SA", "PA", "SP", "IP", "OTHER"]
+                    values_all = [sa, pa, sp, ip, other]
+                    filtered   = [(l, v) for l, v in zip(labels_all, values_all) if v > 0]
+
+                    if filtered:
+                        labels = [l for l, _ in filtered]; values = [v for _, v in filtered]
+                        den = sum(values_all) or 1.0
+                        sa_share    = sa/den*100
+                        other_share = other/den*100
+                        cmap = {l: "#B0B0B0" for l in labels}
+                        if "SA" in labels:    cmap["SA"]    = ("#F5A3A3" if sa_share   < 40.0 else MINT)
+                        if "OTHER" in labels: cmap["OTHER"] = ("#F5A3A3" if other_share > 10.0 else "#6B7280")
+
+                        fig = px.pie(
+                            names=labels, values=values, color=labels, color_discrete_map=cmap, hole=0.55
+                        )
+                        fig.update_traces(textinfo="percent+label", sort=False, hovertemplate="%{label}: %{percent:.1%}<extra></extra>")
+                        title_txt = "%SA Distribution" if metric_choice == "%SA" else "%OTHER Distribution"
+                        fig.update_layout(
+                            title=f"{title_txt} — {title_suffix}",
+                            height=donut_h, margin=dict(l=10, r=10, t=40, b=10),
+                            legend=dict(orientation="v", yanchor="bottom", y=0.4, xanchor="center", x=0.9)
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        donut_df = pd.DataFrame({"Type": labels_all, "Credits": values_all})
+                        donut_df["Percent"] = (donut_df["Credits"] / max(1e-9, donut_df["Credits"].sum()))*100
+                        _download_xlsx_button(
+                            donut_df,
+                            f"chart_donut_TIPO_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
+                            key=f"dl_donut_tipo_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}",
+                            label="⬇️ Download (Excel)"
+                        )
+                    else:
+                        st.caption("No type records for this metric in the selected timeframe.")
+    except Exception:
+        pass
+
 
             # ==================================================
             # DERECHA: Donut %P o %TIPO (usa la MISMA base_tbl filtrada)
@@ -3538,6 +3645,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
