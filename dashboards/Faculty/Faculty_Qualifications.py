@@ -983,7 +983,7 @@ if 'dl_bd_placeholder' in locals():
 if st.session_state.get("sens_mode", False):
     col_areaCourse = _get_any(df_car_filt_all, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
     col_field = _get_any(df_car_filt_all, "Field","FIELD","Campo","Área de conocimiento")
-    program_col = _get_any(df_car_filt_all, "Program","PROGRAM","program","Materia")
+    program_col = _get_any(df_car_filt_all, "Program","PROGRAM","program")
     members = build_member_list_for_view(df_car_filt_all, view_mode, col_areaCourse, col_field, program_col)
     with st.sidebar:
         sens_member_placeholder.selectbox("Apply to", members, key="sens_member")
@@ -1406,7 +1406,7 @@ else:
     df_car_n["_PS"] = _norm_str(df_car_n[col_ps_C_local]).map(normalize_ps) if col_ps_C_local else ""
 
     # excluir programas
-    program_col0 = _get_any(df_car_n, "Program","PROGRAM","program","Materia")
+    program_col0 = _get_any(df_car_n, "Program","PROGRAM","program")
     EXCLUDE_SUBJ = {"CONT", "E-IMER", "E-ENEG", "E-AFIN"}
     if program_col0:
         mask_ok = ~df_car_n[program_col0].astype(str).str.strip().str.upper().isin(EXCLUDE_SUBJ)
@@ -2050,7 +2050,7 @@ else:
             psH   = _get_any(df_hist, "P/S","P - S","Participating/Supporting")
             credH = _get_any(df_hist, "Créditos","Creditos","Credits")
             tipoH = _get_any(df_hist, "TIPO","Tipo","Ranking","Tipo Ranking")
-            progH = _get_any(df_hist, "Program","PROGRAM","Programa","Program Code","ProgramName","Materia","Plan de estudios")
+            progH = _get_any(df_hist, "Program","PROGRAM","Programa","Program Code","ProgramName")
         
             if "_SEM" not in df_hist.columns:
                 df_hist["_SEM"] = df_hist[semH].astype(str).str.strip() if semH else ""
@@ -3542,6 +3542,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
