@@ -1424,17 +1424,20 @@ else:
     df_car_filt_all = fil.copy()  # usar en expander/tabla/dona
 
 
-    
-        # Normalización base robusta
-    if "_PROG" not in df_hist.columns and col_prog:
-        df_hist["_PROG"] = df_hist[col_prog].astype(str).str.strip()
-    if "_PS" not in df_hist.columns and col_ps_C:
-        df_hist["_PS"] = _norm_str(df_hist[col_ps_C]).map(normalize_ps)
-    if "_CRED" not in df_hist.columns and col_cred:
-        df_hist["_CRED"] = pd.to_numeric(df_hist[col_cred], errors="coerce").fillna(0.0)
-    if "_SEM" not in df_hist.columns:
-        sc = _get_any(df_hist, "Semestre","Periodo","Periodo Académico","Periodo academico")
-        df_hist["_SEM"] = df_hist[sc].astype(str).str.strip() if sc else ""
+# O si ya lo hiciste antes, simplemente:
+if "_PROG" not in df_hist.columns and col_prog:
+    df_hist["_PROG"] = df_hist[col_prog].astype(str).str.strip()
+
+    # Normalización base robusta
+if "_PROG" not in df_hist.columns and col_prog:
+    df_hist["_PROG"] = df_hist[col_prog].astype(str).str.strip()
+if "_PS" not in df_hist.columns and col_ps_C:
+    df_hist["_PS"] = _norm_str(df_hist[col_ps_C]).map(normalize_ps)
+if "_CRED" not in df_hist.columns and col_cred:
+    df_hist["_CRED"] = pd.to_numeric(df_hist[col_cred], errors="coerce").fillna(0.0)
+if "_SEM" not in df_hist.columns:
+    sc = _get_any(df_hist, "Semestre","Periodo","Periodo Académico","Periodo academico")
+    df_hist["_SEM"] = df_hist[sc].astype(str).str.strip() if sc else ""
     
     # ============================ VISTAS ============================
     def build_percent_table(base_idx_name, agg_tipo, agg_ps):
@@ -3395,6 +3398,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
