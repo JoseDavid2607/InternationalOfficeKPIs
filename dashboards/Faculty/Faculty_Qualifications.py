@@ -2791,6 +2791,8 @@ if not SENS.get("on", False):
 
             # ==================================================
             # RIGHT: Donut %P or %Type + download
+            # NOTE: The donut MUST NOT be affected by the P/S or SA/OTHER table filters above.
+            #       It only reacts to the selected Area/Field/Program (opt_val) and timeframe.
             # ==================================================
             with cR:
                 st.markdown("<div style='height: 110px'></div>", unsafe_allow_html=True)
@@ -2887,111 +2889,6 @@ if not SENS.get("on", False):
     except Exception:
         pass
 
-
-            # ==================================================
-            # DERECHA: Donut %P o %TIPO (usa la MISMA base_tbl filtrada)
-            # ==================================================
-            with cR:
-                st.markdown("<div style='height: 110px'></div>", unsafe_allow_html=True)
-
-                # Aggregates sobre base_tbl (no sobre base) para respetar filtros
-                if col_tag in base_tbl.columns:
-                    agg_tipo = (base_tbl.groupby([col_tag,"_TIPO"], dropna=False)["_CRED"]
-                                       .sum().unstack(fill_value=0.0))
-                    agg_ps   = (base_tbl.groupby([col_tag,"_PS"], dropna=False)["_CRED"]
-                                       .sum().unstack(fill_value=0.0))
-                else:
-                    # Si por alguna razón falta col_tag, agrupar todo junto
-                    agg_tipo = base_tbl.groupby("_TIPO")["_CRED"].sum().to_frame().T
-                    agg_ps   = base_tbl.groupby("_PS")["_CRED"].sum().to_frame().T
-
-                # Completar columnas esperadas
-                for k in ["SA","PA","SP","IP","OTHER"]:
-                    if k not in agg_tipo.columns: agg_tipo[k] = 0.0
-                for k in ["P","S"]:
-                    if k not in agg_ps.columns: agg_ps[k] = 0.0
-                agg_ps = agg_ps[["P","S"]]
-                agg_tipo = agg_tipo[["SA","PA","SP","IP","OTHER"]]
-
-                # Tomar la fila del elemento seleccionado (o TOTAL)
-                if opt_val in {"(TOTAL)", "(All)"} or col_tag not in base_tbl.columns:
-                    p_val, s_val = float(agg_ps["P"].sum()), float(agg_ps["S"].sum())
-                    sa = float(agg_tipo["SA"].sum()); pa = float(agg_tipo["PA"].sum())
-                    sp = float(agg_tipo["SP"].sum()); ip = float(agg_tipo["IP"].sum())
-                    other = float(agg_tipo["OTHER"].sum())
-                    title_suffix = "TOTAL"
-                else:
-                    row_ps = agg_ps.loc[[opt_val]] if opt_val in agg_ps.index else pd.DataFrame(columns=["P","S"])
-                    row_q  = agg_tipo.loc[[opt_val]] if opt_val in agg_tipo.index else pd.DataFrame(columns=["SA","PA","SP","IP","OTHER"])
-                    p_val, s_val = float(row_ps["P"].sum() if not row_ps.empty else 0.0), float(row_ps["S"].sum() if not row_ps.empty else 0.0)
-                    sa = float(row_q["SA"].sum() if not row_q.empty else 0.0)
-                    pa = float(row_q["PA"].sum() if not row_q.empty else 0.0)
-                    sp = float(row_q["SP"].sum() if not row_q.empty else 0.0)
-                    ip = float(row_q["IP"].sum() if not row_q.empty else 0.0)
-                    other = float(row_q["OTHER"].sum() if not row_q.empty else 0.0)
-                    title_suffix = opt_val
-
-                donut_h = 360
-                thrP = 75.0 if title_suffix == "TOTAL" else 60.0
-
-                if metric_choice == "%P":
-                    den = p_val + s_val
-                    p_share = (p_val/den*100) if den else 0.0
-                    alert = (p_share < thrP)
-                    color_map = {"P": ( "#F5A3A3" if alert else MINT ), "S": "#B0B0B0"}
-                    fig = px.pie(names=["P","S"], values=[p_val, s_val],
-                                 color=["P","S"], color_discrete_map=color_map, hole=0.55)
-                    fig.update_traces(textinfo="percent+label", hovertemplate="%{label}: %{percent:.1%}<extra></extra>")
-                    fig.update_layout(
-                        title=f"% Participating Distribution — {title_suffix}",
-                        height=donut_h, margin=dict(l=10, r=10, t=40, b=10),
-                        legend=dict(orientation="v", yanchor="bottom", y=0.4, xanchor="center", x=0.9)
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    donut_df = pd.DataFrame({"Group": ["P","S"], "Credits": [p_val, s_val]})
-                    donut_df["Percent"] = (donut_df["Credits"] / max(1e-9, donut_df["Credits"].sum()))*100
-                    _download_xlsx_button(
-                        donut_df,
-                        f"chart_donut_PS_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-                        key=f"dl_donut_ps_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}",
-                        label="⬇️ Download (Excel)"
-                    )
-                else:
-                    labels_all = ["SA", "PA", "SP", "IP", "OTHER"]
-                    values_all = [sa, pa, sp, ip, other]
-                    filtered   = [(l, v) for l, v in zip(labels_all, values_all) if v > 0]
-                    if filtered:
-                        labels = [l for l, _ in filtered]; values = [v for _, v in filtered]
-                        den = sum(values_all) or 1.0
-                        sa_share    = sa/den*100
-                        other_share = other/den*100
-                        cmap = {l: "#B0B0B0" for l in labels}
-                        if "SA" in labels:    cmap["SA"]    = ("#F5A3A3" if sa_share   < 40.0 else MINT)
-                        if "OTHER" in labels: cmap["OTHER"] = ("#F5A3A3" if other_share > 10.0 else "#6B7280")
-
-                        fig = px.pie(names=labels, values=values, color=labels, color_discrete_map=cmap, hole=0.55)
-                        fig.update_traces(textinfo="percent+label", sort=False, hovertemplate="%{label}: %{percent:.1%}<extra></extra>")
-                        title_txt = "%SA Distribution" if metric_choice == "%SA" else "%OTHER Distribution"
-                        fig.update_layout(
-                            title=f"{title_txt} — {title_suffix}",
-                            height=donut_h, margin=dict(l=10, r=10, t=40, b=10),
-                            legend=dict(orientation="v", yanchor="bottom", y=0.4, xanchor="center", x=0.9)
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-
-                        donut_df = pd.DataFrame({"Type": labels_all, "Credits": values_all})
-                        donut_df["Percent"] = (donut_df["Credits"] / max(1e-9, donut_df["Credits"].sum()))*100
-                        _download_xlsx_button(
-                            donut_df,
-                            f"chart_donut_TIPO_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx",
-                            key=f"dl_donut_tipo_{_slugify(title_suffix)}_{_slugify(st.session_state.get('sel_label','sel'))}",
-                            label="⬇️ Download (Excel)"
-                        )
-                    else:
-                        st.caption("No hay registros de TIPO para esta métrica en este período.")
-    except Exception:
-        pass
 # --------------------------
 # COUNTS — PIVOT / BSQ (Oculto cuando Sensitivity mode está activo)
 # --------------------------
@@ -3645,6 +3542,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
