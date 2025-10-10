@@ -3355,7 +3355,7 @@ if not SENS.get("on", False):
                     sub = df_ft[df_ft["_ID"].isin(missing_ids)].copy()
 
                     out = pd.DataFrame({
-                        "Semester":        sub["_Periodo"],
+                        "Semester":      _pick(sub, "Periodo","Period"),
                         "ID Nr.":        sub["_ID"],
                         "First Name":    _pick(sub, "First Name","Nombre","Nombres"),
                         "Last Name":     _pick(sub, "Last Name","Apellidos","Apellido"),
@@ -3543,6 +3543,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
