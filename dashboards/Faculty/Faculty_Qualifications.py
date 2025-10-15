@@ -2948,61 +2948,70 @@ if not SENS.get("on", False):
     # ===================== MODO BSQ =====================
     if pivot_mode == "BSQ Compensation":
         left, right = st.columns([6,6], gap="large")
-
+    
         if not all([col_genero, col_degree, col_ftpt]):
             st.error("Missing columns in 'Faculty Distribution' for BSQ tables: 'GÉNERO', 'Highest Degree', and/or 'PLANTA_CATEDRA'.")
         else:
             df_bsq = _ensure_pid(df_fd_f).assign(
                 Gender     = df_fd_f[col_genero].map(_norm_gender),
                 IsDoctoral = df_fd_f[col_degree].map(_is_doctoral),
-                FTPT       = df_fd_f[col_ftpt].map(_norm_ftpt),
-                PS         = df_fd_f["_PS"].fillna(""),
-                TIPO       = df_fd_f["_TIPO"].fillna("OTHER")
+                FTPT_raw   = df_fd_f[col_ftpt],   # columna original por si la necesitas
+                PS_raw     = df_fd_f["_PS"],
+                TIPO_raw   = df_fd_f["_TIPO"]
             )
-
+    
+            # Normalizar sin librerías externas: quitar espacios y pasar a mayúsculas; llenar NaN en TIPO
+            df_bsq["FTPT"] = df_bsq["FTPT_raw"].fillna("").astype(str).str.strip().str.upper()
+            df_bsq["PS"]   = df_bsq["PS_raw"].fillna("").astype(str).str.strip().str.upper()
+            df_bsq["TIPO"] = df_bsq["TIPO_raw"].fillna("OTHER").astype(str).str.strip().str.upper()
+    
+            # eliminar columnas temporales si quieres
+            df_bsq = df_bsq.drop(columns=["FTPT_raw","PS_raw","TIPO_raw"])
+    
             def _count_by_gender(mask) -> dict:
                 sub = df_bsq[mask].drop_duplicates(subset=["_PID"])
                 male   = int((sub["Gender"] == "Male").sum())
                 female = int((sub["Gender"] == "Female").sum())
                 other  = int((sub["Gender"] == "Other").sum())
                 return {"Male": male, "Female": female, "Other": other, "Total": male + female + other}
-
+    
             row7a = _count_by_gender(df_bsq["PS"] == "P")
             row7b = _count_by_gender((df_bsq["PS"] == "P") & (df_bsq["IsDoctoral"]))
             row7c = _count_by_gender(df_bsq["PS"] == "S")
             row7d = _count_by_gender((df_bsq["PS"] == "S") & (df_bsq["IsDoctoral"]))
-
+    
             tbl7 = pd.DataFrame([
                 {"Row": "a. Total number of participating faculty members", **row7a},
                 {"Row": "b. Total number of participating faculty members with doctoral degrees", **row7b},
                 {"Row": "c. Total number of supporting faculty members", **row7c},
                 {"Row": "d. Total number of supporting faculty members with doctoral degrees", **row7d},
             ])
-
+    
             def _bold_rows_7(df_):
                 sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
                 mask = df_["Row"].str.startswith(("b.", "d."))
                 for c in df_.columns:
                     sty.loc[mask, c] = 'font-weight:700;'
                 return sty
-
+    
             cats = ["SA","PA","SP","IP","OTHER"]
             def _row_qual(ps_code: str, ftpt_code: str | None):
                 m = (df_bsq["PS"] == ps_code)
                 if ftpt_code is not None:
                     m = m & (df_bsq["FTPT"] == ftpt_code)
-                sub = df_bsq[m].drop_duplicates(subset=["_PID","TIPO","PS","FTPT"])
+                # deduplicar SOLO por _PID — ya filtramos por PS y FTPT
+                sub = df_bsq[m].drop_duplicates(subset=["_PID"])
                 counts = {c: int((sub["TIPO"] == c).sum()) for c in cats}
                 total = sum(counts.values())
                 return {**counts, "TOTAL": total}
-
+    
             r8a = _row_qual("P", "PLANTA")
-            r8b = _row_qual("P", "CÁTEDRA")
+            r8b = _row_qual("P", "CÁTEDRA")  # nota: si tu FTPT viene como 'CÁTEDRA' con acento, la normalización lo dejó en 'CÁTEDRA' -> recuerda que usé .upper() sin quitar acentos
             r8c = {k: r8a.get(k,0) + r8b.get(k,0) for k in cats + ["TOTAL"]}
             r8d = _row_qual("S", "PLANTA")
             r8e = _row_qual("S", "CÁTEDRA")
             r8f = {k: r8d.get(k,0) + r8e.get(k,0) for k in cats + ["TOTAL"]}
-
+    
             tbl8 = pd.DataFrame([
                 {"Row": "a. Full-time Participating faculty members", **r8a},
                 {"Row": "b. Part-time Participating faculty members", **r8b},
@@ -3011,14 +3020,14 @@ if not SENS.get("on", False):
                 {"Row": "e. Part-time Supporting faculty members", **r8e},
                 {"Row": "f. Total Supporting faculty members", **r8f},
             ])[["Row"] + cats + ["TOTAL"]]
-
+    
             def _bold_rows_8(df_):
                 sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
                 mask = df_["Row"].str.startswith(("c.", "f."))
                 for c in df_.columns:
                     sty.loc[mask, c] = 'font-weight:700;'
                 return sty
-
+    
             with left:
                 st.markdown("**7. Participating and Supporting Faculty Counts †**")
                 _download_xlsx_button(
@@ -3030,7 +3039,7 @@ if not SENS.get("on", False):
                     tbl7.style.apply(_bold_rows_7, axis=None).format({"Male":"{:,.0f}","Female":"{:,.0f}","Other":"{:,.0f}","Total":"{:,.0f}"}),
                     use_container_width=True, hide_index=True
                 )
-
+    
             with right:
                 st.markdown("**8. Faculty Counts by Qualification Types †**")
                 _download_xlsx_button(
@@ -3042,6 +3051,7 @@ if not SENS.get("on", False):
                     tbl8.style.apply(_bold_rows_8, axis=None).format({c: "{:,.0f}" for c in cats + ["TOTAL"]}),
                     use_container_width=True, hide_index=True
                 )
+
 
     # ===================== MODO PIVOT ORIGINAL (AREA / TYPE) =====================
     else:
@@ -3543,6 +3553,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
