@@ -3069,25 +3069,6 @@ if not SENS.get("on", False):
                     sty.loc[mask, c] = 'font-weight:700;'
                 return sty
     
-            # ----------------- CHEQUEO: mostrar hasta 2 _PID que aparecen más de una vez en df_bsq (antes de agrupar) ----
-            dup_counts = df_bsq["_PID"].value_counts()
-            dup_pids_all = dup_counts[dup_counts > 1].index.tolist()
-    
-            if len(dup_pids_all) > 0:
-                st.markdown("**Chequeo: PIDs que aparecen más de una vez en el dataset original (normalizado)**")
-                # mostrar conteo por PID (todos los que tienen >1 apariciones)
-                st.dataframe(dup_counts[dup_counts > 1].rename("appearances").reset_index().rename(columns={"index":"_PID"}), use_container_width=True)
-    
-                # ahora mostrar hasta 2 PIDs (las filas completas) para ver exactamente por qué
-                show_pids = dup_pids_all[:2]  # mostramos sólo las primeras 2 para verificación rápida
-                st.markdown(f"**Mostrando las filas para los primeros {len(show_pids)} PIDs duplicados (para verificar):**")
-                df_dupes_sample = df_bsq[df_bsq["_PID"].isin(show_pids)].sort_values("_PID").reset_index(drop=True)
-                st.dataframe(df_dupes_sample[["_PID","TIPO","PS","FTPT","Gender","IsDoctoral"]], use_container_width=True)
-    
-                st.markdown("Si quieres, copia aquí la tabla que se muestra y la reviso. Luego puedes borrar estas filas del origen si confirmas que son duplicadas.")
-            else:
-                st.markdown("No se encontraron PIDs repetidos tras la normalización.")
-    
             # ---- mostrar tablas finales ----
             with left:
                 st.markdown("**7. Participating and Supporting Faculty Counts †**")
@@ -3616,6 +3597,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
