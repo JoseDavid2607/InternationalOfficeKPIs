@@ -2952,33 +2952,57 @@ if not SENS.get("on", False):
         if not all([col_genero, col_degree, col_ftpt]):
             st.error("Missing columns in 'Faculty Distribution' for BSQ tables: 'GÉNERO', 'Highest Degree', and/or 'PLANTA_CATEDRA'.")
         else:
+            # ---- construir df_bsq normalizado ----
             df_bsq = _ensure_pid(df_fd_f).assign(
                 Gender     = df_fd_f[col_genero].map(_norm_gender),
                 IsDoctoral = df_fd_f[col_degree].map(_is_doctoral),
-                FTPT_raw   = df_fd_f[col_ftpt],   # columna original por si la necesitas
+                FTPT_raw   = df_fd_f[col_ftpt],
                 PS_raw     = df_fd_f["_PS"],
                 TIPO_raw   = df_fd_f["_TIPO"]
             )
     
-            # Normalizar sin librerías externas: quitar espacios y pasar a mayúsculas; llenar NaN en TIPO
+            # Normalización sencilla sin librerías extra: trim + upper + fillna
             df_bsq["FTPT"] = df_bsq["FTPT_raw"].fillna("").astype(str).str.strip().str.upper()
             df_bsq["PS"]   = df_bsq["PS_raw"].fillna("").astype(str).str.strip().str.upper()
             df_bsq["TIPO"] = df_bsq["TIPO_raw"].fillna("OTHER").astype(str).str.strip().str.upper()
     
-            # eliminar columnas temporales si quieres
+            # limpiamos columnas temporales
             df_bsq = df_bsq.drop(columns=["FTPT_raw","PS_raw","TIPO_raw"])
     
-            def _count_by_gender(mask) -> dict:
-                sub = df_bsq[mask].drop_duplicates(subset=["_PID"])
+            # ----------------- Agrupar por _PID para obtener una fila única por profesor -----------------
+            # Funciones auxiliares (no requieren librerías nuevas)
+            def _first_non_empty(s):
+                s = s.astype(str).str.strip()
+                non = s[s != ""]
+                return non.iloc[0] if len(non) > 0 else s.iloc[0]
+    
+            def _first_not_other(s):
+                s = s.astype(str).str.strip()
+                non_other = s[s.str.upper() != "OTHER"]
+                return non_other.iloc[0] if len(non_other) > 0 else s.iloc[0]
+    
+            # Agrupamos: Gender -> first; IsDoctoral -> any (True si alguna fila es doctoral);
+            # FTPT/PS -> primer valor no vacío; TIPO -> primer valor distinto de "OTHER" si existe, si no el primero.
+            df_fac = df_bsq.groupby("_PID", as_index=False).agg({
+                "Gender":    ("Gender", "first"),
+                "IsDoctoral":("IsDoctoral", "any"),
+                "FTPT":      ("FTPT", lambda x: _first_non_empty(x)),
+                "PS":        ("PS", lambda x: _first_non_empty(x)),
+                "TIPO":      ("TIPO", lambda x: _first_not_other(x))
+            })
+    
+            # A partir de aquí contamos sobre df_fac (una fila por profesor)
+            def _count_by_gender_from(df_, mask) -> dict:
+                sub = df_.loc[mask]
                 male   = int((sub["Gender"] == "Male").sum())
                 female = int((sub["Gender"] == "Female").sum())
                 other  = int((sub["Gender"] == "Other").sum())
                 return {"Male": male, "Female": female, "Other": other, "Total": male + female + other}
     
-            row7a = _count_by_gender(df_bsq["PS"] == "P")
-            row7b = _count_by_gender((df_bsq["PS"] == "P") & (df_bsq["IsDoctoral"]))
-            row7c = _count_by_gender(df_bsq["PS"] == "S")
-            row7d = _count_by_gender((df_bsq["PS"] == "S") & (df_bsq["IsDoctoral"]))
+            row7a = _count_by_gender_from(df_fac, df_fac["PS"] == "P")
+            row7b = _count_by_gender_from(df_fac, (df_fac["PS"] == "P") & (df_fac["IsDoctoral"]))
+            row7c = _count_by_gender_from(df_fac, df_fac["PS"] == "S")
+            row7d = _count_by_gender_from(df_fac, (df_fac["PS"] == "S") & (df_fac["IsDoctoral"]))
     
             tbl7 = pd.DataFrame([
                 {"Row": "a. Total number of participating faculty members", **row7a},
@@ -2995,21 +3019,20 @@ if not SENS.get("on", False):
                 return sty
     
             cats = ["SA","PA","SP","IP","OTHER"]
-            def _row_qual(ps_code: str, ftpt_code: str | None):
-                m = (df_bsq["PS"] == ps_code)
+            def _row_qual_from(df_, ps_code: str, ftpt_code: str | None):
+                m = (df_["PS"] == ps_code)
                 if ftpt_code is not None:
-                    m = m & (df_bsq["FTPT"] == ftpt_code)
-                # deduplicar SOLO por _PID — ya filtramos por PS y FTPT
-                sub = df_bsq[m].drop_duplicates(subset=["_PID"])
+                    m = m & (df_["FTPT"] == ftpt_code)
+                sub = df_[m]  # df_ ya está por _PID único
                 counts = {c: int((sub["TIPO"] == c).sum()) for c in cats}
                 total = sum(counts.values())
                 return {**counts, "TOTAL": total}
     
-            r8a = _row_qual("P", "PLANTA")
-            r8b = _row_qual("P", "CÁTEDRA")  # nota: si tu FTPT viene como 'CÁTEDRA' con acento, la normalización lo dejó en 'CÁTEDRA' -> recuerda que usé .upper() sin quitar acentos
+            r8a = _row_qual_from(df_fac, "P", "PLANTA")
+            r8b = _row_qual_from(df_fac, "P", "CÁTEDRA")
             r8c = {k: r8a.get(k,0) + r8b.get(k,0) for k in cats + ["TOTAL"]}
-            r8d = _row_qual("S", "PLANTA")
-            r8e = _row_qual("S", "CÁTEDRA")
+            r8d = _row_qual_from(df_fac, "S", "PLANTA")
+            r8e = _row_qual_from(df_fac, "S", "CÁTEDRA")
             r8f = {k: r8d.get(k,0) + r8e.get(k,0) for k in cats + ["TOTAL"]}
     
             tbl8 = pd.DataFrame([
@@ -3028,6 +3051,23 @@ if not SENS.get("on", False):
                     sty.loc[mask, c] = 'font-weight:700;'
                 return sty
     
+            # ----------------- CHEQUEO: mostrar los _PID que aparecen más de una vez en df_bsq (antes de agrupar) ----
+            # Esto sirve para que verifiques exactamente las filas por profesor y luego las borres si quieres.
+            dup_counts = df_bsq["_PID"].value_counts()
+            dup_pids = dup_counts[dup_counts > 1].index.tolist()
+            if len(dup_pids) > 0:
+                st.markdown("**Chequeo: PIDs que aparecen más de una vez en el dataset original (normalizado)**")
+                # mostrar sólo las filas duplicadas para inspección
+                df_dupes = df_bsq[df_bsq["_PID"].isin(dup_pids)].sort_values("_PID")
+                # puedes limitar la muestra si tienes muchas filas:
+                st.dataframe(df_dupes[["_PID","TIPO","PS","FTPT","Gender","IsDoctoral"]].reset_index(drop=True), use_container_width=True)
+                # también mostrar conteo por PID
+                st.markdown("**Conteo de apariciones por PID (antes de compactar):**")
+                st.dataframe(dup_counts[dup_counts > 1].rename("appearances").reset_index().rename(columns={"index":"_PID"}), use_container_width=True)
+            else:
+                st.markdown("No se encontraron PIDs repetidos tras la normalización.")
+    
+            # ---- mostrar tablas finales ----
             with left:
                 st.markdown("**7. Participating and Supporting Faculty Counts †**")
                 _download_xlsx_button(
@@ -3051,6 +3091,7 @@ if not SENS.get("on", False):
                     tbl8.style.apply(_bold_rows_8, axis=None).format({c: "{:,.0f}" for c in cats + ["TOTAL"]}),
                     use_container_width=True, hide_index=True
                 )
+
 
 
     # ===================== MODO PIVOT ORIGINAL (AREA / TYPE) =====================
@@ -3553,6 +3594,7 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
 
 
 
