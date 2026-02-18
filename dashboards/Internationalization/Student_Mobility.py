@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import plotly.express as px
+from datetime import datetime
 
 # ------------------------------------------------------
 # CONFIGURACIÓN
@@ -24,7 +25,7 @@ st.markdown(
         font-size: 22px;
         font-weight: 600;
         color: {SECONDARY_COLOR};
-        margin-top: 40px;
+        margin-top: 35px;
     }}
     </style>
     """,
@@ -39,19 +40,19 @@ st.markdown('<div class="main-title">Student Mobility Indicators</div>', unsafe_
 
 @st.cache_data
 def load_data():
-    path = "data/Internationalization/BD_Movilidad.xlsx"
-    if not os.path.exists(path):
+    local_path = "data/Internationalization/BD_Movilidad.xlsx"
+    if os.path.exists(local_path):
+        outgoing = pd.read_excel(local_path, sheet_name="Outgoing")
+        incoming = pd.read_excel(local_path, sheet_name="Incoming")
+    else:
         st.error("BD_Movilidad.xlsx not found.")
         st.stop()
-    return (
-        pd.read_excel(path, sheet_name="Outgoing"),
-        pd.read_excel(path, sheet_name="Incoming")
-    )
+    return outgoing, incoming
 
 outgoing_df, incoming_df = load_data()
 
 # ------------------------------------------------------
-# ESTANDARIZACIÓN
+# ESTANDARIZACIÓN TIPO MOVILIDAD
 # ------------------------------------------------------
 
 def normalize_mobility_type(df):
@@ -80,107 +81,127 @@ outgoing_df = normalize_mobility_type(outgoing_df)
 incoming_df = normalize_mobility_type(incoming_df)
 
 # ------------------------------------------------------
-# UTILIZACIÓN DE CONVENIOS
+# SECCIÓN UTILIZACIÓN DE CONVENIOS
 # ------------------------------------------------------
 
 st.markdown('<div class="section-title">Faculty Agreement Utilization</div>', unsafe_allow_html=True)
 
-def agreement_section(level_name, level_out_col, level_in_col):
+current_year = datetime.now().year
+last_5_years = list(range(current_year - 4, current_year + 1))
 
-    st.markdown(f"### {level_name}")
+mobility_types = sorted(
+    set(outgoing_df["Tipo de Movilidad"].unique())
+    .union(set(incoming_df["Tipo de Movilidad"].unique()))
+)
 
-    out_level = outgoing_df[outgoing_df[level_out_col] == level_name].copy()
-    in_level = incoming_df[incoming_df[level_in_col] == level_name].copy()
+def create_utilization_section(mobility_type, level_out_col, level_in_col, level_name):
 
-    mobility_types = sorted(
-        set(out_level["Tipo de Movilidad"].dropna().unique())
-        | set(in_level["Tipo de Movilidad"].dropna().unique())
+    st.markdown(f"### {mobility_type} — {level_name}")
+
+    # Filtrar por tipo y nivel
+    out_filtered = outgoing_df[
+        (outgoing_df["Tipo de Movilidad"] == mobility_type) &
+        (outgoing_df[level_out_col].str.lower().str.contains(level_name.lower()))
+    ]
+
+    in_filtered = incoming_df[
+        (incoming_df["Tipo de Movilidad"] == mobility_type) &
+        (incoming_df[level_in_col].str.lower().str.contains(level_name.lower()))
+    ]
+
+    # ----------------------
+    # TOP 10 ÚLTIMOS 5 AÑOS
+    # ----------------------
+
+    out_top = (
+        out_filtered[out_filtered["Año de Movilidad"].isin(last_5_years)]
+        .groupby("Universidad KPIs")
+        .size()
+        .reset_index(name="Outgoing")
     )
 
-    for mobility in mobility_types:
+    in_top = (
+        in_filtered[in_filtered["Año"].isin(last_5_years)]
+        .groupby("Universidad KPIs")
+        .size()
+        .reset_index(name="Incoming")
+    )
 
-        st.markdown(f"#### {mobility}")
+    top_merge = pd.merge(out_top, in_top, on="Universidad KPIs", how="outer").fillna(0)
+    top_merge["Total"] = top_merge["Outgoing"] + top_merge["Incoming"]
 
-        out_m = out_level[out_level["Tipo de Movilidad"] == mobility]
-        in_m = in_level[in_level["Tipo de Movilidad"] == mobility]
+    top_10 = top_merge.sort_values("Total", ascending=False).head(10)
 
-        # NORMALIZAR AÑO
-        out_m = out_m.rename(columns={"Año de Movilidad": "Año"})
-        in_m = in_m.rename(columns={"Año": "Año"})
-
-        # ÚLTIMOS 5 AÑOS
-        max_year = max(
-            out_m["Año"].max() if not out_m.empty else 0,
-            in_m["Año"].max() if not in_m.empty else 0
+    if not top_10.empty:
+        fig = px.bar(
+            top_10.sort_values("Total"),
+            x="Total",
+            y="Universidad KPIs",
+            orientation="h",
+            title="Top 10 Universities (Last 5 Years)",
+            color_discrete_sequence=[PRIMARY_COLOR]
         )
-        min_year = max_year - 4
+        st.plotly_chart(fig, use_container_width=True)
 
-        out_5 = out_m[out_m["Año"] >= min_year]
-        in_5 = in_m[in_m["Año"] >= min_year]
+    # ----------------------
+    # MATRIZ POR AÑO
+    # ----------------------
 
-        # TOP 10 UNIVERSIDADES (Outgoing + Incoming)
-        top_out = out_5.groupby("Universidad KPIs").size()
-        top_in = in_5.groupby("Universidad KPIs").size()
+    out_group = (
+        out_filtered
+        .groupby(["Universidad KPIs", "País", "Año de Movilidad"])
+        .size()
+        .reset_index(name="Outgoing")
+        .rename(columns={"Año de Movilidad": "Año"})
+    )
 
-        top_combined = (top_out.add(top_in, fill_value=0)
-                        .sort_values(ascending=False)
-                        .head(10)
-                        .reset_index())
+    in_group = (
+        in_filtered
+        .groupby(["Universidad KPIs", "País", "Año"])
+        .size()
+        .reset_index(name="Incoming")
+    )
 
-        top_combined.columns = ["Universidad", "Movilidad"]
+    merged = pd.merge(
+        out_group,
+        in_group,
+        on=["Universidad KPIs", "País", "Año"],
+        how="outer"
+    ).fillna(0)
 
-        if not top_combined.empty:
-            fig = px.bar(
-                top_combined,
-                x="Movilidad",
-                y="Universidad",
-                orientation="h",
-                color_discrete_sequence=[PRIMARY_COLOR]
-            )
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
+    merged["Outgoing"] = merged["Outgoing"].astype(int)
+    merged["Incoming"] = merged["Incoming"].astype(int)
 
-        # TABLA MATRIZ COMPLETA
-        out_ag = (
-            out_m.groupby(["Universidad KPIs", "País", "Año"])
-            .size()
-            .reset_index(name="Outgoing")
-        )
+    pivot = merged.pivot_table(
+        index=["Universidad KPIs", "País"],
+        columns="Año",
+        values=["Outgoing", "Incoming"],
+        fill_value=0
+    )
 
-        in_ag = (
-            in_m.groupby(["Universidad KPIs", "País", "Año"])
-            .size()
-            .reset_index(name="Incoming")
-        )
+    pivot = pivot.sort_index(axis=1, level=1)
 
-        agreements = pd.merge(
-            out_ag,
-            in_ag,
-            on=["Universidad KPIs", "País", "Año"],
-            how="outer"
-        ).fillna(0)
-
-        agreements["Outgoing"] = agreements["Outgoing"].astype(int)
-        agreements["Incoming"] = agreements["Incoming"].astype(int)
-
-        years_sorted = sorted(agreements["Año"].unique())
-
-        pivot = agreements.pivot_table(
-            index=["Universidad KPIs", "País"],
-            columns="Año",
-            values=["Outgoing", "Incoming"],
-            fill_value=0
-        )
-
-        # Reordenar columnas: Año ascendente, y dentro Outgoing primero
-        pivot = pivot.sort_index(axis=1, level=1)
-
-        st.dataframe(pivot, use_container_width=True)
+    st.dataframe(pivot, use_container_width=True)
 
 
 # ------------------------------------------------------
-# ORDEN: PREGRADO → POSGRADO
+# GENERAR SECCIONES
 # ------------------------------------------------------
 
-agreement_section("Pregrado", "Nivel", "Nivel Nominación")
-agreement_section("Posgrado", "Nivel", "Nivel Nominación")
+for mobility in mobility_types:
+
+    # PREGRADO
+    create_utilization_section(
+        mobility,
+        level_out_col="Nivel",
+        level_in_col="Nivel Nominación",
+        level_name="Pregrado"
+    )
+
+    # POSGRADO
+    create_utilization_section(
+        mobility,
+        level_out_col="Nivel",
+        level_in_col="Nivel Nominación",
+        level_name="Posgrado"
+    )
