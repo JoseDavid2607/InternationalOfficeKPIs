@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import os
 import plotly.express as px
-from datetime import datetime
 
 # ------------------------------------------------------
 # CONFIGURACIÓN
@@ -25,7 +24,7 @@ st.markdown(
         font-size: 22px;
         font-weight: 600;
         color: {SECONDARY_COLOR};
-        margin-top: 35px;
+        margin-top: 40px;
     }}
     </style>
     """,
@@ -40,64 +39,45 @@ st.markdown('<div class="main-title">Student Mobility Indicators</div>', unsafe_
 
 @st.cache_data
 def load_data():
-    local_path = "data/Internationalization/BD_Movilidad.xlsx"
-    if not os.path.exists(local_path):
+    path = "data/Internationalization/BD_Movilidad.xlsx"
+    if not os.path.exists(path):
         st.error("BD_Movilidad.xlsx not found.")
         st.stop()
-    outgoing = pd.read_excel(local_path, sheet_name="Outgoing")
-    incoming = pd.read_excel(local_path, sheet_name="Incoming")
-    return outgoing, incoming
+    return (
+        pd.read_excel(path, sheet_name="Outgoing"),
+        pd.read_excel(path, sheet_name="Incoming")
+    )
 
 outgoing_df, incoming_df = load_data()
 
 # ------------------------------------------------------
-# ESTANDARIZACIÓN TIPO MOVILIDAD
+# ESTANDARIZACIÓN
 # ------------------------------------------------------
 
-def normalize_mobility(df):
+def normalize_mobility_type(df):
     df = df.copy()
     df["Tipo de Movilidad"] = (
         df["Tipo de Movilidad"]
         .astype(str)
         .str.strip()
         .str.lower()
-        .str.title()
     )
-    
+
     df["Tipo de Movilidad"] = df["Tipo de Movilidad"].replace({
-        "Intercambio": "Intercambio Internacional",
-        "Intercambio Internacional": "Intercambio Internacional",
-        "Pasantía": "Pasantía de Investigación",
-        "Pasantia": "Pasantía de Investigación",
-        "Pasantía De Investigación": "Pasantía de Investigación"
+        "intercambio": "Intercambio Internacional",
+        "intercambio internacional": "Intercambio Internacional",
+        "pasantia": "Pasantía de Investigación",
+        "pasantía": "Pasantía de Investigación",
+        "pasantia de investigacion": "Pasantía de Investigación",
+        "pasantía de investigación": "Pasantía de Investigación"
     })
-    
+
+    df["Tipo de Movilidad"] = df["Tipo de Movilidad"].str.title()
+
     return df
 
-outgoing_df = normalize_mobility(outgoing_df)
-incoming_df = normalize_mobility(incoming_df)
-
-# ------------------------------------------------------
-# UNIFICAR ESTRUCTURA PARA CONVENIOS
-# ------------------------------------------------------
-
-outgoing_conv = outgoing_df.rename(columns={
-    "Año de Movilidad": "Año",
-    "Nivel": "Nivel Académico"
-})
-
-outgoing_conv["Flow"] = "Outgoing"
-
-incoming_conv = incoming_df.rename(columns={
-    "Nivel Nominación": "Nivel Académico"
-})
-
-incoming_conv["Flow"] = "Incoming"
-
-combined = pd.concat([
-    outgoing_conv[["Universidad KPIs", "País", "Año", "Tipo de Movilidad", "Nivel Académico", "Flow"]],
-    incoming_conv[["Universidad KPIs", "País", "Año", "Tipo de Movilidad", "Nivel Académico", "Flow"]]
-])
+outgoing_df = normalize_mobility_type(outgoing_df)
+incoming_df = normalize_mobility_type(incoming_df)
 
 # ------------------------------------------------------
 # UTILIZACIÓN DE CONVENIOS
@@ -105,77 +85,102 @@ combined = pd.concat([
 
 st.markdown('<div class="section-title">Faculty Agreement Utilization</div>', unsafe_allow_html=True)
 
-current_year = datetime.now().year
-last_5_years = list(range(current_year - 4, current_year + 1))
+def agreement_section(level_name, level_out_col, level_in_col):
 
-mobility_types = sorted(combined["Tipo de Movilidad"].dropna().unique())
+    st.markdown(f"### {level_name}")
 
-for mobility in mobility_types:
+    out_level = outgoing_df[outgoing_df[level_out_col] == level_name].copy()
+    in_level = incoming_df[incoming_df[level_in_col] == level_name].copy()
 
-    st.markdown(f"### {mobility}")
+    mobility_types = sorted(
+        set(out_level["Tipo de Movilidad"].dropna().unique())
+        | set(in_level["Tipo de Movilidad"].dropna().unique())
+    )
 
-    df_mob = combined[combined["Tipo de Movilidad"] == mobility]
+    for mobility in mobility_types:
 
-    for level in ["Pregrado", "Posgrado"]:
-        
-        st.markdown(f"#### {level}")
-        
-        df_level = df_mob[df_mob["Nivel Académico"].str.contains(level, case=False, na=False)]
+        st.markdown(f"#### {mobility}")
 
-        if df_level.empty:
-            st.info("No data available.")
-            continue
-        
-        # ------------------------------
-        # TOP 10 GRÁFICA (últimos 5 años)
-        # ------------------------------
-        
-        df_last5 = df_level[df_level["Año"].isin(last_5_years)]
-        
-        top10 = (
-            df_last5
-            .groupby("Universidad KPIs")
-            .size()
-            .reset_index(name="Total")
-            .sort_values("Total", ascending=False)
-            .head(10)
+        out_m = out_level[out_level["Tipo de Movilidad"] == mobility]
+        in_m = in_level[in_level["Tipo de Movilidad"] == mobility]
+
+        # NORMALIZAR AÑO
+        out_m = out_m.rename(columns={"Año de Movilidad": "Año"})
+        in_m = in_m.rename(columns={"Año": "Año"})
+
+        # ÚLTIMOS 5 AÑOS
+        max_year = max(
+            out_m["Año"].max() if not out_m.empty else 0,
+            in_m["Año"].max() if not in_m.empty else 0
         )
+        min_year = max_year - 4
 
-        if not top10.empty:
+        out_5 = out_m[out_m["Año"] >= min_year]
+        in_5 = in_m[in_m["Año"] >= min_year]
+
+        # TOP 10 UNIVERSIDADES (Outgoing + Incoming)
+        top_out = out_5.groupby("Universidad KPIs").size()
+        top_in = in_5.groupby("Universidad KPIs").size()
+
+        top_combined = (top_out.add(top_in, fill_value=0)
+                        .sort_values(ascending=False)
+                        .head(10)
+                        .reset_index())
+
+        top_combined.columns = ["Universidad", "Movilidad"]
+
+        if not top_combined.empty:
             fig = px.bar(
-                top10,
-                x="Total",
-                y="Universidad KPIs",
+                top_combined,
+                x="Movilidad",
+                y="Universidad",
                 orientation="h",
                 color_discrete_sequence=[PRIMARY_COLOR]
             )
-            fig.update_layout(
-                yaxis=dict(autorange="reversed"),
-                height=400,
-                margin=dict(l=20, r=20, t=30, b=20)
-            )
+            fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
 
-        # ------------------------------
-        # TABLA MATRIZ POR AÑO
-        # ------------------------------
-
-        pivot = (
-            df_level
-            .groupby(["Universidad KPIs", "País", "Año", "Flow"])
+        # TABLA MATRIZ COMPLETA
+        out_ag = (
+            out_m.groupby(["Universidad KPIs", "País", "Año"])
             .size()
-            .reset_index(name="Count")
+            .reset_index(name="Outgoing")
         )
 
-        pivot_table = pivot.pivot_table(
+        in_ag = (
+            in_m.groupby(["Universidad KPIs", "País", "Año"])
+            .size()
+            .reset_index(name="Incoming")
+        )
+
+        agreements = pd.merge(
+            out_ag,
+            in_ag,
+            on=["Universidad KPIs", "País", "Año"],
+            how="outer"
+        ).fillna(0)
+
+        agreements["Outgoing"] = agreements["Outgoing"].astype(int)
+        agreements["Incoming"] = agreements["Incoming"].astype(int)
+
+        years_sorted = sorted(agreements["Año"].unique())
+
+        pivot = agreements.pivot_table(
             index=["Universidad KPIs", "País"],
-            columns=["Año", "Flow"],
-            values="Count",
+            columns="Año",
+            values=["Outgoing", "Incoming"],
             fill_value=0
         )
 
-        # Ordenar columnas por año ascendente
-        pivot_table = pivot_table.sort_index(axis=1, level=0)
+        # Reordenar columnas: Año ascendente, y dentro Outgoing primero
+        pivot = pivot.sort_index(axis=1, level=1)
 
-        st.dataframe(pivot_table, use_container_width=True)
+        st.dataframe(pivot, use_container_width=True)
 
+
+# ------------------------------------------------------
+# ORDEN: PREGRADO → POSGRADO
+# ------------------------------------------------------
+
+agreement_section("Pregrado", "Nivel", "Nivel Nominación")
+agreement_section("Posgrado", "Nivel", "Nivel Nominación")
