@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import matplotlib.pyplot as plt
 
 # ------------------------------------------------------
 # CONFIGURACIÓN
@@ -164,7 +163,7 @@ def agreement_tables_by_type(mobility_type, level_filter, level_col_out, level_c
         (incoming_df[level_col_in].str.contains(level_filter, case=False, na=False))
     ].copy()
 
-    # Últimos 5 años
+    # Obtener años combinados
     all_years = sorted(
         list(set(out_filtered["Año de Movilidad"].dropna().unique())
         .union(set(in_filtered["Año"].dropna().unique())))
@@ -175,7 +174,10 @@ def agreement_tables_by_type(mobility_type, level_filter, level_col_out, level_c
     else:
         last_5_years = all_years
 
+    # --------------------------------------------------
     # TOP 10 UNIVERSIDADES (últimos 5 años)
+    # --------------------------------------------------
+
     out_top = (
         out_filtered[out_filtered["Año de Movilidad"].isin(last_5_years)]
         .groupby("Universidad KPIs")
@@ -191,11 +193,12 @@ def agreement_tables_by_type(mobility_type, level_filter, level_col_out, level_c
     top_total = (out_top + in_top).fillna(0).sort_values(ascending=False).head(10)
 
     if not top_total.empty:
-        fig = plt.figure()
-        top_total.sort_values().plot(kind="barh")
-        st.pyplot(fig)
+        st.bar_chart(top_total.sort_values())
 
-    # MATRIZ COMPLETA
+    # --------------------------------------------------
+    # MATRIZ COMPLETA POR AÑO
+    # --------------------------------------------------
+
     out_agreements = (
         out_filtered
         .groupby(["Universidad KPIs", "País", "Año de Movilidad"])
@@ -228,7 +231,6 @@ def agreement_tables_by_type(mobility_type, level_filter, level_col_out, level_c
         fill_value=0
     )
 
-    # Ordenar años
     agreements_pivot = agreements_pivot.sort_index(axis=1, level=1)
 
     st.dataframe(agreements_pivot, use_container_width=True)
@@ -243,8 +245,10 @@ mobility_types = sorted(
     .union(set(incoming_df["Tipo de Movilidad"].unique()))
 )
 
+# Primero Pregrado
 for mobility in mobility_types:
     agreement_tables_by_type(mobility, "Pregrado", "Nivel", "Nivel Nominación")
 
+# Luego Posgrado
 for mobility in mobility_types:
     agreement_tables_by_type(mobility, "Posgrado", "Nivel", "Nivel Nominación")
