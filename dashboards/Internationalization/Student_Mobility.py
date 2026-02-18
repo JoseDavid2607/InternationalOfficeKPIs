@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import matplotlib.pyplot as plt
 
 # ------------------------------------------------------
 # CONFIGURACIÓN
@@ -61,18 +62,8 @@ def normalize_mobility_type(df):
         df["Tipo de Movilidad"]
         .astype(str)
         .str.strip()
-        .str.lower()
+        .str.title()
     )
-    
-    df["Tipo de Movilidad"] = df["Tipo de Movilidad"].replace({
-        "intercambio": "Intercambio Internacional",
-        "intercambio internacional": "Intercambio Internacional",
-        "pasantía": "Pasantía de Investigación",
-        "pasantia": "Pasantía de Investigación",
-        "pasantía de investigación": "Pasantía de Investigación",
-        "pasantia de investigacion": "Pasantía de Investigación"
-    })
-    
     return df
 
 outgoing_df = normalize_mobility_type(outgoing_df)
@@ -154,48 +145,106 @@ create_tables_by_mobility_type(
 )
 
 # ------------------------------------------------------
-# UTILIZACIÓN DE CONVENIOS (MATRIZ POR AÑO)
+# UTILIZACIÓN DE CONVENIOS POR TIPO Y NIVEL
 # ------------------------------------------------------
 
 st.markdown('<div class="section-title">Faculty Agreement Utilization</div>', unsafe_allow_html=True)
 
-# OUTGOING
-out_agreements = (
-    outgoing_df
-    .groupby(["Universidad KPIs", "País", "Año de Movilidad"])
-    .size()
-    .reset_index(name="Outgoing")
-    .rename(columns={"Año de Movilidad": "Año"})
-)
+def agreement_tables_by_type(mobility_type, level_filter, level_col_out, level_col_in):
 
-# INCOMING
-in_agreements = (
-    incoming_df
-    .groupby(["Universidad KPIs", "País", "Año"])
-    .size()
-    .reset_index(name="Incoming")
-)
+    st.markdown(f"### {mobility_type} – {level_filter}")
 
-# MERGE
-agreements = pd.merge(
-    out_agreements,
-    in_agreements,
-    on=["Universidad KPIs", "País", "Año"],
-    how="outer"
-).fillna(0)
+    out_filtered = outgoing_df[
+        (outgoing_df["Tipo de Movilidad"] == mobility_type) &
+        (outgoing_df[level_col_out].str.contains(level_filter, case=False, na=False))
+    ].copy()
 
-agreements["Outgoing"] = agreements["Outgoing"].astype(int)
-agreements["Incoming"] = agreements["Incoming"].astype(int)
+    in_filtered = incoming_df[
+        (incoming_df["Tipo de Movilidad"] == mobility_type) &
+        (incoming_df[level_col_in].str.contains(level_filter, case=False, na=False))
+    ].copy()
 
-# CREAR MATRIZ MULTI-COLUMNA
-agreements_pivot = agreements.pivot_table(
-    index=["Universidad KPIs", "País"],
-    columns="Año",
-    values=["Outgoing", "Incoming"],
-    fill_value=0
-)
+    # Últimos 5 años
+    all_years = sorted(
+        list(set(out_filtered["Año de Movilidad"].dropna().unique())
+        .union(set(in_filtered["Año"].dropna().unique())))
+    )
 
-agreements_pivot = agreements_pivot.sort_index()
+    if len(all_years) > 5:
+        last_5_years = all_years[-5:]
+    else:
+        last_5_years = all_years
 
-with st.expander("Show Agreement Utilization Table"):
+    # TOP 10 UNIVERSIDADES (últimos 5 años)
+    out_top = (
+        out_filtered[out_filtered["Año de Movilidad"].isin(last_5_years)]
+        .groupby("Universidad KPIs")
+        .size()
+    )
+
+    in_top = (
+        in_filtered[in_filtered["Año"].isin(last_5_years)]
+        .groupby("Universidad KPIs")
+        .size()
+    )
+
+    top_total = (out_top + in_top).fillna(0).sort_values(ascending=False).head(10)
+
+    if not top_total.empty:
+        fig = plt.figure()
+        top_total.sort_values().plot(kind="barh")
+        st.pyplot(fig)
+
+    # MATRIZ COMPLETA
+    out_agreements = (
+        out_filtered
+        .groupby(["Universidad KPIs", "País", "Año de Movilidad"])
+        .size()
+        .reset_index(name="Outgoing")
+        .rename(columns={"Año de Movilidad": "Año"})
+    )
+
+    in_agreements = (
+        in_filtered
+        .groupby(["Universidad KPIs", "País", "Año"])
+        .size()
+        .reset_index(name="Incoming")
+    )
+
+    agreements = pd.merge(
+        out_agreements,
+        in_agreements,
+        on=["Universidad KPIs", "País", "Año"],
+        how="outer"
+    ).fillna(0)
+
+    agreements["Outgoing"] = agreements["Outgoing"].astype(int)
+    agreements["Incoming"] = agreements["Incoming"].astype(int)
+
+    agreements_pivot = agreements.pivot_table(
+        index=["Universidad KPIs", "País"],
+        columns="Año",
+        values=["Outgoing", "Incoming"],
+        fill_value=0
+    )
+
+    # Ordenar años
+    agreements_pivot = agreements_pivot.sort_index(axis=1, level=1)
+
     st.dataframe(agreements_pivot, use_container_width=True)
+
+
+# ------------------------------------------------------
+# GENERAR TABLAS POR TIPO Y NIVEL
+# ------------------------------------------------------
+
+mobility_types = sorted(
+    set(outgoing_df["Tipo de Movilidad"].unique())
+    .union(set(incoming_df["Tipo de Movilidad"].unique()))
+)
+
+for mobility in mobility_types:
+    agreement_tables_by_type(mobility, "Pregrado", "Nivel", "Nivel Nominación")
+
+for mobility in mobility_types:
+    agreement_tables_by_type(mobility, "Posgrado", "Nivel", "Nivel Nominación")
