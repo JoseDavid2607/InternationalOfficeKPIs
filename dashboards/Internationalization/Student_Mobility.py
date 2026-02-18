@@ -3,13 +3,10 @@ import pandas as pd
 import os
 
 # ------------------------------------------------------
-# CONFIGURACIÓN GENERAL
+# CONFIGURACIÓN
 # ------------------------------------------------------
 
-st.set_page_config(
-    page_title="Student Mobility Indicators",
-    layout="wide"
-)
+st.set_page_config(page_title="Student Mobility Indicators", layout="wide")
 
 PRIMARY_COLOR = "#003366"
 SECONDARY_COLOR = "#0055A4"
@@ -36,122 +33,103 @@ st.markdown(
 st.markdown('<div class="main-title">Student Mobility Indicators</div>', unsafe_allow_html=True)
 
 # ------------------------------------------------------
-# CARGA DE DATOS
+# CARGA DATOS
 # ------------------------------------------------------
 
 @st.cache_data
 def load_data():
-    try:
-        # RUTA LOCAL (RECOMENDADO EN STREAMLIT CLOUD)
-        local_path = "data/Internationalization/BD_Movilidad.xlsx"
-        
-        if os.path.exists(local_path):
-            outgoing = pd.read_excel(local_path, sheet_name="Outgoing")
-            incoming = pd.read_excel(local_path, sheet_name="Incoming")
-        else:
-            # FALLBACK GITHUB RAW (AJUSTA TU USUARIO SI ES NECESARIO)
-            url = "https://raw.githubusercontent.com/<TU_USUARIO>/InternationalOfficeKPIs/main/data/Internationalization/BD_Movilidad.xlsx"
-            outgoing = pd.read_excel(url, sheet_name="Outgoing")
-            incoming = pd.read_excel(url, sheet_name="Incoming")
-        
-        return outgoing, incoming
-
-    except Exception as e:
-        st.error("Error loading BD_Movilidad.xlsx. Verify path or GitHub raw URL.")
+    local_path = "data/Internationalization/BD_Movilidad.xlsx"
+    
+    if os.path.exists(local_path):
+        outgoing = pd.read_excel(local_path, sheet_name="Outgoing")
+        incoming = pd.read_excel(local_path, sheet_name="Incoming")
+    else:
+        st.error("BD_Movilidad.xlsx not found.")
         st.stop()
+        
+    return outgoing, incoming
 
 outgoing_df, incoming_df = load_data()
 
 # ------------------------------------------------------
-# SIDEBAR FILTROS
+# FILTROS
 # ------------------------------------------------------
 
 st.sidebar.header("Filters")
 
-view_type = st.sidebar.radio(
-    "View Type",
-    ["Annual", "Semester"]
-)
-
-years_out = sorted(outgoing_df["Año de Movilidad"].dropna().unique())
-selected_year_out = st.sidebar.multiselect(
-    "Outgoing Year",
-    years_out,
-    default=years_out
-)
-
-years_in = sorted(incoming_df["Año"].dropna().unique())
-selected_year_in = st.sidebar.multiselect(
-    "Incoming Year",
-    years_in,
-    default=years_in
-)
+view_type = st.sidebar.radio("View Type", ["Annual", "Semester"])
 
 # ------------------------------------------------------
-# SECCIÓN 1 – OUTGOING
+# FUNCIÓN PARA CREAR TABLAS PIVOT POR TIPO
+# ------------------------------------------------------
+
+def create_tables_by_mobility_type(df, program_col, year_col, semester_col=None):
+
+    mobility_types = df["Tipo de Movilidad"].dropna().unique()
+    
+    for mobility in sorted(mobility_types):
+        
+        st.markdown(f"#### {mobility}")
+        
+        df_filtered = df[df["Tipo de Movilidad"] == mobility]
+        
+        if view_type == "Annual":
+            pivot = pd.pivot_table(
+                df_filtered,
+                index=program_col,
+                columns=year_col,
+                aggfunc="size",
+                fill_value=0
+            )
+        else:
+            df_filtered["Periodo"] = (
+                df_filtered[year_col].astype(str) + "-" + df_filtered[semester_col].astype(str)
+            )
+            
+            pivot = pd.pivot_table(
+                df_filtered,
+                index=program_col,
+                columns="Periodo",
+                aggfunc="size",
+                fill_value=0
+            )
+        
+        pivot = pivot.sort_index()
+        st.dataframe(pivot, use_container_width=True)
+
+
+# ------------------------------------------------------
+# SECCIÓN OUTGOING
 # ------------------------------------------------------
 
 st.markdown('<div class="section-title">Outgoing Mobility</div>', unsafe_allow_html=True)
 
-filtered_out = outgoing_df[
-    outgoing_df["Año de Movilidad"].isin(selected_year_out)
-]
-
-if view_type == "Annual":
-    grouped_out = (
-        filtered_out
-        .groupby(["Programa Postulación", "Año de Movilidad", "Tipo de Movilidad"])
-        .size()
-        .reset_index(name="Students")
-        .sort_values(["Programa Postulación", "Año de Movilidad"])
-    )
-else:
-    grouped_out = (
-        filtered_out
-        .groupby(["Programa Postulación", "Período de Movilidad", "Tipo de Movilidad"])
-        .size()
-        .reset_index(name="Students")
-        .sort_values(["Programa Postulación", "Período de Movilidad"])
-    )
-
-st.dataframe(grouped_out, use_container_width=True)
+create_tables_by_mobility_type(
+    outgoing_df,
+    program_col="Programa Postulación",
+    year_col="Año de Movilidad",
+    semester_col="Período de Movilidad"
+)
 
 # ------------------------------------------------------
-# SECCIÓN 2 – INCOMING
+# SECCIÓN INCOMING
 # ------------------------------------------------------
 
 st.markdown('<div class="section-title">Incoming Mobility</div>', unsafe_allow_html=True)
 
-filtered_in = incoming_df[
-    incoming_df["Año"].isin(selected_year_in)
-]
-
-if view_type == "Annual":
-    grouped_in = (
-        filtered_in
-        .groupby(["Programa Nominación", "Año", "Tipo de Movilidad"])
-        .size()
-        .reset_index(name="Students")
-        .sort_values(["Programa Nominación", "Año"])
-    )
-else:
-    grouped_in = (
-        filtered_in
-        .groupby(["Programa Nominación", "Semestre", "Tipo de Movilidad"])
-        .size()
-        .reset_index(name="Students")
-        .sort_values(["Programa Nominación", "Semestre"])
-    )
-
-st.dataframe(grouped_in, use_container_width=True)
+create_tables_by_mobility_type(
+    incoming_df,
+    program_col="Programa Nominación",
+    year_col="Año",
+    semester_col="Semestre"
+)
 
 # ------------------------------------------------------
-# SECCIÓN 3 – UTILIZACIÓN DE CONVENIOS
+# UTILIZACIÓN DE CONVENIOS
 # ------------------------------------------------------
 
 st.markdown('<div class="section-title">Faculty Agreement Utilization</div>', unsafe_allow_html=True)
 
-# OUTGOING
 out_agreements = (
     outgoing_df
     .groupby(["Universidad KPIs", "País", "Año de Movilidad"])
@@ -160,7 +138,6 @@ out_agreements = (
     .rename(columns={"Año de Movilidad": "Año"})
 )
 
-# INCOMING
 in_agreements = (
     incoming_df
     .groupby(["Universidad KPIs", "País", "Año"])
@@ -168,7 +145,6 @@ in_agreements = (
     .reset_index(name="Incoming_Count")
 )
 
-# MERGE
 agreements = pd.merge(
     out_agreements,
     in_agreements,
