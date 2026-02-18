@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import os
 
 # ------------------------------------------------------
 # CONFIGURACIÓN GENERAL
@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-PRIMARY_COLOR = "#003366"   # Azul institucional
+PRIMARY_COLOR = "#003366"
 SECONDARY_COLOR = "#0055A4"
 
 st.markdown(
@@ -26,7 +26,7 @@ st.markdown(
         font-size: 22px;
         font-weight: 600;
         color: {SECONDARY_COLOR};
-        margin-top: 30px;
+        margin-top: 35px;
     }}
     </style>
     """,
@@ -36,22 +36,34 @@ st.markdown(
 st.markdown('<div class="main-title">Student Mobility Indicators</div>', unsafe_allow_html=True)
 
 # ------------------------------------------------------
-# CARGA DE DATOS DESDE GITHUB
+# CARGA DE DATOS
 # ------------------------------------------------------
 
 @st.cache_data
 def load_data():
-    url = "https://raw.githubusercontent.com/<YOUR_REPO>/InternationalOfficeKPIs/main/data/Internationalization/BD_Movilidad.xlsx"
-    
-    outgoing = pd.read_excel(url, sheet_name="Outgoing")
-    incoming = pd.read_excel(url, sheet_name="Incoming")
-    
-    return outgoing, incoming
+    try:
+        # RUTA LOCAL (RECOMENDADO EN STREAMLIT CLOUD)
+        local_path = "data/Internationalization/BD_Movilidad.xlsx"
+        
+        if os.path.exists(local_path):
+            outgoing = pd.read_excel(local_path, sheet_name="Outgoing")
+            incoming = pd.read_excel(local_path, sheet_name="Incoming")
+        else:
+            # FALLBACK GITHUB RAW (AJUSTA TU USUARIO SI ES NECESARIO)
+            url = "https://raw.githubusercontent.com/<TU_USUARIO>/InternationalOfficeKPIs/main/data/Internationalization/BD_Movilidad.xlsx"
+            outgoing = pd.read_excel(url, sheet_name="Outgoing")
+            incoming = pd.read_excel(url, sheet_name="Incoming")
+        
+        return outgoing, incoming
+
+    except Exception as e:
+        st.error("Error loading BD_Movilidad.xlsx. Verify path or GitHub raw URL.")
+        st.stop()
 
 outgoing_df, incoming_df = load_data()
 
 # ------------------------------------------------------
-# SIDEBAR - FILTROS GENERALES
+# SIDEBAR FILTROS
 # ------------------------------------------------------
 
 st.sidebar.header("Filters")
@@ -76,7 +88,7 @@ selected_year_in = st.sidebar.multiselect(
 )
 
 # ------------------------------------------------------
-# SECCIÓN 1 – OUTGOING MOBILITY
+# SECCIÓN 1 – OUTGOING
 # ------------------------------------------------------
 
 st.markdown('<div class="section-title">Outgoing Mobility</div>', unsafe_allow_html=True)
@@ -105,7 +117,7 @@ else:
 st.dataframe(grouped_out, use_container_width=True)
 
 # ------------------------------------------------------
-# SECCIÓN 2 – INCOMING MOBILITY
+# SECCIÓN 2 – INCOMING
 # ------------------------------------------------------
 
 st.markdown('<div class="section-title">Incoming Mobility</div>', unsafe_allow_html=True)
@@ -139,15 +151,16 @@ st.dataframe(grouped_in, use_container_width=True)
 
 st.markdown('<div class="section-title">Faculty Agreement Utilization</div>', unsafe_allow_html=True)
 
-# OUTGOING AGREEMENTS
+# OUTGOING
 out_agreements = (
     outgoing_df
     .groupby(["Universidad KPIs", "País", "Año de Movilidad"])
     .size()
     .reset_index(name="Outgoing_Count")
+    .rename(columns={"Año de Movilidad": "Año"})
 )
 
-# INCOMING AGREEMENTS
+# INCOMING
 in_agreements = (
     incoming_df
     .groupby(["Universidad KPIs", "País", "Año"])
@@ -155,10 +168,7 @@ in_agreements = (
     .reset_index(name="Incoming_Count")
 )
 
-# Renombrar columnas para poder hacer merge
-out_agreements = out_agreements.rename(columns={"Año de Movilidad": "Año"})
-in_agreements = in_agreements.rename(columns={"Año": "Año"})
-
+# MERGE
 agreements = pd.merge(
     out_agreements,
     in_agreements,
