@@ -52,15 +52,41 @@ def load_data():
 outgoing_df, incoming_df = load_data()
 
 # ------------------------------------------------------
+# ESTANDARIZACIÓN TIPO MOVILIDAD
+# ------------------------------------------------------
+
+def normalize_mobility_type(df):
+    df = df.copy()
+    df["Tipo de Movilidad"] = (
+        df["Tipo de Movilidad"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+    
+    df["Tipo de Movilidad"] = df["Tipo de Movilidad"].replace({
+        "intercambio": "Intercambio Internacional",
+        "intercambio internacional": "Intercambio Internacional",
+        "pasantía": "Pasantía de Investigación",
+        "pasantia": "Pasantía de Investigación",
+        "pasantía de investigación": "Pasantía de Investigación",
+        "pasantia de investigacion": "Pasantía de Investigación"
+    })
+    
+    return df
+
+outgoing_df = normalize_mobility_type(outgoing_df)
+incoming_df = normalize_mobility_type(incoming_df)
+
+# ------------------------------------------------------
 # FILTROS
 # ------------------------------------------------------
 
 st.sidebar.header("Filters")
-
 view_type = st.sidebar.radio("View Type", ["Annual", "Semester"])
 
 # ------------------------------------------------------
-# FUNCIÓN PARA CREAR TABLAS PIVOT POR TIPO
+# FUNCIÓN TABLAS POR TIPO
 # ------------------------------------------------------
 
 def create_tables_by_mobility_type(df, program_col, year_col, semester_col=None):
@@ -71,7 +97,7 @@ def create_tables_by_mobility_type(df, program_col, year_col, semester_col=None)
         
         st.markdown(f"#### {mobility}")
         
-        df_filtered = df[df["Tipo de Movilidad"] == mobility]
+        df_filtered = df[df["Tipo de Movilidad"] == mobility].copy()
         
         if view_type == "Annual":
             pivot = pd.pivot_table(
@@ -83,7 +109,8 @@ def create_tables_by_mobility_type(df, program_col, year_col, semester_col=None)
             )
         else:
             df_filtered["Periodo"] = (
-                df_filtered[year_col].astype(str) + "-" + df_filtered[semester_col].astype(str)
+                df_filtered[year_col].astype(str) + "-" +
+                df_filtered[semester_col].astype(str)
             )
             
             pivot = pd.pivot_table(
@@ -94,12 +121,14 @@ def create_tables_by_mobility_type(df, program_col, year_col, semester_col=None)
                 fill_value=0
             )
         
-        pivot = pivot.sort_index()
+        pivot["Total"] = pivot.sum(axis=1)
+        pivot = pivot.sort_values("Total", ascending=False)
+        
         st.dataframe(pivot, use_container_width=True)
 
 
 # ------------------------------------------------------
-# SECCIÓN OUTGOING
+# OUTGOING
 # ------------------------------------------------------
 
 st.markdown('<div class="section-title">Outgoing Mobility</div>', unsafe_allow_html=True)
@@ -112,7 +141,7 @@ create_tables_by_mobility_type(
 )
 
 # ------------------------------------------------------
-# SECCIÓN INCOMING
+# INCOMING
 # ------------------------------------------------------
 
 st.markdown('<div class="section-title">Incoming Mobility</div>', unsafe_allow_html=True)
@@ -125,26 +154,29 @@ create_tables_by_mobility_type(
 )
 
 # ------------------------------------------------------
-# UTILIZACIÓN DE CONVENIOS
+# UTILIZACIÓN DE CONVENIOS (MATRIZ POR AÑO)
 # ------------------------------------------------------
 
 st.markdown('<div class="section-title">Faculty Agreement Utilization</div>', unsafe_allow_html=True)
 
+# OUTGOING
 out_agreements = (
     outgoing_df
     .groupby(["Universidad KPIs", "País", "Año de Movilidad"])
     .size()
-    .reset_index(name="Outgoing_Count")
+    .reset_index(name="Outgoing")
     .rename(columns={"Año de Movilidad": "Año"})
 )
 
+# INCOMING
 in_agreements = (
     incoming_df
     .groupby(["Universidad KPIs", "País", "Año"])
     .size()
-    .reset_index(name="Incoming_Count")
+    .reset_index(name="Incoming")
 )
 
+# MERGE
 agreements = pd.merge(
     out_agreements,
     in_agreements,
@@ -152,10 +184,18 @@ agreements = pd.merge(
     how="outer"
 ).fillna(0)
 
-agreements["Outgoing_Count"] = agreements["Outgoing_Count"].astype(int)
-agreements["Incoming_Count"] = agreements["Incoming_Count"].astype(int)
+agreements["Outgoing"] = agreements["Outgoing"].astype(int)
+agreements["Incoming"] = agreements["Incoming"].astype(int)
 
-agreements = agreements.sort_values(["Universidad KPIs", "Año"])
+# CREAR MATRIZ MULTI-COLUMNA
+agreements_pivot = agreements.pivot_table(
+    index=["Universidad KPIs", "País"],
+    columns="Año",
+    values=["Outgoing", "Incoming"],
+    fill_value=0
+)
+
+agreements_pivot = agreements_pivot.sort_index()
 
 with st.expander("Show Agreement Utilization Table"):
-    st.dataframe(agreements, use_container_width=True)
+    st.dataframe(agreements_pivot, use_container_width=True)
