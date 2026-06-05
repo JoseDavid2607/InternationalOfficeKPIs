@@ -84,11 +84,7 @@ header.hero h1 {
 .folder-scroll, .doc-scroll { overflow-y: auto; display: flex; flex-direction: column; }
 .folder-scroll::-webkit-scrollbar, .doc-scroll::-webkit-scrollbar { width: 4px; }
 .folder-scroll::-webkit-scrollbar-thumb, .doc-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-.chapter-item {
-  display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; cursor: pointer;
-  border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border);
-  transition: background .15s; width: 100%; min-height: 90px;
-}
+.chapter-item { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 90px; }
 .chapter-item:last-child { border-bottom: none; }
 .chapter-item:hover { background: #f9fafb; }
 .chapter-item.active { background: #1f2937; }
@@ -103,11 +99,7 @@ header.hero h1 {
 .ch-badge { display: inline-block; margin-bottom: 5px; padding: 3px 8px; border-radius: 999px; background: #eef2f7; color: var(--slate-mid); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
 .ch-title { font-size: .92rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; margin-bottom: 3px; }
 .ch-desc { font-size: .79rem; color: var(--muted); line-height: 1.4; }
-.folder-item {
-  display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; cursor: pointer;
-  border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border);
-  transition: background .15s; width: 100%; min-height: 90px;
-}
+.folder-item { display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 90px; }
 .folder-item:last-child { border-bottom: none; }
 .folder-item:hover { background: #f9fafb; }
 .folder-item.active { background: #1f2937; }
@@ -125,11 +117,7 @@ header.hero h1 {
 .filter-btn[data-filter="AACSB"].active { background: #1a6fa8; border-color: #1a6fa8; }
 .filter-btn[data-filter="EQUIS"].active { background: #2f8b85; border-color: #2f8b85; }
 .filter-btn[data-filter="AMBA"].active { background: #7c5cbf; border-color: #7c5cbf; }
-.doc-item {
-  display: flex; flex-direction: column; gap: 5px; padding: 18px 20px; cursor: pointer;
-  border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border);
-  transition: background .15s; width: 100%; min-height: 90px;
-}
+.doc-item { display: flex; flex-direction: column; gap: 5px; padding: 18px 20px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 90px; }
 .doc-item:last-child { border-bottom: none; }
 .doc-item:hover { background: #f9fafb; }
 .doc-item.active { background: #f0faf7; border-left: 3px solid #1d9e75; }
@@ -199,14 +187,14 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 </head>
 <body>
 
-<!-- Google API -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 <header class="hero">
   <div class="back-button">
-    <a href="../UASM KPIs & Baseroom Center.html" aria-label="Go back">
+    <a href="../../index.html" aria-label="Go back">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M15 18l-6-6 6-6"></path>
+        <path d="M3 10.5 12 3l9 7.5"></path>
+        <path d="M5.5 9.5V20h13V9.5"></path>
       </svg>
     </a>
   </div>
@@ -306,7 +294,6 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
     </div>
     <iframe class="viewer-frame" id="viewerFrame" src="" allow="fullscreen; scripts; same-origin; popups" allowfullscreen></iframe>
     <div id="viewerNoUrl" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#6b7280;font-size:.95rem;text-align:center;padding:40px;">
-      <div style="font-size:3rem;opacity:.25;">📄</div>
       <div>This document has not been uploaded yet.</div>
       <button class="action-btn action-btn--teal" onclick="closeModal('viewerModal');openUploadModal(window.currentViewerDocId)">Upload document</button>
     </div>
@@ -326,14 +313,9 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 <div class="toast" id="toast"></div>
 
 <script>
-// =====================
-// GOOGLE DRIVE CONFIG
-// =====================
 const GOOGLE_CLIENT_ID = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
 const GOOGLE_API_KEY   = "AIzaSyBnvEW4Pn8Vh_rl84q7bE8hhT-IWQ2HmKg";
 const SCOPES           = "https://www.googleapis.com/auth/drive.file";
-
-// Drive folder IDs per folder (Chapter 1)
 const DRIVE_FOLDERS = {
   "f1-1": "1VazMGFtWMVlDbYncFugb5kHrRJpnQCl0",
   "f1-2": "1FcTMxSKsVO_R41U5FjIcknedCl6EVlbq",
@@ -342,34 +324,24 @@ const DRIVE_FOLDERS = {
   "f1-5": "1Y2N4XvvaMWwMsIs1nbcDL2Dsqm-QL2Zu",
   "f1-6": "1ygBhTnCIOfx3DIQ-eV3XZ67ahVlnBEro"
 };
-
 let googleAccessToken = null;
-
 function getGoogleToken(callback) {
   if (googleAccessToken) { callback(googleAccessToken); return; }
   const client = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: SCOPES,
+    client_id: GOOGLE_CLIENT_ID, scope: SCOPES,
     callback: (resp) => {
       if (resp.error) { showToast("Google auth error: " + resp.error); return; }
-      googleAccessToken = resp.access_token;
-      callback(googleAccessToken);
+      googleAccessToken = resp.access_token; callback(googleAccessToken);
     }
   });
   client.requestAccessToken();
 }
-
 function uploadToDrive(file, fileName, folderId, onProgress, onSuccess, onError) {
   getGoogleToken((token) => {
-    const metadata = {
-      name: fileName,
-      mimeType: "application/pdf",
-      parents: [folderId]
-    };
+    const metadata = { name: fileName, mimeType: "application/pdf", parents: [folderId] };
     const form = new FormData();
     form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
     form.append("file", file);
-
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink");
     xhr.setRequestHeader("Authorization", "Bearer " + token);
@@ -377,21 +349,15 @@ function uploadToDrive(file, fileName, folderId, onProgress, onSuccess, onError)
     xhr.onload = () => {
       if (xhr.status === 200) {
         const data = JSON.parse(xhr.responseText);
-        // Make file publicly readable
         setPublicPermission(data.id, token, () => {
-          const previewUrl = `https://drive.google.com/file/d/${data.id}/preview`;
-          const viewUrl    = `https://drive.google.com/file/d/${data.id}/view`;
-          onSuccess({ fileId: data.id, previewUrl, viewUrl, name: data.name });
+          onSuccess({ fileId: data.id, previewUrl: `https://drive.google.com/file/d/${data.id}/preview`, viewUrl: `https://drive.google.com/file/d/${data.id}/view`, name: data.name });
         });
-      } else {
-        onError("Upload failed: " + xhr.statusText);
-      }
+      } else { onError("Upload failed: " + xhr.statusText); }
     };
     xhr.onerror = () => onError("Network error during upload.");
     xhr.send(form);
   });
 }
-
 function setPublicPermission(fileId, token, callback) {
   const xhr = new XMLHttpRequest();
   xhr.open("POST", `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`);
@@ -401,18 +367,13 @@ function setPublicPermission(fileId, token, callback) {
   xhr.send(JSON.stringify({ role: "reader", type: "anyone" }));
 }
 
-// =====================
-// DATA
-// =====================
 const DATA = {
   chapters: [
     {
       id:"ch1", badge:"Chapter 1", title:"Context, Governance & Strategy",
       desc:"Strategic context, governance, mission and leadership.",
       folders:[
-        {
-          id:"f1-1", badge:"Folder 1", title:"Strategic plans and related policy documents",
-          accreditations:["AACSB","EQUIS"],
+        { id:"f1-1", badge:"Folder 1", title:"Strategic plans and related policy documents", accreditations:["AACSB","EQUIS"],
           sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
           documents:[
             {id:"d1",title:"UASM Strategic Plan 2021–2025",type:"PDF",meta:"Main institutional strategy document",responsible:"International Office",updatedAt:"2024-11-12",accreditations:["AACSB","EQUIS"],url:"../../../baseroom/UASM Strategic Plan 2021 - 2025.pdf"},
@@ -420,9 +381,7 @@ const DATA = {
             {id:"d3",title:"Uniandes Strategic Development Plan 2021–2025",type:"PDF",meta:"Current strategic cycle",responsible:"International Office",updatedAt:"2024-11-12",accreditations:["AACSB","EQUIS"],url:"../../../baseroom/2. Uniandes Strategic Development Plan 2021- 2025.pdf"}
           ]
         },
-        {
-          id:"f1-2", badge:"Folder 2", title:"Governing body and advisory board members",
-          accreditations:["EQUIS"],
+        { id:"f1-2", badge:"Folder 2", title:"Governing body and advisory board members", accreditations:["EQUIS"],
           sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
           documents:[
             {id:"d4",title:"Executive Committee",type:"PDF",meta:"Executive governance membership",responsible:"Secretaría General",updatedAt:"2024-10-05",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/3.%20Uniandes%20and%20UASM%20Boards%20and%20Committees/2.%20Uniandes%20Executive%20Committee/Executive%20Committee.pdf?csf=1&web=1&e=RlR2vo"},
@@ -431,30 +390,18 @@ const DATA = {
             {id:"d7",title:"UASM Committee Structure",type:"PDF",meta:"Full committee structure overview",responsible:"Secretaría General",updatedAt:"2024-08-22",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/3.%20Uniandes%20and%20UASM%20Boards%20and%20Committees/5.%20UASM%27s%20Committees/UASM%20Committee%20structure.pdf?csf=1&web=1&e=Hp7fQX"}
           ]
         },
-        {
-          id:"f1-3", badge:"Folder 3", title:"Cyber security policy",
-          accreditations:["EQUIS"],
+        { id:"f1-3", badge:"Folder 3", title:"Cyber security policy", accreditations:["EQUIS"],
           sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
-          documents:[
-            {id:"d8",title:"Uniandes Cyber Security Policy",type:"PDF",meta:"Official institutional policy",responsible:"IT Office",updatedAt:"2024-06-10",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/4.%20Uniandes%20Cyber%20security%20Policy/Uniandes%20Cyber%20security%20Policy.pdf?csf=1&web=1&e=X6Gcr9"}
-          ]
+          documents:[{id:"d8",title:"Uniandes Cyber Security Policy",type:"PDF",meta:"Official institutional policy",responsible:"IT Office",updatedAt:"2024-06-10",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/4.%20Uniandes%20Cyber%20security%20Policy/Uniandes%20Cyber%20security%20Policy.pdf?csf=1&web=1&e=X6Gcr9"}]
         },
-        {
-          id:"f1-4", badge:"Folder 4", title:"Risk register",
-          accreditations:["EQUIS"],
+        { id:"f1-4", badge:"Folder 4", title:"Risk register", accreditations:["EQUIS"],
           sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
-          documents:[
-            {id:"d9",title:"UASM Risk Register",type:"PDF",meta:"Current institutional risk register",responsible:"Risk & Compliance Office",updatedAt:"2025-02-28",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/5.%20UASM%20Risk%20Register/UASM%20Risk%20Register.pdf?csf=1&web=1&e=LfxfNt"}
-          ]
+          documents:[{id:"d9",title:"UASM Risk Register",type:"PDF",meta:"Current institutional risk register",responsible:"Risk & Compliance Office",updatedAt:"2025-02-28",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/5.%20UASM%20Risk%20Register/UASM%20Risk%20Register.pdf?csf=1&web=1&e=LfxfNt"}]
         },
-        {
-          id:"f1-5", badge:"Folder 5", title:"Strategic plan — Ximena Rueda",
-          accreditations:["AACSB"], sharepointUrl:"#",
+        { id:"f1-5", badge:"Folder 5", title:"Strategic plan — Ximena Rueda", accreditations:["AACSB"], sharepointUrl:"#",
           documents:[{id:"d10",title:"Strategic Plan — Ximena Rueda",type:"PDF",meta:"Supporting strategic document",responsible:"Dean's Office",updatedAt:null,accreditations:["AACSB"],url:"#"}]
         },
-        {
-          id:"f1-6", badge:"Folder 6", title:"Annual reports",
-          accreditations:["AACSB"], sharepointUrl:"#",
+        { id:"f1-6", badge:"Folder 6", title:"Annual reports", accreditations:["AACSB"], sharepointUrl:"#",
           documents:[
             {id:"d11",title:"Annual Report 2024",type:"PDF",meta:"Institutional annual report",responsible:"Dean's Office",updatedAt:null,accreditations:["AACSB"],url:"#"},
             {id:"d12",title:"Annual Report 2023",type:"PDF",meta:"Institutional annual report",responsible:"Dean's Office",updatedAt:null,accreditations:["AACSB"],url:"#"}
@@ -475,223 +422,41 @@ const DATA = {
   ]
 };
 
-let state = { activeFilter:"ALL", selectedChapter:null, selectedFolder:null, selectedDoc:null };
-const docOverrides = {};
+let state={activeFilter:"ALL",selectedChapter:null,selectedFolder:null,selectedDoc:null};
+const docOverrides={};
+function getChapter(id){return DATA.chapters.find(c=>c.id===id);}
+function getFolders(){const ch=getChapter(state.selectedChapter);return ch?ch.folders:[];}
+function getDocs(){const f=getFolders().find(f=>f.id===state.selectedFolder);if(!f)return[];if(state.activeFilter==="ALL")return f.documents;return f.documents.filter(d=>d.accreditations.includes(state.activeFilter));}
+function getDoc(id){for(const ch of DATA.chapters)for(const f of ch.folders){const d=f.documents.find(d=>d.id===id);if(d)return{doc:{...d,...(docOverrides[id]||{})},folder:f};}return null;}
+function fmtDate(s){if(!s)return"Not yet uploaded";return new Date(s+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}
 
-function getChapter(id){ return DATA.chapters.find(c=>c.id===id); }
-function getFolders(){ const ch=getChapter(state.selectedChapter); return ch?ch.folders:[]; }
-function getDocs(){
-  const f=getFolders().find(f=>f.id===state.selectedFolder);
-  if(!f) return [];
-  if(state.activeFilter==="ALL") return f.documents;
-  return f.documents.filter(d=>d.accreditations.includes(state.activeFilter));
-}
-function getDoc(id){
-  for(const ch of DATA.chapters)
-    for(const f of ch.folders){
-      const d=f.documents.find(d=>d.id===id);
-      if(d) return {doc:{...d,...(docOverrides[id]||{})},folder:f};
-    }
-  return null;
-}
-function fmtDate(s){
-  if(!s) return "Not yet uploaded";
-  return new Date(s+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
-}
+function renderChapters(){const el=document.getElementById("chapterList");el.innerHTML="";DATA.chapters.forEach(ch=>{const btn=document.createElement("button");btn.className="chapter-item"+(state.selectedChapter===ch.id?" active":"");btn.innerHTML=`<div class="ch-icon"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></div><div class="ch-body"><span class="ch-badge">${ch.badge}</span><div class="ch-title">${ch.title}</div><div class="ch-desc">${ch.desc}</div></div>`;btn.addEventListener("click",()=>{state.selectedChapter=ch.id;state.selectedFolder=null;state.selectedDoc=null;render();});el.appendChild(btn);});}
 
-function renderChapters(){
-  const el=document.getElementById("chapterList"); el.innerHTML="";
-  DATA.chapters.forEach(ch=>{
-    const btn=document.createElement("button");
-    btn.className="chapter-item"+(state.selectedChapter===ch.id?" active":"");
-    btn.innerHTML=`<div class="ch-icon"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></div><div class="ch-body"><span class="ch-badge">${ch.badge}</span><div class="ch-title">${ch.title}</div><div class="ch-desc">${ch.desc}</div></div>`;
-    btn.addEventListener("click",()=>{ state.selectedChapter=ch.id; state.selectedFolder=null; state.selectedDoc=null; render(); });
-    el.appendChild(btn);
-  });
-}
+function renderFolders(){const el=document.getElementById("folderList");const desc=document.getElementById("folderColDesc");const folders=getFolders();if(!state.selectedChapter){desc.textContent="Select a chapter first";el.innerHTML=`<div class="empty-state">Click a chapter to see its folders.</div>`;return;}desc.textContent=getChapter(state.selectedChapter)?.title||"";el.innerHTML="";if(!folders.length){el.innerHTML=`<div class="empty-state">No folders in this chapter.</div>`;return;}folders.forEach(f=>{const btn=document.createElement("button");btn.className="folder-item"+(state.selectedFolder===f.id?" active":"");const tags=f.accreditations.map(a=>`<span class="f-tag">${a}</span>`).join("");btn.innerHTML=`<span class="f-badge">${f.badge}</span><span class="f-title">${f.title}</span><div class="f-tags">${tags}</div>`;btn.addEventListener("click",()=>{state.selectedFolder=f.id;state.selectedDoc=null;render();});el.appendChild(btn);});}
 
-function renderFolders(){
-  const el=document.getElementById("folderList");
-  const desc=document.getElementById("folderColDesc");
-  const folders=getFolders();
-  if(!state.selectedChapter){ desc.textContent="Select a chapter first"; el.innerHTML=`<div class="empty-state">Click a chapter to see its folders.</div>`; return; }
-  desc.textContent=getChapter(state.selectedChapter)?.title||"";
-  el.innerHTML="";
-  if(!folders.length){ el.innerHTML=`<div class="empty-state">No folders in this chapter.</div>`; return; }
-  folders.forEach(f=>{
-    const btn=document.createElement("button");
-    btn.className="folder-item"+(state.selectedFolder===f.id?" active":"");
-    const tags=f.accreditations.map(a=>`<span class="f-tag">${a}</span>`).join("");
-    btn.innerHTML=`<span class="f-badge">${f.badge}</span><span class="f-title">${f.title}</span><div class="f-tags">${tags}</div>`;
-    btn.addEventListener("click",()=>{ state.selectedFolder=f.id; state.selectedDoc=null; render(); });
-    el.appendChild(btn);
-  });
-}
+function renderDocs(){const el=document.getElementById("docList");const desc=document.getElementById("docColDesc");if(!state.selectedFolder){desc.textContent="Select a folder to view its documents";el.innerHTML=`<div class="empty-state">Click a folder to see its documents.</div>`;return;}const f=getFolders().find(f=>f.id===state.selectedFolder);desc.textContent=f?f.title:"";const docs=getDocs();el.innerHTML="";if(!docs.length){el.innerHTML=`<div class="empty-state">No documents match the current filter.</div>`;return;}docs.forEach(docBase=>{const doc={...docBase,...(docOverrides[docBase.id]||{})};const item=document.createElement("div");item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:"Not yet uploaded";item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type}</div><div class="doc-title">${doc.title}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div></div><button class="doc-update-btn" data-id="${doc.id}">Update</button></div>`;item.addEventListener("click",(e)=>{if(e.target.classList.contains("doc-update-btn"))return;state.selectedDoc=doc.id;renderDocs();openViewer(doc.id);});item.querySelector(".doc-update-btn").addEventListener("click",(e)=>{e.stopPropagation();openUploadModal(doc.id);});el.appendChild(item);});}
 
-function renderDocs(){
-  const el=document.getElementById("docList");
-  const desc=document.getElementById("docColDesc");
-  if(!state.selectedFolder){ desc.textContent="Select a folder to view its documents"; el.innerHTML=`<div class="empty-state">Click a folder to see its documents.</div>`; return; }
-  const f=getFolders().find(f=>f.id===state.selectedFolder);
-  desc.textContent=f?f.title:"";
-  const docs=getDocs(); el.innerHTML="";
-  if(!docs.length){ el.innerHTML=`<div class="empty-state">No documents match the current filter.</div>`; return; }
-  docs.forEach(docBase=>{
-    const doc={...docBase,...(docOverrides[docBase.id]||{})};
-    const item=document.createElement("div");
-    item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");
-    const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:"Not yet uploaded";
-    item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type}</div><div class="doc-title">${doc.title}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div></div><button class="doc-update-btn" data-id="${doc.id}">Update</button></div>`;
-    item.addEventListener("click",(e)=>{ if(e.target.classList.contains("doc-update-btn")) return; state.selectedDoc=doc.id; renderDocs(); openViewer(doc.id); });
-    item.querySelector(".doc-update-btn").addEventListener("click",(e)=>{ e.stopPropagation(); openUploadModal(doc.id); });
-    el.appendChild(item);
-  });
-}
+function render(){renderChapters();renderFolders();renderDocs();}
 
-function render(){ renderChapters(); renderFolders(); renderDocs(); }
+document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn=>{btn.addEventListener("click",()=>{document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));btn.classList.add("active");state.activeFilter=btn.dataset.filter;state.selectedDoc=null;renderDocs();});});
 
-document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn=>{
-  btn.addEventListener("click",()=>{
-    document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));
-    btn.classList.add("active");
-    state.activeFilter=btn.dataset.filter;
-    state.selectedDoc=null;
-    renderDocs();
-  });
-});
-
-// =====================
-// UPLOAD MODAL
-// =====================
-let currentUploadDocId=null;
-let currentFolderId=null;
-
-function openUploadModal(docId){
-  currentUploadDocId=docId;
-  const res=getDoc(docId); if(!res) return;
-  const {doc,folder}=res;
-  currentFolderId=DRIVE_FOLDERS[folder.id]||null;
-  document.getElementById("modalSub").textContent=`"${doc.title}" → ${folder.title}`;
-  document.getElementById("docNameInput").value=doc.title||"";
-  document.getElementById("docResponsibleInput").value=doc.responsible||"";
-  document.getElementById("docNotesInput").value="";
-  const fd=document.getElementById("fileDrop");
-  fd.classList.remove("has-file");
-  fd.querySelector("strong").textContent="Click to browse or drag and drop";
-  fd.querySelector("p").textContent="PDF only — max 50 MB";
-  document.getElementById("fileInput").value="";
-  document.getElementById("uploadProgress").style.display="none";
-  document.getElementById("uploadProgressFill").style.width="0%";
-  document.getElementById("modalSaveBtn").disabled=false;
-  document.getElementById("modalSaveBtn").textContent="Save to Drive";
-  document.getElementById("uploadModal").classList.add("open");
-}
-
+let currentUploadDocId=null,currentFolderId=null;
+function openUploadModal(docId){currentUploadDocId=docId;const res=getDoc(docId);if(!res)return;const{doc,folder}=res;currentFolderId=DRIVE_FOLDERS[folder.id]||null;document.getElementById("modalSub").textContent=`"${doc.title}" → ${folder.title}`;document.getElementById("docNameInput").value=doc.title||"";document.getElementById("docResponsibleInput").value=doc.responsible||"";document.getElementById("docNotesInput").value="";const fd=document.getElementById("fileDrop");fd.classList.remove("has-file");fd.querySelector("strong").textContent="Click to browse or drag and drop";fd.querySelector("p").textContent="PDF only — max 50 MB";document.getElementById("fileInput").value="";document.getElementById("uploadProgress").style.display="none";document.getElementById("uploadProgressFill").style.width="0%";document.getElementById("modalSaveBtn").disabled=false;document.getElementById("modalSaveBtn").textContent="Save to Drive";document.getElementById("uploadModal").classList.add("open");}
 document.getElementById("fileDrop").addEventListener("click",()=>document.getElementById("fileInput").click());
-document.getElementById("fileInput").addEventListener("change",(e)=>{
-  const file=e.target.files[0]; if(!file) return;
-  if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){ showToast("Only PDF files are accepted."); e.target.value=""; return; }
-  const fd=document.getElementById("fileDrop");
-  fd.classList.add("has-file");
-  fd.querySelector("strong").textContent=file.name;
-  fd.querySelector("p").textContent=(file.size/1024/1024).toFixed(2)+" MB";
-});
-
-document.getElementById("modalSaveBtn").addEventListener("click",()=>{
-  const name=document.getElementById("docNameInput").value.trim();
-  const responsible=document.getElementById("docResponsibleInput").value.trim();
-  const file=document.getElementById("fileInput").files[0];
-  if(!name||!responsible){ showToast("Please fill in the document name and responsible person."); return; }
-  if(!file){ showToast("Please select a PDF file."); return; }
-  if(!currentFolderId){ showToast("No Drive folder configured for this folder yet."); return; }
-
-  document.getElementById("modalSaveBtn").disabled=true;
-  document.getElementById("modalSaveBtn").textContent="Uploading...";
-  document.getElementById("uploadProgress").style.display="block";
-
-  const fileName=name.endsWith(".pdf")?name:name+".pdf";
-
-  uploadToDrive(
-    file, fileName, currentFolderId,
-    (pct)=>{
-      document.getElementById("uploadProgressFill").style.width=pct+"%";
-      document.getElementById("uploadProgressLabel").textContent=`Uploading to Google Drive... ${pct}%`;
-    },
-    (result)=>{
-      const today=new Date().toISOString().split("T")[0];
-      docOverrides[currentUploadDocId]={title:name,responsible,type:"PDF",updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl};
-      closeModal("uploadModal");
-      showToast("Saved to Google Drive successfully.");
-      state.selectedDoc=currentUploadDocId;
-      renderDocs();
-      setTimeout(()=>openViewer(currentUploadDocId),300);
-    },
-    (err)=>{
-      showToast("Error: "+err);
-      document.getElementById("modalSaveBtn").disabled=false;
-      document.getElementById("modalSaveBtn").textContent="Save to Drive";
-    }
-  );
-});
-
-function closeModal(id){ document.getElementById(id).classList.remove("open"); }
+document.getElementById("fileInput").addEventListener("change",(e)=>{const file=e.target.files[0];if(!file)return;if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){showToast("Only PDF files are accepted.");e.target.value="";return;}const fd=document.getElementById("fileDrop");fd.classList.add("has-file");fd.querySelector("strong").textContent=file.name;fd.querySelector("p").textContent=(file.size/1024/1024).toFixed(2)+" MB";});
+document.getElementById("modalSaveBtn").addEventListener("click",()=>{const name=document.getElementById("docNameInput").value.trim();const responsible=document.getElementById("docResponsibleInput").value.trim();const file=document.getElementById("fileInput").files[0];if(!name||!responsible){showToast("Please fill in the document name and responsible person.");return;}if(!file){showToast("Please select a PDF file.");return;}if(!currentFolderId){showToast("No Drive folder configured for this folder yet.");return;}document.getElementById("modalSaveBtn").disabled=true;document.getElementById("modalSaveBtn").textContent="Uploading...";document.getElementById("uploadProgress").style.display="block";const fileName=name.endsWith(".pdf")?name:name+".pdf";uploadToDrive(file,fileName,currentFolderId,(pct)=>{document.getElementById("uploadProgressFill").style.width=pct+"%";document.getElementById("uploadProgressLabel").textContent=`Uploading to Google Drive... ${pct}%`;},(result)=>{const today=new Date().toISOString().split("T")[0];docOverrides[currentUploadDocId]={title:name,responsible,type:"PDF",updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl};closeModal("uploadModal");showToast("Saved to Google Drive successfully.");state.selectedDoc=currentUploadDocId;renderDocs();setTimeout(()=>openViewer(currentUploadDocId),300);},(err)=>{showToast("Error: "+err);document.getElementById("modalSaveBtn").disabled=false;document.getElementById("modalSaveBtn").textContent="Save to Drive";});});
+function closeModal(id){document.getElementById(id).classList.remove("open");}
 document.getElementById("modalClose").addEventListener("click",()=>closeModal("uploadModal"));
 document.getElementById("modalCancelBtn").addEventListener("click",()=>closeModal("uploadModal"));
-document.getElementById("uploadModal").addEventListener("click",(e)=>{ if(e.target===e.currentTarget) closeModal("uploadModal"); });
+document.getElementById("uploadModal").addEventListener("click",(e)=>{if(e.target===e.currentTarget)closeModal("uploadModal");});
 
-// =====================
-// VIEWER
-// =====================
 window.currentViewerDocId=null;
-
-function getViewerSrc(url,type){
-  if(!url||url==="#") return "";
-  if(type==="Dashboard"||type==="Link") return url;
-  if(url.startsWith("blob:")||url.includes("drive.google.com/file")) return url;
-  if(type==="PDF"||url.toLowerCase().endsWith(".pdf")) return url+"#toolbar=0&navpanes=0&scrollbar=1";
-  return url;
-}
-
-function openViewer(docId){
-  window.currentViewerDocId=docId;
-  const res=getDoc(docId); if(!res) return;
-  const {doc,folder}=res;
-  const rawUrl=doc.url&&doc.url!=="#"?doc.url:"";
-  const embedUrl=rawUrl?getViewerSrc(rawUrl,doc.type):"";
-  document.getElementById("viewerTitle").textContent=doc.title;
-  const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:(doc.responsible||"");
-  document.getElementById("viewerMeta").textContent=`${doc.type} · ${upd}`;
-  const cleanUrl=rawUrl.replace(/[?&]embed=true/,"");
-  document.getElementById("viewerOpenBtn").href=doc.viewUrl||cleanUrl||folder.sharepointUrl||"#";
-  document.getElementById("viewerUpdateBtn").onclick=()=>{ closeModal("viewerModal"); resetViewer(); openUploadModal(docId); };
-
-  const frame=document.getElementById("viewerFrame");
-  const noUrl=document.getElementById("viewerNoUrl");
-  const ext=document.getElementById("viewerExternal");
-
-  if(!embedUrl){
-    frame.src=""; frame.style.display="none"; noUrl.style.display="flex"; ext.style.display="none";
-  } else {
-    frame.src=embedUrl; frame.style.display="block"; noUrl.style.display="none"; ext.style.display="none";
-  }
-  document.getElementById("viewerModal").classList.add("open");
-}
-
-function resetViewer(){
-  const frame=document.getElementById("viewerFrame");
-  frame.src=""; frame.style.display="block";
-  document.getElementById("viewerNoUrl").style.display="none";
-  document.getElementById("viewerExternal").style.display="none";
-}
-document.getElementById("viewerClose").addEventListener("click",()=>{ closeModal("viewerModal"); resetViewer(); });
-document.getElementById("viewerModal").addEventListener("click",(e)=>{ if(e.target===e.currentTarget){ closeModal("viewerModal"); resetViewer(); } });
-
-function showToast(msg){
-  const t=document.getElementById("toast");
-  t.textContent=msg; t.style.display="block";
-  setTimeout(()=>{ t.style.display="none"; },3500);
-}
-
+function getViewerSrc(url,type){if(!url||url==="#")return"";if(type==="Dashboard"||type==="Link")return url;if(url.startsWith("blob:")||url.includes("drive.google.com/file"))return url;if(type==="PDF"||url.toLowerCase().endsWith(".pdf"))return url+"#toolbar=0&navpanes=0&scrollbar=1";return url;}
+function openViewer(docId){window.currentViewerDocId=docId;const res=getDoc(docId);if(!res)return;const{doc,folder}=res;const rawUrl=doc.url&&doc.url!=="#"?doc.url:"";const embedUrl=rawUrl?getViewerSrc(rawUrl,doc.type):"";document.getElementById("viewerTitle").textContent=doc.title;const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:(doc.responsible||"");document.getElementById("viewerMeta").textContent=`${doc.type} · ${upd}`;const cleanUrl=rawUrl.replace(/[?&]embed=true/,"");document.getElementById("viewerOpenBtn").href=doc.viewUrl||cleanUrl||folder.sharepointUrl||"#";document.getElementById("viewerUpdateBtn").onclick=()=>{closeModal("viewerModal");resetViewer();openUploadModal(docId);};const frame=document.getElementById("viewerFrame");const noUrl=document.getElementById("viewerNoUrl");const ext=document.getElementById("viewerExternal");if(!embedUrl){frame.src="";frame.style.display="none";noUrl.style.display="flex";ext.style.display="none";}else{frame.src=embedUrl;frame.style.display="block";noUrl.style.display="none";ext.style.display="none";}document.getElementById("viewerModal").classList.add("open");}
+function resetViewer(){const frame=document.getElementById("viewerFrame");frame.src="";frame.style.display="block";document.getElementById("viewerNoUrl").style.display="none";document.getElementById("viewerExternal").style.display="none";}
+document.getElementById("viewerClose").addEventListener("click",()=>{closeModal("viewerModal");resetViewer();});
+document.getElementById("viewerModal").addEventListener("click",(e)=>{if(e.target===e.currentTarget){closeModal("viewerModal");resetViewer();}});
+function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";setTimeout(()=>{t.style.display="none";},3500);}
 render();
 </script>
 </body>
