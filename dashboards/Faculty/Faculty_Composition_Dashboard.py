@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import re
 import io, base64
-import gdown
+import requests
 
 # =============================
 # PAGE CONFIG
@@ -44,9 +44,17 @@ DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
 
 @st.cache_data(ttl=300)
 def load_data():
-    url = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}"
+    # URL de exportación directa — funciona con archivos .xlsx públicos en Google Drive
+    url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
     output_path = "/tmp/BD_Faculty.xlsx"
-    gdown.download(url, output_path, quiet=True, fuzzy=True)
+
+    import requests
+    response = requests.get(url, stream=True)
+    with open(output_path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
+
     df_ = pd.read_excel(output_path, sheet_name="BD PLANTA 2020-2025")
 
     def _norm_per(val):
