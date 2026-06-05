@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>KPIs Oficina Internacional</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <style>
     :root{
       --bg:#f3f4f6;
@@ -17,92 +18,316 @@
       --dark:#555555;
       --dark-h:#777777;
     }
-    *{ box-sizing:border-box; }
-    body{ font-family:Arial,sans-serif; margin:0; color:var(--text); text-align:center; background:var(--bg); }
+
+    *{
+      box-sizing:border-box;
+    }
+
+    body{
+      font-family:Arial,sans-serif;
+      margin:0;
+      color:var(--text);
+      text-align:center;
+      background:var(--bg);
+    }
 
     header.hero{
-      color:#fff; position:relative; min-height:300px; padding:56px 24px 120px;
-      display:flex; align-items:center; justify-content:center; overflow:hidden;
+      color:#fff;
+      position:relative;
+      min-height:360px;
+      padding:56px 24px 140px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:hidden;
       background:
-        linear-gradient(to bottom, rgba(12,16,24,0.18), rgba(12,16,24,0.35)),
-        url("../imagenes/Oficinas.jpg") center 90% / cover no-repeat;
+        linear-gradient(to bottom,
+        rgba(8,12,20,.18),
+        rgba(8,12,20,.28),
+        rgba(8,12,20,.42)),
+        url("Santodomingo.jpg") center 72% / 112% no-repeat;
     }
+
     header.hero::after{
-      content:""; position:absolute; inset:0;
-      background:linear-gradient(to bottom, rgba(255,255,255,0) 58%, var(--bg) 100%);
+      content:"";
+      position:absolute;
+      inset:0;
+      background:linear-gradient(
+        to bottom,
+        rgba(255,255,255,0) 58%,
+        var(--bg) 100%);
       pointer-events:none;
     }
-    header.hero .hero-inner{ max-width:1100px; width:100%; position:relative; z-index:2; }
-    header.hero h1{ margin:0; font-weight:800; line-height:1.05; font-size:clamp(2.2rem,3.6vw + .5rem,3.8rem); letter-spacing:.3px; text-shadow:0 8px 24px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.35); }
-    header.hero h2{ margin:10px 0 0; font-weight:700; line-height:1.1; font-size:1.15rem; letter-spacing:.2px; text-shadow:0 8px 24px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.35); }
+
+    .hero-inner{
+      max-width:1100px;
+      width:100%;
+      position:relative;
+      z-index:2;
+    }
+
+    header.hero h1{
+      margin:0;
+      font-weight:800;
+      line-height:1.05;
+      font-size:clamp(2.5rem,4vw + .5rem,4.25rem);
+      letter-spacing:-0.03em;
+      text-shadow:0 10px 30px rgba(0,0,0,.28);
+    }
+
+    header.hero h2{
+      margin:12px 0 0;
+      font-weight:700;
+      font-size:1.15rem;
+      text-shadow:0 10px 30px rgba(0,0,0,.28);
+    }
 
     .home-link{
-      position:absolute; top:22px; left:22px; z-index:20;
-      width:52px; height:52px; border-radius:50%;
-      display:flex; align-items:center; justify-content:center;
-      background:rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.22);
-      box-shadow:0 8px 20px rgba(0,0,0,.18); text-decoration:none;
-      transition:transform .2s ease,background .2s ease,box-shadow .2s ease;
+      position:absolute;
+      top:24px;
+      left:24px;
+      z-index:20;
+      width:52px;
+      height:52px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:rgba(255,255,255,0.18);
+      border:1px solid rgba(255,255,255,0.22);
+      box-shadow:0 8px 20px rgba(0,0,0,.18);
+      text-decoration:none;
+      transition:transform .2s ease,
+      background .2s ease,
+      box-shadow .2s ease;
       backdrop-filter:blur(4px);
     }
-    .home-link:hover{ transform:translateY(-2px); background:rgba(255,255,255,0.26); box-shadow:0 12px 24px rgba(0,0,0,.22); }
-    .home-link svg{ width:24px; height:24px; stroke:#fff; }
 
-    .instructions-wrap{ position:relative; max-width:760px; margin:-62px auto 32px; z-index:5; padding:0 16px; }
-    .instructions{ position:relative; z-index:5; padding:22px 24px; background:#fff; border-radius:22px; box-shadow:var(--shadow); font-size:1.03em; text-align:left; }
-    .instructions p{ margin:0 0 10px; line-height:1.65; }
-    .instructions p:last-child{ margin-bottom:0; }
-    .instructions-seneca{ position:absolute; top:50%; left:-138px; transform:translateY(-54%); text-align:center; width:130px; pointer-events:none; z-index:6; }
-    .instructions-seneca img{ max-width:120px; height:auto; display:block; margin:8px auto 0; filter:drop-shadow(0 8px 14px rgba(0,0,0,0.16)); }
+    .home-link:hover{
+      transform:translateY(-2px);
+      background:rgba(255,255,255,0.26);
+    }
 
-    .section-wrap{ max-width:1280px; margin:0 auto; padding:0 20px 30px; }
-    .kpi-section{ margin-bottom:34px; }
-    .button-grid{ display:grid; grid-template-columns:repeat(10,1fr); gap:18px; max-width:1500px; margin:0 auto 34px; }
-    .button-grid .btn:nth-child(-n+5){ grid-column:span 2; }
-    .button-grid .btn:nth-child(n+6){ grid-column:span 2; }
-    .button-grid .btn:nth-child(6){ grid-column:2 / span 2; }
+    .home-link svg{
+      width:24px;
+      height:24px;
+      stroke:#fff;
+    }
 
-    .btn{ position:relative; color:#fff; text-decoration:none; border-radius:28px; min-height:235px; display:flex; flex-direction:column; justify-content:space-between; align-items:flex-start; padding:26px 24px; box-shadow:0 16px 34px rgba(0,0,0,.12); transition:transform .22s ease,box-shadow .22s ease,filter .22s ease; overflow:hidden; }
-    .btn:hover{ transform:translateY(-6px); box-shadow:0 20px 40px rgba(0,0,0,.16); filter:brightness(1.02); }
-    .gray-btn{ background:linear-gradient(135deg,#5f6368,#3f4348); }
-    .blue-btn{ background:linear-gradient(135deg,#56d6c9,#2fa89c); }
-    .btn-top{ width:100%; }
-    .btn .icon{ width:38px; height:38px; margin-bottom:18px; }
-    .btn-title{ font-size:1.15rem; font-weight:800; line-height:1.2; margin-bottom:12px; }
-    .btn-desc{ font-size:.93rem; line-height:1.65; color:rgba(255,255,255,.88); }
-    .btn-link{ margin-top:18px; font-size:.95rem; font-weight:800; color:#fff; opacity:.96; }
+    .instructions-wrap{
+      position:relative;
+      max-width:900px;
+      margin:-70px auto 34px;
+      z-index:10;
+      padding:0 16px;
+      display:flex;
+      align-items:flex-start;
+      gap:0;
+    }
 
-    .footer{ text-align:center; color:gray; padding:10px 20px 35px; font-size:14px; }
+    .instructions-seneca{
+      position:relative;
+      flex-shrink:0;
+      width:110px;
+      margin-right:-18px;
+      z-index:13;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+    }
 
-    @media(max-width:1100px){ .button-grid{ grid-template-columns:repeat(2,1fr); } .button-grid .btn,.button-grid .btn:nth-child(6){ grid-column:auto; } }
-    @media(max-width:1024px){ .instructions-seneca{ left:-112px; width:100px; } .instructions-seneca img{ max-width:92px; } }
-    @media(max-width:900px){ .instructions-wrap{ margin:-52px auto 28px; } .instructions-seneca{ position:static; transform:none; width:auto; margin-bottom:10px; } }
-    @media(max-width:768px){ header.hero{ min-height:220px; padding:72px 18px 110px; } .home-link{ top:16px; left:16px; width:46px; height:46px; } .home-link svg{ width:22px; height:22px; } .section-wrap{ padding:0 14px 6px; } .button-grid{ grid-template-columns:1fr; gap:20px; } .btn{ min-height:200px; border-radius:22px; } }
+    .instructions-seneca img{
+      max-width:110px;
+      height:auto;
+      display:block;
+      filter:drop-shadow(0 10px 18px rgba(0,0,0,.16));
+      margin-top:auto;
+    }
+
+    .instructions{
+      flex:1;
+      z-index:12;
+      padding:24px 24px 24px 36px;
+      background:rgba(255,255,255,.93);
+      border-radius:24px;
+      box-shadow:0 20px 50px rgba(0,0,0,.16);
+      text-align:left;
+      border:1px solid rgba(255,255,255,.28);
+    }
+
+    .instructions p{
+      margin:0 0 10px;
+      line-height:1.75;
+    }
+
+    .instructions p:last-child{
+      margin-bottom:0;
+    }
+
+    .section-wrap{
+      max-width:1280px;
+      margin:0 auto;
+      padding:0 20px 30px;
+    }
+
+    .button-grid{
+      display:grid;
+      grid-template-columns:repeat(10,1fr);
+      gap:18px;
+      max-width:1500px;
+      margin:0 auto 34px;
+    }
+
+    .button-grid .btn:nth-child(-n+5){
+      grid-column:span 2;
+    }
+
+    .button-grid .btn:nth-child(n+6){
+      grid-column:span 2;
+    }
+
+    .button-grid .btn:nth-child(6){
+      grid-column:2 / span 2;
+    }
+
+    .btn{
+      position:relative;
+      color:#fff;
+      text-decoration:none;
+      border-radius:28px;
+      min-height:235px;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      align-items:flex-start;
+      padding:26px 24px;
+      box-shadow:0 16px 34px rgba(0,0,0,.12);
+      transition:transform .22s ease,
+      box-shadow .22s ease,
+      filter .22s ease;
+      overflow:hidden;
+    }
+
+    .btn:hover{
+      transform:translateY(-6px);
+      box-shadow:0 20px 40px rgba(0,0,0,.16);
+      filter:brightness(1.02);
+    }
+
+    .gray-btn{
+      background:linear-gradient(135deg,#5f6368,#3f4348);
+    }
+
+    .blue-btn{
+      background:linear-gradient(135deg,#56d6c9,#2fa89c);
+    }
+
+    .btn-top{
+      width:100%;
+    }
+
+    .btn .icon{
+      width:38px;
+      height:38px;
+      margin-bottom:18px;
+    }
+
+    .btn-title{
+      font-size:1.15rem;
+      font-weight:800;
+      line-height:1.2;
+      margin-bottom:12px;
+    }
+
+    .btn-desc{
+      font-size:.93rem;
+      line-height:1.65;
+      color:rgba(255,255,255,.88);
+    }
+
+    .btn-link{
+      margin-top:18px;
+      font-size:.95rem;
+      font-weight:800;
+      color:#fff;
+      opacity:.96;
+    }
+
+    .footer{
+      text-align:center;
+      color:gray;
+      padding:10px 20px 35px;
+      font-size:14px;
+    }
+
+    @media(max-width:1100px){
+      .button-grid{
+        grid-template-columns:repeat(2,1fr);
+      }
+
+      .button-grid .btn,
+      .button-grid .btn:nth-child(6){
+        grid-column:auto;
+      }
+    }
+
+    @media(max-width:720px){
+      .instructions-seneca{
+        display:none;
+      }
+
+      .instructions{
+        padding:22px;
+      }
+
+      .button-grid{
+        grid-template-columns:1fr;
+      }
+
+      header.hero{
+        min-height:300px;
+        padding:72px 18px 120px;
+      }
+    }
   </style>
 </head>
-<body>
-  <header class="hero">
-    <a href="../../index.html" class="home-link" aria-label="Go to home">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 10.5 12 3l9 7.5"></path>
-        <path d="M5.5 9.5V20h13V9.5"></path>
-      </svg>
-    </a>
-    <div class="hero-inner">
-      <h1>KPIs for International Accreditations</h1>
-      <h2>International Office UASM</h2>
-    </div>
-  </header>
 
-  <div class="instructions-wrap">
-    <div class="instructions-seneca" aria-hidden="true">
-      <img src="../imagenes/seneca.png" alt="Seneca" />
-    </div>
-    <div class="instructions">
-      <p>Dynamic BaseRoom with key information from the different areas of the School of Management, to report in international rankings and accreditations. The repository will be updated based on the connected Excel files from each unit.</p>
-      <p><strong>Click on each section to review the KPIs.</strong></p>
-    </div>
+<body>
+
+<header class="hero">
+
+  <a href="../../index.html" class="home-link" aria-label="Go to home">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 10.5 12 3l9 7.5"></path>
+      <path d="M5.5 9.5V20h13V9.5"></path>
+    </svg>
+  </a>
+
+  <div class="hero-inner">
+    <h1>KPIs for International Accreditations</h1>
+    <h2>International Office UASM</h2>
   </div>
+
+</header>
+
+<div class="instructions-wrap">
+
+  <div class="instructions-seneca" aria-hidden="true">
+    <img src="seneca.png" alt="Seneca">
+  </div>
+
+  <div class="instructions">
+    <p>
+      Dynamic BaseRoom with key information from the different areas of the School of Management, to report in international rankings and accreditations.
+      The repository will be updated based on the connected Excel files from each unit.
+    </p>
+
+    <p>
+      <strong>Click on each section to review the KPIs.</strong>
+    </p>
+  </div>
+
+</div>
 
   <div class="section-wrap">
     <div class="kpi-section">
@@ -193,6 +418,9 @@
     </div>
   </div>
 
-  <footer class="footer">International Office · School of Management · Internal use only</footer>
+<footer class="footer">
+  International Office · School of Management · Internal use only
+</footer>
+
 </body>
 </html>
