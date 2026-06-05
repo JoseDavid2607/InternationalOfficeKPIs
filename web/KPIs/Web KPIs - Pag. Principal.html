@@ -17,331 +17,77 @@
       --dark:#555555;
       --dark-h:#777777;
     }
+    *{ box-sizing:border-box; }
+    body{ font-family:Arial,sans-serif; margin:0; color:var(--text); text-align:center; background:var(--bg); }
 
-    *{
-      box-sizing:border-box;
-    }
-
-    body{
-      font-family: Arial, sans-serif;
-      margin:0;
-      color:var(--text);
-      text-align:center;
-      background:var(--bg);
-    }
-
-    /* HERO */
     header.hero{
-      color:#fff;
-      position:relative;
-      min-height:300px;
-      padding:56px 24px 120px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      overflow:hidden;
+      color:#fff; position:relative; min-height:300px; padding:56px 24px 120px;
+      display:flex; align-items:center; justify-content:center; overflow:hidden;
       background:
         linear-gradient(to bottom, rgba(12,16,24,0.18), rgba(12,16,24,0.35)),
-        url("../imagenes/oficinas.jpg") center 90% / cover no-repeat;
+        url("../imagenes/Oficinas.jpg") center 90% / cover no-repeat;
     }
-
     header.hero::after{
-      content:"";
-      position:absolute;
-      inset:0;
+      content:""; position:absolute; inset:0;
       background:linear-gradient(to bottom, rgba(255,255,255,0) 58%, var(--bg) 100%);
       pointer-events:none;
     }
+    header.hero .hero-inner{ max-width:1100px; width:100%; position:relative; z-index:2; }
+    header.hero h1{ margin:0; font-weight:800; line-height:1.05; font-size:clamp(2.2rem,3.6vw + .5rem,3.8rem); letter-spacing:.3px; text-shadow:0 8px 24px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.35); }
+    header.hero h2{ margin:10px 0 0; font-weight:700; line-height:1.1; font-size:1.15rem; letter-spacing:.2px; text-shadow:0 8px 24px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.35); }
 
-    header.hero .hero-inner{
-      max-width:1100px;
-      width:100%;
-      position:relative;
-      z-index:2;
-    }
-
-    header.hero h1{
-      margin:0;
-      font-weight:800;
-      line-height:1.05;
-      font-size:clamp(2.2rem,3.6vw + .5rem,3.8rem);
-      letter-spacing:.3px;
-      text-shadow:0 8px 24px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.35);
-    }
-
-    header.hero h2{
-      margin:10px 0 0;
-      font-weight:700;
-      line-height:1.1;
-      font-size:1.15rem;
-      letter-spacing:.2px;
-      text-shadow:0 8px 24px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.35);
-    }
-
-    /* HOME BUTTON */
     .home-link{
-      position:absolute;
-      top:22px;
-      left:22px;
-      z-index:20;
-      width:52px;
-      height:52px;
-      border-radius:50%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      background:rgba(255,255,255,0.18);
-      border:1px solid rgba(255,255,255,0.22);
-      box-shadow:0 8px 20px rgba(0,0,0,.18);
-      text-decoration:none;
-      transition:transform .2s ease, background .2s ease, box-shadow .2s ease;
-      backdrop-filter: blur(4px);
+      position:absolute; top:22px; left:22px; z-index:20;
+      width:52px; height:52px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.22);
+      box-shadow:0 8px 20px rgba(0,0,0,.18); text-decoration:none;
+      transition:transform .2s ease,background .2s ease,box-shadow .2s ease;
+      backdrop-filter:blur(4px);
     }
+    .home-link:hover{ transform:translateY(-2px); background:rgba(255,255,255,0.26); box-shadow:0 12px 24px rgba(0,0,0,.22); }
+    .home-link svg{ width:24px; height:24px; stroke:#fff; }
 
-    .home-link:hover{
-      transform:translateY(-2px);
-      background:rgba(255,255,255,0.26);
-      box-shadow:0 12px 24px rgba(0,0,0,.22);
-    }
+    .instructions-wrap{ position:relative; max-width:760px; margin:-62px auto 32px; z-index:5; padding:0 16px; }
+    .instructions{ position:relative; z-index:5; padding:22px 24px; background:#fff; border-radius:22px; box-shadow:var(--shadow); font-size:1.03em; text-align:left; }
+    .instructions p{ margin:0 0 10px; line-height:1.65; }
+    .instructions p:last-child{ margin-bottom:0; }
+    .instructions-seneca{ position:absolute; top:50%; left:-138px; transform:translateY(-54%); text-align:center; width:130px; pointer-events:none; z-index:6; }
+    .instructions-seneca img{ max-width:120px; height:auto; display:block; margin:8px auto 0; filter:drop-shadow(0 8px 14px rgba(0,0,0,0.16)); }
 
-    .home-link svg{
-      width:24px;
-      height:24px;
-      stroke:#fff;
-    }
+    .section-wrap{ max-width:1280px; margin:0 auto; padding:0 20px 30px; }
+    .kpi-section{ margin-bottom:34px; }
+    .button-grid{ display:grid; grid-template-columns:repeat(10,1fr); gap:18px; max-width:1500px; margin:0 auto 34px; }
+    .button-grid .btn:nth-child(-n+5){ grid-column:span 2; }
+    .button-grid .btn:nth-child(n+6){ grid-column:span 2; }
+    .button-grid .btn:nth-child(6){ grid-column:2 / span 2; }
 
-    /* INTRO BOX */
-    .instructions-wrap{
-      position:relative;
-      max-width:760px;
-      margin:-62px auto 32px;
-      z-index:5;
-      padding:0 16px;
-    }
+    .btn{ position:relative; color:#fff; text-decoration:none; border-radius:28px; min-height:235px; display:flex; flex-direction:column; justify-content:space-between; align-items:flex-start; padding:26px 24px; box-shadow:0 16px 34px rgba(0,0,0,.12); transition:transform .22s ease,box-shadow .22s ease,filter .22s ease; overflow:hidden; }
+    .btn:hover{ transform:translateY(-6px); box-shadow:0 20px 40px rgba(0,0,0,.16); filter:brightness(1.02); }
+    .gray-btn{ background:linear-gradient(135deg,#5f6368,#3f4348); }
+    .blue-btn{ background:linear-gradient(135deg,#56d6c9,#2fa89c); }
+    .btn-top{ width:100%; }
+    .btn .icon{ width:38px; height:38px; margin-bottom:18px; }
+    .btn-title{ font-size:1.15rem; font-weight:800; line-height:1.2; margin-bottom:12px; }
+    .btn-desc{ font-size:.93rem; line-height:1.65; color:rgba(255,255,255,.88); }
+    .btn-link{ margin-top:18px; font-size:.95rem; font-weight:800; color:#fff; opacity:.96; }
 
-    .instructions{
-      position:relative;
-      z-index:5;
-      padding:22px 24px;
-      background:#fff;
-      border-radius:22px;
-      box-shadow:var(--shadow);
-      font-size:1.03em;
-      text-align:left;
-    }
+    .footer{ text-align:center; color:gray; padding:10px 20px 35px; font-size:14px; }
 
-    .instructions p{
-      margin:0 0 10px;
-      line-height:1.65;
-    }
-
-    .instructions p:last-child{
-      margin-bottom:0;
-    }
-
-    .instructions-seneca{
-      position:absolute;
-      top:50%;
-      left:-138px;
-      transform:translateY(-54%);
-      text-align:center;
-      width:130px;
-      pointer-events:none;
-      z-index:6;
-    }
-
-    .instructions-seneca img{
-      max-width:120px;
-      height:auto;
-      display:block;
-      margin:8px auto 0;
-      filter:drop-shadow(0 8px 14px rgba(0,0,0,0.16));
-    }
-
-    /* GRID WRAPPER */
-    .section-wrap{
-      max-width:1280px;
-      margin:0 auto;
-      padding:0 20px 30px;
-    }
-
-    .kpi-section{
-      margin-bottom:34px;
-    }
-
-    .button-grid{
-      display:grid;
-      grid-template-columns:repeat(10, 1fr);
-      gap:18px;
-      max-width:1500px;
-      margin:0 auto 34px;
-    }
-
-    .button-grid .btn:nth-child(-n+5){
-      grid-column:span 2;
-    }
-
-    .button-grid .btn:nth-child(n+6){
-      grid-column:span 2;
-    }
-
-    .button-grid .btn:nth-child(6){
-      grid-column:2 / span 2;
-    }
-
-    .btn{
-      position:relative;
-      color:#fff;
-      text-decoration:none;
-      border-radius:28px;
-      min-height:235px;
-      display:flex;
-      flex-direction:column;
-      justify-content:space-between;
-      align-items:flex-start;
-      padding:26px 24px;
-      box-shadow:0 16px 34px rgba(0,0,0,.12);
-      transition:transform .22s ease, box-shadow .22s ease, filter .22s ease;
-      overflow:hidden;
-    }
-
-    .btn:hover{
-      transform:translateY(-6px);
-      box-shadow:0 20px 40px rgba(0,0,0,.16);
-      filter:brightness(1.02);
-    }
-
-    .gray-btn{
-      background:linear-gradient(135deg, #5f6368, #3f4348);
-    }
-
-    .blue-btn{
-      background:linear-gradient(135deg, #56d6c9, #2fa89c);
-    }
-
-    .btn-top{
-      width:100%;
-    }
-
-    .btn .icon{
-      width:38px;
-      height:38px;
-      margin-bottom:18px;
-    }
-
-    .btn-title{
-      font-size:1.15rem;
-      font-weight:800;
-      line-height:1.2;
-      margin-bottom:12px;
-    }
-
-    .btn-desc{
-      font-size:.93rem;
-      line-height:1.65;
-      color:rgba(255,255,255,.88);
-    }
-
-    .btn-link{
-      margin-top:18px;
-      font-size:.95rem;
-      font-weight:800;
-      color:#fff;
-      opacity:.96;
-    }
-
-    .footer{
-      text-align:center;
-      color:gray;
-      padding:10px 20px 35px;
-      font-size:14px;
-    }
-
-    /* RESPONSIVE */
-    @media (max-width:1100px){
-      .button-grid{
-        grid-template-columns:repeat(2,1fr);
-      }
-
-      .button-grid .btn,
-      .button-grid .btn:nth-child(6){
-        grid-column:auto;
-      }
-    }
-
-    @media (max-width:1024px){
-      .instructions-seneca{
-        left:-112px;
-        width:100px;
-      }
-
-      .instructions-seneca img{
-        max-width:92px;
-      }
-    }
-
-    @media (max-width:900px){
-      .instructions-wrap{
-        margin:-52px auto 28px;
-      }
-
-      .instructions-seneca{
-        position:static;
-        transform:none;
-        width:auto;
-        margin-bottom:10px;
-        pointer-events:none;
-      }
-
-      .instructions{
-        text-align:left;
-      }
-    }
-
-    @media (max-width:768px){
-      header.hero{
-        min-height:220px;
-        padding:72px 18px 110px;
-      }
-
-      .home-link{
-        top:16px;
-        left:16px;
-        width:46px;
-        height:46px;
-      }
-
-      .home-link svg{
-        width:22px;
-        height:22px;
-      }
-
-      .section-wrap{
-        padding:0 14px 6px;
-      }
-
-      .button-grid{
-        grid-template-columns:1fr;
-        gap:20px;
-      }
-
-      .btn{
-        min-height:200px;
-        border-radius:22px;
-      }
-    }
+    @media(max-width:1100px){ .button-grid{ grid-template-columns:repeat(2,1fr); } .button-grid .btn,.button-grid .btn:nth-child(6){ grid-column:auto; } }
+    @media(max-width:1024px){ .instructions-seneca{ left:-112px; width:100px; } .instructions-seneca img{ max-width:92px; } }
+    @media(max-width:900px){ .instructions-wrap{ margin:-52px auto 28px; } .instructions-seneca{ position:static; transform:none; width:auto; margin-bottom:10px; } }
+    @media(max-width:768px){ header.hero{ min-height:220px; padding:72px 18px 110px; } .home-link{ top:16px; left:16px; width:46px; height:46px; } .home-link svg{ width:22px; height:22px; } .section-wrap{ padding:0 14px 6px; } .button-grid{ grid-template-columns:1fr; gap:20px; } .btn{ min-height:200px; border-radius:22px; } }
   </style>
 </head>
-
 <body>
   <header class="hero">
-    <a href="../UASM KPIs & Baseroom Center.html" class="home-link" aria-label="Go to home">
+    <a href="../../index.html" class="home-link" aria-label="Go to home">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 10.5 12 3l9 7.5"></path>
         <path d="M5.5 9.5V20h13V9.5"></path>
       </svg>
     </a>
-
     <div class="hero-inner">
       <h1>KPIs for International Accreditations</h1>
       <h2>International Office UASM</h2>
@@ -350,140 +96,95 @@
 
   <div class="instructions-wrap">
     <div class="instructions-seneca" aria-hidden="true">
-      <img src="../imagenes/seneca.png" alt="Seneca seneca" />
+      <img src="../imagenes/seneca.png" alt="Seneca" />
     </div>
-
     <div class="instructions">
-      <p>
-        Dynamic BaseRoom with key information from the different areas of the School of Management, to report in international rankings and accreditations.
-        The repository will be updated based on the connected Excel files from each unit.
-      </p>
+      <p>Dynamic BaseRoom with key information from the different areas of the School of Management, to report in international rankings and accreditations. The repository will be updated based on the connected Excel files from each unit.</p>
       <p><strong>Click on each section to review the KPIs.</strong></p>
     </div>
   </div>
 
   <div class="section-wrap">
     <div class="kpi-section">
-
       <div class="button-grid">
 
         <a href="#alumni" class="btn gray-btn">
           <div class="btn-top">
-            <svg class="icon" viewBox="0 0 24 24" fill="none">
-              <path d="M9 7V6a3 3 0 0 1 3-3 3 3 0 0 1 3 3v1" stroke="white" stroke-width="1.7"/>
-              <rect x="3" y="7" width="18" height="12" rx="2" stroke="white" stroke-width="1.7"/>
-            </svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M9 7V6a3 3 0 0 1 3-3 3 3 0 0 1 3 3v1" stroke="white" stroke-width="1.7"/><rect x="3" y="7" width="18" height="12" rx="2" stroke="white" stroke-width="1.7"/></svg>
             <div class="btn-title">Alumni & Career Services</div>
-            <div class="btn-desc">
-              Employment distribution, salary trends, career outcomes, and placement indicators for graduates.
-            </div>
+            <div class="btn-desc">Employment distribution, salary trends, career outcomes, and placement indicators for graduates.</div>
           </div>
           <div class="btn-link">Open section →</div>
         </a>
 
         <a href="#executive" class="btn gray-btn">
           <div class="btn-top">
-            <svg class="icon" viewBox="0 0 24 24" fill="none">
-              <rect x="4" y="3" width="10" height="18" rx="2" stroke="white" stroke-width="1.7"/>
-            </svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="10" height="18" rx="2" stroke="white" stroke-width="1.7"/></svg>
             <div class="btn-title">Executive Education</div>
-            <div class="btn-desc">
-              Consolidated KPIs related to executive programs, participation, reach, and operational performance.
-            </div>
+            <div class="btn-desc">Consolidated KPIs related to executive programs, participation, reach, and operational performance.</div>
           </div>
           <div class="btn-link">Open section →</div>
         </a>
 
         <a href="#programas" class="btn gray-btn">
           <div class="btn-top">
-            <svg class="icon" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="4" width="18" height="14" rx="2" stroke="white" stroke-width="1.7"/>
-            </svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="14" rx="2" stroke="white" stroke-width="1.7"/></svg>
             <div class="btn-title">Academic Programs</div>
-            <div class="btn-desc">
-              Admissions, student demographics, academic deployment, GPA behavior, and financial indicators.
-            </div>
+            <div class="btn-desc">Admissions, student demographics, academic deployment, GPA behavior, and financial indicators.</div>
           </div>
           <div class="btn-link">Open section →</div>
         </a>
 
         <a href="#research" class="btn gray-btn">
           <div class="btn-top">
-            <svg class="icon" viewBox="0 0 24 24" fill="none">
-              <path d="M9 3v5l-4.5 8A3 3 0 0 0 7.3 20h9.4a3 3 0 0 0 2.8-4L15 8V3" stroke="white" stroke-width="1.7"/>
-            </svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M9 3v5l-4.5 8A3 3 0 0 0 7.3 20h9.4a3 3 0 0 0 2.8-4L15 8V3" stroke="white" stroke-width="1.7"/></svg>
             <div class="btn-title">Research and Development</div>
-            <div class="btn-desc">
-              Publications, research activity, academic production, projects, and broader scholarly impact.
-            </div>
+            <div class="btn-desc">Publications, research activity, academic production, projects, and broader scholarly impact.</div>
           </div>
           <div class="btn-link">Open section →</div>
         </a>
 
         <a href="#resources" class="btn gray-btn">
           <div class="btn-top">
-            <svg class="icon" viewBox="0 0 24 24" fill="none">
-              <path d="M14 6l4 4m-1-5l2 2m-8 7l-4 4H5v-2l4-4" stroke="white" stroke-width="1.7"/>
-            </svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M14 6l4 4m-1-5l2 2m-8 7l-4 4H5v-2l4-4" stroke="white" stroke-width="1.7"/></svg>
             <div class="btn-title">Resources and Admin</div>
-            <div class="btn-desc">
-              Budget, funding, staffing, administrative support, and core operational resources of the School.
-            </div>
+            <div class="btn-desc">Budget, funding, staffing, administrative support, and core operational resources of the School.</div>
           </div>
           <div class="btn-link">Open section →</div>
         </a>
 
         <a href="Faculty/Web KPIs - Faculty.html" class="btn blue-btn">
           <div class="btn-top">
-            <svg class="icon" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="7" r="4" stroke="white" stroke-width="1.7"/>
-              <path d="M4 21a8 8 0 0 1 16 0" stroke="white" stroke-width="1.7"/>
-            </svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="7" r="4" stroke="white" stroke-width="1.7"/><path d="M4 21a8 8 0 0 1 16 0" stroke="white" stroke-width="1.7"/></svg>
             <div class="btn-title">Faculty</div>
-            <div class="btn-desc">
-              Faculty deployment, qualifications, demographics, workload, and accreditation-relevant academic profiles.
-            </div>
+            <div class="btn-desc">Faculty deployment, qualifications, demographics, workload, and accreditation-relevant academic profiles.</div>
           </div>
           <div class="btn-link">Open section →</div>
         </a>
 
         <a href="Internationalization/Web KPIs - Internationalization.html" class="btn blue-btn">
           <div class="btn-top">
-            <svg class="icon" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="9" stroke="white" stroke-width="1.7"/>
-              <path d="M3 12h18M12 3c3 4 3 14 0 18M12 3c-3 4-3 14 0 18" stroke="white" stroke-width="1.3"/>
-            </svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="white" stroke-width="1.7"/><path d="M3 12h18M12 3c3 4 3 14 0 18M12 3c-3 4-3 14 0 18" stroke="white" stroke-width="1.3"/></svg>
             <div class="btn-title">Internationalization</div>
-            <div class="btn-desc">
-              Mobility, agreements, visiting faculty, international activities, and global engagement indicators.
-            </div>
+            <div class="btn-desc">Mobility, agreements, visiting faculty, international activities, and global engagement indicators.</div>
           </div>
           <div class="btn-link">Open section →</div>
         </a>
 
         <a href="seminars.html" class="btn blue-btn">
           <div class="btn-top">
-            <svg class="icon" viewBox="0 0 24 24" fill="none">
-              <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3Z" stroke="white" stroke-width="1.7"/>
-              <path d="M12 18v3m-4 0h8" stroke="white" stroke-width="1.7" stroke-linecap="round"/>
-            </svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3Z" stroke="white" stroke-width="1.7"/><path d="M12 18v3m-4 0h8" stroke="white" stroke-width="1.7" stroke-linecap="round"/></svg>
             <div class="btn-title">UASM Seminars</div>
-            <div class="btn-desc">
-              Seminar series data, invited speakers, attendance, and contribution to academic positioning.
-            </div>
+            <div class="btn-desc">Seminar series data, invited speakers, attendance, and contribution to academic positioning.</div>
           </div>
           <div class="btn-link">Open section →</div>
         </a>
 
         <a href="trienal.html" class="btn blue-btn">
           <div class="btn-top">
-            <svg class="icon" viewBox="0 0 24 24" fill="none">
-              <path d="M4 20V10m5 10v-6m5 6V7m5 13V4" stroke="white" stroke-width="1.7"/>
-            </svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M4 20V10m5 10v-6m5 6V7m5 13V4" stroke="white" stroke-width="1.7"/></svg>
             <div class="btn-title">Ev. Trienal</div>
-            <div class="btn-desc">
-              Consolidated results from triennial evaluation processes and strategic review indicators.
-            </div>
+            <div class="btn-desc">Consolidated results from triennial evaluation processes and strategic review indicators.</div>
           </div>
           <div class="btn-link">Open section →</div>
         </a>
@@ -492,9 +193,6 @@
     </div>
   </div>
 
-  <footer class="footer">
-    International Office · School of Management · Internal use only
-  </footer>
-
+  <footer class="footer">International Office · School of Management · Internal use only</footer>
 </body>
 </html>
