@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BaseRoom & Accreditations</title>
+<style>
+:root {
+  --bg-page: #f5f6f8;
+  --bg-glass: rgba(255,255,255,.93);
+  --bg-white: #ffffff;
+  --slate: #4b5563;
+  --slate-dark: #1f2937;
+  --slate-mid: #374151;
+  --muted: #6b7280;
+  --blue: #003366;
+  --border: #e5e7eb;
+  --teal: #0f6e56;
+  --teal-light: #e1f5ee;
+  --shadow-panel: 0 20px 50px rgba(0,0,0,.16);
+  --shadow-soft: 0 10px 24px rgba(0,0,0,.10);
+  --radius-panel: 24px;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+body { font-family: Arial, Helvetica, sans-serif; background: var(--bg-page); color: var(--slate-dark); -webkit-font-smoothing: antialiased; }
+header.hero {
+  color: #fff; position: relative; min-height: 360px; padding: 56px 24px 140px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; text-align: center;
+  background: linear-gradient(to bottom, rgba(8,12,20,.18), rgba(8,12,20,.28), rgba(8,12,20,.42)),
+    url("Santodomingo.jpg") center 72% / 112% no-repeat;
+}
+header.hero::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,0) 58%, var(--bg-page) 100%);
+  pointer-events: none;
+}
+.hero-inner { max-width: 1100px; width: 100%; margin: 0 auto; position: relative; z-index: 2; }
+.hero-eyebrow {
+  display: inline-block; margin-bottom: 18px; padding: 8px 16px;
+  border-radius: 999px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.18);
+  font-size: 13px; font-weight: 700; letter-spacing: .02em;
+}
+header.hero h1 {
+  margin: 0; font-weight: 800; line-height: 1.02;
+  font-size: clamp(2.5rem, 4vw + .5rem, 4.25rem);
+  letter-spacing: -.03em; text-shadow: 0 10px 30px rgba(0,0,0,.28);
+}
+.back-button { position: absolute; top: 24px; left: 24px; z-index: 20; }
+.back-button a {
+  width: 52px; height: 52px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.22);
+  text-decoration: none; box-shadow: 0 8px 20px rgba(0,0,0,.18);
+  transition: transform .2s, background .2s; backdrop-filter: blur(4px);
+}
+.back-button a:hover { transform: translateY(-2px); background: rgba(255,255,255,0.26); }
+.back-button svg { width: 24px; height: 24px; stroke: #fff; }
+.intro-wrap {
+  position: relative; max-width: 900px; margin: -70px auto 34px;
+  z-index: 10; padding: 0 16px; display: flex; align-items: flex-start; gap: 0;
+}
+.intro-seneca { position: relative; flex-shrink: 0; width: 110px; margin-right: -18px; z-index: 13; display: flex; flex-direction: column; align-items: center; }
+.intro-seneca img { max-width: 110px; height: auto; display: block; filter: drop-shadow(0 10px 18px rgba(0,0,0,.16)); margin-top: auto; }
+.intro-panel {
+  flex: 1; z-index: 12; padding: 24px 24px 24px 36px;
+  background: var(--bg-glass); border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel); text-align: left; border: 1px solid rgba(255,255,255,.28);
+}
+.intro-panel p { margin: 0 0 10px; line-height: 1.75; }
+.intro-panel p:last-child { margin-bottom: 0; }
+.main { max-width: 1600px; margin: 0 auto 56px; padding: 0 20px; }
+.section-heading { margin: 0 0 20px; text-align: left; }
+.section-heading h2 { font-size: 1.15rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 5px; }
+.section-heading p { color: var(--muted); line-height: 1.6; font-size: .92rem; }
+.workspace { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: start; }
+.col-panel { background: var(--bg-white); border-radius: var(--radius-panel); box-shadow: var(--shadow-soft); overflow: hidden; display: flex; flex-direction: column; }
+.col-header { padding: 20px 20px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.col-header h3 { font-size: 1rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
+.col-header p { color: var(--muted); font-size: .83rem; line-height: 1.5; }
+.chapter-scroll { max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; }
+.chapter-scroll::-webkit-scrollbar { width: 4px; }
+.chapter-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+.folder-scroll, .doc-scroll { overflow-y: auto; display: flex; flex-direction: column; }
+.folder-scroll::-webkit-scrollbar, .doc-scroll::-webkit-scrollbar { width: 4px; }
+.folder-scroll::-webkit-scrollbar-thumb, .doc-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+.chapter-item {
+  display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; cursor: pointer;
+  border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border);
+  transition: background .15s; width: 100%; min-height: 90px;
+}
+.chapter-item:last-child { border-bottom: none; }
+.chapter-item:hover { background: #f9fafb; }
+.chapter-item.active { background: #1f2937; }
+.chapter-item.active .ch-badge { background: rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
+.chapter-item.active .ch-title { color: #fff; }
+.chapter-item.active .ch-desc { color: rgba(255,255,255,.65); }
+.chapter-item.active .ch-icon { background: rgba(255,255,255,.1); }
+.chapter-item.active .ch-icon svg { stroke: #fff; }
+.ch-icon { width: 42px; height: 42px; border-radius: 12px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .15s; }
+.ch-icon svg { width: 20px; height: 20px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
+.ch-body { flex: 1; }
+.ch-badge { display: inline-block; margin-bottom: 5px; padding: 3px 8px; border-radius: 999px; background: #eef2f7; color: var(--slate-mid); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.ch-title { font-size: .92rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; margin-bottom: 3px; }
+.ch-desc { font-size: .79rem; color: var(--muted); line-height: 1.4; }
+.folder-item {
+  display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; cursor: pointer;
+  border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border);
+  transition: background .15s; width: 100%; min-height: 90px;
+}
+.folder-item:last-child { border-bottom: none; }
+.folder-item:hover { background: #f9fafb; }
+.folder-item.active { background: #1f2937; }
+.folder-item.active .f-badge { background: rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
+.folder-item.active .f-title { color: #fff; }
+.folder-item.active .f-tag { background: rgba(255,255,255,.1); color: rgba(255,255,255,.8); }
+.f-badge { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #eef2f7; color: var(--slate-mid); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.f-title { font-size: .92rem; font-weight: 800; color: var(--slate-dark); line-height: 1.35; }
+.f-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 3px; }
+.f-tag { padding: 2px 7px; border-radius: 999px; background: #f3f4f6; color: var(--slate-mid); font-size: 10px; font-weight: 700; }
+.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: #fafafa; }
+.filter-btn { padding: 6px 14px; border-radius: 999px; border: 1.5px solid var(--border); background: #fff; color: var(--slate-mid); font-size: .82rem; font-weight: 800; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.filter-btn:hover { border-color: #9ca3af; }
+.filter-btn.active { background: var(--slate-dark); color: #fff; border-color: var(--slate-dark); }
+.filter-btn[data-filter="AACSB"].active { background: #1a6fa8; border-color: #1a6fa8; }
+.filter-btn[data-filter="EQUIS"].active { background: #2f8b85; border-color: #2f8b85; }
+.filter-btn[data-filter="AMBA"].active { background: #7c5cbf; border-color: #7c5cbf; }
+.doc-item {
+  display: flex; flex-direction: column; gap: 5px; padding: 18px 20px; cursor: pointer;
+  border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border);
+  transition: background .15s; width: 100%; min-height: 90px;
+}
+.doc-item:last-child { border-bottom: none; }
+.doc-item:hover { background: #f9fafb; }
+.doc-item.active { background: #f0faf7; border-left: 3px solid #1d9e75; }
+.doc-item-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.doc-item-main { flex: 1; }
+.doc-type { display: inline-block; margin-bottom: 5px; padding: 3px 8px; border-radius: 999px; background: #f3f4f6; color: var(--slate-mid); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.doc-title { font-size: .92rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; margin-bottom: 3px; }
+.doc-meta { color: var(--muted); font-size: .79rem; line-height: 1.4; }
+.doc-updated { font-size: .78rem; color: var(--teal); font-weight: 700; margin-top: 3px; }
+.doc-update-btn { padding: 6px 11px; border-radius: 999px; border: 1.5px solid var(--border); background: #fff; color: var(--slate-mid); font-size: .78rem; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: border-color .15s, background .15s; }
+.doc-update-btn:hover { border-color: #1f2937; background: #1f2937; color: #fff; }
+.empty-state { padding: 36px 20px; text-align: center; color: var(--muted); line-height: 1.7; font-size: .88rem; }
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal-box { background: #fff; border-radius: var(--radius-panel); padding: 32px; max-width: 520px; width: 92%; box-shadow: var(--shadow-panel); position: relative; max-height: 90vh; overflow-y: auto; }
+.modal-close { position: absolute; top: 16px; right: 16px; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--slate-mid); transition: background .15s; }
+.modal-close:hover { background: #f3f4f6; }
+.modal-title { font-size: 1.1rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 4px; }
+.modal-sub { color: var(--muted); font-size: .88rem; line-height: 1.6; margin-bottom: 22px; }
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: .84rem; font-weight: 800; color: var(--slate-mid); margin-bottom: 5px; }
+.form-input { width: 100%; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 12px; font-size: .9rem; color: var(--slate-dark); background: #fff; outline: none; transition: border-color .15s; }
+.form-input:focus { border-color: #374151; }
+.file-drop { border: 2px dashed var(--border); border-radius: 16px; padding: 26px 20px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; background: #fafafa; }
+.file-drop:hover { border-color: #9ca3af; background: #f3f4f6; }
+.file-drop.has-file { border-color: var(--teal); background: var(--teal-light); }
+.file-drop p { color: var(--muted); font-size: .86rem; margin-top: 6px; }
+.file-drop strong { color: var(--slate-dark); font-weight: 800; display: block; margin-bottom: 4px; }
+.file-drop input { display: none; }
+.modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 22px; }
+.btn-cancel { padding: 10px 20px; border-radius: 999px; border: 1.5px solid var(--border); background: #fff; color: var(--slate-mid); font-size: .88rem; font-weight: 800; cursor: pointer; transition: background .15s; }
+.btn-cancel:hover { background: #f3f4f6; }
+.btn-save { padding: 10px 20px; border-radius: 999px; border: none; background: #1f2937; color: #fff; font-size: .88rem; font-weight: 800; cursor: pointer; transition: background .15s; }
+.btn-save:hover { background: #374151; }
+.btn-save:disabled { background: #9ca3af; cursor: not-allowed; }
+.upload-progress { margin-top: 14px; display: none; }
+.upload-progress-bar { width: 100%; height: 6px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
+.upload-progress-fill { height: 100%; background: var(--teal); border-radius: 999px; width: 0%; transition: width .3s; }
+.upload-progress-label { font-size: .82rem; color: var(--muted); margin-top: 6px; text-align: center; }
+.viewer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 2000; align-items: center; justify-content: center; padding: 24px; }
+.viewer-overlay.open { display: flex; }
+.viewer-box { background: #fff; border-radius: var(--radius-panel); width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; box-shadow: 0 30px 80px rgba(0,0,0,.28); overflow: hidden; }
+.viewer-header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.viewer-header-info { flex: 1; }
+.viewer-header-title { font-size: 1rem; font-weight: 800; color: var(--slate-dark); }
+.viewer-header-meta { font-size: .82rem; color: var(--muted); margin-top: 2px; }
+.viewer-close { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border); background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; color: var(--slate-mid); transition: background .15s; flex-shrink: 0; }
+.viewer-close:hover { background: #f3f4f6; }
+.viewer-frame { flex: 1; border: none; width: 100%; }
+.action-btn { display: inline-flex; align-items: center; gap: 7px; padding: 10px 18px; border-radius: 999px; text-decoration: none; font-size: .85rem; font-weight: 800; transition: transform .18s; border: none; cursor: pointer; }
+.action-btn:hover { transform: translateY(-1px); }
+.action-btn--primary { background: #1f2937; color: #fff; }
+.action-btn--secondary { background: #eef2f7; color: var(--slate-mid); }
+.action-btn--teal { background: var(--teal-light); color: var(--teal); }
+.toast { display: none; position: fixed; bottom: 28px; right: 28px; z-index: 3000; background: #1f2937; color: #fff; padding: 13px 20px; border-radius: 14px; font-size: .88rem; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.22); animation: slideUp .3s ease; }
+@keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-size: 14px; }
+@media (max-width: 1100px) { .workspace { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px) {
+  .workspace { grid-template-columns: 1fr; }
+  header.hero { min-height: 300px; padding: 72px 18px 120px; }
+  .main { padding: 0 14px; }
+  .intro-seneca { display: none; }
+  .intro-panel { padding: 22px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Google API -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<header class="hero">
+  <div class="back-button">
+    <a href="../UASM KPIs & Baseroom Center.html" aria-label="Go back">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 18l-6-6 6-6"></path>
+      </svg>
+    </a>
+  </div>
+  <div class="hero-inner">
+    <div class="hero-eyebrow">International Office UASM · BaseRoom & Accreditation Center</div>
+    <h1>BaseRoom & Accreditations</h1>
+  </div>
+</header>
+
+<div class="intro-wrap">
+  <div class="intro-seneca" aria-hidden="true">
+    <img src="seneca.png" alt="Seneca">
+  </div>
+  <div class="intro-panel">
+    <p>This BaseRoom centralizes the main documentation chapters required for accreditation review and institutional evidence management. Each folder contains the files, supporting materials, reports, and references corresponding to its section.</p>
+    <p><strong>Select a chapter, then a folder, then a document to preview it. Use "Update" to upload or replace a document directly to Google Drive.</strong></p>
+  </div>
+</div>
+
+<section class="main">
+  <div class="section-heading">
+    <h2>BaseRoom Chapters</h2>
+    <p>Select a chapter to browse its folders, then select a folder to view and manage documents.</p>
+  </div>
+  <div class="workspace">
+    <div class="col-panel">
+      <div class="col-header"><h3>Chapters</h3><p>Select a chapter to browse its folders</p></div>
+      <div class="chapter-scroll" id="chapterList"></div>
+    </div>
+    <div class="col-panel">
+      <div class="col-header"><h3>Folders</h3><p id="folderColDesc">Select a chapter first</p></div>
+      <div class="folder-scroll" id="folderList"></div>
+    </div>
+    <div class="col-panel">
+      <div class="col-header"><h3>Documents</h3><p id="docColDesc">Select a folder to view its documents</p></div>
+      <div class="filter-bar" id="filterBar">
+        <button class="filter-btn active" data-filter="ALL">All</button>
+        <button class="filter-btn" data-filter="AACSB">AACSB</button>
+        <button class="filter-btn" data-filter="EQUIS">EQUIS</button>
+        <button class="filter-btn" data-filter="AMBA">AMBA</button>
+      </div>
+      <div class="doc-scroll" id="docList"></div>
+    </div>
+  </div>
+</section>
+
+<footer>International Office · School of Management · Internal use only</footer>
+
+<!-- UPLOAD MODAL -->
+<div class="modal-overlay" id="uploadModal">
+  <div class="modal-box">
+    <button class="modal-close" id="modalClose">×</button>
+    <div class="modal-title">Update document</div>
+    <div class="modal-sub" id="modalSub">The PDF will be saved to the corresponding Google Drive folder.</div>
+    <div class="form-group">
+      <label class="form-label" for="docNameInput">Document name</label>
+      <input class="form-input" type="text" id="docNameInput" placeholder="e.g. UASM Strategic Plan 2025">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="docResponsibleInput">Responsible</label>
+      <input class="form-input" type="text" id="docResponsibleInput" placeholder="Full name">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Upload PDF</label>
+      <div class="file-drop" id="fileDrop">
+        <strong>Click to browse or drag and drop</strong>
+        <p>PDF only — max 50 MB</p>
+        <input type="file" id="fileInput" accept=".pdf,application/pdf">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="docNotesInput">Notes (optional)</label>
+      <input class="form-input" type="text" id="docNotesInput" placeholder="e.g. Updated figures for 2025 review">
+    </div>
+    <div class="upload-progress" id="uploadProgress">
+      <div class="upload-progress-bar"><div class="upload-progress-fill" id="uploadProgressFill"></div></div>
+      <div class="upload-progress-label" id="uploadProgressLabel">Uploading to Google Drive...</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="modalCancelBtn">Cancel</button>
+      <button class="btn-save" id="modalSaveBtn">Save to Drive</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEWER MODAL -->
+<div class="viewer-overlay" id="viewerModal">
+  <div class="viewer-box">
+    <div class="viewer-header">
+      <div class="viewer-header-info">
+        <div class="viewer-header-title" id="viewerTitle">Document preview</div>
+        <div class="viewer-header-meta" id="viewerMeta"></div>
+      </div>
+      <a href="#" class="action-btn action-btn--secondary" id="viewerOpenBtn" target="_blank" rel="noopener" style="font-size:.82rem;padding:8px 14px;">Open in Drive</a>
+      <button class="action-btn action-btn--teal" id="viewerUpdateBtn" style="font-size:.82rem;padding:8px 14px;">Update</button>
+      <button class="viewer-close" id="viewerClose">×</button>
+    </div>
+    <iframe class="viewer-frame" id="viewerFrame" src="" allow="fullscreen; scripts; same-origin; popups" allowfullscreen></iframe>
+    <div id="viewerNoUrl" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#6b7280;font-size:.95rem;text-align:center;padding:40px;">
+      <div style="font-size:3rem;opacity:.25;">📄</div>
+      <div>This document has not been uploaded yet.</div>
+      <button class="action-btn action-btn--teal" onclick="closeModal('viewerModal');openUploadModal(window.currentViewerDocId)">Upload document</button>
+    </div>
+    <div id="viewerExternal" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:20px;padding:48px;text-align:center;">
+      <div style="width:64px;height:64px;border-radius:20px;background:#e1f5ee;display:flex;align-items:center;justify-content:center;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0f6e56" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="32" height="32"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
+      </div>
+      <div>
+        <div style="font-size:1.1rem;font-weight:800;color:#1f2937;margin-bottom:8px;" id="viewerExternalTitle">Dashboard</div>
+        <div style="color:#6b7280;font-size:.9rem;line-height:1.6;max-width:380px;">This dashboard cannot be embedded directly due to browser security restrictions.</div>
+      </div>
+      <a id="viewerExternalLink" href="#" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:13px 28px;border-radius:999px;background:#1f2937;color:#fff;font-size:.92rem;font-weight:800;text-decoration:none;">Open dashboard ↗</a>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// =====================
+// GOOGLE DRIVE CONFIG
+// =====================
+const GOOGLE_CLIENT_ID = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
+const GOOGLE_API_KEY   = "AIzaSyBnvEW4Pn8Vh_rl84q7bE8hhT-IWQ2HmKg";
+const SCOPES           = "https://www.googleapis.com/auth/drive.file";
+
+// Drive folder IDs per folder (Chapter 1)
+const DRIVE_FOLDERS = {
+  "f1-1": "1VazMGFtWMVlDbYncFugb5kHrRJpnQCl0",
+  "f1-2": "1FcTMxSKsVO_R41U5FjIcknedCl6EVlbq",
+  "f1-3": "1dreHtrViFsz4qav866UB11lyin9xGi8Z",
+  "f1-4": "18OUUyq1NhSuM4yXhxUMzhBBk3coH6_nY",
+  "f1-5": "1Y2N4XvvaMWwMsIs1nbcDL2Dsqm-QL2Zu",
+  "f1-6": "1ygBhTnCIOfx3DIQ-eV3XZ67ahVlnBEro"
+};
+
+let googleAccessToken = null;
+
+function getGoogleToken(callback) {
+  if (googleAccessToken) { callback(googleAccessToken); return; }
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error) { showToast("Google auth error: " + resp.error); return; }
+      googleAccessToken = resp.access_token;
+      callback(googleAccessToken);
+    }
+  });
+  client.requestAccessToken();
+}
+
+function uploadToDrive(file, fileName, folderId, onProgress, onSuccess, onError) {
+  getGoogleToken((token) => {
+    const metadata = {
+      name: fileName,
+      mimeType: "application/pdf",
+      parents: [folderId]
+    };
+    const form = new FormData();
+    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+    form.append("file", file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink");
+    xhr.setRequestHeader("Authorization", "Bearer " + token);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        const data = JSON.parse(xhr.responseText);
+        // Make file publicly readable
+        setPublicPermission(data.id, token, () => {
+          const previewUrl = `https://drive.google.com/file/d/${data.id}/preview`;
+          const viewUrl    = `https://drive.google.com/file/d/${data.id}/view`;
+          onSuccess({ fileId: data.id, previewUrl, viewUrl, name: data.name });
+        });
+      } else {
+        onError("Upload failed: " + xhr.statusText);
+      }
+    };
+    xhr.onerror = () => onError("Network error during upload.");
+    xhr.send(form);
+  });
+}
+
+function setPublicPermission(fileId, token, callback) {
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`);
+  xhr.setRequestHeader("Authorization", "Bearer " + token);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  xhr.onload = callback;
+  xhr.send(JSON.stringify({ role: "reader", type: "anyone" }));
+}
+
+// =====================
+// DATA
+// =====================
+const DATA = {
+  chapters: [
+    {
+      id:"ch1", badge:"Chapter 1", title:"Context, Governance & Strategy",
+      desc:"Strategic context, governance, mission and leadership.",
+      folders:[
+        {
+          id:"f1-1", badge:"Folder 1", title:"Strategic plans and related policy documents",
+          accreditations:["AACSB","EQUIS"],
+          sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
+          documents:[
+            {id:"d1",title:"UASM Strategic Plan 2021–2025",type:"PDF",meta:"Main institutional strategy document",responsible:"International Office",updatedAt:"2024-11-12",accreditations:["AACSB","EQUIS"],url:"../../../baseroom/UASM Strategic Plan 2021 - 2025.pdf"},
+            {id:"d2",title:"Faculty Composition Dashboard",type:"Dashboard",meta:"Interactive faculty composition data",responsible:"International Office",updatedAt:"2024-09-03",accreditations:["AACSB","EQUIS"],url:"https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/?embed=true"},
+            {id:"d3",title:"Uniandes Strategic Development Plan 2021–2025",type:"PDF",meta:"Current strategic cycle",responsible:"International Office",updatedAt:"2024-11-12",accreditations:["AACSB","EQUIS"],url:"../../../baseroom/2. Uniandes Strategic Development Plan 2021- 2025.pdf"}
+          ]
+        },
+        {
+          id:"f1-2", badge:"Folder 2", title:"Governing body and advisory board members",
+          accreditations:["EQUIS"],
+          sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
+          documents:[
+            {id:"d4",title:"Executive Committee",type:"PDF",meta:"Executive governance membership",responsible:"Secretaría General",updatedAt:"2024-10-05",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/3.%20Uniandes%20and%20UASM%20Boards%20and%20Committees/2.%20Uniandes%20Executive%20Committee/Executive%20Committee.pdf?csf=1&web=1&e=RlR2vo"},
+            {id:"d5",title:"Academic Council",type:"PDF",meta:"Academic governance membership",responsible:"Secretaría General",updatedAt:"2024-10-05",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/3.%20Uniandes%20and%20UASM%20Boards%20and%20Committees/3.%20Uniandes%20Academic%20Council/Academic%20Council.pdf?csf=1&web=1&e=SCy0e4"},
+            {id:"d6",title:"International Advisory Board",type:"PDF",meta:"International advisory composition",responsible:"International Office",updatedAt:"2025-01-15",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/3.%20Uniandes%20and%20UASM%20Boards%20and%20Committees/4.%20UASM%20International%20Advisory%20Board/International%20Advisory%20Board.pdf?csf=1&web=1&e=1q7K2T"},
+            {id:"d7",title:"UASM Committee Structure",type:"PDF",meta:"Full committee structure overview",responsible:"Secretaría General",updatedAt:"2024-08-22",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/3.%20Uniandes%20and%20UASM%20Boards%20and%20Committees/5.%20UASM%27s%20Committees/UASM%20Committee%20structure.pdf?csf=1&web=1&e=Hp7fQX"}
+          ]
+        },
+        {
+          id:"f1-3", badge:"Folder 3", title:"Cyber security policy",
+          accreditations:["EQUIS"],
+          sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
+          documents:[
+            {id:"d8",title:"Uniandes Cyber Security Policy",type:"PDF",meta:"Official institutional policy",responsible:"IT Office",updatedAt:"2024-06-10",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/4.%20Uniandes%20Cyber%20security%20Policy/Uniandes%20Cyber%20security%20Policy.pdf?csf=1&web=1&e=X6Gcr9"}
+          ]
+        },
+        {
+          id:"f1-4", badge:"Folder 4", title:"Risk register",
+          accreditations:["EQUIS"],
+          sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
+          documents:[
+            {id:"d9",title:"UASM Risk Register",type:"PDF",meta:"Current institutional risk register",responsible:"Risk & Compliance Office",updatedAt:"2025-02-28",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/5.%20UASM%20Risk%20Register/UASM%20Risk%20Register.pdf?csf=1&web=1&e=LfxfNt"}
+          ]
+        },
+        {
+          id:"f1-5", badge:"Folder 5", title:"Strategic plan — Ximena Rueda",
+          accreditations:["AACSB"], sharepointUrl:"#",
+          documents:[{id:"d10",title:"Strategic Plan — Ximena Rueda",type:"PDF",meta:"Supporting strategic document",responsible:"Dean's Office",updatedAt:null,accreditations:["AACSB"],url:"#"}]
+        },
+        {
+          id:"f1-6", badge:"Folder 6", title:"Annual reports",
+          accreditations:["AACSB"], sharepointUrl:"#",
+          documents:[
+            {id:"d11",title:"Annual Report 2024",type:"PDF",meta:"Institutional annual report",responsible:"Dean's Office",updatedAt:null,accreditations:["AACSB"],url:"#"},
+            {id:"d12",title:"Annual Report 2023",type:"PDF",meta:"Institutional annual report",responsible:"Dean's Office",updatedAt:null,accreditations:["AACSB"],url:"#"}
+          ]
+        }
+      ]
+    },
+    {id:"ch2",badge:"Chapter 2",title:"Programmes",desc:"Programme architecture, learning design and academic delivery.",folders:[{id:"f2-1",badge:"Folder 1",title:"Programme catalogue and structures",accreditations:["AACSB","EQUIS","AMBA"],sharepointUrl:"#",documents:[{id:"d20",title:"Programme Catalogue 2024–2025",type:"PDF",meta:"Full list of programmes",responsible:"Academic Office",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}]},{id:"f2-2",badge:"Folder 2",title:"Learning outcomes and assurance of learning",accreditations:["AACSB","EQUIS"],sharepointUrl:"#",documents:[{id:"d21",title:"Assurance of Learning Report",type:"PDF",meta:"AoL evidence",responsible:"Academic Quality",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}]}]},
+    {id:"ch2b",badge:"Selected Programme",title:"Selected Programme 2.7",desc:"Specific evidence for selected programme section 2.7.",folders:[{id:"f2b-1",badge:"Folder 1",title:"Programme 2.7 — Core evidence",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d30",title:"Programme 2.7 Documentation",type:"PDF",meta:"Core programme evidence",responsible:"Academic Office",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]},
+    {id:"ch3",badge:"Chapter 3",title:"Students",desc:"Student profile, admissions, progression and support.",folders:[{id:"f3-1",badge:"Folder 1",title:"Admissions data and student profile",accreditations:["AACSB","EQUIS","AMBA"],sharepointUrl:"#",documents:[{id:"d40",title:"Admissions Report 2024",type:"PDF",meta:"Student intake data",responsible:"Admissions Office",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}]},{id:"f3-2",badge:"Folder 2",title:"Progression and completion rates",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d41",title:"Progression Rates 2024",type:"PDF",meta:"Completion and dropout analysis",responsible:"Registrar",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]},
+    {id:"ch4",badge:"Chapter 4",title:"Faculty",desc:"Faculty deployment, qualifications and research engagement.",folders:[{id:"f4-1",badge:"Folder 1",title:"Faculty qualification records",accreditations:["AACSB","EQUIS","AMBA"],sharepointUrl:"#",documents:[{id:"d50",title:"Faculty Qualifications Summary",type:"PDF",meta:"Aggregated qualification evidence",responsible:"HR Office",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}]}]},
+    {id:"ch5",badge:"Chapter 5",title:"Research",desc:"Research strategy, academic production and institutional support.",folders:[{id:"f5-1",badge:"Folder 1",title:"Research strategy and policy",accreditations:["AACSB","EQUIS"],sharepointUrl:"#",documents:[{id:"d60",title:"UASM Research Strategy",type:"PDF",meta:"Current research strategy",responsible:"Research Office",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}]}]},
+    {id:"ch6",badge:"Chapter 6",title:"Executive Education",desc:"Executive education portfolio and quality assurance.",folders:[{id:"f6-1",badge:"Folder 1",title:"Executive programmes portfolio",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d70",title:"Exec Ed Programme List",type:"PDF",meta:"Full executive education portfolio",responsible:"Exec Ed Office",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]},
+    {id:"ch7",badge:"Chapter 7",title:"Resources & Administration",desc:"Financial resources, infrastructure and operational capacity.",folders:[{id:"f7-1",badge:"Folder 1",title:"Financial statements",accreditations:["AACSB","EQUIS"],sharepointUrl:"#",documents:[{id:"d80",title:"Financial Statements 2023",type:"PDF",meta:"Audited financial statements",responsible:"Finance Office",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}]}]},
+    {id:"ch8",badge:"Chapter 8",title:"Internationalisation",desc:"International strategy, mobility, partnerships and global engagement.",folders:[{id:"f8-1",badge:"Folder 1",title:"International partnerships and MoUs",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d90",title:"MoU Portfolio 2024",type:"PDF",meta:"Active agreements and MoUs",responsible:"International Office",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]},
+    {id:"ch9",badge:"Chapter 9",title:"ERS — Ethics, Responsibility & Sustainability",desc:"Ethics, responsibility, sustainability policies and impact evidence.",folders:[{id:"f9-1",badge:"Folder 1",title:"ERS strategy and policies",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d100",title:"ERS Policy Document",type:"PDF",meta:"Institutional ERS framework",responsible:"ERS Office",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]},
+    {id:"ch10",badge:"Chapter 10",title:"Connections with Practice",desc:"Corporate relations, partnerships and business-facing activities.",folders:[{id:"f10-1",badge:"Folder 1",title:"Corporate partnerships and events",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d110",title:"Corporate Engagement Report 2024",type:"PDF",meta:"Annual connections with practice",responsible:"Corporate Relations",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]}
+  ]
+};
+
+let state = { activeFilter:"ALL", selectedChapter:null, selectedFolder:null, selectedDoc:null };
+const docOverrides = {};
+
+function getChapter(id){ return DATA.chapters.find(c=>c.id===id); }
+function getFolders(){ const ch=getChapter(state.selectedChapter); return ch?ch.folders:[]; }
+function getDocs(){
+  const f=getFolders().find(f=>f.id===state.selectedFolder);
+  if(!f) return [];
+  if(state.activeFilter==="ALL") return f.documents;
+  return f.documents.filter(d=>d.accreditations.includes(state.activeFilter));
+}
+function getDoc(id){
+  for(const ch of DATA.chapters)
+    for(const f of ch.folders){
+      const d=f.documents.find(d=>d.id===id);
+      if(d) return {doc:{...d,...(docOverrides[id]||{})},folder:f};
+    }
+  return null;
+}
+function fmtDate(s){
+  if(!s) return "Not yet uploaded";
+  return new Date(s+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+}
+
+function renderChapters(){
+  const el=document.getElementById("chapterList"); el.innerHTML="";
+  DATA.chapters.forEach(ch=>{
+    const btn=document.createElement("button");
+    btn.className="chapter-item"+(state.selectedChapter===ch.id?" active":"");
+    btn.innerHTML=`<div class="ch-icon"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></div><div class="ch-body"><span class="ch-badge">${ch.badge}</span><div class="ch-title">${ch.title}</div><div class="ch-desc">${ch.desc}</div></div>`;
+    btn.addEventListener("click",()=>{ state.selectedChapter=ch.id; state.selectedFolder=null; state.selectedDoc=null; render(); });
+    el.appendChild(btn);
+  });
+}
+
+function renderFolders(){
+  const el=document.getElementById("folderList");
+  const desc=document.getElementById("folderColDesc");
+  const folders=getFolders();
+  if(!state.selectedChapter){ desc.textContent="Select a chapter first"; el.innerHTML=`<div class="empty-state">Click a chapter to see its folders.</div>`; return; }
+  desc.textContent=getChapter(state.selectedChapter)?.title||"";
+  el.innerHTML="";
+  if(!folders.length){ el.innerHTML=`<div class="empty-state">No folders in this chapter.</div>`; return; }
+  folders.forEach(f=>{
+    const btn=document.createElement("button");
+    btn.className="folder-item"+(state.selectedFolder===f.id?" active":"");
+    const tags=f.accreditations.map(a=>`<span class="f-tag">${a}</span>`).join("");
+    btn.innerHTML=`<span class="f-badge">${f.badge}</span><span class="f-title">${f.title}</span><div class="f-tags">${tags}</div>`;
+    btn.addEventListener("click",()=>{ state.selectedFolder=f.id; state.selectedDoc=null; render(); });
+    el.appendChild(btn);
+  });
+}
+
+function renderDocs(){
+  const el=document.getElementById("docList");
+  const desc=document.getElementById("docColDesc");
+  if(!state.selectedFolder){ desc.textContent="Select a folder to view its documents"; el.innerHTML=`<div class="empty-state">Click a folder to see its documents.</div>`; return; }
+  const f=getFolders().find(f=>f.id===state.selectedFolder);
+  desc.textContent=f?f.title:"";
+  const docs=getDocs(); el.innerHTML="";
+  if(!docs.length){ el.innerHTML=`<div class="empty-state">No documents match the current filter.</div>`; return; }
+  docs.forEach(docBase=>{
+    const doc={...docBase,...(docOverrides[docBase.id]||{})};
+    const item=document.createElement("div");
+    item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");
+    const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:"Not yet uploaded";
+    item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type}</div><div class="doc-title">${doc.title}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div></div><button class="doc-update-btn" data-id="${doc.id}">Update</button></div>`;
+    item.addEventListener("click",(e)=>{ if(e.target.classList.contains("doc-update-btn")) return; state.selectedDoc=doc.id; renderDocs(); openViewer(doc.id); });
+    item.querySelector(".doc-update-btn").addEventListener("click",(e)=>{ e.stopPropagation(); openUploadModal(doc.id); });
+    el.appendChild(item);
+  });
+}
+
+function render(){ renderChapters(); renderFolders(); renderDocs(); }
+
+document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    state.activeFilter=btn.dataset.filter;
+    state.selectedDoc=null;
+    renderDocs();
+  });
+});
+
+// =====================
+// UPLOAD MODAL
+// =====================
+let currentUploadDocId=null;
+let currentFolderId=null;
+
+function openUploadModal(docId){
+  currentUploadDocId=docId;
+  const res=getDoc(docId); if(!res) return;
+  const {doc,folder}=res;
+  currentFolderId=DRIVE_FOLDERS[folder.id]||null;
+  document.getElementById("modalSub").textContent=`"${doc.title}" → ${folder.title}`;
+  document.getElementById("docNameInput").value=doc.title||"";
+  document.getElementById("docResponsibleInput").value=doc.responsible||"";
+  document.getElementById("docNotesInput").value="";
+  const fd=document.getElementById("fileDrop");
+  fd.classList.remove("has-file");
+  fd.querySelector("strong").textContent="Click to browse or drag and drop";
+  fd.querySelector("p").textContent="PDF only — max 50 MB";
+  document.getElementById("fileInput").value="";
+  document.getElementById("uploadProgress").style.display="none";
+  document.getElementById("uploadProgressFill").style.width="0%";
+  document.getElementById("modalSaveBtn").disabled=false;
+  document.getElementById("modalSaveBtn").textContent="Save to Drive";
+  document.getElementById("uploadModal").classList.add("open");
+}
+
+document.getElementById("fileDrop").addEventListener("click",()=>document.getElementById("fileInput").click());
+document.getElementById("fileInput").addEventListener("change",(e)=>{
+  const file=e.target.files[0]; if(!file) return;
+  if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){ showToast("Only PDF files are accepted."); e.target.value=""; return; }
+  const fd=document.getElementById("fileDrop");
+  fd.classList.add("has-file");
+  fd.querySelector("strong").textContent=file.name;
+  fd.querySelector("p").textContent=(file.size/1024/1024).toFixed(2)+" MB";
+});
+
+document.getElementById("modalSaveBtn").addEventListener("click",()=>{
+  const name=document.getElementById("docNameInput").value.trim();
+  const responsible=document.getElementById("docResponsibleInput").value.trim();
+  const file=document.getElementById("fileInput").files[0];
+  if(!name||!responsible){ showToast("Please fill in the document name and responsible person."); return; }
+  if(!file){ showToast("Please select a PDF file."); return; }
+  if(!currentFolderId){ showToast("No Drive folder configured for this folder yet."); return; }
+
+  document.getElementById("modalSaveBtn").disabled=true;
+  document.getElementById("modalSaveBtn").textContent="Uploading...";
+  document.getElementById("uploadProgress").style.display="block";
+
+  const fileName=name.endsWith(".pdf")?name:name+".pdf";
+
+  uploadToDrive(
+    file, fileName, currentFolderId,
+    (pct)=>{
+      document.getElementById("uploadProgressFill").style.width=pct+"%";
+      document.getElementById("uploadProgressLabel").textContent=`Uploading to Google Drive... ${pct}%`;
+    },
+    (result)=>{
+      const today=new Date().toISOString().split("T")[0];
+      docOverrides[currentUploadDocId]={title:name,responsible,type:"PDF",updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl};
+      closeModal("uploadModal");
+      showToast("Saved to Google Drive successfully.");
+      state.selectedDoc=currentUploadDocId;
+      renderDocs();
+      setTimeout(()=>openViewer(currentUploadDocId),300);
+    },
+    (err)=>{
+      showToast("Error: "+err);
+      document.getElementById("modalSaveBtn").disabled=false;
+      document.getElementById("modalSaveBtn").textContent="Save to Drive";
+    }
+  );
+});
+
+function closeModal(id){ document.getElementById(id).classList.remove("open"); }
+document.getElementById("modalClose").addEventListener("click",()=>closeModal("uploadModal"));
+document.getElementById("modalCancelBtn").addEventListener("click",()=>closeModal("uploadModal"));
+document.getElementById("uploadModal").addEventListener("click",(e)=>{ if(e.target===e.currentTarget) closeModal("uploadModal"); });
+
+// =====================
+// VIEWER
+// =====================
+window.currentViewerDocId=null;
+
+function getViewerSrc(url,type){
+  if(!url||url==="#") return "";
+  if(type==="Dashboard"||type==="Link") return url;
+  if(url.startsWith("blob:")||url.includes("drive.google.com/file")) return url;
+  if(type==="PDF"||url.toLowerCase().endsWith(".pdf")) return url+"#toolbar=0&navpanes=0&scrollbar=1";
+  return url;
+}
+
+function openViewer(docId){
+  window.currentViewerDocId=docId;
+  const res=getDoc(docId); if(!res) return;
+  const {doc,folder}=res;
+  const rawUrl=doc.url&&doc.url!=="#"?doc.url:"";
+  const embedUrl=rawUrl?getViewerSrc(rawUrl,doc.type):"";
+  document.getElementById("viewerTitle").textContent=doc.title;
+  const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:(doc.responsible||"");
+  document.getElementById("viewerMeta").textContent=`${doc.type} · ${upd}`;
+  const cleanUrl=rawUrl.replace(/[?&]embed=true/,"");
+  document.getElementById("viewerOpenBtn").href=doc.viewUrl||cleanUrl||folder.sharepointUrl||"#";
+  document.getElementById("viewerUpdateBtn").onclick=()=>{ closeModal("viewerModal"); resetViewer(); openUploadModal(docId); };
+
+  const frame=document.getElementById("viewerFrame");
+  const noUrl=document.getElementById("viewerNoUrl");
+  const ext=document.getElementById("viewerExternal");
+
+  if(!embedUrl){
+    frame.src=""; frame.style.display="none"; noUrl.style.display="flex"; ext.style.display="none";
+  } else {
+    frame.src=embedUrl; frame.style.display="block"; noUrl.style.display="none"; ext.style.display="none";
+  }
+  document.getElementById("viewerModal").classList.add("open");
+}
+
+function resetViewer(){
+  const frame=document.getElementById("viewerFrame");
+  frame.src=""; frame.style.display="block";
+  document.getElementById("viewerNoUrl").style.display="none";
+  document.getElementById("viewerExternal").style.display="none";
+}
+document.getElementById("viewerClose").addEventListener("click",()=>{ closeModal("viewerModal"); resetViewer(); });
+document.getElementById("viewerModal").addEventListener("click",(e)=>{ if(e.target===e.currentTarget){ closeModal("viewerModal"); resetViewer(); } });
+
+function showToast(msg){
+  const t=document.getElementById("toast");
+  t.textContent=msg; t.style.display="block";
+  setTimeout(()=>{ t.style.display="none"; },3500);
+}
+
+render();
+</script>
+</body>
+</html>
