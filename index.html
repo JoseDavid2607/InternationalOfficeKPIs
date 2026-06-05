@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UASM Information System Management for Accreditations</title>
+
+    <style>
+
+        :root {
+            /* Backgrounds */
+            --bg-page:       #f3f4f6;
+            --bg-white:      #ffffff;
+            --bg-glass:      rgba(255, 255, 255, 0.93);
+            --bg-badge:      rgba(255, 255, 255, 0.14);
+            --bg-eyebrow:    rgba(255, 255, 255, 0.16);
+
+            /* Brand palette */
+            --teal-light:    #4fc9c0;
+            --teal-dark:     #2f8b85;
+            --slate-mid:     #4b5563;
+            --slate-dark:    #1f2937;
+
+            /* Text */
+            --text-primary:  #1f2937;
+            --text-muted:    #6b7280;
+            --text-white:    #ffffff;
+
+            /* Effects */
+            --shadow-card:   0 18px 45px rgba(0, 0, 0, 0.12);
+
+            /* Spacing scale */
+            --space-xs:  8px;
+            --space-sm:  14px;
+            --space-md:  20px;
+            --space-lg:  28px;
+            --space-xl:  45px;
+
+            /* Border radii */
+            --radius-pill:  30px;
+            --radius-card:  28px;
+            --radius-panel: 22px;
+        }
+
+        *,
+        *::before,
+        *::after {
+            margin:     0;
+            padding:    0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background:  var(--bg-page);
+            color:       var(--text-primary);
+        }
+
+        .hero {
+            min-height: 520px;
+            position:   relative;
+            padding:    var(--space-xl) var(--space-md) 150px;
+
+            /* Dark overlay + cover image */
+            background:
+                linear-gradient(to bottom,
+                    rgba(0, 0, 0, 0.20),
+                    rgba(0, 0, 0, 0.40)
+                ),
+                url("imagenes/SantodomingoCover.png") center center / cover no-repeat;
+        }
+
+        /* Fade the hero into the page background at the bottom */
+        .hero::after {
+            content:  "";
+            position: absolute;
+            inset:    0;
+            background: linear-gradient(
+                to bottom,
+                rgba(255, 255, 255, 0) 65%,
+                var(--bg-page)         100%
+            );
+        }
+
+        /* --- Hero inner wrapper (sits above ::after) --- */
+        .hero__content {
+            position:   relative;
+            z-index:    2;
+            max-width:  1200px;
+            margin:     auto;
+            text-align: center;
+            color:      var(--text-white);
+        }
+
+        /* Small pill above the title */
+        .hero__eyebrow {
+            display:       inline-block;
+            background:    var(--bg-eyebrow);
+            padding:       var(--space-xs) 16px;
+            border-radius: var(--radius-pill);
+            font-size:     14px;
+            margin-bottom: 18px;
+        }
+
+        .hero__title {
+            font-size:     60px;
+            font-weight:   800;
+            line-height:   1;
+            margin-bottom: 15px;
+        }
+
+        .hero__subtitle {
+            max-width:   800px;
+            margin:      auto;
+            line-height: 1.6;
+            font-size:   18px;
+        }
+
+        /* --- Row containing the logo + description panel --- */
+        .hero__box-row {
+            display:         flex;
+            justify-content: center;
+            align-items:     center;
+            gap:             0px;
+            flex-wrap:       wrap;
+            margin-top:      0px;
+        }
+
+        .hero__logo {
+            width:120px;
+            height:auto;
+            position:relative;
+            top:-25px;
+            filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.18));
+        }
+
+        /* Frosted-glass description card */
+        .hero__panel {
+            background:    var(--bg-glass);
+            color:         var(--text-primary);
+            max-width:     850px;
+            padding:       24px var(--space-lg);
+            border-radius: var(--radius-panel);
+            box-shadow:    var(--shadow-card);
+            text-align:    left;
+        }
+
+        .hero__panel p {
+            line-height: 1.7;
+            font-size:   16px;
+        }
+
+        .main {
+            position:   relative;
+            z-index:    5;
+            max-width:  1200px;
+            margin:     -80px auto 50px;
+            padding:    0 var(--space-md);
+        }
+
+        /* Two-column card grid */
+        .cards {
+            display:               grid;
+            grid-template-columns: 1fr 1fr;
+            gap:                   24px;
+        }
+
+        /* --- Base card --- */
+        .card {
+            min-height:     290px;
+            border-radius:  var(--radius-card);
+            padding:        30px;
+            color:          var(--text-white);
+            text-decoration: none;
+            display:        flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow:     var(--shadow-card);
+            transition:     transform 0.25s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-6px);
+        }
+
+        /* Card colour variants */
+        .card--analytics {
+            background: linear-gradient(135deg, var(--teal-light), var(--teal-dark));
+        }
+
+        .card--baseroom {
+            background: linear-gradient(135deg, var(--slate-mid), var(--slate-dark));
+        }
+
+        /* Small pill inside card */
+        .card__badge {
+            display:       inline-block;
+            background:    var(--bg-badge);
+            padding:       var(--space-xs) var(--space-sm);
+            border-radius: var(--radius-pill);
+            font-size:     13px;
+            font-weight:   bold;
+        }
+
+        .card__title {
+            font-size:   40px;
+            line-height: 1;
+            margin:      18px 0 14px;
+        }
+
+        .card__description {
+            line-height: 1.7;
+            font-size:   16px;
+        }
+
+        .card__link {
+            margin-top:  25px;
+            font-weight: bold;
+            font-size:   18px;
+        }
+
+        .footer {
+            text-align: center;
+            color:      var(--text-muted);
+            padding:    10px var(--space-md) 35px;
+            font-size:  14px;
+        }
+
+        @media (max-width: 900px) {
+
+            .hero__title {
+                font-size: 42px;
+            }
+
+            .hero__box-row {
+                flex-direction: column;
+            }
+
+            .hero__logo {
+                width: 90px;
+            }
+
+            .cards {
+                grid-template-columns: 1fr;
+            }
+        }
+
+    </style>
+</head>
+
+<body>
+
+    <header class="hero">
+
+        <div class="hero__content">
+
+            <div class="hero__eyebrow">
+                International Office UASM · Information System Management &amp; Data Center
+            </div>
+
+            <h1 class="hero__title">UASM Information System Management for Accreditations</h1>
+
+            <p class="hero__subtitle">
+                Centralized environment for strategic indicators, accreditation evidence,
+                rankings support, and document management across the School of Management.
+            </p>
+
+            <div class="hero__box-row">
+
+                <img
+                    src="imagenes/seneca_principal.png"
+                    alt="Seneca logo"
+                    class="hero__logo"
+                >
+
+                <div class="hero__panel">
+                    <p>
+                        Use this platform to access two core environments:
+                        <strong>Performance &amp; KPI Analytics</strong> for dynamic data monitoring,
+                        and <strong>BaseRoom &amp; Accreditation Center</strong> for official evidence,
+                        strategic documents, policies, reports, and key materials requested by accreditors.
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+    </header><!-- /hero -->
+
+    <main class="main">
+
+        <div class="cards">
+
+            <!-- BaseRoom card -->
+            <a href="Baseroom/Web Baseroom - Pag. Principal.html" class="card card--baseroom">
+
+                <div>
+                    <div class="card__badge">DOCUMENTATION PORTAL</div>
+
+                    <h2 class="card__title">BaseRoom &amp; Accreditations</h2>
+
+                    <p class="card__description">
+                        Review structured evidence for AACSB, EQUIS, AMBA, rankings,
+                        strategic planning, policies, faculty files, reports,
+                        and institutional support documents.
+                    </p>
+                </div>
+
+                <div class="card__link">Open BaseRoom →</div>
+
+            </a>
+
+            <!-- Analytics card -->
+            <a href="KPIs/Web KPIs - Pag. Principal.html" class="card card--analytics">
+
+                <div>
+                    <div class="card__badge">ANALYTICS PORTAL</div>
+
+                    <h2 class="card__title">KPIs &amp; Dashboards</h2>
+
+                    <p class="card__description">
+                        Explore dynamic indicators by area, trends, operational performance,
+                        internationalization, faculty, seminars, events, and decision-support metrics.
+                    </p>
+                </div>
+
+                <div class="card__link">Open Analytics →</div>
+
+            </a>
+        </div>
+
+    </main><!-- /main -->
+
+    <footer class="footer">
+        International Office · School of Management · Internal use only
+    </footer>
+
+</body>
+</html>
