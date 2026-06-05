@@ -15,9 +15,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# =============================
-# INSTITUTIONAL HEADER
-# =============================
 st.markdown(
     """
     <style>
@@ -40,26 +37,17 @@ st.markdown(
 st.markdown('<div class="header-title">Full-time Faculty Composition</div>', unsafe_allow_html=True)
 
 # =============================
-# GOOGLE DRIVE — FILE ID
-# Reemplaza este ID con el tuyo completo desde el enlace de Drive
+# LOAD DATA — Google Drive
+# Archivo: BD_Faculty.xlsx (compartido como "Anyone with the link")
 # =============================
-DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"  # <-- reemplazar con ID completo
+DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
 
-# =============================
-# LOAD DATA DESDE GOOGLE DRIVE
-# =============================
-@st.cache_data(ttl=300)  # refresca cada 5 minutos
+@st.cache_data(ttl=300)
 def load_data():
     url = f"https://drive.google.com/uc?id={DRIVE_FILE_ID}"
     output_path = "/tmp/BD_Faculty.xlsx"
-    
-    try:
-        gdown.download(url, output_path, quiet=True, fuzzy=True)
-        df_ = pd.read_excel(output_path, sheet_name="BD PLANTA 2020-2025")
-    except Exception as e:
-        st.error(f"Error loading data from Google Drive: {e}")
-        st.info("Make sure the file is shared as 'Anyone with the link can view'.")
-        st.stop()
+    gdown.download(url, output_path, quiet=True, fuzzy=True)
+    df_ = pd.read_excel(output_path, sheet_name="BD PLANTA 2020-2025")
 
     def _norm_per(val):
         s = str(val).strip()
@@ -88,17 +76,13 @@ def load_data():
         suf = 30 if "Intersemestral" in s else int(s[-2:])
         return (y, suf)
     df_ = df_.sort_values(by="Periodo", key=lambda s: s.map(_key))
-
     return df_
 
 df = load_data()
 
-# Botón para forzar recarga manual
-if st.sidebar.button("Refresh data"):
-    st.cache_data.clear()
-    st.rerun()
-
-# ========= Descarga utils =========
+# =============================
+# UTILS
+# =============================
 def _xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
     buf = io.BytesIO()
     with pd.ExcelWriter(buf) as writer:
@@ -113,29 +97,29 @@ def _download_link(label: str, df: pd.DataFrame, filename: str):
     st.markdown(f'<a class="dl-min" download="{filename}" href="{href}">{label}</a>', unsafe_allow_html=True)
 
 # =============================
-# SIDE NAV
+# SIDEBAR — Nav + Refresh + Timeframe
 # =============================
 options = {
-    "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-    "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
-    "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
-    "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
-    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
-    "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
+    "1 Full-time Composition":        "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
+    "2 Full-time Staffing Levels":    "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+    "3 Distribution by Academic Area":"https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
+    "4 Faculty Demographics":         "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
+    "5 Full-time Faculty Questionnaire":"https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
+    "6 Faculty Qualifications":       "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
 }
 
-choices = list(options.keys())
 st.sidebar.markdown("### 📊 Go to KPI:")
-sel = st.sidebar.selectbox("Select…", choices, index=0)
-st.sidebar.link_button("Open", options[sel], use_container_width=True)
+sel_nav = st.sidebar.selectbox("Select…", list(options.keys()), index=0)
+st.sidebar.link_button("Open", options[sel_nav], use_container_width=True)
 
-# =============================
-# TIMEFRAME + PERIODO (SIDEBAR)
-# =============================
-all_periods = df["Periodo"].astype(str).unique().tolist()
+if st.sidebar.button("🔄 Refresh data"):
+    st.cache_data.clear()
+    st.rerun()
+
+all_periods   = df["Periodo"].astype(str).unique().tolist()
 sem_periods   = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
 inter_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sIntersemestral', p)]
-years = sorted(pd.Series(all_periods).str[:4].unique().tolist())
+years         = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 
 with st.sidebar:
     st.markdown("---")
@@ -147,17 +131,17 @@ with st.sidebar:
         idx = len(vis) - 1 if vis else 0
         sel_vis = st.selectbox("Periodo", vis, index=idx if vis else None)
         sel_period_internal = sem_periods[vis.index(sel_vis)] if vis else None
-        sel_period_label = sel_vis
+        sel_period_label    = sel_vis
     elif tmode == "Anual":
         idx = len(years) - 1 if years else 0
         sel_period_internal = st.selectbox("Periodo", years, index=idx if years else None)
-        sel_period_label = sel_period_internal
+        sel_period_label    = sel_period_internal
     else:
         idx = len(inter_periods) - 1 if inter_periods else 0
         sel_period_internal = st.selectbox("Periodo", inter_periods, index=idx if inter_periods else None)
-        sel_period_label = sel_period_internal
+        sel_period_label    = sel_period_internal
 
-    _download_link("Descargar base completa (Excel) — Full-time", df, "FT_Base_Completa.xlsx")
+    _download_link("Descargar base completa (Excel)", df, "FT_Base_Completa.xlsx")
 
 # =============================
 # RANKING ORDER & COLOR MAP
@@ -166,25 +150,25 @@ base_order = [
     "Full Professor", "Associate Professor", "Assistant Professor", "Instructor",
     "Adjunct Faculty", "Distinguished Practitioner", "Emeritus Professor"
 ]
-uniq_ranks = df["Faculty Ranking"].dropna().astype(str).unique().tolist()
+uniq_ranks    = df["Faculty Ranking"].dropna().astype(str).unique().tolist()
 ranking_order = [x for x in base_order if x in uniq_ranks] + [x for x in uniq_ranks if x not in base_order]
 
 if "Faculty Ranking" in df.columns:
-    df['Faculty Ranking'] = pd.Categorical(df['Faculty Ranking'], categories=ranking_order, ordered=True)
+    df["Faculty Ranking"] = pd.Categorical(df["Faculty Ranking"], categories=ranking_order, ordered=True)
 
-creative_palette = [
+palette = [
     "#037C70","#27BDAE","#4FFF98","#FFD166",
     "#F4A261","#E76F51","#9D4EDD","#6D597A",
     "#118AB2","#073B4C","#8AC926","#FF70A6"
 ]
-color_map_rk = {rk: creative_palette[i % len(creative_palette)] for i, rk in enumerate(ranking_order)}
+color_map_rk = {rk: palette[i % len(palette)] for i, rk in enumerate(ranking_order)}
 
 # =============================
 # HELPERS
 # =============================
 def periods_for_tables():
-    if tmode == "Semestral":      return sem_periods
-    if tmode == "Intersemestral": return inter_periods
+    if tmode == "Semestral":       return sem_periods
+    if tmode == "Intersemestral":  return inter_periods
     return years
 
 def df_active_for_selection():
@@ -192,33 +176,28 @@ def df_active_for_selection():
         return df.iloc[0:0].copy()
     if tmode in ("Semestral", "Intersemestral"):
         return df[df["Periodo"].astype(str).eq(sel_period_internal)].copy()
-    y = str(sel_period_internal)
+    y   = str(sel_period_internal)
     dfa = df[df["Periodo"].astype(str).str.startswith(y)].copy()
-    dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
-    return dfa
+    return dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
 
 def pivot_counts_by_ranking():
     cols = periods_for_tables()
     if tmode in ("Semestral", "Intersemestral"):
-        piv = (
+        return (
             pd.pivot_table(
                 df[df["Periodo"].isin(cols)],
-                index="Faculty Ranking", columns="Periodo", values="ID",
-                aggfunc="count", fill_value=0
+                index="Faculty Ranking", columns="Periodo",
+                values="ID", aggfunc="count", fill_value=0
             ).reindex(ranking_order)
         )
-        return piv
-    else:
-        out = {rk: {y: 0 for y in cols} for rk in ranking_order}
-        for y in cols:
-            dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
-            if dfa.empty: continue
-            dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
-            cts = dfa.groupby("Faculty Ranking")["ID"].count()
-            for rk, v in cts.items():
-                out.setdefault(rk, {})[y] = int(v)
-        piv = pd.DataFrame(out).T.reindex(ranking_order).reindex(columns=cols, fill_value=0)
-        return piv
+    out = {rk: {y: 0 for y in cols} for rk in ranking_order}
+    for y in cols:
+        dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
+        if dfa.empty: continue
+        dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+        for rk, v in dfa.groupby("Faculty Ranking")["ID"].count().items():
+            out.setdefault(rk, {})[y] = int(v)
+    return pd.DataFrame(out).T.reindex(ranking_order).reindex(columns=cols, fill_value=0)
 
 def line_source_all():
     cols = periods_for_tables()
@@ -230,76 +209,77 @@ def line_source_all():
         )
         dat["Periodo"] = pd.Categorical(dat["Periodo"], categories=cols, ordered=True)
         return dat, cols
-    else:
-        rows = []
-        for y in cols:
-            dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
-            dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
-            cts = (
-                dfa.groupby("Faculty Ranking")["ID"].count()
-                   .reindex(ranking_order, fill_value=0).reset_index()
-                   .rename(columns={"ID":"Count"})
-            )
-            cts["Periodo"] = str(y)
-            rows.append(cts)
-        out = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(columns=["Faculty Ranking","Count","Periodo"])
-        out["Periodo"] = pd.Categorical(out["Periodo"], categories=cols, ordered=True)
-        return out, cols
+    rows = []
+    for y in cols:
+        dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
+        dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+        cts = (
+            dfa.groupby("Faculty Ranking")["ID"].count()
+               .reindex(ranking_order, fill_value=0).reset_index()
+               .rename(columns={"ID":"Count"})
+        )
+        cts["Periodo"] = str(y)
+        rows.append(cts)
+    out = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(columns=["Faculty Ranking","Count","Periodo"])
+    out["Periodo"] = pd.Categorical(out["Periodo"], categories=cols, ordered=True)
+    return out, cols
 
 def line_source_single(rank):
     cols = periods_for_tables()
     if tmode in ("Semestral", "Intersemestral"):
         dat = (
-            df[df["Periodo"].isin(cols) & (df["Faculty Ranking"]==rank)]
+            df[df["Periodo"].isin(cols) & (df["Faculty Ranking"] == rank)]
             .groupby("Periodo")["ID"].count()
             .reindex(cols, fill_value=0).reset_index(name="Count")
         )
         return dat, cols
-    else:
-        vals = []
-        for y in cols:
-            dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
-            dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
-            cnt = int(dfa[dfa["Faculty Ranking"]==rank]["ID"].count())
-            vals.append({"Periodo": str(y), "Count": cnt})
-        return pd.DataFrame(vals), cols
+    vals = []
+    for y in cols:
+        dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
+        dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+        vals.append({"Periodo": str(y), "Count": int(dfa[dfa["Faculty Ranking"] == rank]["ID"].count())})
+    return pd.DataFrame(vals), cols
 
-def sel_key_for_band():
-    return sel_period_internal
+def highlight_current_period(fig, current_period, xcats):
+    if not current_period or current_period not in xcats: return
+    pos = xcats.index(current_period)
+    fig.add_shape(
+        type="rect", xref="x", yref="paper",
+        x0=pos-0.4, x1=pos+0.4, y0=0, y1=1,
+        fillcolor="#D0E5F5", opacity=0.35, line_width=0
+    )
 
 # =============================
 # PIVOT TABLE
 # =============================
-pivot = pivot_counts_by_ranking()
-pivot = pivot.reindex(ranking_order)
-pivot.loc['Total'] = pivot.sum(numeric_only=True)
+pivot = pivot_counts_by_ranking().reindex(ranking_order)
+pivot.loc["Total"] = pivot.sum(numeric_only=True)
 
 st.subheader("Number of Full-time Faculty by Ranking")
 
-def _bold_total_row(df_):
-    styles = pd.DataFrame('', index=df_.index, columns=df_.columns)
-    if 'Total' in df_.index:
-        styles.loc['Total', :] = 'font-weight:700;'
-    return styles
+def _bold_total(df_):
+    s = pd.DataFrame("", index=df_.index, columns=df_.columns)
+    if "Total" in df_.index: s.loc["Total", :] = "font-weight:700;"
+    return s
 
-def _highlight_total_latest(df_):
-    styles = pd.DataFrame('', index=df_.index, columns=df_.columns)
-    if len(df_.columns) > 0 and 'Total' in df_.index:
-        last_col = df_.columns[-1]
-        styles.loc['Total', last_col] = 'background-color:#dff7f2; color:#004d47; font-weight:700;'
-    return styles
+def _highlight_last(df_):
+    s = pd.DataFrame("", index=df_.index, columns=df_.columns)
+    if len(df_.columns) > 0 and "Total" in df_.index:
+        s.loc["Total", df_.columns[-1]] = "background-color:#dff7f2;color:#004d47;font-weight:700;"
+    return s
 
-styled_pivot = (
-    pivot.style
-    .apply(_bold_total_row, axis=None)
-    .apply(_highlight_total_latest, axis=None)
-    .format(precision=0)
+st.dataframe(
+    pivot.style.apply(_bold_total, axis=None).apply(_highlight_last, axis=None).format(precision=0),
+    use_container_width=True
 )
-st.dataframe(styled_pivot, use_container_width=True)
-_download_link("Descargar tabla (Excel)", pivot.reset_index().rename(columns={"index":"Faculty Ranking"}), f"FT_Composition_{tmode}.xlsx")
+_download_link(
+    "Descargar tabla (Excel)",
+    pivot.reset_index().rename(columns={"index":"Faculty Ranking"}),
+    f"FT_Composition_{tmode}.xlsx"
+)
 
 # =============================
-# SHARED STATE
+# CHARTS
 # =============================
 periods_sorted = periods_for_tables()
 st.session_state.setdefault("show_all", True)
@@ -313,18 +293,6 @@ def on_toggle_show_all():
     if st.session_state.show_all:
         st.session_state.single_ranking = "Select..."
 
-def highlight_current_period(fig, current_period, xcats):
-    if (current_period is None) or (current_period not in xcats): return
-    pos = xcats.index(current_period)
-    fig.add_shape(
-        type="rect", xref="x", yref="paper",
-        x0=pos-0.4, x1=pos+0.4, y0=0, y1=1,
-        fillcolor="#D0E5F5", opacity=0.35, line_width=0
-    )
-
-# =============================
-# CHARTS
-# =============================
 st.header("Evolution & composition")
 col_left, col_right = st.columns(2)
 
@@ -337,26 +305,23 @@ with col_right:
     if tmode in ("Semestral", "Intersemestral"):
         dfbar = df[df["Periodo"].astype(str).eq(sel_period_internal)]
     else:
-        y = str(sel_period_internal)
-        dfa = df[df["Periodo"].astype(str).str.startswith(y)].copy()
-        dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
-        dfbar = dfa
+        y    = str(sel_period_internal)
+        dfa  = df[df["Periodo"].astype(str).str.startswith(y)].copy()
+        dfbar = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
 
     bar_counts = (
         dfbar.groupby("Faculty Ranking")["ID"].count()
              .reindex(ranking_order).fillna(0).reset_index()
     )
     bar_counts.columns = ["Faculty Ranking", "Count"]
-    total_prof = int(bar_counts["Count"].sum())
-    st.metric("Total Faculty:", total_prof)
+    st.metric("Total Faculty:", int(bar_counts["Count"].sum()))
 
     fig_bar = px.bar(
         bar_counts, x="Count", y="Faculty Ranking", orientation="h",
         text="Count", color="Faculty Ranking", color_discrete_map=color_map_rk,
         category_orders={"Faculty Ranking": ranking_order[::-1]}
     )
-    xmax = int(bar_counts["Count"].max() or 0)
-    fig_bar.update_xaxes(range=[0, max(1, xmax)+5], title=None)
+    fig_bar.update_xaxes(range=[0, max(1, int(bar_counts["Count"].max() or 0)) + 5], title=None)
     fig_bar.update_yaxes(title=None)
     fig_bar.update_traces(textposition="outside")
     st.plotly_chart(fig_bar, use_container_width=True)
@@ -368,8 +333,7 @@ with col_left:
                  key="single_ranking", on_change=on_select_ranking)
 
     fig_line = None
-    xcats = periods_sorted
-    sel_for_band = sel_key_for_band()
+    xcats    = periods_sorted
 
     if st.session_state.show_all:
         data_long, xcats = line_source_all()
@@ -380,7 +344,7 @@ with col_left:
             color_discrete_map=color_map_rk,
             category_orders={"Periodo": xcats, "Faculty Ranking": ranking_order}
         )
-        fig_line.update_yaxes(range=[0, y_max+1], title=None)
+        fig_line.update_yaxes(range=[0, y_max + 1], title=None)
         fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title=None)
         fig_line.update_layout(height=550, showlegend=False)
     else:
@@ -394,14 +358,14 @@ with col_left:
                 color_discrete_sequence=[color_map_rk.get(rk, "#00A896")],
                 category_orders={"Periodo": xcats}
             )
-            fig_line.update_yaxes(range=[0, y_max+1], title=None)
+            fig_line.update_yaxes(range=[0, y_max + 1], title=None)
             fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title=None)
             fig_line.update_layout(height=480)
         else:
-            st.info("Select a ranking to visualize its evolution")
+            st.info("Select a ranking to visualize its evolution.")
 
     if fig_line is not None:
-        highlight_current_period(fig_line, sel_for_band, list(xcats))
+        highlight_current_period(fig_line, sel_period_internal, list(xcats))
         st.plotly_chart(fig_line, use_container_width=True)
 
 # =============================
@@ -409,8 +373,10 @@ with col_left:
 # =============================
 st.subheader("Faculty Detail")
 active = df_active_for_selection()
-selected_ranking = (None if st.session_state.show_all or st.session_state.single_ranking == "Select..."
-                    else st.session_state.single_ranking)
+selected_ranking = (
+    None if st.session_state.show_all or st.session_state.single_ranking == "Select..."
+    else st.session_state.single_ranking
+)
 
 if selected_ranking:
     detail_df = active[active["Faculty Ranking"] == selected_ranking].copy()
@@ -427,4 +393,8 @@ detail_cols = [
 ]
 show_cols = [c for c in detail_cols if c in detail_df.columns]
 st.dataframe(detail_df[show_cols], use_container_width=True)
-_download_link("Descargar detalle (Excel)", detail_df[show_cols], f"FT_Composition_Detail_{sel_period_label}.xlsx")
+_download_link(
+    "Descargar detalle (Excel)",
+    detail_df[show_cols],
+    f"FT_Composition_Detail_{sel_period_label}.xlsx"
+)
