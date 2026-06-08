@@ -162,6 +162,17 @@ header.hero h1 {
 .doc-updated { font-size: .76rem; color: var(--teal); font-weight: 700; margin-top: 2px; }
 .doc-update-btn { padding: 5px 10px; border-radius: 999px; border: 1.5px solid var(--border); background: #fff; color: var(--slate-mid); font-size: .76rem; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: border-color .15s, background .15s; }
 .doc-update-btn:hover { border-color: #1f2937; background: #1f2937; color: #fff; }
+.doc-delete-btn { padding: 5px 8px; border-radius: 999px; border: 1.5px solid #fee2e2; background: #fff5f5; color: #dc2626; font-size: .76rem; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: border-color .15s, background .15s; display:flex; align-items:center; gap:4px; }
+.doc-delete-btn:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+.doc-delete-btn svg { width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2; }
+.doc-add-btn { width:28px;height:28px; border-radius:50%; border:1.5px solid var(--border); background:#fff; color:var(--slate-mid); font-size:1.1rem; font-weight:800; cursor:pointer; display:inline-flex;align-items:center;justify-content:center; transition:background .15s,border-color .15s; flex-shrink:0; line-height:1; }
+.doc-add-btn:hover { background:#1f2937; color:#fff; border-color:#1f2937; }
+.doc-btn-group { display:flex; gap:6px; flex-shrink:0; align-items:center; }
+.type-toggle { display:flex; gap:6px; margin-bottom:14px; }
+.type-toggle button { flex:1; padding:8px; border-radius:12px; border:1.5px solid var(--border); background:#fff; color:var(--slate-mid); font-size:.85rem; font-weight:800; cursor:pointer; transition:background .15s,border-color .15s; }
+.type-toggle button.active { background:#1f2937; color:#fff; border-color:#1f2937; }
+.dashboard-open-btn { display:inline-flex;align-items:center;gap:7px; margin-top:8px; padding:8px 16px; border-radius:999px; border:1.5px solid var(--teal); background:var(--teal-light); color:var(--teal); font-size:.85rem; font-weight:800; cursor:pointer; text-decoration:none; transition:background .15s; }
+.dashboard-open-btn:hover { background:var(--teal); color:#fff; }
 .doc-notes { font-size: .74rem; color: var(--muted); font-style: italic; margin-top: 2px; line-height: 1.4; }
 .doc-uploaded-by { font-size: .74rem; color: #9ca3af; margin-top: 1px; }
 .empty-state { padding: 32px 20px; text-align: center; color: var(--muted); line-height: 1.7; font-size: .86rem; }
@@ -304,7 +315,10 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 
     <!-- DOCUMENTS -->
     <div class="col-panel">
-      <div class="col-header"><h3>Documents</h3><p id="docColDesc">Select a folder to view its documents</p></div>
+      <div class="col-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <div style="flex:1;"><h3>Documents</h3><p id="docColDesc">Select a folder to view its documents</p></div>
+        <button class="doc-add-btn" id="docAddBtn" title="Add document">+</button>
+      </div>
       <div class="doc-scroll" id="docList"></div>
     </div>
 
@@ -334,8 +348,14 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 <div class="modal-overlay" id="uploadModal">
   <div class="modal-box">
     <button class="modal-close" id="modalClose">×</button>
-    <div class="modal-title">Update document</div>
-    <div class="modal-sub" id="modalSub">The PDF will be saved to the corresponding Google Drive folder.</div>
+    <div class="modal-title" id="modalTitle">Update document</div>
+    <div class="modal-sub" id="modalSub">The file will be saved to the corresponding Google Drive folder.</div>
+
+    <div class="type-toggle" id="typeToggle">
+      <button data-type="file" class="active" id="typeFileBtn">File (PDF / Image / Video)</button>
+      <button data-type="dashboard" id="typeDashBtn">Dashboard / Link</button>
+    </div>
+
     <div class="form-group">
       <label class="form-label" for="docNameInput">Document name</label>
       <input class="form-input" type="text" id="docNameInput" placeholder="e.g. UASM Strategic Plan 2025">
@@ -344,25 +364,50 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       <label class="form-label" for="docResponsibleInput">Responsible</label>
       <input class="form-input" type="text" id="docResponsibleInput" placeholder="Full name">
     </div>
-    <div class="form-group">
-      <label class="form-label">Upload PDF</label>
+
+    <!-- FILE SECTION -->
+    <div id="fileSection" class="form-group">
+      <label class="form-label">Upload file</label>
       <div class="file-drop" id="fileDrop">
         <strong>Click to browse or drag and drop</strong>
-        <p>PDF only — max 50 MB</p>
-        <input type="file" id="fileInput" accept=".pdf,application/pdf">
+        <p>PDF, JPG, PNG, MP4, MOV — max 200 MB</p>
+        <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,.gif,.mp4,.mov,.webm,application/pdf,image/*,video/*">
       </div>
     </div>
+
+    <!-- DASHBOARD SECTION -->
+    <div id="dashSection" class="form-group" style="display:none;">
+      <label class="form-label" for="dashUrlInput">Dashboard / Streamlit URL</label>
+      <input class="form-input" type="url" id="dashUrlInput" placeholder="https://yourapp.streamlit.app/">
+      <a id="dashOpenBtn" href="#" target="_blank" rel="noopener" class="dashboard-open-btn" style="display:none;">
+        Open dashboard ↗
+      </a>
+    </div>
+
     <div class="form-group">
       <label class="form-label" for="docNotesInput">Notes (optional)</label>
       <input class="form-input" type="text" id="docNotesInput" placeholder="e.g. Updated figures for 2025 review">
     </div>
     <div class="upload-progress" id="uploadProgress">
       <div class="upload-progress-bar"><div class="upload-progress-fill" id="uploadProgressFill"></div></div>
-      <div class="upload-progress-label" id="uploadProgressLabel">Uploading to Google Drive...</div>
+      <div class="upload-progress-label" id="uploadProgressLabel">Uploading...</div>
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" id="modalCancelBtn">Cancel</button>
       <button class="btn-save" id="modalSaveBtn">Save to Drive</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE CONFIRM MODAL -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal-box" style="max-width:420px;">
+    <button class="modal-close" onclick="closeModal('deleteModal')">×</button>
+    <div class="modal-title" style="color:#dc2626;">Delete document</div>
+    <div class="modal-sub" id="deleteModalSub">This will rename the file in Google Drive with prefix "ELIMINAR" and remove it from the repository view. The file remains in Drive for recovery.</div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('deleteModal')">Cancel</button>
+      <button class="btn-save" id="deleteConfirmBtn" style="background:#dc2626;">Delete</button>
     </div>
   </div>
 </div>
@@ -423,7 +468,7 @@ let googleAccessToken = null;
 let googleUserEmail    = null;
 let pendingActionAfterLogin = null;
 let sessionExpiry = null;
-const SESSION_MS = 5 * 60 * 1000; // 5 minutes inactivity
+const SESSION_MS = 10 * 60 * 1000; // 10 minutes inactivity
 
 function touchSession() {
   if (!googleAccessToken) return;
@@ -510,6 +555,8 @@ async function loadFromSheet() {
       const r = rows[i];
       const docId = r[idx("docId")];
       if (!docId) continue;
+      const titleVal = r[idx("title")] || "";
+      if (titleVal === "__DELETED__") { delete byDoc[docId]; continue; }
       byDoc[docId] = {
         title:       r[idx("title")]       || "",
         responsible: r[idx("responsible")] || "",
@@ -543,7 +590,8 @@ function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl
 // =====================
 function uploadToDrive(file, fileName, folderId, onProgress, onSuccess, onError) {
   const token = googleAccessToken;
-  const metadata = { name: fileName, mimeType: "application/pdf", parents: [folderId] };
+  const mime = file.type || "application/octet-stream";
+  const metadata = { name: file.name||fileName, mimeType: mime, parents: [folderId] };
   const form = new FormData();
   form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
   form.append("file", file);
@@ -695,14 +743,22 @@ function renderDocs(){
     const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:"Not yet uploaded";
     const notesHtml=doc.notes?`<div class="doc-notes">${doc.notes}</div>`:"";
     const uploadedHtml=doc.uploadedBy?`<div class="doc-uploaded-by">Uploaded by: ${doc.uploadedBy}</div>`:"";
-    item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type}</div><div class="doc-title">${doc.title}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}</div><button class="doc-update-btn" data-id="${doc.id}">Update</button></div>`;
+    item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type||"PDF"}</div><div class="doc-title">${doc.title}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}</div>
+      <div class="doc-btn-group">
+        <button class="doc-update-btn" data-id="${doc.id}">Update</button>
+        <button class="doc-delete-btn" data-id="${doc.id}" title="Delete document"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+      </div></div>`;
     item.addEventListener("click",(e)=>{
-      if(e.target.classList.contains("doc-update-btn")) return;
+      if(e.target.closest(".doc-update-btn")||e.target.closest(".doc-delete-btn")) return;
       requireLogin(()=>{state.selectedDoc=doc.id;renderDocs();openViewer(doc.id);});
     });
     item.querySelector(".doc-update-btn").addEventListener("click",(e)=>{
       e.stopPropagation();
       requireLogin(()=>openUploadModal(doc.id));
+    });
+    item.querySelector(".doc-delete-btn").addEventListener("click",(e)=>{
+      e.stopPropagation();
+      requireLogin(()=>openDeleteModal(doc.id));
     });
     el.appendChild(item);
   });
@@ -722,61 +778,157 @@ document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn
 });
 
 // =====================
-// UPLOAD MODAL
+// UPLOAD / ADD MODAL
 // =====================
-let currentUploadDocId=null,currentFolderId=null;
+let currentUploadDocId=null, currentFolderId=null, currentModalMode="update";
+let uploadType="file"; // "file" or "dashboard"
 
-function openUploadModal(docId){
-  currentUploadDocId=docId;
-  const res=getDoc(docId);if(!res)return;
-  const{doc,folder}=res;
-  currentFolderId=DRIVE_FOLDERS[folder.id]||null;
-  document.getElementById("modalSub").textContent=`"${doc.title}" → ${folder.title}`;
-  document.getElementById("docNameInput").value=doc.title||"";
-  document.getElementById("docResponsibleInput").value=doc.responsible||"";
+// Type toggle
+document.getElementById("typeFileBtn").addEventListener("click",()=>setUploadType("file"));
+document.getElementById("typeDashBtn").addEventListener("click",()=>setUploadType("dashboard"));
+
+function setUploadType(t){
+  uploadType=t;
+  document.getElementById("typeFileBtn").classList.toggle("active",t==="file");
+  document.getElementById("typeDashBtn").classList.toggle("active",t==="dashboard");
+  document.getElementById("fileSection").style.display=t==="file"?"block":"none";
+  document.getElementById("dashSection").style.display=t==="dashboard"?"block":"none";
+}
+
+function resetModal(){
+  document.getElementById("docNameInput").value="";
+  document.getElementById("docResponsibleInput").value="";
   document.getElementById("docNotesInput").value="";
+  document.getElementById("dashUrlInput").value="";
+  document.getElementById("dashOpenBtn").style.display="none";
   const fd=document.getElementById("fileDrop");
-  fd.classList.remove("has-file");fd.querySelector("strong").textContent="Click to browse or drag and drop";fd.querySelector("p").textContent="PDF only — max 50 MB";
+  fd.classList.remove("has-file");
+  fd.querySelector("strong").textContent="Click to browse or drag and drop";
+  fd.querySelector("p").textContent="PDF, JPG, PNG, MP4, MOV — max 200 MB";
   document.getElementById("fileInput").value="";
   document.getElementById("uploadProgress").style.display="none";
   document.getElementById("uploadProgressFill").style.width="0%";
   document.getElementById("modalSaveBtn").disabled=false;
   document.getElementById("modalSaveBtn").textContent="Save to Drive";
+  setUploadType("file");
+}
+
+function openUploadModal(docId){
+  currentModalMode="update";
+  currentUploadDocId=docId;
+  const res=getDoc(docId);if(!res)return;
+  const{doc,folder}=res;
+  currentFolderId=DRIVE_FOLDERS[folder.id]||null;
+  resetModal();
+  document.getElementById("modalTitle").textContent="Update document";
+  document.getElementById("modalSub").textContent=`"${doc.title}" → ${folder.title}`;
+  document.getElementById("docNameInput").value=doc.title||"";
+  document.getElementById("docResponsibleInput").value=doc.responsible||"";
+  // Pre-fill type from existing doc
+  if(doc.type==="Dashboard"||doc.type==="Link"){
+    setUploadType("dashboard");
+    document.getElementById("dashUrlInput").value=doc.url||"";
+    if(doc.url&&doc.url!=="#"){
+      document.getElementById("dashOpenBtn").href=doc.url.replace(/[?&]embed=true/,"");
+      document.getElementById("dashOpenBtn").style.display="inline-flex";
+    }
+  }
   document.getElementById("uploadModal").classList.add("open");
 }
+
+function openAddModal(folderId,folderTitle){
+  currentModalMode="add";
+  currentFolderId=folderId;
+  currentUploadDocId="new_"+Date.now(); // temp id for new doc
+  resetModal();
+  document.getElementById("modalTitle").textContent="Add document";
+  document.getElementById("modalSub").textContent=`New document → ${folderTitle}`;
+  document.getElementById("uploadModal").classList.add("open");
+}
+
+// + button on doc header
+document.getElementById("docAddBtn").addEventListener("click",()=>{
+  if(!state.selectedFolder){showToast("Select a folder first.");return;}
+  const f=getFolders().find(f=>f.id===state.selectedFolder);
+  if(!f) return;
+  const fid=DRIVE_FOLDERS[f.id]||null;
+  if(!fid){showToast("No Drive folder configured for this folder yet.");return;}
+  requireLogin(()=>openAddModal(fid,f.title));
+});
+
+// Dashboard URL live preview
+document.getElementById("dashUrlInput").addEventListener("input",(e)=>{
+  const v=e.target.value.trim();
+  const btn=document.getElementById("dashOpenBtn");
+  if(v){btn.href=v;btn.style.display="inline-flex";}
+  else btn.style.display="none";
+});
 
 document.getElementById("fileDrop").addEventListener("click",()=>document.getElementById("fileInput").click());
 document.getElementById("fileInput").addEventListener("change",(e)=>{
   const file=e.target.files[0];if(!file)return;
-  if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){showToast("Only PDF files are accepted.");e.target.value="";return;}
   const fd=document.getElementById("fileDrop");
-  fd.classList.add("has-file");fd.querySelector("strong").textContent=file.name;fd.querySelector("p").textContent=(file.size/1024/1024).toFixed(2)+" MB";
+  fd.classList.add("has-file");
+  fd.querySelector("strong").textContent=file.name;
+  fd.querySelector("p").textContent=(file.size/1024/1024).toFixed(2)+" MB";
 });
 
 document.getElementById("modalSaveBtn").addEventListener("click",()=>{
   const name=document.getElementById("docNameInput").value.trim();
   const responsible=document.getElementById("docResponsibleInput").value.trim();
-  const file=document.getElementById("fileInput").files[0];
+  const notes=document.getElementById("docNotesInput").value.trim();
   if(!name||!responsible){showToast("Please fill in the document name and responsible person.");return;}
-  if(!file){showToast("Please select a PDF file.");return;}
+
+  if(uploadType==="dashboard"){
+    // Dashboard/Link — no file upload, just save URL to sheet
+    const dashUrl=document.getElementById("dashUrlInput").value.trim();
+    if(!dashUrl){showToast("Please enter a dashboard URL.");return;}
+    const today=new Date().toISOString().split("T")[0];
+    const embedUrl=dashUrl.includes("streamlit.app")&&!dashUrl.includes("embed=true")
+      ? dashUrl+(dashUrl.includes("?")?"&":"?")+"embed=true"
+      : dashUrl;
+    docOverrides[currentUploadDocId]={title:name,responsible,type:"Dashboard",updatedAt:today,url:embedUrl,viewUrl:dashUrl,uploadedBy:googleUserEmail,notes};
+    writeToSheet(currentUploadDocId,name,responsible,today,dashUrl,embedUrl,googleUserEmail,notes);
+    closeModal("uploadModal");
+    showToast("Dashboard saved.");
+    state.selectedDoc=currentUploadDocId;
+    loadFromSheet().then(()=>{renderDocs();setTimeout(()=>openViewer(currentUploadDocId),300);});
+    return;
+  }
+
+  // File upload
+  const file=document.getElementById("fileInput").files[0];
+  if(!file){showToast("Please select a file.");return;}
   if(!currentFolderId){showToast("No Drive folder configured for this folder yet.");return;}
+
+  // Determine type from mime
+  const isImage=file.type.startsWith("image/");
+  const isVideo=file.type.startsWith("video/");
+  const docType=isImage?"Image":isVideo?"Video":"PDF";
+
   document.getElementById("modalSaveBtn").disabled=true;
   document.getElementById("modalSaveBtn").textContent="Uploading...";
   document.getElementById("uploadProgress").style.display="block";
-  const fileName=name.endsWith(".pdf")?name:name+".pdf";
-  uploadToDrive(file,fileName,currentFolderId,
-    (pct)=>{document.getElementById("uploadProgressFill").style.width=pct+"%";document.getElementById("uploadProgressLabel").textContent=`Uploading to Google Drive... ${pct}%`;},
+
+  uploadToDrive(file,file.name,currentFolderId,
+    (pct)=>{
+      document.getElementById("uploadProgressFill").style.width=pct+"%";
+      document.getElementById("uploadProgressLabel").textContent=`Uploading... ${pct}%`;
+    },
     (result)=>{
       const today=new Date().toISOString().split("T")[0];
-      docOverrides[currentUploadDocId]={title:name,responsible,type:"PDF",updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:googleUserEmail};
-      const notes=document.getElementById('docNotesInput').value.trim();
-      writeToSheet(currentUploadDocId, name, responsible, today, result.viewUrl, result.previewUrl, googleUserEmail, notes);
-      closeModal("uploadModal");showToast("Saved to Google Drive successfully.");
+      docOverrides[currentUploadDocId]={title:name,responsible,type:docType,updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:googleUserEmail,notes};
+      writeToSheet(currentUploadDocId,name,responsible,today,result.viewUrl,result.previewUrl,googleUserEmail,notes);
+      closeModal("uploadModal");
+      showToast("Saved to Google Drive successfully.");
       state.selectedDoc=currentUploadDocId;
-      // Reload sheet so the new entry is visible everywhere
-      loadFromSheet().then(()=>{ renderDocs(); setTimeout(()=>openViewer(currentUploadDocId),300); });
+      loadFromSheet().then(()=>{renderDocs();setTimeout(()=>openViewer(currentUploadDocId),300);});
     },
-    (err)=>{showToast("Error: "+err);document.getElementById("modalSaveBtn").disabled=false;document.getElementById("modalSaveBtn").textContent="Save to Drive";}
+    (err)=>{
+      showToast("Error: "+err);
+      document.getElementById("modalSaveBtn").disabled=false;
+      document.getElementById("modalSaveBtn").textContent="Save to Drive";
+    }
   );
 });
 
@@ -786,6 +938,45 @@ document.getElementById("modalCancelBtn").addEventListener("click",()=>closeModa
 document.getElementById("uploadModal").addEventListener("click",(e)=>{if(e.target===e.currentTarget)closeModal("uploadModal");});
 
 // =====================
+// DELETE MODAL
+// =====================
+let currentDeleteDocId=null;
+
+function openDeleteModal(docId){
+  currentDeleteDocId=docId;
+  const res=getDoc(docId);if(!res)return;
+  document.getElementById("deleteModalSub").textContent=
+    `"${res.doc.title}" will be marked as ELIMINAR in Google Drive and removed from the repository view.`;
+  document.getElementById("deleteModal").classList.add("open");
+}
+
+document.getElementById("deleteConfirmBtn").addEventListener("click",()=>{
+  const res=getDoc(currentDeleteDocId);if(!res)return;
+  const{doc}=res;
+  // If file is in Drive, rename it with prefix ELIMINAR
+  if(doc.viewUrl&&doc.viewUrl.includes("drive.google.com/file/d/")){
+    const match=doc.viewUrl.match(/\/file\/d\/([^\/\?]+)/);
+    if(match){
+      const fileId=match[1];
+      fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`,{
+        method:"PATCH",
+        headers:{"Authorization":"Bearer "+googleAccessToken,"Content-Type":"application/json"},
+        body:JSON.stringify({name:"ELIMINAR - "+(doc.title||"document")})
+      }).catch(e=>console.warn("Drive rename error",e));
+    }
+  }
+  // Write delete row to sheet with special marker
+  const today=new Date().toISOString().split("T")[0];
+  writeToSheet(currentDeleteDocId,"__DELETED__","","",""  ,"",googleUserEmail,"Deleted on "+today);
+  // Remove from local overrides and re-render
+  delete docOverrides[currentDeleteDocId];
+  closeModal("deleteModal");
+  showToast("Document removed from repository.");
+  loadFromSheet().then(()=>{renderDocs();});
+});
+document.getElementById("deleteModal").addEventListener("click",(e)=>{if(e.target===e.currentTarget)closeModal("deleteModal");});
+
+// =====================
 // VIEWER
 // =====================
 window.currentViewerDocId=null;
@@ -793,7 +984,12 @@ window.currentViewerDocId=null;
 function getViewerSrc(url,type){
   if(!url||url==="#")return"";
   if(type==="Dashboard"||type==="Link")return url;
-  if(url.startsWith("blob:")||url.includes("drive.google.com/file"))return url;
+  if(url.includes("drive.google.com/file"))return url; // Drive preview URL
+  if(url.startsWith("blob:")){
+    if(type==="Image")return url;
+    if(type==="Video")return url;
+    return url+"#toolbar=0&navpanes=0&scrollbar=1";
+  }
   if(type==="PDF"||url.toLowerCase().endsWith(".pdf"))return url+"#toolbar=0&navpanes=0&scrollbar=1";
   return url;
 }
@@ -813,8 +1009,29 @@ function openViewer(docId){
   const frame=document.getElementById("viewerFrame");
   const noUrl=document.getElementById("viewerNoUrl");
   const ext=document.getElementById("viewerExternal");
-  if(!embedUrl){frame.src="";frame.style.display="none";noUrl.style.display="flex";ext.style.display="none";}
-  else{frame.src=embedUrl;frame.style.display="block";noUrl.style.display="none";ext.style.display="none";}
+  // Remove any previous inline media
+  const prev=document.getElementById("viewerInlineMedia");
+  if(prev) prev.remove();
+
+  if(!embedUrl){
+    frame.src="";frame.style.display="none";noUrl.style.display="flex";ext.style.display="none";
+  } else if(doc.type==="Image"){
+    frame.src="";frame.style.display="none";noUrl.style.display="none";ext.style.display="none";
+    const img=document.createElement("img");
+    img.id="viewerInlineMedia";
+    img.src=embedUrl;
+    img.style.cssText="flex:1;width:100%;height:100%;object-fit:contain;background:#111;";
+    document.querySelector(".viewer-box").appendChild(img);
+  } else if(doc.type==="Video"){
+    frame.src="";frame.style.display="none";noUrl.style.display="none";ext.style.display="none";
+    const vid=document.createElement("video");
+    vid.id="viewerInlineMedia";
+    vid.src=embedUrl;vid.controls=true;vid.autoplay=false;
+    vid.style.cssText="flex:1;width:100%;height:100%;background:#111;";
+    document.querySelector(".viewer-box").appendChild(vid);
+  } else {
+    frame.src=embedUrl;frame.style.display="block";noUrl.style.display="none";ext.style.display="none";
+  }
   document.getElementById("viewerModal").classList.add("open");
 }
 
@@ -822,6 +1039,7 @@ function resetViewer(){
   const frame=document.getElementById("viewerFrame");frame.src="";frame.style.display="block";
   document.getElementById("viewerNoUrl").style.display="none";
   document.getElementById("viewerExternal").style.display="none";
+  const prev=document.getElementById("viewerInlineMedia");if(prev)prev.remove();
 }
 document.getElementById("viewerClose").addEventListener("click",()=>{closeModal("viewerModal");resetViewer();});
 document.getElementById("viewerModal").addEventListener("click",(e)=>{if(e.target===e.currentTarget){closeModal("viewerModal");resetViewer();}});
