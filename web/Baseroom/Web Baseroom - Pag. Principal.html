@@ -13,7 +13,6 @@
   --slate-dark: #1f2937;
   --slate-mid: #374151;
   --muted: #6b7280;
-  --blue: #003366;
   --border: #e5e7eb;
   --teal: #0f6e56;
   --teal-light: #e1f5ee;
@@ -23,46 +22,31 @@
 }
 *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
 body { font-family: Arial, Helvetica, sans-serif; background: var(--bg-page); color: var(--slate-dark); -webkit-font-smoothing: antialiased; }
-header.hero {
-  color: #fff;
-  position: relative;
-  min-height: 520px;
-  padding: 56px 24px 200px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  text-align: center;
 
+/* HERO — reducido */
+header.hero {
+  color: #fff; position: relative;
+  min-height: 300px; padding: 48px 24px 140px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; text-align: center;
   background:
-    linear-gradient(
-      to bottom,
-      rgba(8,12,20,.08),
-      rgba(8,12,20,.12),
-      rgba(8,12,20,.20)
-    ),
+    linear-gradient(to bottom, rgba(8,12,20,.08), rgba(8,12,20,.12), rgba(8,12,20,.20)),
     url("Santodomingo.jpg") center center / cover no-repeat;
 }
 header.hero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to bottom,
-    rgba(255,255,255,0) 70%,
-    var(--bg-page) 100%
-  );
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,0) 65%, var(--bg-page) 100%);
   pointer-events: none;
 }
 .hero-inner { max-width: 1100px; width: 100%; margin: 0 auto; position: relative; z-index: 2; }
 .hero-eyebrow {
-  display: inline-block; margin-bottom: 18px; padding: 8px 16px;
+  display: inline-block; margin-bottom: 14px; padding: 8px 16px;
   border-radius: 999px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.18);
   font-size: 13px; font-weight: 700; letter-spacing: .02em;
 }
 header.hero h1 {
   margin: 0; font-weight: 800; line-height: 1.02;
-  font-size: clamp(2.5rem, 4vw + .5rem, 4.25rem);
+  font-size: clamp(2.2rem, 4vw + .5rem, 3.8rem);
   letter-spacing: -.03em; text-shadow: 0 10px 30px rgba(0,0,0,.28);
 }
 .back-button { position: absolute; top: 24px; left: 24px; z-index: 20; }
@@ -75,56 +59,59 @@ header.hero h1 {
 }
 .back-button a:hover { transform: translateY(-2px); background: rgba(255,255,255,0.26); }
 .back-button svg { width: 24px; height: 24px; stroke: #fff; }
+
+/* INTRO — más arriba */
 .intro-wrap {
-  position: relative; max-width: 900px; margin: -145px auto 18px;
-  z-index: 10; padding: 0 16px; display: flex; align-items: flex-start; gap: 0;
+  position: relative; max-width: 900px; margin: -100px auto 16px;
+  z-index: 10; padding: 0 16px; display: flex; align-items: flex-end; gap: 0;
 }
-.intro-seneca { position: relative; flex-shrink: 0; width: 110px; margin-right: -18px; z-index: 13; display: flex; flex-direction: column; align-items: center; }
-.intro-seneca img { max-width: 110px; height: auto; display: block; filter: drop-shadow(0 10px 18px rgba(0,0,0,.16)); margin-top: auto; }
+.intro-seneca {
+  position: relative; flex-shrink: 0; width: 100px; margin-right: -16px; z-index: 13;
+  display: flex; flex-direction: column; align-items: center;
+}
+.intro-seneca img {
+  max-width: 100px; height: auto; display: block;
+  filter: drop-shadow(0 10px 18px rgba(0,0,0,.16));
+}
 .intro-panel {
-  flex: 1; z-index: 12; padding: 24px 24px 24px 36px;
+  flex: 1; z-index: 12; padding: 20px 22px 20px 32px;
   background: var(--bg-glass); border-radius: var(--radius-panel);
   box-shadow: var(--shadow-panel); text-align: left; border: 1px solid rgba(255,255,255,.28);
 }
-.intro-panel p { margin: 0 0 10px; line-height: 1.75; }
+.intro-panel p { margin: 0 0 8px; line-height: 1.7; font-size: .93rem; }
 .intro-panel p:last-child { margin-bottom: 0; }
-.main { max-width: 1600px; margin: -10px auto 56px; padding: 0 20px; }
-.section-heading { margin: 0 0 20px; text-align: left; }
-.section-heading h2 { font-size: 1.15rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 5px; }
-.section-heading p { color: var(--muted); line-height: 1.6; font-size: .92rem; }
-.workspace { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: start; }
-.col-panel {
-  background: var(--bg-white);
-  border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-soft);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.col-header { padding: 20px 20px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.col-header h3 { font-size: 1rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
-.col-header p { color: var(--muted); font-size: .83rem; line-height: 1.5; }
-.chapter-scroll {
-  height: 600px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
+
+/* MAIN — menos margen top */
+.main { max-width: 1600px; margin: 12px auto 56px; padding: 0 20px; }
+.section-heading { margin: 0 0 14px; text-align: left; }
+.section-heading h2 { font-size: 1.1rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 4px; }
+.section-heading p { color: var(--muted); line-height: 1.6; font-size: .88rem; }
+
+/* WORKSPACE */
+.workspace { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: start; }
+.col-panel { background: var(--bg-white); border-radius: var(--radius-panel); box-shadow: var(--shadow-soft); overflow: hidden; display: flex; flex-direction: column; }
+.col-header { padding: 18px 20px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.col-header h3 { font-size: .95rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
+.col-header p { color: var(--muted); font-size: .81rem; line-height: 1.5; }
+
+/* Chapter: altura fija 500px */
+.chapter-scroll { height: 500px; overflow-y: auto; display: flex; flex-direction: column; }
 .chapter-scroll::-webkit-scrollbar { width: 4px; }
 .chapter-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-.workspace .col-panel:first-child {
-  height: 690px;
-}
-  .folder-scroll,
-.doc-scroll {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-.folder-scroll::-webkit-scrollbar, .doc-scroll::-webkit-scrollbar { width: 4px; }
-.folder-scroll::-webkit-scrollbar-thumb, .doc-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-.chapter-item { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 90px; }
+
+/* Folders: crece hasta 500px, luego scroll */
+.folder-col-inner { display: flex; flex-direction: column; max-height: 500px; overflow: hidden; }
+.folder-scroll { overflow-y: auto; display: flex; flex-direction: column; }
+.folder-scroll::-webkit-scrollbar { width: 4px; }
+.folder-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+/* Docs: scroll libre */
+.doc-scroll { overflow-y: auto; display: flex; flex-direction: column; max-height: 500px; }
+.doc-scroll::-webkit-scrollbar { width: 4px; }
+.doc-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+/* CHAPTER ITEMS */
+.chapter-item { display: flex; align-items: flex-start; gap: 14px; padding: 16px 18px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 82px; }
 .chapter-item:last-child { border-bottom: none; }
 .chapter-item:hover { background: #f9fafb; }
 .chapter-item.active { background: #1f2937; }
@@ -133,13 +120,15 @@ header.hero h1 {
 .chapter-item.active .ch-desc { color: rgba(255,255,255,.65); }
 .chapter-item.active .ch-icon { background: rgba(255,255,255,.1); }
 .chapter-item.active .ch-icon svg { stroke: #fff; }
-.ch-icon { width: 42px; height: 42px; border-radius: 12px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .15s; }
-.ch-icon svg { width: 20px; height: 20px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
+.ch-icon { width: 40px; height: 40px; border-radius: 11px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .15s; }
+.ch-icon svg { width: 19px; height: 19px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
 .ch-body { flex: 1; }
-.ch-badge { display: inline-block; margin-bottom: 5px; padding: 3px 8px; border-radius: 999px; background: #eef2f7; color: var(--slate-mid); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
-.ch-title { font-size: .92rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; margin-bottom: 3px; }
-.ch-desc { font-size: .79rem; color: var(--muted); line-height: 1.4; }
-.folder-item { display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 90px; }
+.ch-badge { display: inline-block; margin-bottom: 4px; padding: 3px 8px; border-radius: 999px; background: #eef2f7; color: var(--slate-mid); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.ch-title { font-size: .88rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; margin-bottom: 2px; }
+.ch-desc { font-size: .77rem; color: var(--muted); line-height: 1.4; }
+
+/* FOLDER ITEMS */
+.folder-item { display: flex; flex-direction: column; gap: 5px; padding: 16px 18px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 82px; }
 .folder-item:last-child { border-bottom: none; }
 .folder-item:hover { background: #f9fafb; }
 .folder-item.active { background: #1f2937; }
@@ -147,29 +136,35 @@ header.hero h1 {
 .folder-item.active .f-title { color: #fff; }
 .folder-item.active .f-tag { background: rgba(255,255,255,.1); color: rgba(255,255,255,.8); }
 .f-badge { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #eef2f7; color: var(--slate-mid); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
-.f-title { font-size: .92rem; font-weight: 800; color: var(--slate-dark); line-height: 1.35; }
-.f-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 3px; }
+.f-title { font-size: .88rem; font-weight: 800; color: var(--slate-dark); line-height: 1.35; }
+.f-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 2px; }
 .f-tag { padding: 2px 7px; border-radius: 999px; background: #f3f4f6; color: var(--slate-mid); font-size: 10px; font-weight: 700; }
-.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: #fafafa; }
-.filter-btn { padding: 6px 14px; border-radius: 999px; border: 1.5px solid var(--border); background: #fff; color: var(--slate-mid); font-size: .82rem; font-weight: 800; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+
+/* FILTER BAR */
+.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: #fafafa; }
+.filter-btn { padding: 5px 13px; border-radius: 999px; border: 1.5px solid var(--border); background: #fff; color: var(--slate-mid); font-size: .8rem; font-weight: 800; cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
 .filter-btn:hover { border-color: #9ca3af; }
 .filter-btn.active { background: var(--slate-dark); color: #fff; border-color: var(--slate-dark); }
 .filter-btn[data-filter="AACSB"].active { background: #1a6fa8; border-color: #1a6fa8; }
 .filter-btn[data-filter="EQUIS"].active { background: #2f8b85; border-color: #2f8b85; }
 .filter-btn[data-filter="AMBA"].active { background: #7c5cbf; border-color: #7c5cbf; }
-.doc-item { display: flex; flex-direction: column; gap: 5px; padding: 18px 20px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 90px; }
+
+/* DOC ITEMS */
+.doc-item { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 82px; }
 .doc-item:last-child { border-bottom: none; }
 .doc-item:hover { background: #f9fafb; }
 .doc-item.active { background: #f0faf7; border-left: 3px solid #1d9e75; }
 .doc-item-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .doc-item-main { flex: 1; }
-.doc-type { display: inline-block; margin-bottom: 5px; padding: 3px 8px; border-radius: 999px; background: #f3f4f6; color: var(--slate-mid); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
-.doc-title { font-size: .92rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; margin-bottom: 3px; }
-.doc-meta { color: var(--muted); font-size: .79rem; line-height: 1.4; }
-.doc-updated { font-size: .78rem; color: var(--teal); font-weight: 700; margin-top: 3px; }
-.doc-update-btn { padding: 6px 11px; border-radius: 999px; border: 1.5px solid var(--border); background: #fff; color: var(--slate-mid); font-size: .78rem; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: border-color .15s, background .15s; }
+.doc-type { display: inline-block; margin-bottom: 4px; padding: 3px 8px; border-radius: 999px; background: #f3f4f6; color: var(--slate-mid); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.doc-title { font-size: .88rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; margin-bottom: 2px; }
+.doc-meta { color: var(--muted); font-size: .77rem; line-height: 1.4; }
+.doc-updated { font-size: .76rem; color: var(--teal); font-weight: 700; margin-top: 2px; }
+.doc-update-btn { padding: 5px 10px; border-radius: 999px; border: 1.5px solid var(--border); background: #fff; color: var(--slate-mid); font-size: .76rem; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: border-color .15s, background .15s; }
 .doc-update-btn:hover { border-color: #1f2937; background: #1f2937; color: #fff; }
-.empty-state { padding: 36px 20px; text-align: center; color: var(--muted); line-height: 1.7; font-size: .88rem; }
+.empty-state { padding: 32px 20px; text-align: center; color: var(--muted); line-height: 1.7; font-size: .86rem; }
+
+/* MODALS */
 .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000; align-items: center; justify-content: center; }
 .modal-overlay.open { display: flex; }
 .modal-box { background: #fff; border-radius: var(--radius-panel); padding: 32px; max-width: 520px; width: 92%; box-shadow: var(--shadow-panel); position: relative; max-height: 90vh; overflow-y: auto; }
@@ -181,7 +176,7 @@ header.hero h1 {
 .form-label { display: block; font-size: .84rem; font-weight: 800; color: var(--slate-mid); margin-bottom: 5px; }
 .form-input { width: 100%; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 12px; font-size: .9rem; color: var(--slate-dark); background: #fff; outline: none; transition: border-color .15s; }
 .form-input:focus { border-color: #374151; }
-.file-drop { border: 2px dashed var(--border); border-radius: 16px; padding: 26px 20px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; background: #fafafa; }
+.file-drop { border: 2px dashed var(--border); border-radius: 16px; padding: 24px 20px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; background: #fafafa; }
 .file-drop:hover { border-color: #9ca3af; background: #f3f4f6; }
 .file-drop.has-file { border-color: var(--teal); background: var(--teal-light); }
 .file-drop p { color: var(--muted); font-size: .86rem; margin-top: 6px; }
@@ -197,6 +192,23 @@ header.hero h1 {
 .upload-progress-bar { width: 100%; height: 6px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
 .upload-progress-fill { height: 100%; background: var(--teal); border-radius: 999px; width: 0%; transition: width .3s; }
 .upload-progress-label { font-size: .82rem; color: var(--muted); margin-top: 6px; text-align: center; }
+
+/* LOGIN MODAL */
+.login-box { text-align: center; }
+.login-box .login-icon { font-size: 3rem; margin-bottom: 12px; }
+.login-box h3 { font-size: 1.1rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 8px; }
+.login-box p { color: var(--muted); font-size: .9rem; line-height: 1.6; margin-bottom: 24px; }
+.google-btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 12px 24px; border-radius: 999px; border: 1.5px solid var(--border);
+  background: #fff; color: var(--slate-dark); font-size: .9rem; font-weight: 800;
+  cursor: pointer; transition: box-shadow .18s, transform .18s; box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+.google-btn:hover { box-shadow: 0 4px 16px rgba(0,0,0,.14); transform: translateY(-1px); }
+.google-btn svg { width: 20px; height: 20px; }
+.login-note { font-size: .78rem; color: var(--muted); margin-top: 14px; line-height: 1.5; }
+
+/* VIEWER MODAL */
 .viewer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 2000; align-items: center; justify-content: center; padding: 24px; }
 .viewer-overlay.open { display: flex; }
 .viewer-box { background: #fff; border-radius: var(--radius-panel); width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; box-shadow: 0 30px 80px rgba(0,0,0,.28); overflow: hidden; }
@@ -212,16 +224,20 @@ header.hero h1 {
 .action-btn--primary { background: #1f2937; color: #fff; }
 .action-btn--secondary { background: #eef2f7; color: var(--slate-mid); }
 .action-btn--teal { background: var(--teal-light); color: var(--teal); }
+
+/* TOAST */
 .toast { display: none; position: fixed; bottom: 28px; right: 28px; z-index: 3000; background: #1f2937; color: #fff; padding: 13px 20px; border-radius: 14px; font-size: .88rem; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.22); animation: slideUp .3s ease; }
 @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
 footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-size: 14px; }
+
 @media (max-width: 1100px) { .workspace { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 720px) {
   .workspace { grid-template-columns: 1fr; }
-  header.hero { min-height: 300px; padding: 72px 18px 120px; }
+  header.hero { min-height: 260px; padding: 64px 18px 110px; }
   .main { padding: 0 14px; }
   .intro-seneca { display: none; }
-  .intro-panel { padding: 22px; }
+  .intro-panel { padding: 18px; }
 }
 </style>
 </head>
@@ -250,7 +266,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
   </div>
   <div class="intro-panel">
     <p>This BaseRoom centralizes the main documentation chapters required for accreditation review and institutional evidence management. Each folder contains the files, supporting materials, reports, and references corresponding to its section.</p>
-    <p><strong>Select a chapter, then a folder, then a document to preview it. Use "Update" to upload or replace a document directly to Google Drive.</strong></p>
+    <p><strong>Select a chapter, then a folder, then a document to preview it. Sign in with your Uniandes account to interact with documents.</strong></p>
   </div>
 </div>
 
@@ -260,33 +276,57 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
     <p>Select a chapter to browse its folders, then select a folder to view and manage documents.</p>
   </div>
   <div class="workspace">
+
+    <!-- CHAPTERS -->
     <div class="col-panel">
       <div class="col-header"><h3>Chapters</h3><p>Select a chapter to browse its folders</p></div>
       <div class="chapter-scroll" id="chapterList"></div>
     </div>
+
+    <!-- FOLDERS -->
     <div class="col-panel">
       <div class="col-header">
-          <h3>Folders</h3>
-          <p id="folderColDesc">Select a chapter first</p>
+        <h3>Folders</h3>
+        <p id="folderColDesc">Select a chapter first</p>
       </div>
-    
       <div class="filter-bar" id="filterBar">
-          <button class="filter-btn active" data-filter="ALL">All</button>
-          <button class="filter-btn" data-filter="AACSB">AACSB</button>
-          <button class="filter-btn" data-filter="EQUIS">EQUIS</button>
-          <button class="filter-btn" data-filter="AMBA">AMBA</button>
+        <button class="filter-btn active" data-filter="ALL">All</button>
+        <button class="filter-btn" data-filter="AACSB">AACSB</button>
+        <button class="filter-btn" data-filter="EQUIS">EQUIS</button>
+        <button class="filter-btn" data-filter="AMBA">AMBA</button>
       </div>
-    
-      <div class="folder-scroll" id="folderList"></div>
+      <div class="folder-col-inner">
+        <div class="folder-scroll" id="folderList"></div>
+      </div>
     </div>
+
+    <!-- DOCUMENTS -->
     <div class="col-panel">
       <div class="col-header"><h3>Documents</h3><p id="docColDesc">Select a folder to view its documents</p></div>
       <div class="doc-scroll" id="docList"></div>
     </div>
+
   </div>
 </section>
 
 <footer>International Office · School of Management · Internal use only</footer>
+
+<!-- LOGIN MODAL -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal-box" style="max-width:440px;">
+    <button class="modal-close" onclick="closeModal('loginModal')">×</button>
+    <div class="login-box">
+      <div class="login-icon">🔐</div>
+      <h3>Sign in required</h3>
+      <p>You need to sign in with your Uniandes account (<strong>@uniandes.edu.co</strong>) to view or update documents in this BaseRoom.</p>
+      <button class="google-btn" id="loginGoogleBtn">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+        Continue with Google
+      </button>
+      <div class="login-note">Only @uniandes.edu.co accounts are authorized to interact with documents.</div>
+    </div>
+  </div>
+</div>
 
 <!-- UPLOAD MODAL -->
 <div class="modal-overlay" id="uploadModal">
@@ -340,7 +380,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
     <iframe class="viewer-frame" id="viewerFrame" src="" allow="fullscreen; scripts; same-origin; popups" allowfullscreen></iframe>
     <div id="viewerNoUrl" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#6b7280;font-size:.95rem;text-align:center;padding:40px;">
       <div>This document has not been uploaded yet.</div>
-      <button class="action-btn action-btn--teal" onclick="closeModal('viewerModal');openUploadModal(window.currentViewerDocId)">Upload document</button>
+      <button class="action-btn action-btn--teal" onclick="closeModal('viewerModal');requireLogin(()=>openUploadModal(window.currentViewerDocId))">Upload document</button>
     </div>
     <div id="viewerExternal" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:20px;padding:48px;text-align:center;">
       <div style="width:64px;height:64px;border-radius:20px;background:#e1f5ee;display:flex;align-items:center;justify-content:center;">
@@ -358,9 +398,14 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 <div class="toast" id="toast"></div>
 
 <script>
+// =====================
+// GOOGLE AUTH CONFIG
+// =====================
 const GOOGLE_CLIENT_ID = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
 const GOOGLE_API_KEY   = "AIzaSyBnvEW4Pn8Vh_rl84q7bE8hhT-IWQ2HmKg";
 const SCOPES           = "https://www.googleapis.com/auth/drive.file";
+const ALLOWED_DOMAIN   = "uniandes.edu.co";
+
 const DRIVE_FOLDERS = {
   "f1-1": "1VazMGFtWMVlDbYncFugb5kHrRJpnQCl0",
   "f1-2": "1FcTMxSKsVO_R41U5FjIcknedCl6EVlbq",
@@ -369,49 +414,88 @@ const DRIVE_FOLDERS = {
   "f1-5": "1Y2N4XvvaMWwMsIs1nbcDL2Dsqm-QL2Zu",
   "f1-6": "1ygBhTnCIOfx3DIQ-eV3XZ67ahVlnBEro"
 };
+
 let googleAccessToken = null;
-function getGoogleToken(callback) {
-  if (googleAccessToken) { callback(googleAccessToken); return; }
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID, scope: SCOPES,
-    callback: (resp) => {
-      if (resp.error) { showToast("Google auth error: " + resp.error); return; }
-      googleAccessToken = resp.access_token; callback(googleAccessToken);
-    }
-  });
-  client.requestAccessToken();
-}
-function uploadToDrive(file, fileName, folderId, onProgress, onSuccess, onError) {
-  getGoogleToken((token) => {
-    const metadata = { name: fileName, mimeType: "application/pdf", parents: [folderId] };
-    const form = new FormData();
-    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-    form.append("file", file);
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink");
-    xhr.setRequestHeader("Authorization", "Bearer " + token);
-    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
-    xhr.onload = () => {
-      if (xhr.status === 200) {
-        const data = JSON.parse(xhr.responseText);
-        setPublicPermission(data.id, token, () => {
-          onSuccess({ fileId: data.id, previewUrl: `https://drive.google.com/file/d/${data.id}/preview`, viewUrl: `https://drive.google.com/file/d/${data.id}/view`, name: data.name });
-        });
-      } else { onError("Upload failed: " + xhr.statusText); }
-    };
-    xhr.onerror = () => onError("Network error during upload.");
-    xhr.send(form);
-  });
-}
-function setPublicPermission(fileId, token, callback) {
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`);
-  xhr.setRequestHeader("Authorization", "Bearer " + token);
-  xhr.setRequestHeader("Content-Type", "application/json");
-  xhr.onload = callback;
-  xhr.send(JSON.stringify({ role: "reader", type: "anyone" }));
+let googleUserEmail    = null;
+let pendingActionAfterLogin = null;
+
+// =====================
+// LOGIN GATE
+// =====================
+function requireLogin(action) {
+  if (googleAccessToken && googleUserEmail && googleUserEmail.endsWith("@" + ALLOWED_DOMAIN)) {
+    action();
+  } else {
+    pendingActionAfterLogin = action;
+    document.getElementById("loginModal").classList.add("open");
+  }
 }
 
+document.getElementById("loginGoogleBtn").addEventListener("click", () => {
+  const tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
+    callback: (resp) => {
+      if (resp.error) { showToast("Authentication error: " + resp.error); return; }
+      googleAccessToken = resp.access_token;
+      // Get user email to validate domain
+      fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: "Bearer " + googleAccessToken }
+      })
+      .then(r => r.json())
+      .then(info => {
+        googleUserEmail = info.email || "";
+        if (!googleUserEmail.endsWith("@" + ALLOWED_DOMAIN)) {
+          googleAccessToken = null;
+          googleUserEmail = null;
+          showToast("Access denied. Only @uniandes.edu.co accounts are allowed.");
+          return;
+        }
+        closeModal("loginModal");
+        showToast("Signed in as " + googleUserEmail);
+        if (pendingActionAfterLogin) {
+          const action = pendingActionAfterLogin;
+          pendingActionAfterLogin = null;
+          action();
+        }
+      })
+      .catch(() => { showToast("Could not verify account. Please try again."); });
+    }
+  });
+  tokenClient.requestAccessToken();
+});
+
+// =====================
+// DRIVE UPLOAD
+// =====================
+function uploadToDrive(file, fileName, folderId, onProgress, onSuccess, onError) {
+  const token = googleAccessToken;
+  const metadata = { name: fileName, mimeType: "application/pdf", parents: [folderId] };
+  const form = new FormData();
+  form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+  form.append("file", file);
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink");
+  xhr.setRequestHeader("Authorization", "Bearer " + token);
+  xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
+  xhr.onload = () => {
+    if (xhr.status === 200) {
+      const data = JSON.parse(xhr.responseText);
+      const xhr2 = new XMLHttpRequest();
+      xhr2.open("POST", `https://www.googleapis.com/drive/v3/files/${data.id}/permissions`);
+      xhr2.setRequestHeader("Authorization", "Bearer " + token);
+      xhr2.setRequestHeader("Content-Type", "application/json");
+      xhr2.onload = () => onSuccess({ fileId: data.id, previewUrl: `https://drive.google.com/file/d/${data.id}/preview`, viewUrl: `https://drive.google.com/file/d/${data.id}/view`, name: data.name });
+      xhr2.send(JSON.stringify({ role: "reader", type: "anyone" }));
+    } else { onError("Upload failed: " + xhr.statusText); }
+  };
+  xhr.onerror = () => onError("Network error during upload.");
+  xhr.send(form);
+}
+
+// =====================
+// DATA
+// =====================
 const DATA = {
   chapters: [
     {
@@ -467,108 +551,204 @@ const DATA = {
   ]
 };
 
-let state={activeFilter:"ALL",selectedChapter:null,selectedFolder:null,selectedDoc:null};
-const docOverrides={};
+// =====================
+// STATE & HELPERS
+// =====================
+let state = {activeFilter:"ALL", selectedChapter:null, selectedFolder:null, selectedDoc:null};
+const docOverrides = {};
+
 function getChapter(id){return DATA.chapters.find(c=>c.id===id);}
 function getFolders(){const ch=getChapter(state.selectedChapter);return ch?ch.folders:[];}
-function getDocs() {
-  const f = getFolders().find(f => f.id === state.selectedFolder);
-  if (!f) return [];
+function getDocs(){
+  const f=getFolders().find(f=>f.id===state.selectedFolder);
+  if(!f) return [];
   return f.documents;
 }
-function getDoc(id){for(const ch of DATA.chapters)for(const f of ch.folders){const d=f.documents.find(d=>d.id===id);if(d)return{doc:{...d,...(docOverrides[id]||{})},folder:f};}return null;}
+function getDoc(id){
+  for(const ch of DATA.chapters)for(const f of ch.folders){
+    const d=f.documents.find(d=>d.id===id);
+    if(d) return{doc:{...d,...(docOverrides[id]||{})},folder:f};
+  }
+  return null;
+}
 function fmtDate(s){if(!s)return"Not yet uploaded";return new Date(s+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}
 
-function renderChapters(){const el=document.getElementById("chapterList");el.innerHTML="";DATA.chapters.forEach(ch=>{const btn=document.createElement("button");btn.className="chapter-item"+(state.selectedChapter===ch.id?" active":"");btn.innerHTML=`<div class="ch-icon"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></div><div class="ch-body"><span class="ch-badge">${ch.badge}</span><div class="ch-title">${ch.title}</div><div class="ch-desc">${ch.desc}</div></div>`;btn.addEventListener("click",()=>{state.selectedChapter=ch.id;state.selectedFolder=null;state.selectedDoc=null;render();});el.appendChild(btn);});}
-
-function renderFolders() {
-  const el = document.getElementById("folderList");
-  const desc = document.getElementById("folderColDesc");
-  const folders = getFolders();
-
-  if (!state.selectedChapter) {
-    desc.textContent = "Select a chapter first";
-    el.innerHTML = `<div class="empty-state">Click a chapter to see its folders.</div>`;
-    return;
-  }
-
-  desc.textContent = getChapter(state.selectedChapter)?.title || "";
-
-  let filteredFolders = folders;
-
-  if (state.activeFilter !== "ALL") {
-    filteredFolders = folders.filter(folder =>
-      folder.accreditations.includes(state.activeFilter)
-    );
-  }
-
-  el.innerHTML = "";
-
-  if (!filteredFolders.length) {
-    el.innerHTML = `<div class="empty-state">No folders match this accreditation.</div>`;
-    return;
-  }
-
-  filteredFolders.forEach(f => {
-    const btn = document.createElement("button");
-
-    btn.className =
-      "folder-item" +
-      (state.selectedFolder === f.id ? " active" : "");
-
-    const tags = f.accreditations
-      .map(a => `<span class="f-tag">${a}</span>`)
-      .join("");
-
-    btn.innerHTML = `
-      <span class="f-badge">${f.badge}</span>
-      <span class="f-title">${f.title}</span>
-      <div class="f-tags">${tags}</div>
-    `;
-
-    btn.addEventListener("click", () => {
-      state.selectedFolder = f.id;
-      state.selectedDoc = null;
-      render();
-    });
-
+// =====================
+// RENDER
+// =====================
+function renderChapters(){
+  const el=document.getElementById("chapterList");el.innerHTML="";
+  DATA.chapters.forEach(ch=>{
+    const btn=document.createElement("button");
+    btn.className="chapter-item"+(state.selectedChapter===ch.id?" active":"");
+    btn.innerHTML=`<div class="ch-icon"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></div><div class="ch-body"><span class="ch-badge">${ch.badge}</span><div class="ch-title">${ch.title}</div><div class="ch-desc">${ch.desc}</div></div>`;
+    btn.addEventListener("click",()=>{state.selectedChapter=ch.id;state.selectedFolder=null;state.selectedDoc=null;render();});
     el.appendChild(btn);
   });
 }
 
-function renderDocs(){const el=document.getElementById("docList");const desc=document.getElementById("docColDesc");if(!state.selectedFolder){desc.textContent="Select a folder to view its documents";el.innerHTML=`<div class="empty-state">Click a folder to see its documents.</div>`;return;}const f=getFolders().find(f=>f.id===state.selectedFolder);desc.textContent=f?f.title:"";const docs=getDocs();el.innerHTML="";if(!docs.length){el.innerHTML=`<div class="empty-state">No documents match the current filter.</div>`;return;}docs.forEach(docBase=>{const doc={...docBase,...(docOverrides[docBase.id]||{})};const item=document.createElement("div");item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:"Not yet uploaded";item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type}</div><div class="doc-title">${doc.title}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div></div><button class="doc-update-btn" data-id="${doc.id}">Update</button></div>`;item.addEventListener("click",(e)=>{if(e.target.classList.contains("doc-update-btn"))return;state.selectedDoc=doc.id;renderDocs();openViewer(doc.id);});item.querySelector(".doc-update-btn").addEventListener("click",(e)=>{e.stopPropagation();openUploadModal(doc.id);});el.appendChild(item);});}
+function renderFolders(){
+  const el=document.getElementById("folderList");
+  const desc=document.getElementById("folderColDesc");
+  if(!state.selectedChapter){desc.textContent="Select a chapter first";el.innerHTML=`<div class="empty-state">Click a chapter to see its folders.</div>`;return;}
+  desc.textContent=getChapter(state.selectedChapter)?.title||"";
+  let folders=getFolders();
+  if(state.activeFilter!=="ALL") folders=folders.filter(f=>f.accreditations.includes(state.activeFilter));
+  el.innerHTML="";
+  if(!folders.length){el.innerHTML=`<div class="empty-state">No folders match this accreditation.</div>`;return;}
+  folders.forEach(f=>{
+    const btn=document.createElement("button");
+    btn.className="folder-item"+(state.selectedFolder===f.id?" active":"");
+    const tags=f.accreditations.map(a=>`<span class="f-tag">${a}</span>`).join("");
+    btn.innerHTML=`<span class="f-badge">${f.badge}</span><span class="f-title">${f.title}</span><div class="f-tags">${tags}</div>`;
+    btn.addEventListener("click",()=>{state.selectedFolder=f.id;state.selectedDoc=null;render();});
+    el.appendChild(btn);
+  });
+}
+
+function renderDocs(){
+  const el=document.getElementById("docList");
+  const desc=document.getElementById("docColDesc");
+  if(!state.selectedFolder){desc.textContent="Select a folder to view its documents";el.innerHTML=`<div class="empty-state">Click a folder to see its documents.</div>`;return;}
+  const f=getFolders().find(f=>f.id===state.selectedFolder);
+  desc.textContent=f?f.title:"";
+  const docs=getDocs();el.innerHTML="";
+  if(!docs.length){el.innerHTML=`<div class="empty-state">No documents in this folder.</div>`;return;}
+  docs.forEach(docBase=>{
+    const doc={...docBase,...(docOverrides[docBase.id]||{})};
+    const item=document.createElement("div");
+    item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");
+    const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:"Not yet uploaded";
+    item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type}</div><div class="doc-title">${doc.title}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div></div><button class="doc-update-btn" data-id="${doc.id}">Update</button></div>`;
+    item.addEventListener("click",(e)=>{
+      if(e.target.classList.contains("doc-update-btn")) return;
+      requireLogin(()=>{state.selectedDoc=doc.id;renderDocs();openViewer(doc.id);});
+    });
+    item.querySelector(".doc-update-btn").addEventListener("click",(e)=>{
+      e.stopPropagation();
+      requireLogin(()=>openUploadModal(doc.id));
+    });
+    el.appendChild(item);
+  });
+}
 
 function render(){renderChapters();renderFolders();renderDocs();}
 
+// FILTER
 document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn=>{
-btn.addEventListener("click",()=>{
-document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));
-btn.classList.add("active");
-state.activeFilter=btn.dataset.filter;
-state.selectedFolder=null;
-state.selectedDoc=null;
-renderFolders();
-renderDocs();
-});
+  btn.addEventListener("click",()=>{
+    document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    state.activeFilter=btn.dataset.filter;
+    state.selectedFolder=null;state.selectedDoc=null;
+    renderFolders();renderDocs();
+  });
 });
 
+// =====================
+// UPLOAD MODAL
+// =====================
 let currentUploadDocId=null,currentFolderId=null;
-function openUploadModal(docId){currentUploadDocId=docId;const res=getDoc(docId);if(!res)return;const{doc,folder}=res;currentFolderId=DRIVE_FOLDERS[folder.id]||null;document.getElementById("modalSub").textContent=`"${doc.title}" → ${folder.title}`;document.getElementById("docNameInput").value=doc.title||"";document.getElementById("docResponsibleInput").value=doc.responsible||"";document.getElementById("docNotesInput").value="";const fd=document.getElementById("fileDrop");fd.classList.remove("has-file");fd.querySelector("strong").textContent="Click to browse or drag and drop";fd.querySelector("p").textContent="PDF only — max 50 MB";document.getElementById("fileInput").value="";document.getElementById("uploadProgress").style.display="none";document.getElementById("uploadProgressFill").style.width="0%";document.getElementById("modalSaveBtn").disabled=false;document.getElementById("modalSaveBtn").textContent="Save to Drive";document.getElementById("uploadModal").classList.add("open");}
+
+function openUploadModal(docId){
+  currentUploadDocId=docId;
+  const res=getDoc(docId);if(!res)return;
+  const{doc,folder}=res;
+  currentFolderId=DRIVE_FOLDERS[folder.id]||null;
+  document.getElementById("modalSub").textContent=`"${doc.title}" → ${folder.title}`;
+  document.getElementById("docNameInput").value=doc.title||"";
+  document.getElementById("docResponsibleInput").value=doc.responsible||"";
+  document.getElementById("docNotesInput").value="";
+  const fd=document.getElementById("fileDrop");
+  fd.classList.remove("has-file");fd.querySelector("strong").textContent="Click to browse or drag and drop";fd.querySelector("p").textContent="PDF only — max 50 MB";
+  document.getElementById("fileInput").value="";
+  document.getElementById("uploadProgress").style.display="none";
+  document.getElementById("uploadProgressFill").style.width="0%";
+  document.getElementById("modalSaveBtn").disabled=false;
+  document.getElementById("modalSaveBtn").textContent="Save to Drive";
+  document.getElementById("uploadModal").classList.add("open");
+}
+
 document.getElementById("fileDrop").addEventListener("click",()=>document.getElementById("fileInput").click());
-document.getElementById("fileInput").addEventListener("change",(e)=>{const file=e.target.files[0];if(!file)return;if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){showToast("Only PDF files are accepted.");e.target.value="";return;}const fd=document.getElementById("fileDrop");fd.classList.add("has-file");fd.querySelector("strong").textContent=file.name;fd.querySelector("p").textContent=(file.size/1024/1024).toFixed(2)+" MB";});
-document.getElementById("modalSaveBtn").addEventListener("click",()=>{const name=document.getElementById("docNameInput").value.trim();const responsible=document.getElementById("docResponsibleInput").value.trim();const file=document.getElementById("fileInput").files[0];if(!name||!responsible){showToast("Please fill in the document name and responsible person.");return;}if(!file){showToast("Please select a PDF file.");return;}if(!currentFolderId){showToast("No Drive folder configured for this folder yet.");return;}document.getElementById("modalSaveBtn").disabled=true;document.getElementById("modalSaveBtn").textContent="Uploading...";document.getElementById("uploadProgress").style.display="block";const fileName=name.endsWith(".pdf")?name:name+".pdf";uploadToDrive(file,fileName,currentFolderId,(pct)=>{document.getElementById("uploadProgressFill").style.width=pct+"%";document.getElementById("uploadProgressLabel").textContent=`Uploading to Google Drive... ${pct}%`;},(result)=>{const today=new Date().toISOString().split("T")[0];docOverrides[currentUploadDocId]={title:name,responsible,type:"PDF",updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl};closeModal("uploadModal");showToast("Saved to Google Drive successfully.");state.selectedDoc=currentUploadDocId;renderDocs();setTimeout(()=>openViewer(currentUploadDocId),300);},(err)=>{showToast("Error: "+err);document.getElementById("modalSaveBtn").disabled=false;document.getElementById("modalSaveBtn").textContent="Save to Drive";});});
+document.getElementById("fileInput").addEventListener("change",(e)=>{
+  const file=e.target.files[0];if(!file)return;
+  if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){showToast("Only PDF files are accepted.");e.target.value="";return;}
+  const fd=document.getElementById("fileDrop");
+  fd.classList.add("has-file");fd.querySelector("strong").textContent=file.name;fd.querySelector("p").textContent=(file.size/1024/1024).toFixed(2)+" MB";
+});
+
+document.getElementById("modalSaveBtn").addEventListener("click",()=>{
+  const name=document.getElementById("docNameInput").value.trim();
+  const responsible=document.getElementById("docResponsibleInput").value.trim();
+  const file=document.getElementById("fileInput").files[0];
+  if(!name||!responsible){showToast("Please fill in the document name and responsible person.");return;}
+  if(!file){showToast("Please select a PDF file.");return;}
+  if(!currentFolderId){showToast("No Drive folder configured for this folder yet.");return;}
+  document.getElementById("modalSaveBtn").disabled=true;
+  document.getElementById("modalSaveBtn").textContent="Uploading...";
+  document.getElementById("uploadProgress").style.display="block";
+  const fileName=name.endsWith(".pdf")?name:name+".pdf";
+  uploadToDrive(file,fileName,currentFolderId,
+    (pct)=>{document.getElementById("uploadProgressFill").style.width=pct+"%";document.getElementById("uploadProgressLabel").textContent=`Uploading to Google Drive... ${pct}%`;},
+    (result)=>{
+      const today=new Date().toISOString().split("T")[0];
+      docOverrides[currentUploadDocId]={title:name,responsible,type:"PDF",updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl};
+      closeModal("uploadModal");showToast("Saved to Google Drive successfully.");
+      state.selectedDoc=currentUploadDocId;renderDocs();
+      setTimeout(()=>openViewer(currentUploadDocId),300);
+    },
+    (err)=>{showToast("Error: "+err);document.getElementById("modalSaveBtn").disabled=false;document.getElementById("modalSaveBtn").textContent="Save to Drive";}
+  );
+});
+
 function closeModal(id){document.getElementById(id).classList.remove("open");}
 document.getElementById("modalClose").addEventListener("click",()=>closeModal("uploadModal"));
 document.getElementById("modalCancelBtn").addEventListener("click",()=>closeModal("uploadModal"));
 document.getElementById("uploadModal").addEventListener("click",(e)=>{if(e.target===e.currentTarget)closeModal("uploadModal");});
 
+// =====================
+// VIEWER
+// =====================
 window.currentViewerDocId=null;
-function getViewerSrc(url,type){if(!url||url==="#")return"";if(type==="Dashboard"||type==="Link")return url;if(url.startsWith("blob:")||url.includes("drive.google.com/file"))return url;if(type==="PDF"||url.toLowerCase().endsWith(".pdf"))return url+"#toolbar=0&navpanes=0&scrollbar=1";return url;}
-function openViewer(docId){window.currentViewerDocId=docId;const res=getDoc(docId);if(!res)return;const{doc,folder}=res;const rawUrl=doc.url&&doc.url!=="#"?doc.url:"";const embedUrl=rawUrl?getViewerSrc(rawUrl,doc.type):"";document.getElementById("viewerTitle").textContent=doc.title;const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:(doc.responsible||"");document.getElementById("viewerMeta").textContent=`${doc.type} · ${upd}`;const cleanUrl=rawUrl.replace(/[?&]embed=true/,"");document.getElementById("viewerOpenBtn").href=doc.viewUrl||cleanUrl||folder.sharepointUrl||"#";document.getElementById("viewerUpdateBtn").onclick=()=>{closeModal("viewerModal");resetViewer();openUploadModal(docId);};const frame=document.getElementById("viewerFrame");const noUrl=document.getElementById("viewerNoUrl");const ext=document.getElementById("viewerExternal");if(!embedUrl){frame.src="";frame.style.display="none";noUrl.style.display="flex";ext.style.display="none";}else{frame.src=embedUrl;frame.style.display="block";noUrl.style.display="none";ext.style.display="none";}document.getElementById("viewerModal").classList.add("open");}
-function resetViewer(){const frame=document.getElementById("viewerFrame");frame.src="";frame.style.display="block";document.getElementById("viewerNoUrl").style.display="none";document.getElementById("viewerExternal").style.display="none";}
+
+function getViewerSrc(url,type){
+  if(!url||url==="#")return"";
+  if(type==="Dashboard"||type==="Link")return url;
+  if(url.startsWith("blob:")||url.includes("drive.google.com/file"))return url;
+  if(type==="PDF"||url.toLowerCase().endsWith(".pdf"))return url+"#toolbar=0&navpanes=0&scrollbar=1";
+  return url;
+}
+
+function openViewer(docId){
+  window.currentViewerDocId=docId;
+  const res=getDoc(docId);if(!res)return;
+  const{doc,folder}=res;
+  const rawUrl=doc.url&&doc.url!=="#"?doc.url:"";
+  const embedUrl=rawUrl?getViewerSrc(rawUrl,doc.type):"";
+  document.getElementById("viewerTitle").textContent=doc.title;
+  const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:(doc.responsible||"");
+  document.getElementById("viewerMeta").textContent=`${doc.type} · ${upd}`;
+  const cleanUrl=rawUrl.replace(/[?&]embed=true/,"");
+  document.getElementById("viewerOpenBtn").href=doc.viewUrl||cleanUrl||folder.sharepointUrl||"#";
+  document.getElementById("viewerUpdateBtn").onclick=()=>{closeModal("viewerModal");resetViewer();requireLogin(()=>openUploadModal(docId));};
+  const frame=document.getElementById("viewerFrame");
+  const noUrl=document.getElementById("viewerNoUrl");
+  const ext=document.getElementById("viewerExternal");
+  if(!embedUrl){frame.src="";frame.style.display="none";noUrl.style.display="flex";ext.style.display="none";}
+  else{frame.src=embedUrl;frame.style.display="block";noUrl.style.display="none";ext.style.display="none";}
+  document.getElementById("viewerModal").classList.add("open");
+}
+
+function resetViewer(){
+  const frame=document.getElementById("viewerFrame");frame.src="";frame.style.display="block";
+  document.getElementById("viewerNoUrl").style.display="none";
+  document.getElementById("viewerExternal").style.display="none";
+}
 document.getElementById("viewerClose").addEventListener("click",()=>{closeModal("viewerModal");resetViewer();});
 document.getElementById("viewerModal").addEventListener("click",(e)=>{if(e.target===e.currentTarget){closeModal("viewerModal");resetViewer();}});
+
 function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";setTimeout(()=>{t.style.display="none";},3500);}
+
 render();
 </script>
 </body>
