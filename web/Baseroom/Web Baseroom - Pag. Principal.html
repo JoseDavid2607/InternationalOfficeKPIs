@@ -24,15 +24,34 @@
 *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
 body { font-family: Arial, Helvetica, sans-serif; background: var(--bg-page); color: var(--slate-dark); -webkit-font-smoothing: antialiased; }
 header.hero {
-  color: #fff; position: relative; min-height: 360px; padding: 56px 24px 140px;
-  display: flex; align-items: center; justify-content: center;
-  overflow: hidden; text-align: center;
-  background: linear-gradient(to bottom, rgba(8,12,20,.18), rgba(8,12,20,.28), rgba(8,12,20,.42)),
-    url("Santodomingo.jpg") center 72% / 112% no-repeat;
+  color: #fff;
+  position: relative;
+  min-height: 520px;
+  padding: 56px 24px 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  text-align: center;
+
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(8,12,20,.08),
+      rgba(8,12,20,.12),
+      rgba(8,12,20,.20)
+    ),
+    url("Santodomingo.jpg") center center / cover no-repeat;
 }
 header.hero::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(to bottom, rgba(255,255,255,0) 58%, var(--bg-page) 100%);
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,0) 70%,
+    var(--bg-page) 100%
+  );
   pointer-events: none;
 }
 .hero-inner { max-width: 1100px; width: 100%; margin: 0 auto; position: relative; z-index: 2; }
@@ -74,14 +93,33 @@ header.hero h1 {
 .section-heading h2 { font-size: 1.15rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 5px; }
 .section-heading p { color: var(--muted); line-height: 1.6; font-size: .92rem; }
 .workspace { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: start; }
-.col-panel { background: var(--bg-white); border-radius: var(--radius-panel); box-shadow: var(--shadow-soft); overflow: hidden; display: flex; flex-direction: column; }
+.col-panel {
+  background: var(--bg-white);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 700px;
+}
 .col-header { padding: 20px 20px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .col-header h3 { font-size: 1rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
 .col-header p { color: var(--muted); font-size: .83rem; line-height: 1.5; }
-.chapter-scroll { max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; }
+.chapter-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
 .chapter-scroll::-webkit-scrollbar { width: 4px; }
 .chapter-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-.folder-scroll, .doc-scroll { overflow-y: auto; display: flex; flex-direction: column; }
+.folder-scroll,
+.doc-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
 .folder-scroll::-webkit-scrollbar, .doc-scroll::-webkit-scrollbar { width: 4px; }
 .folder-scroll::-webkit-scrollbar-thumb, .doc-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
 .chapter-item { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 90px; }
@@ -225,17 +263,22 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       <div class="chapter-scroll" id="chapterList"></div>
     </div>
     <div class="col-panel">
-      <div class="col-header"><h3>Folders</h3><p id="folderColDesc">Select a chapter first</p></div>
+      <div class="col-header">
+          <h3>Folders</h3>
+          <p id="folderColDesc">Select a chapter first</p>
+      </div>
+    
+      <div class="filter-bar" id="filterBar">
+          <button class="filter-btn active" data-filter="ALL">All</button>
+          <button class="filter-btn" data-filter="AACSB">AACSB</button>
+          <button class="filter-btn" data-filter="EQUIS">EQUIS</button>
+          <button class="filter-btn" data-filter="AMBA">AMBA</button>
+      </div>
+    
       <div class="folder-scroll" id="folderList"></div>
     </div>
     <div class="col-panel">
       <div class="col-header"><h3>Documents</h3><p id="docColDesc">Select a folder to view its documents</p></div>
-      <div class="filter-bar" id="filterBar">
-        <button class="filter-btn active" data-filter="ALL">All</button>
-        <button class="filter-btn" data-filter="AACSB">AACSB</button>
-        <button class="filter-btn" data-filter="EQUIS">EQUIS</button>
-        <button class="filter-btn" data-filter="AMBA">AMBA</button>
-      </div>
       <div class="doc-scroll" id="docList"></div>
     </div>
   </div>
@@ -426,13 +469,70 @@ let state={activeFilter:"ALL",selectedChapter:null,selectedFolder:null,selectedD
 const docOverrides={};
 function getChapter(id){return DATA.chapters.find(c=>c.id===id);}
 function getFolders(){const ch=getChapter(state.selectedChapter);return ch?ch.folders:[];}
-function getDocs(){const f=getFolders().find(f=>f.id===state.selectedFolder);if(!f)return[];if(state.activeFilter==="ALL")return f.documents;return f.documents.filter(d=>d.accreditations.includes(state.activeFilter));}
+function getDocs() {
+  const f = getFolders().find(f => f.id === state.selectedFolder);
+  if (!f) return [];
+  return f.documents;
+}
 function getDoc(id){for(const ch of DATA.chapters)for(const f of ch.folders){const d=f.documents.find(d=>d.id===id);if(d)return{doc:{...d,...(docOverrides[id]||{})},folder:f};}return null;}
 function fmtDate(s){if(!s)return"Not yet uploaded";return new Date(s+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}
 
 function renderChapters(){const el=document.getElementById("chapterList");el.innerHTML="";DATA.chapters.forEach(ch=>{const btn=document.createElement("button");btn.className="chapter-item"+(state.selectedChapter===ch.id?" active":"");btn.innerHTML=`<div class="ch-icon"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></div><div class="ch-body"><span class="ch-badge">${ch.badge}</span><div class="ch-title">${ch.title}</div><div class="ch-desc">${ch.desc}</div></div>`;btn.addEventListener("click",()=>{state.selectedChapter=ch.id;state.selectedFolder=null;state.selectedDoc=null;render();});el.appendChild(btn);});}
 
-function renderFolders(){const el=document.getElementById("folderList");const desc=document.getElementById("folderColDesc");const folders=getFolders();if(!state.selectedChapter){desc.textContent="Select a chapter first";el.innerHTML=`<div class="empty-state">Click a chapter to see its folders.</div>`;return;}desc.textContent=getChapter(state.selectedChapter)?.title||"";el.innerHTML="";if(!folders.length){el.innerHTML=`<div class="empty-state">No folders in this chapter.</div>`;return;}folders.forEach(f=>{const btn=document.createElement("button");btn.className="folder-item"+(state.selectedFolder===f.id?" active":"");const tags=f.accreditations.map(a=>`<span class="f-tag">${a}</span>`).join("");btn.innerHTML=`<span class="f-badge">${f.badge}</span><span class="f-title">${f.title}</span><div class="f-tags">${tags}</div>`;btn.addEventListener("click",()=>{state.selectedFolder=f.id;state.selectedDoc=null;render();});el.appendChild(btn);});}
+function renderFolders() {
+  const el = document.getElementById("folderList");
+  const desc = document.getElementById("folderColDesc");
+  const folders = getFolders();
+
+  if (!state.selectedChapter) {
+    desc.textContent = "Select a chapter first";
+    el.innerHTML = `<div class="empty-state">Click a chapter to see its folders.</div>`;
+    return;
+  }
+
+  desc.textContent = getChapter(state.selectedChapter)?.title || "";
+
+  let filteredFolders = folders;
+
+  if (state.activeFilter !== "ALL") {
+    filteredFolders = folders.filter(folder =>
+      folder.accreditations.includes(state.activeFilter)
+    );
+  }
+
+  el.innerHTML = "";
+
+  if (!filteredFolders.length) {
+    el.innerHTML = `<div class="empty-state">No folders match this accreditation.</div>`;
+    return;
+  }
+
+  filteredFolders.forEach(f => {
+    const btn = document.createElement("button");
+
+    btn.className =
+      "folder-item" +
+      (state.selectedFolder === f.id ? " active" : "");
+
+    const tags = f.accreditations
+      .map(a => `<span class="f-tag">${a}</span>`)
+      .join("");
+
+    btn.innerHTML = `
+      <span class="f-badge">${f.badge}</span>
+      <span class="f-title">${f.title}</span>
+      <div class="f-tags">${tags}</div>
+    `;
+
+    btn.addEventListener("click", () => {
+      state.selectedFolder = f.id;
+      state.selectedDoc = null;
+      render();
+    });
+
+    el.appendChild(btn);
+  });
+}
 
 function renderDocs(){const el=document.getElementById("docList");const desc=document.getElementById("docColDesc");if(!state.selectedFolder){desc.textContent="Select a folder to view its documents";el.innerHTML=`<div class="empty-state">Click a folder to see its documents.</div>`;return;}const f=getFolders().find(f=>f.id===state.selectedFolder);desc.textContent=f?f.title:"";const docs=getDocs();el.innerHTML="";if(!docs.length){el.innerHTML=`<div class="empty-state">No documents match the current filter.</div>`;return;}docs.forEach(docBase=>{const doc={...docBase,...(docOverrides[docBase.id]||{})};const item=document.createElement("div");item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:"Not yet uploaded";item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type}</div><div class="doc-title">${doc.title}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div></div><button class="doc-update-btn" data-id="${doc.id}">Update</button></div>`;item.addEventListener("click",(e)=>{if(e.target.classList.contains("doc-update-btn"))return;state.selectedDoc=doc.id;renderDocs();openViewer(doc.id);});item.querySelector(".doc-update-btn").addEventListener("click",(e)=>{e.stopPropagation();openUploadModal(doc.id);});el.appendChild(item);});}
 
