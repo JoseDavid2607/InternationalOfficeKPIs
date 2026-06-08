@@ -606,6 +606,27 @@ async function loadFromSheet() {
     // Clear stale overrides so deleted rows are removed
     Object.keys(docOverrides).forEach(k => delete docOverrides[k]);
     Object.assign(docOverrides, byDoc);
+    // For added docs (ids starting with "added_"), inject them into DATA if missing
+    for(const [docId, meta] of Object.entries(byDoc)){
+      if(!docId.startsWith("added_")) continue;
+      const folderId=docId.replace("added_","").replace(/_\d+$/,"");
+      let found=false;
+      for(const ch of DATA.chapters){
+        for(const fo of ch.folders){
+          if(fo.documents.find(d=>d.id===docId)){found=true;break;}
+        }
+        if(found) break;
+      }
+      if(!found){
+        for(const ch of DATA.chapters){
+          const fo=ch.folders.find(f=>f.id===folderId);
+          if(fo){
+            fo.documents.push({id:docId,title:meta.title||"Added document",type:meta.type||"PDF",meta:meta.title||"",responsible:meta.responsible||"",updatedAt:meta.updatedAt||null,accreditations:fo.accreditations,url:meta.url||"#"});
+            break;
+          }
+        }
+      }
+    }
     render();
   } catch(e) { console.warn("Could not load from Sheet", e); }
 }
@@ -1282,7 +1303,7 @@ function resetModal(){
   const fd=document.getElementById("fileDrop");
   fd.classList.remove("has-file");
   fd.querySelector("strong").textContent="Click to browse or drag and drop";
-  fd.querySelector("p").textContent="PDF, JPG, PNG, MP4, MOV — max 200 MB";
+  fd.querySelector("p").textContent="PDF only — max 50 MB";
   document.getElementById("fileInput").value="";
   document.getElementById("uploadProgress").style.display="none";
   document.getElementById("uploadProgressFill").style.width="0%";
@@ -1317,18 +1338,8 @@ function openUploadModal(docId){
 function openAddModal(folderId,folderTitle){
   currentModalMode="add";
   currentFolderId=folderId;
-  // Generate a unique ID for the new document
-  const newDocId="added_"+state.selectedFolder+"_"+Date.now();
-  currentUploadDocId=newDocId;
-  // Register the new doc in the DATA folder so it appears in the list
-  const folder=getFolders().find(f=>f.id===state.selectedFolder);
-  if(folder){
-    folder.documents.push({
-      id:newDocId, title:"New document", type:"PDF",
-      meta:"Added via BaseRoom", responsible:"", updatedAt:null,
-      accreditations:folder.accreditations, url:"#"
-    });
-  }
+  // ID generated at save time, stored here for reference
+  currentUploadDocId=null;
   resetModal();
   document.getElementById("docNameInput").value="";
   document.getElementById("modalTitle").textContent="Add document";
@@ -1377,6 +1388,12 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
     const embedUrl=dashUrl.includes("streamlit.app")&&!dashUrl.includes("embed=true")
       ? dashUrl+(dashUrl.includes("?")?"&":"?")+"embed=true"
       : dashUrl;
+    // For "add" mode, generate a real ID and inject into DATA
+    if(currentModalMode==="add"||!currentUploadDocId){
+      currentUploadDocId="added_"+state.selectedFolder+"_"+Date.now();
+      const folder=getFolders().find(fo=>fo.id===state.selectedFolder);
+      if(folder) folder.documents.push({id:currentUploadDocId,title:name,type:"Dashboard",meta:name,responsible,updatedAt:today,accreditations:folder.accreditations,url:embedUrl});
+    }
     docOverrides[currentUploadDocId]={title:name,responsible,type:"Dashboard",updatedAt:today,url:embedUrl,viewUrl:dashUrl,uploadedBy:googleUserEmail,notes};
     writeToSheet(currentUploadDocId,name,responsible,today,dashUrl,embedUrl,googleUserEmail,notes);
     closeModal("uploadModal");
@@ -1405,6 +1422,12 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
     },
     (result)=>{
       const today=new Date().toISOString().split("T")[0];
+      // For "add" mode, generate a real ID and inject into DATA
+      if(currentModalMode==="add"||!currentUploadDocId){
+        currentUploadDocId="added_"+state.selectedFolder+"_"+Date.now();
+        const folder=getFolders().find(fo=>fo.id===state.selectedFolder);
+        if(folder) folder.documents.push({id:currentUploadDocId,title:name,type:"PDF",meta:name,responsible,updatedAt:today,accreditations:folder.accreditations,url:result.previewUrl});
+      }
       docOverrides[currentUploadDocId]={title:name,responsible,type:docType,updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:googleUserEmail,notes};
       writeToSheet(currentUploadDocId,name,responsible,today,result.viewUrl,result.previewUrl,googleUserEmail,notes);
       // Update the actual Drive file name to match the repository name
@@ -1510,10 +1533,6 @@ function openViewer(docId){
   const frame=document.getElementById("viewerFrame");
   const noUrl=document.getElementById("viewerNoUrl");
   const ext=document.getElementById("viewerExternal");
-  // Remove any previous inline media
-  const prev=document.getElementById("viewerInlineMedia");
-  if(prev) prev.remove();
-
   if(!embedUrl){
     frame.src="";frame.style.display="none";noUrl.style.display="flex";ext.style.display="none";
   } else {
@@ -1526,7 +1545,6 @@ function resetViewer(){
   const frame=document.getElementById("viewerFrame");frame.src="";frame.style.display="block";
   document.getElementById("viewerNoUrl").style.display="none";
   document.getElementById("viewerExternal").style.display="none";
-  const prev=document.getElementById("viewerInlineMedia");if(prev)prev.remove();
 }
 document.getElementById("viewerClose").addEventListener("click",()=>{closeModal("viewerModal");resetViewer();});
 document.getElementById("viewerModal").addEventListener("click",(e)=>{if(e.target===e.currentTarget){closeModal("viewerModal");resetViewer();}});
