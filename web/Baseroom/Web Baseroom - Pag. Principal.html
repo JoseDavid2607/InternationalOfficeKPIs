@@ -403,7 +403,9 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 // =====================
 const GOOGLE_CLIENT_ID = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
 const GOOGLE_API_KEY   = "AIzaSyBnvEW4Pn8Vh_rl84q7bE8hhT-IWQ2HmKg";
-const SCOPES           = "https://www.googleapis.com/auth/drive.file";
+const SCOPES = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets";
+const SHEET_ID   = "161GQZ6N143RBz3Ta3ZIDuR3O5WWDud78VkjAU6mpNQw";
+const SHEET_NAME = "BR Metadata";
 const ALLOWED_DOMAIN   = "uniandes.edu.co";
 
 const DRIVE_FOLDERS = {
@@ -466,6 +468,51 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
 });
 
 // =====================
+// =====================
+// SHEETS — read & write metadata
+// =====================
+async function loadFromSheet() {
+  try {
+    const range = encodeURIComponent(SHEET_NAME + "!A:G");
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const rows = data.values || [];
+    if (rows.length < 2) return;
+    const headers = rows[0];
+    const idx = (h) => headers.indexOf(h);
+    // Build map: last row per docId wins (most recent upload)
+    const byDoc = {};
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const docId = r[idx("docId")];
+      if (!docId) continue;
+      byDoc[docId] = {
+        title:       r[idx("title")]       || "",
+        responsible: r[idx("responsible")] || "",
+        updatedAt:   r[idx("updatedAt")]   || "",
+        url:         r[idx("previewUrl")]  || "",
+        viewUrl:     r[idx("driveUrl")]    || "",
+        uploadedBy:  r[idx("uploadedBy")]  || "",
+        type: "PDF"
+      };
+    }
+    Object.assign(docOverrides, byDoc);
+    render();
+  } catch(e) { console.warn("Could not load from Sheet", e); }
+}
+
+function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy) {
+  const token = googleAccessToken;
+  const range = SHEET_NAME + "!A:G";
+  const body = { values: [[docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy]] };
+  fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }).catch(e => console.warn("Sheet write error", e));
+}
+
 // DRIVE UPLOAD
 // =====================
 function uploadToDrive(file, fileName, folderId, onProgress, onSuccess, onError) {
@@ -701,8 +748,9 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
     (pct)=>{document.getElementById("uploadProgressFill").style.width=pct+"%";document.getElementById("uploadProgressLabel").textContent=`Uploading to Google Drive... ${pct}%`;},
     (result)=>{
       const today=new Date().toISOString().split("T")[0];
-      docOverrides[currentUploadDocId]={title:name,responsible,type:"PDF",updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl};
+      docOverrides[currentUploadDocId]={title:name,responsible,type:"PDF",updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:googleUserEmail};
       saveOverrides();
+      writeToSheet(currentUploadDocId, name, responsible, today, result.viewUrl, result.previewUrl, googleUserEmail);
       closeModal("uploadModal");showToast("Saved to Google Drive successfully.");
       state.selectedDoc=currentUploadDocId;renderDocs();
       setTimeout(()=>openViewer(currentUploadDocId),300);
@@ -760,6 +808,7 @@ document.getElementById("viewerModal").addEventListener("click",(e)=>{if(e.targe
 function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";setTimeout(()=>{t.style.display="none";},3500);}
 
 render();
+loadFromSheet();
 </script>
 </body>
 </html>
