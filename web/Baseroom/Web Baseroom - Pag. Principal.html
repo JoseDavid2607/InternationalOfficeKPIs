@@ -321,7 +321,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
     <div class="col-panel">
       <div class="col-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
         <div style="flex:1;"><h3>Documents</h3><p id="docColDesc">Select a folder to view its documents</p></div>
-        <button class="doc-add-btn" id="docAddBtn" title="Add document">+</button>
+        <button class="doc-add-btn" id="docAddBtn" title="Add document" style="visibility:hidden;">+</button>
       </div>
       <div class="doc-scroll" id="docList"></div>
     </div>
@@ -356,7 +356,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
     <div class="modal-sub" id="modalSub">The file will be saved to the corresponding Google Drive folder.</div>
 
     <div class="type-toggle" id="typeToggle">
-      <button data-type="file" class="active" id="typeFileBtn">File (PDF / Image / Video)</button>
+      <button data-type="file" class="active" id="typeFileBtn">PDF File</button>
       <button data-type="dashboard" id="typeDashBtn">Dashboard / Link</button>
     </div>
 
@@ -374,8 +374,8 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       <label class="form-label">Upload file</label>
       <div class="file-drop" id="fileDrop">
         <strong>Click to browse or drag and drop</strong>
-        <p>PDF, JPG, PNG, MP4, MOV — max 200 MB</p>
-        <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,.gif,.mp4,.mov,.webm,application/pdf,image/*,video/*">
+        <p>PDF only — max 50 MB</p>
+        <input type="file" id="fileInput" accept=".pdf,application/pdf">
       </div>
     </div>
 
@@ -473,6 +473,30 @@ let googleAccessToken = sessionStorage.getItem("br_token") || null;
 let googleUserEmail   = sessionStorage.getItem("br_email") || null;
 let pendingActionAfterLogin = null;
 let sessionExpiry = parseInt(sessionStorage.getItem("br_expiry") || "0") || null;
+
+// Validate stored token on page load — OAuth tokens don't survive real reloads,
+// but sessionStorage does, so we use Google Identity Services silent refresh.
+function silentTokenRefresh() {
+  if (!googleUserEmail) return;
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
+    hint: googleUserEmail,
+    prompt: "",  // silent — no popup if possible
+    callback: (resp) => {
+      if (resp.error || !resp.access_token) {
+        // Could not silently refresh — clear stale session
+        googleAccessToken = null;
+        sessionStorage.removeItem("br_token");
+        return;
+      }
+      googleAccessToken = resp.access_token;
+      sessionStorage.setItem("br_token", googleAccessToken);
+      touchSession();
+    }
+  });
+  client.requestAccessToken();
+}
 const SESSION_MS = 10 * 60 * 1000; // 10 minutes inactivity
 
 function touchSession() {
@@ -1163,7 +1187,14 @@ function renderFolders(){
 function renderDocs(){
   const el=document.getElementById("docList");
   const desc=document.getElementById("docColDesc");
-  if(!state.selectedFolder){desc.textContent="Select a folder to view its documents";el.innerHTML=`<div class="empty-state">Click a folder to see its documents.</div>`;return;}
+  const addBtn=document.getElementById("docAddBtn");
+  if(!state.selectedFolder){
+    desc.textContent="Select a folder to view its documents";
+    el.innerHTML=`<div class="empty-state">Click a folder to see its documents.</div>`;
+    if(addBtn) addBtn.style.visibility="hidden";
+    return;
+  }
+  if(addBtn) addBtn.style.visibility="visible";
   const f=getFolders().find(f=>f.id===state.selectedFolder);
   desc.textContent=f?f.title:"";
   const docs=getDocs();el.innerHTML="";
@@ -1193,7 +1224,7 @@ function renderDocs(){
     item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type||"PDF"}</div><div class="doc-title">${doc.title} ${alertHtml}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}</div>
       <div class="doc-btn-group">
         <button class="doc-update-btn" data-id="${doc.id}">Update</button>
-        <button class="doc-delete-btn" data-id="${doc.id}" title="Delete document"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+        ${(doc.url&&doc.url!=="#")?`<button class="doc-delete-btn" data-id="${doc.id}" title="Delete document"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>`:""}
       </div></div>`;
     item.addEventListener("click",(e)=>{
       if(e.target.closest(".doc-update-btn")||e.target.closest(".doc-delete-btn")) return;
@@ -1286,8 +1317,20 @@ function openUploadModal(docId){
 function openAddModal(folderId,folderTitle){
   currentModalMode="add";
   currentFolderId=folderId;
-  currentUploadDocId="new_"+Date.now(); // temp id for new doc
+  // Generate a unique ID for the new document
+  const newDocId="added_"+state.selectedFolder+"_"+Date.now();
+  currentUploadDocId=newDocId;
+  // Register the new doc in the DATA folder so it appears in the list
+  const folder=getFolders().find(f=>f.id===state.selectedFolder);
+  if(folder){
+    folder.documents.push({
+      id:newDocId, title:"New document", type:"PDF",
+      meta:"Added via BaseRoom", responsible:"", updatedAt:null,
+      accreditations:folder.accreditations, url:"#"
+    });
+  }
   resetModal();
+  document.getElementById("docNameInput").value="";
   document.getElementById("modalTitle").textContent="Add document";
   document.getElementById("modalSub").textContent=`New document → ${folderTitle}`;
   document.getElementById("uploadModal").classList.add("open");
@@ -1349,9 +1392,7 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
   if(!currentFolderId){showToast("No Drive folder configured for this folder yet.");return;}
 
   // Determine type from mime
-  const isImage=file.type.startsWith("image/");
-  const isVideo=file.type.startsWith("video/");
-  const docType=isImage?"Image":isVideo?"Video":"PDF";
+  const docType="PDF";
 
   document.getElementById("modalSaveBtn").disabled=true;
   document.getElementById("modalSaveBtn").textContent="Uploading...";
@@ -1371,7 +1412,7 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
         fetch(`https://www.googleapis.com/drive/v3/files/${result.fileId}`,{
           method:"PATCH",
           headers:{"Authorization":"Bearer "+googleAccessToken,"Content-Type":"application/json"},
-          body:JSON.stringify({name:name+(docType==="PDF"?".pdf":docType==="Image"?".jpg":".mp4")})
+          body:JSON.stringify({name:name.endsWith(".pdf")?name:name+".pdf"})
         }).catch(e=>console.warn("Drive rename error",e));
       }
       closeModal("uploadModal");
@@ -1421,13 +1462,19 @@ document.getElementById("deleteConfirmBtn").addEventListener("click",()=>{
     }
   }
   const today=new Date().toISOString().split("T")[0];
-  // Write __DELETED__ marker to Sheet — loadFromSheet will skip it
+  // Write __DELETED__ marker to Sheet
   writeToSheet(currentDeleteDocId,"__DELETED__","","","","",googleUserEmail,"Deleted on "+today);
-  // Remove from local overrides immediately so it disappears now
+  // Remove from local overrides
   delete docOverrides[currentDeleteDocId];
+  // Remove from DATA so it disappears immediately without waiting for sheet reload
+  for(const ch of DATA.chapters){
+    for(const fo of ch.folders){
+      const idx=fo.documents.findIndex(d=>d.id===currentDeleteDocId);
+      if(idx!==-1){ fo.documents.splice(idx,1); break; }
+    }
+  }
   closeModal("deleteModal");
   showToast("Document removed from repository.");
-  // Reload sheet to make sure the delete marker is authoritative
   loadFromSheet().then(()=>{renderDocs();});
 });
 document.getElementById("deleteModal").addEventListener("click",(e)=>{if(e.target===e.currentTarget)closeModal("deleteModal");});
@@ -1442,8 +1489,6 @@ function getViewerSrc(url,type){
   if(type==="Dashboard"||type==="Link")return url;
   if(url.includes("drive.google.com/file"))return url; // Drive preview URL
   if(url.startsWith("blob:")){
-    if(type==="Image")return url;
-    if(type==="Video")return url;
     return url+"#toolbar=0&navpanes=0&scrollbar=1";
   }
   if(type==="PDF"||url.toLowerCase().endsWith(".pdf"))return url+"#toolbar=0&navpanes=0&scrollbar=1";
@@ -1471,20 +1516,6 @@ function openViewer(docId){
 
   if(!embedUrl){
     frame.src="";frame.style.display="none";noUrl.style.display="flex";ext.style.display="none";
-  } else if(doc.type==="Image"){
-    frame.src="";frame.style.display="none";noUrl.style.display="none";ext.style.display="none";
-    const img=document.createElement("img");
-    img.id="viewerInlineMedia";
-    img.src=embedUrl;
-    img.style.cssText="flex:1;width:100%;height:100%;object-fit:contain;background:#111;";
-    document.querySelector(".viewer-box").appendChild(img);
-  } else if(doc.type==="Video"){
-    frame.src="";frame.style.display="none";noUrl.style.display="none";ext.style.display="none";
-    const vid=document.createElement("video");
-    vid.id="viewerInlineMedia";
-    vid.src=embedUrl;vid.controls=true;vid.autoplay=false;
-    vid.style.cssText="flex:1;width:100%;height:100%;background:#111;";
-    document.querySelector(".viewer-box").appendChild(vid);
   } else {
     frame.src=embedUrl;frame.style.display="block";noUrl.style.display="none";ext.style.display="none";
   }
@@ -1504,6 +1535,10 @@ function showToast(msg){const t=document.getElementById("toast");t.textContent=m
 
 render();
 loadFromSheet();
+// Silently refresh token if user was previously signed in
+if(googleUserEmail){
+  window.addEventListener("load", ()=>{ setTimeout(silentTokenRefresh, 1000); });
+}
 </script>
 </body>
 </html>
