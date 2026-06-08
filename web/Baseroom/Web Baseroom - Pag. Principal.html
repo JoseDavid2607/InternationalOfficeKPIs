@@ -555,7 +555,16 @@ const DATA = {
 // STATE & HELPERS
 // =====================
 let state = {activeFilter:"ALL", selectedChapter:null, selectedFolder:null, selectedDoc:null};
-const docOverrides = {};
+// docOverrides persisted in localStorage so uploads survive page reloads
+const STORAGE_KEY = "baseroom_doc_overrides";
+const docOverrides = (() => {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+  catch(e) { return {}; }
+})();
+function saveOverrides() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(docOverrides)); }
+  catch(e) { console.warn("Could not save to localStorage", e); }
+}
 
 function getChapter(id){return DATA.chapters.find(c=>c.id===id);}
 function getFolders(){const ch=getChapter(state.selectedChapter);return ch?ch.folders:[];}
@@ -693,6 +702,7 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
     (result)=>{
       const today=new Date().toISOString().split("T")[0];
       docOverrides[currentUploadDocId]={title:name,responsible,type:"PDF",updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl};
+      saveOverrides();
       closeModal("uploadModal");showToast("Saved to Google Drive successfully.");
       state.selectedDoc=currentUploadDocId;renderDocs();
       setTimeout(()=>openViewer(currentUploadDocId),300);
