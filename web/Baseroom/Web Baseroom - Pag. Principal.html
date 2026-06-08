@@ -558,11 +558,14 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
         sessionStorage.setItem("br_email", googleUserEmail);
         closeModal("loginModal");
         showToast("Signed in as " + googleUserEmail);
-        if (pendingActionAfterLogin) {
-          const action = pendingActionAfterLogin;
-          pendingActionAfterLogin = null;
-          action();
-        }
+        // Reload sheet now that we have a token (catches cases where API key failed)
+        loadFromSheet().then(() => {
+          if (pendingActionAfterLogin) {
+            const action = pendingActionAfterLogin;
+            pendingActionAfterLogin = null;
+            action();
+          }
+        });
       })
       .catch(() => { showToast("Could not verify account. Please try again."); });
     }
@@ -577,8 +580,23 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
 async function loadFromSheet() {
   try {
     const range = encodeURIComponent(SHEET_NAME + "!A:I");
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`;
-    const res = await fetch(url);
+    // Try with Bearer token first (works always when logged in),
+    // fall back to API key (works only when Sheet is public)
+    let res;
+    if (googleAccessToken) {
+      res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,
+        { headers: { Authorization: "Bearer " + googleAccessToken } }
+      );
+    } else {
+      res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
+      );
+    }
+    if (!res.ok) {
+      console.warn("Sheet load failed:", res.status, await res.text());
+      return;
+    }
     const data = await res.json();
     const rows = data.values || [];
     if (rows.length < 2) return;
@@ -1554,7 +1572,11 @@ document.getElementById("viewerModal").addEventListener("click",(e)=>{if(e.targe
 function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";setTimeout(()=>{t.style.display="none";},3500);}
 
 render();
-loadFromSheet();
+// Load sheet data on startup — if API key fails (sheet not public),
+// it will retry automatically when the user logs in
+loadFromSheet().then(() => {
+  // If session was restored from sessionStorage, sheet loaded with token — good.
+}).catch(() => {});
 // Silently refresh token if user was previously signed in
 if(googleUserEmail){
   window.addEventListener("load", ()=>{ setTimeout(silentTokenRefresh, 1000); });
