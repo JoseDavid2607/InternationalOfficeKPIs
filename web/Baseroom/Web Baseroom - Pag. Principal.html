@@ -100,8 +100,8 @@ header.hero h1 {
 .chapter-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
 
 /* Folders: crece hasta 500px, luego scroll */
-.folder-col-inner { display: flex; flex-direction: column; max-height: 500px; overflow: hidden; }
-.folder-scroll { overflow-y: auto; display: flex; flex-direction: column; }
+.folder-col-inner { display: flex; flex-direction: column; max-height: 500px; overflow-y: auto; }
+.folder-scroll { display: flex; flex-direction: column; }
 .folder-scroll::-webkit-scrollbar { width: 4px; }
 .folder-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
 
@@ -111,7 +111,7 @@ header.hero h1 {
 .doc-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
 
 /* CHAPTER ITEMS */
-.chapter-item { display: flex; align-items: flex-start; gap: 14px; padding: 16px 18px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 82px; }
+.chapter-item { display: flex; align-items: flex-start; gap: 14px; padding: 16px 18px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; }
 .chapter-item:last-child { border-bottom: none; }
 .chapter-item:hover { background: #f9fafb; }
 .chapter-item.active { background: #1f2937; }
@@ -128,7 +128,7 @@ header.hero h1 {
 .ch-desc { font-size: .77rem; color: var(--muted); line-height: 1.4; }
 
 /* FOLDER ITEMS */
-.folder-item { display: flex; flex-direction: column; gap: 5px; padding: 16px 18px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 82px; }
+.folder-item { display: flex; flex-direction: column; gap: 5px; padding: 16px 18px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; }
 .folder-item:last-child { border-bottom: none; }
 .folder-item:hover { background: #f9fafb; }
 .folder-item.active { background: #1f2937; }
@@ -150,7 +150,7 @@ header.hero h1 {
 .filter-btn[data-filter="AMBA"].active { background: #7c5cbf; border-color: #7c5cbf; }
 
 /* DOC ITEMS */
-.doc-item { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; min-height: 82px; }
+.doc-item { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; cursor: pointer; border: none; background: transparent; text-align: left; border-bottom: 1px solid var(--border); transition: background .15s; width: 100%; }
 .doc-item:last-child { border-bottom: none; }
 .doc-item:hover { background: #f9fafb; }
 .doc-item.active { background: #f0faf7; border-left: 3px solid #1d9e75; }
@@ -162,6 +162,8 @@ header.hero h1 {
 .doc-updated { font-size: .76rem; color: var(--teal); font-weight: 700; margin-top: 2px; }
 .doc-update-btn { padding: 5px 10px; border-radius: 999px; border: 1.5px solid var(--border); background: #fff; color: var(--slate-mid); font-size: .76rem; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: border-color .15s, background .15s; }
 .doc-update-btn:hover { border-color: #1f2937; background: #1f2937; color: #fff; }
+.doc-notes { font-size: .74rem; color: var(--muted); font-style: italic; margin-top: 2px; line-height: 1.4; }
+.doc-uploaded-by { font-size: .74rem; color: #9ca3af; margin-top: 1px; }
 .empty-state { padding: 32px 20px; text-align: center; color: var(--muted); line-height: 1.7; font-size: .86rem; }
 
 /* MODALS */
@@ -420,6 +422,26 @@ const DRIVE_FOLDERS = {
 let googleAccessToken = null;
 let googleUserEmail    = null;
 let pendingActionAfterLogin = null;
+let sessionExpiry = null;
+const SESSION_MS = 5 * 60 * 1000; // 5 minutes inactivity
+
+function touchSession() {
+  if (!googleAccessToken) return;
+  sessionExpiry = Date.now() + SESSION_MS;
+}
+function checkSession() {
+  if (googleAccessToken && sessionExpiry && Date.now() > sessionExpiry) {
+    googleAccessToken = null;
+    googleUserEmail   = null;
+    sessionExpiry     = null;
+    showToast("Session expired. Please sign in again.");
+  }
+}
+// Reset timer on any user interaction
+["click","keydown","mousemove","touchstart"].forEach(ev =>
+  document.addEventListener(ev, () => { if(googleAccessToken) touchSession(); }, {passive:true})
+);
+setInterval(checkSession, 15000);
 
 // =====================
 // LOGIN GATE
@@ -453,6 +475,7 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
           showToast("Access denied. Only @uniandes.edu.co accounts are allowed.");
           return;
         }
+        touchSession();
         closeModal("loginModal");
         showToast("Signed in as " + googleUserEmail);
         if (pendingActionAfterLogin) {
@@ -473,7 +496,7 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
 // =====================
 async function loadFromSheet() {
   try {
-    const range = encodeURIComponent(SHEET_NAME + "!A:G");
+    const range = encodeURIComponent(SHEET_NAME + "!A:H");
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`;
     const res = await fetch(url);
     const data = await res.json();
@@ -494,18 +517,21 @@ async function loadFromSheet() {
         url:         r[idx("previewUrl")]  || "",
         viewUrl:     r[idx("driveUrl")]    || "",
         uploadedBy:  r[idx("uploadedBy")]  || "",
+        notes:       r[idx("Notes")]       || "",
         type: "PDF"
       };
     }
+    // Clear stale overrides so deleted rows are removed
+    Object.keys(docOverrides).forEach(k => delete docOverrides[k]);
     Object.assign(docOverrides, byDoc);
     render();
   } catch(e) { console.warn("Could not load from Sheet", e); }
 }
 
-function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy) {
+function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes='') {
   const token = googleAccessToken;
-  const range = SHEET_NAME + "!A:G";
-  const body = { values: [[docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy]] };
+  const range = SHEET_NAME + "!A:H";
+  const body = { values: [[docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes]] };
   fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
     method: "POST",
     headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
@@ -602,16 +628,8 @@ const DATA = {
 // STATE & HELPERS
 // =====================
 let state = {activeFilter:"ALL", selectedChapter:null, selectedFolder:null, selectedDoc:null};
-// docOverrides persisted in localStorage so uploads survive page reloads
-const STORAGE_KEY = "baseroom_doc_overrides";
-const docOverrides = (() => {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
-  catch(e) { return {}; }
-})();
-function saveOverrides() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(docOverrides)); }
-  catch(e) { console.warn("Could not save to localStorage", e); }
-}
+// docOverrides: populated from Google Sheet on load (source of truth)
+const docOverrides = {};
 
 function getChapter(id){return DATA.chapters.find(c=>c.id===id);}
 function getFolders(){const ch=getChapter(state.selectedChapter);return ch?ch.folders:[];}
@@ -675,7 +693,9 @@ function renderDocs(){
     const item=document.createElement("div");
     item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");
     const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:"Not yet uploaded";
-    item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type}</div><div class="doc-title">${doc.title}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div></div><button class="doc-update-btn" data-id="${doc.id}">Update</button></div>`;
+    const notesHtml=doc.notes?`<div class="doc-notes">${doc.notes}</div>`:"";
+    const uploadedHtml=doc.uploadedBy?`<div class="doc-uploaded-by">Uploaded by: ${doc.uploadedBy}</div>`:"";
+    item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type}</div><div class="doc-title">${doc.title}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}</div><button class="doc-update-btn" data-id="${doc.id}">Update</button></div>`;
     item.addEventListener("click",(e)=>{
       if(e.target.classList.contains("doc-update-btn")) return;
       requireLogin(()=>{state.selectedDoc=doc.id;renderDocs();openViewer(doc.id);});
@@ -749,11 +769,12 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
     (result)=>{
       const today=new Date().toISOString().split("T")[0];
       docOverrides[currentUploadDocId]={title:name,responsible,type:"PDF",updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:googleUserEmail};
-      saveOverrides();
-      writeToSheet(currentUploadDocId, name, responsible, today, result.viewUrl, result.previewUrl, googleUserEmail);
+      const notes=document.getElementById('docNotesInput').value.trim();
+      writeToSheet(currentUploadDocId, name, responsible, today, result.viewUrl, result.previewUrl, googleUserEmail, notes);
       closeModal("uploadModal");showToast("Saved to Google Drive successfully.");
-      state.selectedDoc=currentUploadDocId;renderDocs();
-      setTimeout(()=>openViewer(currentUploadDocId),300);
+      state.selectedDoc=currentUploadDocId;
+      // Reload sheet so the new entry is visible everywhere
+      loadFromSheet().then(()=>{ renderDocs(); setTimeout(()=>openViewer(currentUploadDocId),300); });
     },
     (err)=>{showToast("Error: "+err);document.getElementById("modalSaveBtn").disabled=false;document.getElementById("modalSaveBtn").textContent="Save to Drive";}
   );
