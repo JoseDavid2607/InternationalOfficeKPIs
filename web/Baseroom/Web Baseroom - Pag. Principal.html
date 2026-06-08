@@ -176,6 +176,10 @@ header.hero h1 {
 .doc-notes { font-size: .74rem; color: var(--muted); font-style: italic; margin-top: 2px; line-height: 1.4; }
 .doc-uploaded-by { font-size: .74rem; color: #9ca3af; margin-top: 1px; }
 .empty-state { padding: 32px 20px; text-align: center; color: var(--muted); line-height: 1.7; font-size: .86rem; }
+.period-alert { display:inline-block; padding:2px 7px; border-radius:999px; font-size:.7rem; font-weight:800; margin-left:4px; vertical-align:middle; }
+.period-alert--red { background:#fee2e2; color:#dc2626; }
+.period-alert--yellow { background:#fef9c3; color:#92400e; }
+.period-alert--grey { background:#f3f4f6; color:#9ca3af; }
 
 /* MODALS */
 .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000; align-items: center; justify-content: center; }
@@ -464,21 +468,26 @@ const DRIVE_FOLDERS = {
   "f1-6": "1ygBhTnCIOfx3DIQ-eV3XZ67ahVlnBEro"
 };
 
-let googleAccessToken = null;
-let googleUserEmail    = null;
+// Restore session from sessionStorage (survives page refresh, not tab close)
+let googleAccessToken = sessionStorage.getItem("br_token") || null;
+let googleUserEmail   = sessionStorage.getItem("br_email") || null;
 let pendingActionAfterLogin = null;
-let sessionExpiry = null;
+let sessionExpiry = parseInt(sessionStorage.getItem("br_expiry") || "0") || null;
 const SESSION_MS = 10 * 60 * 1000; // 10 minutes inactivity
 
 function touchSession() {
   if (!googleAccessToken) return;
   sessionExpiry = Date.now() + SESSION_MS;
+  sessionStorage.setItem("br_expiry", String(sessionExpiry));
 }
 function checkSession() {
   if (googleAccessToken && sessionExpiry && Date.now() > sessionExpiry) {
     googleAccessToken = null;
     googleUserEmail   = null;
     sessionExpiry     = null;
+    sessionStorage.removeItem("br_token");
+    sessionStorage.removeItem("br_email");
+    sessionStorage.removeItem("br_expiry");
     showToast("Session expired. Please sign in again.");
   }
 }
@@ -521,6 +530,8 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
           return;
         }
         touchSession();
+        sessionStorage.setItem("br_token", googleAccessToken);
+        sessionStorage.setItem("br_email", googleUserEmail);
         closeModal("loginModal");
         showToast("Signed in as " + googleUserEmail);
         if (pendingActionAfterLogin) {
@@ -606,7 +617,7 @@ function uploadToDrive(file, fileName, folderId, onProgress, onSuccess, onError)
       xhr2.open("POST", `https://www.googleapis.com/drive/v3/files/${data.id}/permissions`);
       xhr2.setRequestHeader("Authorization", "Bearer " + token);
       xhr2.setRequestHeader("Content-Type", "application/json");
-      xhr2.onload = () => onSuccess({ fileId: data.id, previewUrl: `https://drive.google.com/file/d/${data.id}/preview`, viewUrl: `https://drive.google.com/file/d/${data.id}/view`, name: data.name });
+      xhr2.onload = () => onSuccess({ fileId: data.id, previewUrl: `https://drive.google.com/file/d/${data.id}/preview`, viewUrl: `https://drive.google.com/file/d/${data.id}/view`, name: data.name, originalName: fileName });
       xhr2.send(JSON.stringify({ role: "reader", type: "anyone" }));
     } else { onError("Upload failed: " + xhr.statusText); }
   };
@@ -621,54 +632,475 @@ const DATA = {
   chapters: [
     {
       id:"ch1", badge:"Chapter 1", title:"Context, Governance & Strategy",
-      desc:"Strategic context, governance, mission and leadership.",
+      desc:"Strategic context, governance frameworks, mission, leadership and institutional planning.",
       folders:[
-        { id:"f1-1", badge:"Folder 1", title:"Strategic plans and related policy documents", accreditations:["AACSB","EQUIS"],
-          sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
+        { id:"f1-1", badge:"Folder 1", title:"Strategic Plans & Policies",
+          desc:"School and university strategic plans and related policy documents (English).",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
           documents:[
-            {id:"d1",title:"UASM Strategic Plan 2021–2025",type:"PDF",meta:"Main institutional strategy document",responsible:"International Office",updatedAt:"2024-11-12",accreditations:["AACSB","EQUIS"],url:"../../../baseroom/UASM Strategic Plan 2021 - 2025.pdf"},
-            {id:"d2",title:"Faculty Composition Dashboard",type:"Dashboard",meta:"Interactive faculty composition data",responsible:"International Office",updatedAt:"2024-09-03",accreditations:["AACSB","EQUIS"],url:"https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/?embed=true"},
-            {id:"d3",title:"Uniandes Strategic Development Plan 2021–2025",type:"PDF",meta:"Current strategic cycle",responsible:"International Office",updatedAt:"2024-11-12",accreditations:["AACSB","EQUIS"],url:"../../../baseroom/2. Uniandes Strategic Development Plan 2021- 2025.pdf"}
+            {id:"d1-1",title:"UASM Strategic Plan 2021–2025",type:"PDF",meta:"Main school strategy document",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d1-2",title:"PDI Uniandes 2016–2020",type:"PDF",meta:"Previous university strategic cycle",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d1-3",title:"PDI Uniandes 2021–2025",type:"PDF",meta:"Current university strategic cycle",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}
           ]
         },
-        { id:"f1-2", badge:"Folder 2", title:"Governing body and advisory board members", accreditations:["EQUIS"],
-          sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
+        { id:"f1-2", badge:"Folder 2", title:"Governing Body & Advisory Board",
+          desc:"Members of the school's governing body and advisory boards with name, position, organisation, nationality and year of appointment.",
+          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
           documents:[
-            {id:"d4",title:"Executive Committee",type:"PDF",meta:"Executive governance membership",responsible:"Secretaría General",updatedAt:"2024-10-05",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/3.%20Uniandes%20and%20UASM%20Boards%20and%20Committees/2.%20Uniandes%20Executive%20Committee/Executive%20Committee.pdf?csf=1&web=1&e=RlR2vo"},
-            {id:"d5",title:"Academic Council",type:"PDF",meta:"Academic governance membership",responsible:"Secretaría General",updatedAt:"2024-10-05",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/3.%20Uniandes%20and%20UASM%20Boards%20and%20Committees/3.%20Uniandes%20Academic%20Council/Academic%20Council.pdf?csf=1&web=1&e=SCy0e4"},
-            {id:"d6",title:"International Advisory Board",type:"PDF",meta:"International advisory composition",responsible:"International Office",updatedAt:"2025-01-15",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/3.%20Uniandes%20and%20UASM%20Boards%20and%20Committees/4.%20UASM%20International%20Advisory%20Board/International%20Advisory%20Board.pdf?csf=1&web=1&e=1q7K2T"},
-            {id:"d7",title:"UASM Committee Structure",type:"PDF",meta:"Full committee structure overview",responsible:"Secretaría General",updatedAt:"2024-08-22",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/3.%20Uniandes%20and%20UASM%20Boards%20and%20Committees/5.%20UASM%27s%20Committees/UASM%20Committee%20structure.pdf?csf=1&web=1&e=Hp7fQX"}
+            {id:"d1-4",title:"Board of Trustees",type:"Dashboard",meta:"Governing body membership",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d1-5",title:"Executive Committee",type:"Dashboard",meta:"Executive governance membership",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d1-6",title:"Academic Council",type:"Dashboard",meta:"Academic governance membership",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d1-7",title:"International Advisory Board",type:"Dashboard",meta:"International advisory composition",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d1-8",title:"UASM Committee Structure",type:"Dashboard",meta:"Full committee overview",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
           ]
         },
-        { id:"f1-3", badge:"Folder 3", title:"Cyber security policy", accreditations:["EQUIS"],
-          sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
-          documents:[{id:"d8",title:"Uniandes Cyber Security Policy",type:"PDF",meta:"Official institutional policy",responsible:"IT Office",updatedAt:"2024-06-10",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/4.%20Uniandes%20Cyber%20security%20Policy/Uniandes%20Cyber%20security%20Policy.pdf?csf=1&web=1&e=X6Gcr9"}]
-        },
-        { id:"f1-4", badge:"Folder 4", title:"Risk register", accreditations:["EQUIS"],
-          sharepointUrl:"https://uniandes.sharepoint.com/:f:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy?csf=1&web=1&e=tWZtbi",
-          documents:[{id:"d9",title:"UASM Risk Register",type:"PDF",meta:"Current institutional risk register",responsible:"Risk & Compliance Office",updatedAt:"2025-02-28",accreditations:["EQUIS"],url:"https://uniandes.sharepoint.com/:b:/r/sites/UASMOnlineDocumentRepository-EQUIS2/Shared%20Documents/Online%20Document%20Repository/1.%20Context,%20Governance%20and%20Strategy/5.%20UASM%20Risk%20Register/UASM%20Risk%20Register.pdf?csf=1&web=1&e=LfxfNt"}]
-        },
-        { id:"f1-5", badge:"Folder 5", title:"Strategic plan — Ximena Rueda", accreditations:["AACSB"], sharepointUrl:"#",
-          documents:[{id:"d10",title:"Strategic Plan — Ximena Rueda",type:"PDF",meta:"Supporting strategic document",responsible:"Dean's Office",updatedAt:null,accreditations:["AACSB"],url:"#"}]
-        },
-        { id:"f1-6", badge:"Folder 6", title:"Annual reports", accreditations:["AACSB"], sharepointUrl:"#",
+        { id:"f1-3", badge:"Folder 3", title:"Cyber Security Policy",
+          desc:"Official institutional cyber security policy.",
+          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
           documents:[
-            {id:"d11",title:"Annual Report 2024",type:"PDF",meta:"Institutional annual report",responsible:"Dean's Office",updatedAt:null,accreditations:["AACSB"],url:"#"},
-            {id:"d12",title:"Annual Report 2023",type:"PDF",meta:"Institutional annual report",responsible:"Dean's Office",updatedAt:null,accreditations:["AACSB"],url:"#"}
+            {id:"d1-9",title:"Uniandes Cyber Security Policy",type:"PDF",meta:"Official institutional policy",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f1-4", badge:"Folder 4", title:"Risk Register",
+          desc:"Institutional risk tracking, mitigation planning and oversight documentation.",
+          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d1-10",title:"UASM Risk Register",type:"PDF",meta:"Current institutional risk register",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f1-5", badge:"Folder 5", title:"Strategic Plan — Ximena Rueda",
+          desc:"Strategic planning files associated with Dean Ximena Rueda.",
+          accreditations:["AACSB"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d1-11",title:"Strategic Plan — Ximena Rueda",type:"PDF",meta:"Dean's strategic document",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"#"}
+          ]
+        },
+        { id:"f1-6", badge:"Folder 6", title:"Annual Reports",
+          desc:"Institutional annual reports and progress summaries.",
+          accreditations:["AACSB"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d1-12",title:"Annual Report 2024",type:"PDF",meta:"Institutional annual report",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"#"},
+            {id:"d1-13",title:"Annual Report 2023",type:"PDF",meta:"Institutional annual report",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"#"}
+          ]
+        },
+        { id:"f1-7", badge:"Folder 7", title:"External Examiners' Reports",
+          desc:"Peer review reports for EQUIS, AACSB, AMBA and PRME.",
+          accreditations:["AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d1-14",title:"Peer Review Report EQUIS",type:"PDF",meta:"EQUIS peer review",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d1-15",title:"Peer Review Report AACSB",type:"PDF",meta:"AACSB peer review",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d1-16",title:"Peer Review Report AMBA",type:"PDF",meta:"AMBA peer review",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d1-17",title:"PRME Reports",type:"PDF",meta:"PRME reporting",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"}
+          ]
+        },
+        { id:"f1-8", badge:"Folder 8", title:"Committee Meeting Minutes",
+          desc:"Minutes of strategic planning, faculty, programme, student-staff and advisory board meetings (last 3 years).",
+          accreditations:["AMBA"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          documents:[
+            {id:"d1-18",title:"School & Programme Committee Minutes",type:"PDF",meta:"Strategic & programme level minutes",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d1-19",title:"Actas Consejo de Facultad",type:"PDF",meta:"Faculty council minutes",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d1-20",title:"Actas Consejo Superior",type:"PDF",meta:"Superior council minutes",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d1-21",title:"Acta Creación OMBA",type:"PDF",meta:"OMBA creation minutes",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"}
           ]
         }
       ]
     },
-    {id:"ch2",badge:"Chapter 2",title:"Programmes",desc:"Programme architecture, learning design and academic delivery.",folders:[{id:"f2-1",badge:"Folder 1",title:"Programme catalogue and structures",accreditations:["AACSB","EQUIS","AMBA"],sharepointUrl:"#",documents:[{id:"d20",title:"Programme Catalogue 2024–2025",type:"PDF",meta:"Full list of programmes",responsible:"Academic Office",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}]},{id:"f2-2",badge:"Folder 2",title:"Learning outcomes and assurance of learning",accreditations:["AACSB","EQUIS"],sharepointUrl:"#",documents:[{id:"d21",title:"Assurance of Learning Report",type:"PDF",meta:"AoL evidence",responsible:"Academic Quality",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}]}]},
-    {id:"ch2b",badge:"Selected Programme",title:"Selected Programme 2.7",desc:"Specific evidence for selected programme section 2.7.",folders:[{id:"f2b-1",badge:"Folder 1",title:"Programme 2.7 — Core evidence",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d30",title:"Programme 2.7 Documentation",type:"PDF",meta:"Core programme evidence",responsible:"Academic Office",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]},
-    {id:"ch3",badge:"Chapter 3",title:"Students",desc:"Student profile, admissions, progression and support.",folders:[{id:"f3-1",badge:"Folder 1",title:"Admissions data and student profile",accreditations:["AACSB","EQUIS","AMBA"],sharepointUrl:"#",documents:[{id:"d40",title:"Admissions Report 2024",type:"PDF",meta:"Student intake data",responsible:"Admissions Office",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}]},{id:"f3-2",badge:"Folder 2",title:"Progression and completion rates",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d41",title:"Progression Rates 2024",type:"PDF",meta:"Completion and dropout analysis",responsible:"Registrar",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]},
-    {id:"ch4",badge:"Chapter 4",title:"Faculty",desc:"Faculty deployment, qualifications and research engagement.",folders:[{id:"f4-1",badge:"Folder 1",title:"Faculty qualification records",accreditations:["AACSB","EQUIS","AMBA"],sharepointUrl:"#",documents:[{id:"d50",title:"Faculty Qualifications Summary",type:"PDF",meta:"Aggregated qualification evidence",responsible:"HR Office",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}]}]},
-    {id:"ch5",badge:"Chapter 5",title:"Research",desc:"Research strategy, academic production and institutional support.",folders:[{id:"f5-1",badge:"Folder 1",title:"Research strategy and policy",accreditations:["AACSB","EQUIS"],sharepointUrl:"#",documents:[{id:"d60",title:"UASM Research Strategy",type:"PDF",meta:"Current research strategy",responsible:"Research Office",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}]}]},
-    {id:"ch6",badge:"Chapter 6",title:"Executive Education",desc:"Executive education portfolio and quality assurance.",folders:[{id:"f6-1",badge:"Folder 1",title:"Executive programmes portfolio",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d70",title:"Exec Ed Programme List",type:"PDF",meta:"Full executive education portfolio",responsible:"Exec Ed Office",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]},
-    {id:"ch7",badge:"Chapter 7",title:"Resources & Administration",desc:"Financial resources, infrastructure and operational capacity.",folders:[{id:"f7-1",badge:"Folder 1",title:"Financial statements",accreditations:["AACSB","EQUIS"],sharepointUrl:"#",documents:[{id:"d80",title:"Financial Statements 2023",type:"PDF",meta:"Audited financial statements",responsible:"Finance Office",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}]}]},
-    {id:"ch8",badge:"Chapter 8",title:"Internationalisation",desc:"International strategy, mobility, partnerships and global engagement.",folders:[{id:"f8-1",badge:"Folder 1",title:"International partnerships and MoUs",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d90",title:"MoU Portfolio 2024",type:"PDF",meta:"Active agreements and MoUs",responsible:"International Office",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]},
-    {id:"ch9",badge:"Chapter 9",title:"ERS — Ethics, Responsibility & Sustainability",desc:"Ethics, responsibility, sustainability policies and impact evidence.",folders:[{id:"f9-1",badge:"Folder 1",title:"ERS strategy and policies",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d100",title:"ERS Policy Document",type:"PDF",meta:"Institutional ERS framework",responsible:"ERS Office",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]},
-    {id:"ch10",badge:"Chapter 10",title:"Connections with Practice",desc:"Corporate relations, partnerships and business-facing activities.",folders:[{id:"f10-1",badge:"Folder 1",title:"Corporate partnerships and events",accreditations:["EQUIS"],sharepointUrl:"#",documents:[{id:"d110",title:"Corporate Engagement Report 2024",type:"PDF",meta:"Annual connections with practice",responsible:"Corporate Relations",updatedAt:null,accreditations:["EQUIS"],url:"#"}]}]}
+    {
+      id:"ch2", badge:"Chapter 2", title:"Programmes",
+      desc:"Programme architecture, learning design, academic delivery, structure and quality support materials.",
+      folders:[
+        { id:"f2-1", badge:"Folder 1", title:"Learning & Teaching Strategy",
+          desc:"Formal documents on learning and teaching strategy, performance appraisal and general guidelines.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d2-1",title:"Faculty Performance Appraisal System",type:"PDF",meta:"Faculty evaluation framework",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d2-2",title:"Assurance of Learning Processes",type:"PDF",meta:"AoL process documentation",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"#"},
+            {id:"d2-3",title:"Learning & Teaching General Guidelines 2022",type:"PDF",meta:"General pedagogical guidelines",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d2-4",title:"Teaching Strategy",type:"PDF",meta:"Teaching & learning strategy document",responsible:"",updatedAt:null,accreditations:["AACSB","AMBA"],url:"#"}
+          ]
+        },
+        { id:"f2-2", badge:"Folder 2", title:"List of Programmes",
+          desc:"Programme catalogue, curriculum structures, course descriptions and intended learning outcomes.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          documents:[
+            {id:"d2-5",title:"UASM Programme Catalogue",type:"Dashboard",meta:"Full list of programmes",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d2-6",title:"Curriculum Structure",type:"Dashboard",meta:"Programme curriculum structures",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d2-7",title:"Course Descriptions",type:"Dashboard",meta:"Individual course descriptions",responsible:"",updatedAt:null,accreditations:["AACSB","AMBA"],url:"#"},
+            {id:"d2-8",title:"Programme Aims, Objectives & ILOs",type:"Dashboard",meta:"Intended learning outcomes",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f2-3", badge:"Folder 3", title:"Assessment & Grading System",
+          desc:"Grading system descriptions, AoL reports and quality assurance of learning documentation.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d2-9",title:"Uniandes General Grading System",type:"PDF",meta:"Institutional grading framework",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d2-10",title:"ILO Reports — Assurance of Learning",type:"PDF",meta:"AoL results per programme",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d2-11",title:"UASM Centre for Assurance of Learning (CASA)",type:"PDF",meta:"CASA documentation",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f2-4", badge:"Folder 4", title:"Teaching Evaluations",
+          desc:"Student teaching evaluation questionnaires, methodology and results per programme.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d2-12",title:"Teaching Evaluation Objectives & Methodology",type:"Dashboard",meta:"Evaluation framework",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d2-13",title:"Student Questionnaires 2018–2022",type:"Dashboard",meta:"Completed student questionnaires",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d2-14",title:"Teaching Evaluation Results by Programme",type:"Dashboard",meta:"Results per programme 2018–2022",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f2-5", badge:"Folder 5", title:"Programme Reviews",
+          desc:"Regular programme review reports and national accreditation documentation.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d2-15",title:"CNA National Accreditation Report",type:"PDF",meta:"National accreditation report",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d2-16",title:"CNA Accreditation Resolution",type:"PDF",meta:"National accreditation resolution",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d2-17",title:"Programme Reforms Documents",type:"PDF",meta:"MBA & EMBA reform documentation",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}
+          ]
+        },
+        { id:"f2-6", badge:"Folder 6", title:"Academic Regulations & Ethics",
+          desc:"Codes of ethical conduct and academic regulations for all programme levels.",
+          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d2-18",title:"Undergraduate Academic Regulations",type:"PDF",meta:"General undergraduate regulations",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2-19",title:"Master's Academic Regulations",type:"PDF",meta:"General master's regulations",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2-20",title:"PhD Academic Regulations",type:"PDF",meta:"Doctoral programme regulations",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2-21",title:"Specialisation Academic Regulations",type:"PDF",meta:"Specialisation regulations",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f2-7", badge:"Folder 7", title:"Student Evaluations (AMBA)",
+          desc:"Student examination papers, marked coursework and project evidences for MBA programmes.",
+          accreditations:["AMBA"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d2-22",title:"Marked Coursework Samples",type:"PDF",meta:"Student work corrections",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d2-23",title:"Student Examination Papers",type:"PDF",meta:"High, low and average grade samples",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d2-24",title:"Individual & Group Projects",type:"PDF",meta:"Project evidences across MBA programmes",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"}
+          ]
+        }
+      ]
+    },
+    {
+      id:"ch2b", badge:"Selected Programme", title:"Selected Programme 2.7",
+      desc:"Specific evidence and detailed documentation for the selected programme (Master in Finance).",
+      folders:[
+        { id:"f2b-1", badge:"Folder 1", title:"Programme Structure — Master in Finance",
+          desc:"Study plan, objectives, ILOs, rationale, assessment methods and national quality assurance.",
+          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d2b-1",title:"MF Study Plan",type:"PDF",meta:"Master in Finance study plan",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2b-2",title:"MF Programme Objectives & ILOs",type:"PDF",meta:"Intended learning outcomes",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2b-3",title:"MF Programme Structure Rationale",type:"PDF",meta:"Rationale for curriculum structure",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2b-4",title:"MF AoL Methods & Evaluation",type:"PDF",meta:"Measuring and evaluating results",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2b-5",title:"MF National Quality Assurance",type:"PDF",meta:"National quality processes",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2b-6",title:"MF Component Courses List",type:"PDF",meta:"Full list of MF courses",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2b-7",title:"MF Syllabus",type:"PDF",meta:"Course syllabi",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2b-8",title:"MF Rubrics (4 competencies)",type:"PDF",meta:"Evaluation rubrics",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f2b-2", badge:"Folder 2", title:"Assessment & Grading — MF",
+          desc:"Grading system and AoL documentation for the Selected Programme.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d2b-9",title:"General Grading System",type:"PDF",meta:"Uniandes grading framework",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f2b-3", badge:"Folder 3", title:"Teaching Materials — MF",
+          desc:"Course evidences, online materials and Bloque Neón access for Master in Finance.",
+          accreditations:["EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d2b-10",title:"Six Courses Evidences MF 2022",type:"PDF",meta:"Course teaching evidence",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2b-11",title:"How to Navigate Bloque Neón",type:"PDF",meta:"LMS access guide",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d2b-12",title:"Distance / Blended Learning Materials",type:"PDF",meta:"OMBA online materials",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"}
+          ]
+        },
+        { id:"f2b-4", badge:"Folder 4", title:"Teaching Evaluations — MF",
+          desc:"Summary of student teaching evaluations for the Master in Finance 2018–2022.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d2b-13",title:"Teaching Evaluation MF 2018–2022",type:"Dashboard",meta:"Student evaluation results",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f2b-5", badge:"Folder 5", title:"Final Dissertations — MF",
+          desc:"Sample of 12 graded final dissertations with highest, lowest and mid-level marks.",
+          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d2b-14",title:"Final Dissertations Sample",type:"PDF",meta:"12 graded dissertations",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        }
+      ]
+    },
+    {
+      id:"ch3", badge:"Chapter 3", title:"Students",
+      desc:"Student profile, admissions, progression, support services, outcomes and student experience evidence.",
+      folders:[
+        { id:"f3-1", badge:"Folder 1", title:"Admission Policies & Student Handbook",
+          desc:"Admission policies, student handbooks and general student information packs.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d3-1",title:"Student Handbook & Admission Policies",type:"PDF",meta:"General student information and admission policies",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}
+          ]
+        },
+        { id:"f3-2", badge:"Folder 2", title:"Selection Process Documentation",
+          desc:"Application forms, interview reports, admission statistics and selection criteria.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          documents:[
+            {id:"d3-2",title:"Undergraduate Programme Guide",type:"Dashboard",meta:"UG programme information",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d3-3",title:"Graduate Programmes Guide",type:"Dashboard",meta:"Graduate programme information",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d3-4",title:"Application Forms & Admission Statistics",type:"Dashboard",meta:"Step-by-step application forms and stats",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d3-5",title:"Interview & Selection Formats",type:"Dashboard",meta:"Interview guides and selection formats",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}
+          ]
+        },
+        { id:"f3-3", badge:"Folder 3", title:"International Student Orientation",
+          desc:"Documents for incoming international students including handbooks, fact sheets and calendars.",
+          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d3-6",title:"Application Form for International Students",type:"PDF",meta:"Incoming international student form",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d3-7",title:"International Student Handbook",type:"PDF",meta:"Handbook for exchange students",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d3-8",title:"Uniandes Fact Sheet (Mobility)",type:"PDF",meta:"Institutional mobility fact sheet",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d3-9",title:"Academic Calendar",type:"PDF",meta:"Academic calendar",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f3-4", badge:"Folder 4", title:"Alumni Association & Career Services",
+          desc:"Alumni association activities, directory, placement records and career development services.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          documents:[
+            {id:"d3-10",title:"Alumni Office Strategy",type:"Dashboard",meta:"Alumni and professional development strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d3-11",title:"Alumni Directory & Placement",type:"Dashboard",meta:"Alumni directory and placement data",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d3-12",title:"KPIs Alumni & Career Services",type:"Dashboard",meta:"Career service indicators",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}
+          ]
+        },
+        { id:"f3-5", badge:"Folder 5", title:"Student Profile Table",
+          desc:"Cohort profile tables including demographics, gender, international percentage and professional experience.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          documents:[
+            {id:"d3-13",title:"Student Profile Table 2018–2022",type:"Dashboard",meta:"Cohort profile by programme",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
+          ]
+        }
+      ]
+    },
+    {
+      id:"ch4", badge:"Chapter 4", title:"Faculty",
+      desc:"Faculty deployment, qualifications, research engagement, development and staffing evidence.",
+      folders:[
+        { id:"f4-1", badge:"Folder 1", title:"Faculty Management Strategy",
+          desc:"Strategic plans for faculty hiring, development, promotion and deployment.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d4-1",title:"GHDO Strategy",type:"PDF",meta:"Human development and organisation strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d4-2",title:"Recruitment Strategy 2019–2024",type:"PDF",meta:"Faculty recruitment strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d4-3",title:"Full Recruitment Report 2015–2022",type:"PDF",meta:"Comprehensive recruitment report",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d4-4",title:"Faculty Hiring & Induction Handbook",type:"PDF",meta:"Hiring and induction procedures",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d4-5",title:"Faculty Ranking, Appointments & Promotions",type:"PDF",meta:"Promotion criteria and processes",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f4-2", badge:"Folder 2", title:"Faculty Handbook & Bylaws",
+          desc:"Missions, rights, responsibilities and bylaws for all faculty members.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d4-6",title:"Uniandes Faculty Handbook",type:"PDF",meta:"Full faculty handbook",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d4-7",title:"UASM Faculty Bylaws",type:"PDF",meta:"School faculty bylaws",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d4-8",title:"SA, PA, SP & IP Definition File",type:"PDF",meta:"Faculty category definitions (AACSB)",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"#"}
+          ]
+        },
+        { id:"f4-3", badge:"Folder 3", title:"Faculty CVs",
+          desc:"Curriculum vitae for all core and part-time faculty members in English.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          documents:[
+            {id:"d4-9",title:"Core Faculty CVs",type:"Dashboard",meta:"CVs of full-time faculty",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d4-10",title:"Part-time Faculty CVs",type:"Dashboard",meta:"CVs of part-time faculty",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d4-11",title:"Job Descriptions — MBA Academic & Executive Director",type:"PDF",meta:"Director job descriptions (English)",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"}
+          ]
+        }
+      ]
+    },
+    {
+      id:"ch5", badge:"Chapter 5", title:"Research",
+      desc:"Research strategy, academic production, impact, projects and institutional research support evidence.",
+      folders:[
+        { id:"f5-1", badge:"Folder 1", title:"Research Publications",
+          desc:"Examples of published materials including articles, books, case studies, conference proceedings and scholarly articles.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          documents:[
+            {id:"d5-1",title:"Research & Publications Table",type:"Dashboard",meta:"Comprehensive publications dashboard",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}
+          ]
+        },
+        { id:"f5-2", badge:"Folder 2", title:"Research Strategy & Policy",
+          desc:"Documents regarding research strategy, policy and governance processes.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d5-2",title:"Research Strategic Plan",type:"PDF",meta:"Institutional research strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d5-3",title:"Research Policy",type:"PDF",meta:"Research policy document",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d5-4",title:"Recognition for Excellence in Research",type:"PDF",meta:"Research excellence regulations",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}
+          ]
+        },
+        { id:"f5-3", badge:"Folder 3", title:"Research Centres",
+          desc:"Summary examples of work from research centres and collaborative projects.",
+          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d5-5",title:"Centre for Corporate Governance Studies",type:"PDF",meta:"Research centre summary",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d5-6",title:"CODS — Sustainable Development Goals",type:"PDF",meta:"SDGs research centre",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d5-7",title:"Regional Centre for Sustainable Finance",type:"PDF",meta:"Sustainable finance centre",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d5-8",title:"UASM Research Committee Membership",type:"PDF",meta:"Research committee members",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        }
+      ]
+    },
+    {
+      id:"ch6", badge:"Chapter 6", title:"Executive Education",
+      desc:"Executive education portfolio, participant reach, programme management and quality assurance materials.",
+      folders:[
+        { id:"f6-1", badge:"Folder 1", title:"ExEd Strategy & Policies",
+          desc:"Strategy, policy and process documents for executive education.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d6-1",title:"ExEd Strategy 2021–2025",type:"PDF",meta:"Executive education strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d6-2",title:"ExEd Policies",type:"PDF",meta:"Executive education policies",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d6-3",title:"ExEd Processes (Flow Diagrams)",type:"PDF",meta:"Process flow diagrams",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f6-2", badge:"Folder 2", title:"Programmes on Offer",
+          desc:"Programme brochures, catalogues and syllabi for customised and open courses.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d6-4",title:"ExEd Programme Brochures",type:"PDF",meta:"Programme brochures",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d6-5",title:"Open Courses Catalogue",type:"Dashboard",meta:"Public open courses offered",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d6-6",title:"Customised Programmes Portfolio",type:"Dashboard",meta:"Tailored programme portfolio",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d6-7",title:"Customised Programme Syllabi",type:"PDF",meta:"Example syllabi",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        }
+      ]
+    },
+    {
+      id:"ch7", badge:"Chapter 7", title:"Resources & Administration",
+      desc:"Financial resources, administrative support, staffing, infrastructure and operational capacity evidence.",
+      folders:[
+        { id:"f7-1", badge:"Folder 1", title:"HR Strategy & Staff Management",
+          desc:"Strategy and policies for management and development of faculty and professional staff.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d7-1",title:"Uniandes HR Management Strategy",type:"PDF",meta:"Human resources management strategy",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d7-2",title:"Administrative Staff Distribution",type:"Dashboard",meta:"Staff deployment overview",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"#"},
+            {id:"d7-3",title:"Labour Regulations & Policies",type:"PDF",meta:"Uniandes labour regulations",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f7-2", badge:"Folder 2", title:"Risk Management Guidelines",
+          desc:"School risk management guidelines, strategic risks and mitigation actions.",
+          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d7-4",title:"UASM Main Strategic Risks",type:"PDF",meta:"Key institutional risks",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d7-5",title:"Risk Management Process 2021–2022",type:"PDF",meta:"Risk management process",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d7-6",title:"Actions to Mitigate Risks",type:"PDF",meta:"Risk mitigation actions",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f7-3", badge:"Folder 3", title:"Marketing Strategy",
+          desc:"Marketing plans, materials and activities for all programmes.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d7-7",title:"UASM Strategic Marketing Plan",type:"PDF",meta:"Overall marketing strategy",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d7-8",title:"Faculty Budget",type:"Dashboard",meta:"Faculty financial planning",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"#"},
+            {id:"d7-9",title:"Marketing Materials (Flyers)",type:"PDF",meta:"Programme marketing materials",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d7-10",title:"MBA Marketing & Communication Plan",type:"PDF",meta:"MBA-specific marketing plan",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"}
+          ]
+        }
+      ]
+    },
+    {
+      id:"ch8", badge:"Chapter 8", title:"Internationalisation",
+      desc:"International strategy, mobility, partnerships, visiting faculty and global engagement documentation.",
+      folders:[
+        { id:"f8-1", badge:"Folder 1", title:"International Strategy & Policy",
+          desc:"Internationalisation strategy and partnership policy documents.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d8-1",title:"UASM Internationalisation Strategy",type:"Dashboard",meta:"International strategy dashboard",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d8-2",title:"International Partnership Strategy",type:"PDF",meta:"Partner strategy document",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d8-3",title:"Partner List",type:"Dashboard",meta:"Academic partner list",responsible:"",updatedAt:null,accreditations:["AACSB","AMBA"],url:"#"}
+          ]
+        },
+        { id:"f8-2", badge:"Folder 2", title:"Online International Programmes",
+          desc:"Documents for online programmes targeting foreign markets.",
+          accreditations:["EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d8-4",title:"Senior Executive Program in Digital Transformation",type:"PDF",meta:"Online international programme",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d8-5",title:"MRSD Programme",type:"PDF",meta:"Online programme documentation",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d8-6",title:"Online MBA Programme",type:"PDF",meta:"OMBA documentation",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"}
+          ]
+        }
+      ]
+    },
+    {
+      id:"ch9", badge:"Chapter 9", title:"ERS — Ethics, Responsibility & Sustainability",
+      desc:"Ethics, responsibility, sustainability policies, initiatives, governance and impact-related evidence.",
+      folders:[
+        { id:"f9-1", badge:"Folder 1", title:"ERS Educational Materials",
+          desc:"Syllabi, teaching materials and assessments related to ERS topics.",
+          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d9-1",title:"Bloque Neón ERS Course Access",type:"Link",meta:"Links to Glocal and EIV courses",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d9-2",title:"ERS Syllabus Examples",type:"Link",meta:"Syllabi for ERS-related courses",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f9-2", badge:"Folder 2", title:"ERS Research Outputs",
+          desc:"Published articles and research project reports related to ethics, responsibility and sustainability.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d9-3",title:"ERS Research Outcomes",type:"PDF",meta:"Societal impact research selection",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f9-3", badge:"Folder 3", title:"ERS Policies & Reports",
+          desc:"School policies, PRME reports, sustainability projects and research ethics guidelines.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d9-4",title:"PRME Report 2018",type:"PDF",meta:"Principles for Responsible Management Education",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d9-5",title:"PRME Report 2022",type:"PDF",meta:"Updated PRME report",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d9-6",title:"MDP Fieldwork Experiences",type:"PDF",meta:"Master in Development Practice fieldwork",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d9-7",title:"UASM Sustainability Projects",type:"PDF",meta:"Sustainability initiatives",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d9-8",title:"Research Ethics Guidelines",type:"PDF",meta:"Ethical behaviour in research",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
+            {id:"d9-9",title:"ERS Committee Meeting Minutes",type:"PDF",meta:"ERS committee records",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
+          ]
+        }
+      ]
+    },
+    {
+      id:"ch10", badge:"Chapter 10", title:"Connections with Practice",
+      desc:"Corporate relations, external engagement, practical impact, partnerships and business-facing activities.",
+      folders:[
+        { id:"f10-1", badge:"Folder 1", title:"Strategy & Policy",
+          desc:"Strategy and policy documents relating to the school's connections with practice.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          documents:[
+            {id:"d10-1",title:"Connections with Practice Strategy",type:"PDF",meta:"Impact and connections strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f10-2", badge:"Folder 2", title:"Evidence of Outputs",
+          desc:"Evidence of outputs from the school's major connections with practice.",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d10-2",title:"Consultancy & Research Projects",type:"PDF",meta:"List of consultancy projects and income",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
+            {id:"d10-3",title:"ExEd Partner Videos & Documents",type:"PDF",meta:"Open and customised programme evidence",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d10-4",title:"EMBA Immersion Weeks",type:"PDF",meta:"Immersion syllabi and schedules",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d10-5",title:"Consultandes",type:"PDF",meta:"Consultandes programme evidence",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d10-6",title:"R2I",type:"PDF",meta:"Research to impact activities",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f10-3", badge:"Folder 3", title:"Other Initiatives",
+          desc:"Entrepreneurship centre, research observatories, learning lab and other practice-facing projects.",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d10-7",title:"UASM Entrepreneurship Centre",type:"PDF",meta:"Entrepreneurship centre documentation",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d10-8",title:"RedEs-CAR",type:"PDF",meta:"RedEs-CAR project",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d10-9",title:"SCALA Observatory 2019",type:"PDF",meta:"SCALA final report",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
+            {id:"d10-10",title:"UASM Learning Lab",type:"PDF",meta:"Learning lab documentation",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
+          ]
+        },
+        { id:"f10-4", badge:"Folder 4", title:"MBA Industry Engagement (AMBA)",
+          desc:"How MBA students engage with industries including Retos, Consultandes and Capstone projects.",
+          accreditations:["AMBA"], sharepointUrl:"#", periodicidad:"Cada año",
+          documents:[
+            {id:"d10-11",title:"MBA Industry Involvement Document",type:"PDF",meta:"Retos and Consultandes overview",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
+            {id:"d10-12",title:"Capstone / Integrative Project Examples",type:"PDF",meta:"Course simulation and project examples",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"}
+          ]
+        }
+      ]
+    }
   ]
 };
 
@@ -741,9 +1173,24 @@ function renderDocs(){
     const item=document.createElement("div");
     item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");
     const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:"Not yet uploaded";
+    // Periodicidad alert
+    let alertHtml="";
+    const folder=getFolders().find(f=>f.id===state.selectedFolder);
+    if(folder&&folder.periodicidad&&doc.updatedAt){
+      const periodMap={"Cada semestre":180,"Cada año":365,"Cada 5 años":1825};
+      const days=periodMap[folder.periodicidad]||null;
+      if(days){
+        const diffDays=Math.floor((Date.now()-new Date(doc.updatedAt+"T00:00:00"))/86400000);
+        const pct=diffDays/days;
+        if(pct>=1) alertHtml=`<span class="period-alert period-alert--red" title="Overdue: ${folder.periodicidad}">⚠ Overdue</span>`;
+        else if(pct>=0.8) alertHtml=`<span class="period-alert period-alert--yellow" title="Due soon: ${folder.periodicidad}">⏰ Due soon</span>`;
+      }
+    } else if(!doc.updatedAt){
+      alertHtml=`<span class="period-alert period-alert--grey">Not uploaded</span>`;
+    }
     const notesHtml=doc.notes?`<div class="doc-notes">${doc.notes}</div>`:"";
     const uploadedHtml=doc.uploadedBy?`<div class="doc-uploaded-by">Uploaded by: ${doc.uploadedBy}</div>`:"";
-    item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type||"PDF"}</div><div class="doc-title">${doc.title}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}</div>
+    item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type||"PDF"}</div><div class="doc-title">${doc.title} ${alertHtml}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}</div>
       <div class="doc-btn-group">
         <button class="doc-update-btn" data-id="${doc.id}">Update</button>
         <button class="doc-delete-btn" data-id="${doc.id}" title="Delete document"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
@@ -919,6 +1366,14 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
       const today=new Date().toISOString().split("T")[0];
       docOverrides[currentUploadDocId]={title:name,responsible,type:docType,updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:googleUserEmail,notes};
       writeToSheet(currentUploadDocId,name,responsible,today,result.viewUrl,result.previewUrl,googleUserEmail,notes);
+      // Update the actual Drive file name to match the repository name
+      if(result.fileId){
+        fetch(`https://www.googleapis.com/drive/v3/files/${result.fileId}`,{
+          method:"PATCH",
+          headers:{"Authorization":"Bearer "+googleAccessToken,"Content-Type":"application/json"},
+          body:JSON.stringify({name:name+(docType==="PDF"?".pdf":docType==="Image"?".jpg":".mp4")})
+        }).catch(e=>console.warn("Drive rename error",e));
+      }
       closeModal("uploadModal");
       showToast("Saved to Google Drive successfully.");
       state.selectedDoc=currentUploadDocId;
@@ -965,13 +1420,14 @@ document.getElementById("deleteConfirmBtn").addEventListener("click",()=>{
       }).catch(e=>console.warn("Drive rename error",e));
     }
   }
-  // Write delete row to sheet with special marker
   const today=new Date().toISOString().split("T")[0];
-  writeToSheet(currentDeleteDocId,"__DELETED__","","",""  ,"",googleUserEmail,"Deleted on "+today);
-  // Remove from local overrides and re-render
+  // Write __DELETED__ marker to Sheet — loadFromSheet will skip it
+  writeToSheet(currentDeleteDocId,"__DELETED__","","","","",googleUserEmail,"Deleted on "+today);
+  // Remove from local overrides immediately so it disappears now
   delete docOverrides[currentDeleteDocId];
   closeModal("deleteModal");
   showToast("Document removed from repository.");
+  // Reload sheet to make sure the delete marker is authoritative
   loadFromSheet().then(()=>{renderDocs();});
 });
 document.getElementById("deleteModal").addEventListener("click",(e)=>{if(e.target===e.currentTarget)closeModal("deleteModal");});
