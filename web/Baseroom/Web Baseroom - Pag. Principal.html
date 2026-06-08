@@ -76,7 +76,7 @@ header.hero h1 {
 .back-button a:hover { transform: translateY(-2px); background: rgba(255,255,255,0.26); }
 .back-button svg { width: 24px; height: 24px; stroke: #fff; }
 .intro-wrap {
-  position: relative; max-width: 900px; margin: -70px auto 34px;
+  position: relative; max-width: 900px; margin: -145px auto 18px;
   z-index: 10; padding: 0 16px; display: flex; align-items: flex-start; gap: 0;
 }
 .intro-seneca { position: relative; flex-shrink: 0; width: 110px; margin-right: -18px; z-index: 13; display: flex; flex-direction: column; align-items: center; }
@@ -88,7 +88,7 @@ header.hero h1 {
 }
 .intro-panel p { margin: 0 0 10px; line-height: 1.75; }
 .intro-panel p:last-child { margin-bottom: 0; }
-.main { max-width: 1600px; margin: 0 auto 56px; padding: 0 20px; }
+.main { max-width: 1600px; margin: -10px auto 56px; padding: 0 20px; }
 .section-heading { margin: 0 0 20px; text-align: left; }
 .section-heading h2 { font-size: 1.15rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 5px; }
 .section-heading p { color: var(--muted); line-height: 1.6; font-size: .92rem; }
@@ -100,7 +100,7 @@ header.hero h1 {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 700px;
+  min-height: 700px;
 }
 .col-header { padding: 20px 20px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .col-header h3 { font-size: 1rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
@@ -538,7 +538,17 @@ function renderDocs(){const el=document.getElementById("docList");const desc=doc
 
 function render(){renderChapters();renderFolders();renderDocs();}
 
-document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn=>{btn.addEventListener("click",()=>{document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));btn.classList.add("active");state.activeFilter=btn.dataset.filter;state.selectedDoc=null;renderDocs();});});
+document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn=>{
+btn.addEventListener("click",()=>{
+document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));
+btn.classList.add("active");
+state.activeFilter=btn.dataset.filter;
+state.selectedFolder=null;
+state.selectedDoc=null;
+renderFolders();
+renderDocs();
+});
+});
 
 let currentUploadDocId=null,currentFolderId=null;
 function openUploadModal(docId){currentUploadDocId=docId;const res=getDoc(docId);if(!res)return;const{doc,folder}=res;currentFolderId=DRIVE_FOLDERS[folder.id]||null;document.getElementById("modalSub").textContent=`"${doc.title}" → ${folder.title}`;document.getElementById("docNameInput").value=doc.title||"";document.getElementById("docResponsibleInput").value=doc.responsible||"";document.getElementById("docNotesInput").value="";const fd=document.getElementById("fileDrop");fd.classList.remove("has-file");fd.querySelector("strong").textContent="Click to browse or drag and drop";fd.querySelector("p").textContent="PDF only — max 50 MB";document.getElementById("fileInput").value="";document.getElementById("uploadProgress").style.display="none";document.getElementById("uploadProgressFill").style.width="0%";document.getElementById("modalSaveBtn").disabled=false;document.getElementById("modalSaveBtn").textContent="Save to Drive";document.getElementById("uploadModal").classList.add("open");}
