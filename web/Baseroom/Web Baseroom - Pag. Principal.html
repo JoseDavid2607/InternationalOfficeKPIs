@@ -576,7 +576,7 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
 // =====================
 async function loadFromSheet() {
   try {
-    const range = encodeURIComponent(SHEET_NAME + "!A:H");
+    const range = encodeURIComponent(SHEET_NAME + "!A:I");
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`;
     const res = await fetch(url);
     const data = await res.json();
@@ -600,7 +600,7 @@ async function loadFromSheet() {
         viewUrl:     r[idx("driveUrl")]    || "",
         uploadedBy:  r[idx("uploadedBy")]  || "",
         notes:       r[idx("Notes")]       || "",
-        type: "PDF"
+        type:        r[idx("type")]        || "PDF"
       };
     }
     // Clear stale overrides so deleted rows are removed
@@ -631,10 +631,10 @@ async function loadFromSheet() {
   } catch(e) { console.warn("Could not load from Sheet", e); }
 }
 
-function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes='') {
+function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes='', type='PDF') {
   const token = googleAccessToken;
-  const range = SHEET_NAME + "!A:H";
-  const body = { values: [[docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes]] };
+  const range = SHEET_NAME + "!A:I";
+  const body = { values: [[docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes, type]] };
   fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
     method: "POST",
     headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
@@ -1245,7 +1245,7 @@ function renderDocs(){
     item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type||"PDF"}</div><div class="doc-title">${doc.title} ${alertHtml}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}</div>
       <div class="doc-btn-group">
         <button class="doc-update-btn" data-id="${doc.id}">Update</button>
-        ${(doc.url&&doc.url!=="#")?`<button class="doc-delete-btn" data-id="${doc.id}" title="Delete document"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>`:""}
+        ${(doc.url&&doc.url!=="#"&&doc.updatedAt)?`<button class="doc-delete-btn" data-id="${doc.id}" title="Delete document"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>`:""}
       </div></div>`;
     item.addEventListener("click",(e)=>{
       if(e.target.closest(".doc-update-btn")||e.target.closest(".doc-delete-btn")) return;
@@ -1255,7 +1255,8 @@ function renderDocs(){
       e.stopPropagation();
       requireLogin(()=>openUploadModal(doc.id));
     });
-    item.querySelector(".doc-delete-btn").addEventListener("click",(e)=>{
+    const delBtn=item.querySelector(".doc-delete-btn");
+    if(delBtn) delBtn.addEventListener("click",(e)=>{
       e.stopPropagation();
       requireLogin(()=>openDeleteModal(doc.id));
     });
@@ -1279,7 +1280,7 @@ document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn
 // =====================
 // UPLOAD / ADD MODAL
 // =====================
-let currentUploadDocId=null, currentFolderId=null, currentModalMode="update";
+let currentUploadDocId=null, currentFolderId=null, currentModalMode="update", currentAddFolderDataId=null;
 let uploadType="file"; // "file" or "dashboard"
 
 // Type toggle
@@ -1335,11 +1336,12 @@ function openUploadModal(docId){
   document.getElementById("uploadModal").classList.add("open");
 }
 
-function openAddModal(folderId,folderTitle){
+function openAddModal(folderId,folderTitle,folderDataId){
   currentModalMode="add";
   currentFolderId=folderId;
-  // ID generated at save time, stored here for reference
-  currentUploadDocId=null;
+  currentAddFolderDataId=folderDataId; // store the DATA folder id (e.g. "f2-1")
+  // Pre-generate the new doc ID so it's ready before save
+  currentUploadDocId="added_"+folderDataId+"_"+Date.now();
   resetModal();
   document.getElementById("docNameInput").value="";
   document.getElementById("modalTitle").textContent="Add document";
@@ -1354,7 +1356,7 @@ document.getElementById("docAddBtn").addEventListener("click",()=>{
   if(!f) return;
   const fid=DRIVE_FOLDERS[f.id]||null;
   if(!fid){showToast("No Drive folder configured for this folder yet.");return;}
-  requireLogin(()=>openAddModal(fid,f.title));
+  requireLogin(()=>openAddModal(fid,f.title,f.id));
 });
 
 // Dashboard URL live preview
@@ -1395,7 +1397,7 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
       if(folder) folder.documents.push({id:currentUploadDocId,title:name,type:"Dashboard",meta:name,responsible,updatedAt:today,accreditations:folder.accreditations,url:embedUrl});
     }
     docOverrides[currentUploadDocId]={title:name,responsible,type:"Dashboard",updatedAt:today,url:embedUrl,viewUrl:dashUrl,uploadedBy:googleUserEmail,notes};
-    writeToSheet(currentUploadDocId,name,responsible,today,dashUrl,embedUrl,googleUserEmail,notes);
+    writeToSheet(currentUploadDocId,name,responsible,today,dashUrl,embedUrl,googleUserEmail,notes,'Dashboard');
     closeModal("uploadModal");
     showToast("Dashboard saved.");
     state.selectedDoc=currentUploadDocId;
@@ -1429,13 +1431,13 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
         if(folder) folder.documents.push({id:currentUploadDocId,title:name,type:"PDF",meta:name,responsible,updatedAt:today,accreditations:folder.accreditations,url:result.previewUrl});
       }
       docOverrides[currentUploadDocId]={title:name,responsible,type:docType,updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:googleUserEmail,notes};
-      writeToSheet(currentUploadDocId,name,responsible,today,result.viewUrl,result.previewUrl,googleUserEmail,notes);
+      writeToSheet(currentUploadDocId,name,responsible,today,result.viewUrl,result.previewUrl,googleUserEmail,notes,'PDF');
       // Update the actual Drive file name to match the repository name
       if(result.fileId){
         fetch(`https://www.googleapis.com/drive/v3/files/${result.fileId}`,{
           method:"PATCH",
           headers:{"Authorization":"Bearer "+googleAccessToken,"Content-Type":"application/json"},
-          body:JSON.stringify({name:name.endsWith(".pdf")?name:name+".pdf"})
+          body:JSON.stringify({name:name.toLowerCase().endsWith(".pdf")?name:name+".pdf"})
         }).catch(e=>console.warn("Drive rename error",e));
       }
       closeModal("uploadModal");
