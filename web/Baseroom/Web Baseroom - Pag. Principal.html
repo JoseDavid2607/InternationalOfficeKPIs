@@ -9,14 +9,13 @@
   --bg-page: #f5f6f8;
   --bg-glass: rgba(255,255,255,.93);
   --bg-white: #ffffff;
+  --slate: #4b5563;
   --slate-dark: #1f2937;
   --slate-mid: #374151;
   --muted: #6b7280;
   --border: #e5e7eb;
   --teal: #0f6e56;
   --teal-light: #e1f5ee;
-  --teal-brand: #56d6c9;
-  --teal-brand-dark: #2fa89c;
   --shadow-panel: 0 20px 50px rgba(0,0,0,.16);
   --shadow-soft: 0 10px 24px rgba(0,0,0,.10);
   --radius-panel: 24px;
@@ -453,68 +452,82 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 // =====================
 // GOOGLE AUTH CONFIG
 // =====================
-// ── GOOGLE AUTH ──────────────────────────────────────────────────────────
-const CLIENT_ID   = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email";
-const DOMAIN      = "uniandes.edu.co";
-const INACTIVITY  = 10 * 60 * 1000;
+const GOOGLE_CLIENT_ID = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
+const GOOGLE_API_KEY   = "AIzaSyBnvEW4Pn8Vh_rl84q7bE8hhT-IWQ2HmKg";
+const SCOPES = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets";
+const SHEET_ID   = "161GQZ6N143RBz3Ta3ZIDuR3O5WWDud78VkjAU6mpNQw";
+const SHEET_NAME = "BR Metadata";
+const ALLOWED_DOMAIN   = "uniandes.edu.co";
 
-let gToken  = sessionStorage.getItem("br_token") || null;
-let gEmail  = sessionStorage.getItem("br_email") || null;
-let gExpiry = parseInt(sessionStorage.getItem("br_expiry")||"0")||null;
-let gRefreshTimer = null;
+const DRIVE_FOLDERS = {
+  "f1-1": "1VazMGFtWMVlDbYncFugb5kHrRJpnQCl0",
+  "f1-2": "1FcTMxSKsVO_R41U5FjIcknedCl6EVlbq",
+  "f1-3": "1dreHtrViFsz4qav866UB11lyin9xGi8Z",
+  "f1-4": "18OUUyq1NhSuM4yXhxUMzhBBk3coH6_nY",
+  "f1-5": "1Y2N4XvvaMWwMsIs1nbcDL2Dsqm-QL2Zu",
+  "f1-6": "1ygBhTnCIOfx3DIQ-eV3XZ67ahVlnBEro"
+};
 
-function isAuthed(){
-  return gToken && gEmail && gEmail.endsWith("@"+DOMAIN) && gExpiry && Date.now()<gExpiry;
-}
-function touchSession(){
-  if(!gToken) return;
-  gExpiry = Date.now()+INACTIVITY;
-  sessionStorage.setItem("br_expiry",String(gExpiry));
-}
-function clearSession(){
-  gToken=gEmail=gExpiry=null;
-  sessionStorage.removeItem("br_token");
-  sessionStorage.removeItem("br_email");
-  sessionStorage.removeItem("br_expiry");
-  if(gRefreshTimer){clearInterval(gRefreshTimer);gRefreshTimer=null;}
-}
-function silentRefresh(){
-  if(!gEmail) return;
-  try {
-    google.accounts.oauth2.initTokenClient({
-      client_id:CLIENT_ID, scope:DRIVE_SCOPE, hint:gEmail, prompt:"",
-      callback:(r)=>{
-        if(!r.error && r.access_token){
-          gToken=r.access_token;
-          sessionStorage.setItem("br_token",gToken);
-          touchSession();
-        }
+// Restore session from sessionStorage (survives page refresh, not tab close)
+let googleAccessToken = sessionStorage.getItem("br_token") || null;
+let googleUserEmail   = sessionStorage.getItem("br_email") || null;
+let pendingActionAfterLogin = null;
+let sessionExpiry = parseInt(sessionStorage.getItem("br_expiry") || "0") || null;
+
+// Validate stored token on page load — OAuth tokens don't survive real reloads,
+// but sessionStorage does, so we use Google Identity Services silent refresh.
+function silentTokenRefresh() {
+  if (!googleUserEmail) return;
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
+    hint: googleUserEmail,
+    prompt: "",  // silent — no popup if possible
+    callback: (resp) => {
+      if (resp.error || !resp.access_token) {
+        // Could not silently refresh — clear stale session
+        googleAccessToken = null;
+        sessionStorage.removeItem("br_token");
+        return;
       }
-    }).requestAccessToken();
-  } catch(e){}
+      googleAccessToken = resp.access_token;
+      sessionStorage.setItem("br_token", googleAccessToken);
+      touchSession();
+    }
+  });
+  client.requestAccessToken();
 }
-function startRefreshCycle(){
-  if(gRefreshTimer) clearInterval(gRefreshTimer);
-  gRefreshTimer = setInterval(silentRefresh, 50*60*1000); // every 50 min
-}
-setInterval(()=>{
-  if(gToken && gExpiry && Date.now()>gExpiry){ clearSession(); onSessionExpired(); }
-},15000);
-["click","keydown","mousemove","touchstart"].forEach(ev=>
-  document.addEventListener(ev,()=>{ if(gToken) touchSession(); },{passive:true})
-);
-window.addEventListener("load",()=>{
-  if(gEmail){ touchSession(); silentRefresh(); startRefreshCycle(); }
-});
+const SESSION_MS = 10 * 60 * 1000; // 10 minutes inactivity
 
-function onSessionExpired(){
-  renderDocs();
-  showToast("Session expired. Please sign in again.");
+function touchSession() {
+  if (!googleAccessToken) return;
+  sessionExpiry = Date.now() + SESSION_MS;
+  sessionStorage.setItem("br_expiry", String(sessionExpiry));
 }
-// ── LOGIN GATE ────────────────────────────────────────────────────────────
+function checkSession() {
+  if (googleAccessToken && sessionExpiry && Date.now() > sessionExpiry) {
+    googleAccessToken = null;
+    googleUserEmail   = null;
+    sessionExpiry     = null;
+    sessionStorage.removeItem("br_token");
+    sessionStorage.removeItem("br_email");
+    sessionStorage.removeItem("br_expiry");
+    showToast("Session expired. Please sign in again.");
+  }
+}
+// Reset timer on any user interaction
+["click","keydown","mousemove","touchstart"].forEach(ev =>
+  document.addEventListener(ev, () => { if(googleAccessToken) touchSession(); }, {passive:true})
+);
+setInterval(checkSession, 15000);
+
+// =====================
+// LOGIN GATE
+// =====================
 function requireLogin(action) {
-  if (isAuthed()) { action(); } else {
+  if (googleAccessToken && googleUserEmail && googleUserEmail.endsWith("@" + ALLOWED_DOMAIN)) {
+    action();
+  } else {
     pendingActionAfterLogin = action;
     document.getElementById("loginModal").classList.add("open");
   }
@@ -522,30 +535,29 @@ function requireLogin(action) {
 
 document.getElementById("loginGoogleBtn").addEventListener("click", () => {
   const tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: DRIVE_SCOPE,
+    client_id: GOOGLE_CLIENT_ID,
+    scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
     callback: (resp) => {
       if (resp.error) { showToast("Authentication error: " + resp.error); return; }
-      gToken = resp.access_token;
+      googleAccessToken = resp.access_token;
       // Get user email to validate domain
       fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: "Bearer " + gToken }
+        headers: { Authorization: "Bearer " + googleAccessToken }
       })
       .then(r => r.json())
       .then(info => {
-        gEmail = info.email || "";
-        if (!gEmail.endsWith("@" + DOMAIN)) {
-          gToken = null;
-          gEmail = null;
+        googleUserEmail = info.email || "";
+        if (!googleUserEmail.endsWith("@" + ALLOWED_DOMAIN)) {
+          googleAccessToken = null;
+          googleUserEmail = null;
           showToast("Access denied. Only @uniandes.edu.co accounts are allowed.");
           return;
         }
         touchSession();
-        startRefreshCycle();
-        sessionStorage.setItem("br_token", gToken);
-        sessionStorage.setItem("br_email", gEmail);
+        sessionStorage.setItem("br_token", googleAccessToken);
+        sessionStorage.setItem("br_email", googleUserEmail);
         closeModal("loginModal");
-        showToast("Signed in as " + gEmail);
+        showToast("Signed in as " + googleUserEmail);
         // Reload sheet now that we have a token (catches cases where API key failed)
         renderDocs();
         loadFromSheet().then(() => {
@@ -572,10 +584,10 @@ async function loadFromSheet() {
     // Try with Bearer token first (works always when logged in),
     // fall back to API key (works only when Sheet is public)
     let res;
-    if (gToken) {
+    if (googleAccessToken) {
       res = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,
-        { headers: { Authorization: "Bearer " + gToken } }
+        { headers: { Authorization: "Bearer " + googleAccessToken } }
       );
     } else {
       res = await fetch(
@@ -639,7 +651,7 @@ async function loadFromSheet() {
 }
 
 function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes='', type='PDF') {
-  const token = gToken;
+  const token = googleAccessToken;
   const range = SHEET_NAME + "!A:I";
   const body = { values: [[docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes, type]] };
   fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
@@ -652,7 +664,7 @@ function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl
 // DRIVE UPLOAD
 // =====================
 function uploadToDrive(file, fileName, folderId, onProgress, onSuccess, onError) {
-  const token = gToken;
+  const token = googleAccessToken;
   const mime = file.type || "application/octet-stream";
   const metadata = { name: file.name||fileName, mimeType: mime, parents: [folderId] };
   const form = new FormData();
@@ -1226,7 +1238,7 @@ function renderDocs(){
   const f=getFolders().find(f=>f.id===state.selectedFolder);
   desc.textContent=f?f.title:"";
   // Show login prompt if not authenticated
-  if(!gToken || !gEmail || !gEmail.endsWith("@"+DOMAIN)){
+  if(!googleAccessToken || !googleUserEmail || !googleUserEmail.endsWith("@"+ALLOWED_DOMAIN)){
     el.innerHTML=`<div class="empty-state" style="padding:40px 24px;">
       <div style="font-size:2rem;margin-bottom:12px;">🔐</div>
       <div style="font-weight:800;color:#1f2937;margin-bottom:8px;font-size:.95rem;">Sign in to view documents</div>
@@ -1416,8 +1428,8 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
       const folder=getFolders().find(fo=>fo.id===state.selectedFolder);
       if(folder) folder.documents.push({id:currentUploadDocId,title:name,type:"Dashboard",meta:name,responsible,updatedAt:today,accreditations:folder.accreditations,url:embedUrl});
     }
-    docOverrides[currentUploadDocId]={title:name,responsible,type:"Dashboard",updatedAt:today,url:embedUrl,viewUrl:dashUrl,uploadedBy:gEmail,notes};
-    writeToSheet(currentUploadDocId,name,responsible,today,dashUrl,embedUrl,gEmail,notes,'Dashboard');
+    docOverrides[currentUploadDocId]={title:name,responsible,type:"Dashboard",updatedAt:today,url:embedUrl,viewUrl:dashUrl,uploadedBy:googleUserEmail,notes};
+    writeToSheet(currentUploadDocId,name,responsible,today,dashUrl,embedUrl,googleUserEmail,notes,'Dashboard');
     closeModal("uploadModal");
     showToast("Dashboard saved.");
     state.selectedDoc=currentUploadDocId;
@@ -1450,13 +1462,13 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
         const folder=getFolders().find(fo=>fo.id===state.selectedFolder);
         if(folder) folder.documents.push({id:currentUploadDocId,title:name,type:"PDF",meta:name,responsible,updatedAt:today,accreditations:folder.accreditations,url:result.previewUrl});
       }
-      docOverrides[currentUploadDocId]={title:name,responsible,type:docType,updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:gEmail,notes};
-      writeToSheet(currentUploadDocId,name,responsible,today,result.viewUrl,result.previewUrl,gEmail,notes,'PDF');
+      docOverrides[currentUploadDocId]={title:name,responsible,type:docType,updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:googleUserEmail,notes};
+      writeToSheet(currentUploadDocId,name,responsible,today,result.viewUrl,result.previewUrl,googleUserEmail,notes,'PDF');
       // Update the actual Drive file name to match the repository name
       if(result.fileId){
         fetch(`https://www.googleapis.com/drive/v3/files/${result.fileId}`,{
           method:"PATCH",
-          headers:{"Authorization":"Bearer "+gToken,"Content-Type":"application/json"},
+          headers:{"Authorization":"Bearer "+googleAccessToken,"Content-Type":"application/json"},
           body:JSON.stringify({name:name.toLowerCase().endsWith(".pdf")?name:name+".pdf"})
         }).catch(e=>console.warn("Drive rename error",e));
       }
@@ -1501,14 +1513,14 @@ document.getElementById("deleteConfirmBtn").addEventListener("click",()=>{
       const fileId=match[1];
       fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`,{
         method:"PATCH",
-        headers:{"Authorization":"Bearer "+gToken,"Content-Type":"application/json"},
+        headers:{"Authorization":"Bearer "+googleAccessToken,"Content-Type":"application/json"},
         body:JSON.stringify({name:"ELIMINAR - "+(doc.title||"document")})
       }).catch(e=>console.warn("Drive rename error",e));
     }
   }
   const today=new Date().toISOString().split("T")[0];
   // Write __DELETED__ marker to Sheet
-  writeToSheet(currentDeleteDocId,"__DELETED__","","","","",gEmail,"Deleted on "+today);
+  writeToSheet(currentDeleteDocId,"__DELETED__","","","","",googleUserEmail,"Deleted on "+today);
   // Remove from local overrides
   delete docOverrides[currentDeleteDocId];
   // Remove from DATA so it disappears immediately without waiting for sheet reload
@@ -1574,7 +1586,15 @@ document.getElementById("viewerModal").addEventListener("click",(e)=>{if(e.targe
 function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";setTimeout(()=>{t.style.display="none";},3500);}
 
 render();
-loadFromSheet();
+// Load sheet data on startup — if API key fails (sheet not public),
+// it will retry automatically when the user logs in
+loadFromSheet().then(() => {
+  // If session was restored from sessionStorage, sheet loaded with token — good.
+}).catch(() => {});
+// Silently refresh token if user was previously signed in
+if(googleUserEmail){
+  window.addEventListener("load", ()=>{ setTimeout(silentTokenRefresh, 1000); });
+}
 </script>
 </body>
 </html>
