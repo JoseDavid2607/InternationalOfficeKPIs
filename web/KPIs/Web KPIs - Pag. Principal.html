@@ -107,15 +107,12 @@ header.hero h1 {
 .unit-item.active .unit-name { color: #fff; }
 .unit-item.active .unit-icon { background: rgba(255,255,255,.1); }
 .unit-item.active .unit-icon svg { stroke: #fff; }
-.unit-item.active .unit-count { background: rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
 .unit-icon { width: 36px; height: 36px; border-radius: 10px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .unit-icon svg { width: 17px; height: 17px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
 .unit-name { font-size: .88rem; font-weight: 800; color: var(--slate-dark); flex: 1; line-height: 1.3; }
-.unit-count { padding: 2px 7px; border-radius: 999px; background: #f3f4f6; color: var(--slate); font-size: .74rem; font-weight: 700; flex-shrink: 0; }
 .unit-desc { font-size: .76rem; color: var(--muted); line-height: 1.4; margin-top: 2px; font-weight: 400; }
 .unit-item.active .unit-desc { color: rgba(255,255,255,.65); }
 .unit-item.active .unit-name { color: #fff; }
-.unit-item.disabled { opacity: .4; cursor: default; }
 
 /* ── DASHBOARDS LIST ── */
 .dash-scroll { overflow-y: auto; flex: 1; }
@@ -187,11 +184,13 @@ header.hero h1 {
 .toast { display: none; position: fixed; bottom: 28px; right: 28px; z-index: 3000; background: #1f2937; color: #fff; padding: 13px 20px; border-radius: 14px; font-size: .88rem; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
 
 footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-size: 14px; }
+#kpiLoginModal.open { display: flex !important; }
 
 @media (max-width: 1100px) { .workspace { grid-template-columns: 240px 260px 1fr; } .col-panel { height: 700px; } }
 @media (max-width: 860px) { .workspace { grid-template-columns: 1fr 1fr; } .col-panel { height: 400px; } .preview-col { grid-column: span 2; height: 600px; } }
 @media (max-width: 580px) { .workspace { grid-template-columns: 1fr; } .col-panel { height: 380px; } .preview-col { grid-column: auto; height: 520px; } .intro-seneca { display: none; } header.hero { min-height: 260px; padding: 64px 18px 110px; } }
 </style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -243,11 +242,9 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
     <!-- PREVIEW -->
     <div class="col-panel preview-col">
       <div class="preview-panel">
-        <div class="preview-header">
-          <div class="preview-header-info">
-            <div class="preview-title" id="previewTitle">Select a dashboard</div>
-            <div class="preview-meta" id="previewMeta">Choose a unit and dashboard on the left</div>
-          <div id="previewDesc" style="font-size:.8rem;color:#9ca3af;margin-top:3px;text-align:left;line-height:1.5;"></div>
+        <div class="preview-header" style="padding:12px 16px;">
+          <div class="preview-header-info" style="flex:1;">
+            <div class="preview-title" id="previewTitle" style="font-size:.9rem;font-weight:800;color:#1f2937;"></div>
           </div>
           <a href="#" class="action-btn action-btn--teal" id="updateBtn" target="_blank" rel="noopener" style="display:none;">Update ↗</a>
           <a href="#" class="action-btn action-btn--primary" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open ↗</a>
@@ -280,7 +277,61 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 <footer>International Office · School of Management · Internal use only</footer>
 <div class="toast" id="toast"></div>
 
+<!-- KPI LOGIN MODAL -->
+<div class="modal-overlay" id="kpiLoginModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:24px;padding:32px;max-width:420px;width:92%;box-shadow:0 20px 50px rgba(0,0,0,.16);text-align:center;position:relative;">
+    <button onclick="document.getElementById('kpiLoginModal').classList.remove('open')" style="position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:50%;border:1px solid #e5e7eb;background:#fff;cursor:pointer;font-size:18px;color:#6b7280;">×</button>
+    <div style="font-size:2.5rem;margin-bottom:12px;">🔐</div>
+    <div style="font-size:1.05rem;font-weight:800;color:#1f2937;margin-bottom:8px;">Sign in required</div>
+    <p style="color:#6b7280;font-size:.9rem;line-height:1.6;margin-bottom:22px;">Sign in with your <strong>@uniandes.edu.co</strong> account to view dashboards.</p>
+    <button id="kpiLoginGoogleBtn" style="display:inline-flex;align-items:center;gap:10px;padding:12px 24px;border-radius:999px;border:1.5px solid #e5e7eb;background:#fff;color:#1f2937;font-size:.9rem;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+      <svg width="20" height="20" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+      Continue with Google
+    </button>
+    <div style="font-size:.76rem;color:#9ca3af;margin-top:14px;">Only @uniandes.edu.co accounts are authorized.</div>
+  </div>
+</div>
+
 <script>
+// ── AUTH (shared session with BaseRoom via sessionStorage) ───────────────
+const GOOGLE_CLIENT_ID_KPI = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
+const SCOPES_KPI   = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets";
+const ALLOWED_KPI  = "uniandes.edu.co";
+const SESSION_MS_KPI = 10 * 60 * 1000;
+
+let kpiToken    = sessionStorage.getItem("br_token") || null;
+let kpiEmail    = sessionStorage.getItem("br_email") || null;
+let kpiExpiry   = parseInt(sessionStorage.getItem("br_expiry") || "0") || null;
+let pendingDash = null;
+
+function isLoggedIn() {
+  return kpiToken && kpiEmail && kpiEmail.endsWith("@" + ALLOWED_KPI) &&
+         kpiExpiry && Date.now() < kpiExpiry;
+}
+function touchKpiSession() {
+  kpiExpiry = Date.now() + SESSION_MS_KPI;
+  sessionStorage.setItem("br_expiry", String(kpiExpiry));
+}
+["click","keydown","mousemove","touchstart"].forEach(ev =>
+  document.addEventListener(ev, () => { if(isLoggedIn()) touchKpiSession(); }, {passive:true})
+);
+setInterval(() => {
+  if (kpiToken && kpiExpiry && Date.now() > kpiExpiry) {
+    kpiToken = kpiEmail = kpiExpiry = null;
+    sessionStorage.removeItem("br_token");
+    sessionStorage.removeItem("br_email");
+    sessionStorage.removeItem("br_expiry");
+    showToast("Session expired. Please sign in again.");
+    resetPreview();
+  }
+}, 15000);
+
+function requireKpiLogin(action) {
+  if (isLoggedIn()) { action(); return; }
+  pendingDash = action;
+  document.getElementById("kpiLoginModal").classList.add("open");
+}
+
 // ── DATA ──────────────────────────────────────────────────────────────────
 const UNITS = [
   {
@@ -336,16 +387,14 @@ function renderUnits() {
   UNITS.forEach(unit => {
     const btn = document.createElement("button");
     const isActive = selectedUnit === unit.id;
-    const isSoon = unit.soon && unit.dashboards.length === 0;
-    btn.className = "unit-item" + (isActive ? " active" : "") + (isSoon ? " disabled" : "");
-    btn.disabled = isSoon;
+    btn.className = "unit-item" + (isActive ? " active" : "");
     btn.innerHTML = `
       <div class="unit-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${unit.icon}</svg></div>
       <div style="flex:1;min-width:0;">
         <div class="unit-name">${unit.name}</div>
         ${unit.desc ? `<div class="unit-desc">${unit.desc}</div>` : ""}
       </div>
-      <span class="unit-count">${isSoon ? "Soon" : unit.dashboards.length}</span>`;
+`;
     btn.addEventListener("click", () => {
       selectedUnit = unit.id;
       selectedDash = null;
@@ -370,20 +419,22 @@ function renderDashboards() {
   desc.textContent = unit.name;
   el.innerHTML = "";
   if (!unit.dashboards.length) {
-    el.innerHTML = `<div class="empty-state">Dashboards coming soon.</div>`;
+    el.innerHTML = `<div class="empty-state">No dashboards updated yet for this unit.</div>`;
     return;
   }
   unit.dashboards.forEach((d, i) => {
     const btn = document.createElement("button");
     const isActive = selectedDash === i;
     btn.className = "dash-item" + (isActive ? " active" : "");
-    const label = d.soon ? "Coming soon" : "Streamlit";
+    const label = d.soon ? "Not updated" : "Streamlit Dashboard";
     btn.innerHTML = `<span class="dash-title">${d.title}</span>${d.desc ? `<span class="dash-desc">${d.desc}</span>` : ""}<span class="dash-type${d.soon ? " soon" : ""}">${label}</span>`;
     btn.addEventListener("click", () => {
-      if (d.soon || d.url === "#") { showToast("This dashboard is coming soon."); return; }
-      selectedDash = i;
-      renderDashboards();
-      openPreview(d.title, d.url);
+      if (d.soon || d.url === "#") { showToast("This dashboard has not been updated yet."); return; }
+      requireKpiLogin(() => {
+        selectedDash = i;
+        renderDashboards();
+        openPreview(d.title, d.url);
+      });
     });
     el.appendChild(btn);
   });
@@ -404,9 +455,6 @@ function openPreview(title, url) {
 
   const dashObj = UNITS.find(u=>u.id===selectedUnit)?.dashboards.find(d=>d.title===title);
   document.getElementById("previewTitle").textContent = title;
-  document.getElementById("previewMeta").textContent  = url.replace("https://", "").replace(/\/$/, "");
-  const descEl = document.getElementById("previewDesc");
-  if(descEl) descEl.textContent = dashObj?.desc || "";
 
   const embedUrl = url.includes("?") ? url + "&embed=true" : url + "?embed=true";
 
@@ -442,7 +490,7 @@ function openPreview(title, url) {
     clearInterval(countdownInterval);
     loading.classList.remove("show");
     iframe.style.display = "block";
-    document.getElementById("previewMeta").textContent = "Loaded · " + url.replace("https://","").replace(/\/$/,"");
+
   };
 
   previewTimer = setTimeout(() => {
@@ -450,7 +498,7 @@ function openPreview(title, url) {
     loading.classList.remove("show");
     iframe.style.display = "none";
     timeout.classList.add("show");
-    document.getElementById("previewMeta").textContent = "Could not load in preview";
+
   }, TIMEOUT_MS);
 
   iframe.src = embedUrl;
@@ -465,8 +513,7 @@ function resetPreview() {
   document.getElementById("previewLoading").classList.remove("show");
   document.getElementById("previewTimeout").classList.remove("show");
   document.getElementById("previewPlaceholder").style.display = "flex";
-  document.getElementById("previewTitle").textContent = "Select a dashboard";
-  document.getElementById("previewMeta").textContent  = "Choose a unit and dashboard on the left";
+  document.getElementById("previewTitle").textContent = "";
   document.getElementById("openExtBtn").style.display = "none";
   document.getElementById("updateBtn").style.display = "none";
 }
@@ -477,7 +524,39 @@ function showToast(msg) {
   setTimeout(() => { t.style.display = "none"; }, 3000);
 }
 
-// ── INIT ──────────────────────────────────────────────────────────────────
+// ── LOGIN BUTTON ─────────────────────────────────────────────────────────
+document.getElementById("kpiLoginGoogleBtn").addEventListener("click", () => {
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID_KPI,
+    scope: SCOPES_KPI + " https://www.googleapis.com/auth/userinfo.email",
+    callback: (resp) => {
+      if (resp.error) { showToast("Authentication error: " + resp.error); return; }
+      kpiToken = resp.access_token;
+      fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: "Bearer " + kpiToken }
+      }).then(r => r.json()).then(info => {
+        kpiEmail = info.email || "";
+        if (!kpiEmail.endsWith("@" + ALLOWED_KPI)) {
+          kpiToken = kpiEmail = null;
+          showToast("Access denied. Only @uniandes.edu.co accounts are allowed.");
+          return;
+        }
+        touchKpiSession();
+        sessionStorage.setItem("br_token", kpiToken);
+        sessionStorage.setItem("br_email", kpiEmail);
+        document.getElementById("kpiLoginModal").classList.remove("open");
+        showToast("Signed in as " + kpiEmail);
+        if (pendingDash) { const a = pendingDash; pendingDash = null; a(); }
+      }).catch(() => showToast("Could not verify account."));
+    }
+  });
+  client.requestAccessToken();
+});
+document.getElementById("kpiLoginModal").addEventListener("click",(e)=>{
+  if(e.target===e.currentTarget) e.currentTarget.classList.remove("open");
+});
+
+// ── INIT ─────────────────────────────────────────────────────────────────
 selectedUnit = "faculty";
 renderUnits();
 renderDashboards();
