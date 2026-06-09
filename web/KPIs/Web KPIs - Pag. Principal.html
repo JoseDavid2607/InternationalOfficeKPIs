@@ -5,207 +5,464 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KPIs for International Accreditations</title>
 <style>
-:root{
---bg:#f3f4f6;
---text:#1f2937;
---white:#fff;
---teal:#56d6c9;
---teal-dark:#2fa89c;
---gray:#5f6368;
---gray-dark:#3f4348;
---shadow:0 18px 45px rgba(0,0,0,.12);
+:root {
+  --bg-page: #f5f6f8;
+  --bg-glass: rgba(255,255,255,.93);
+  --bg-white: #ffffff;
+  --slate: #4b5563;
+  --slate-dark: #1f2937;
+  --slate-mid: #374151;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --teal: #0f6e56;
+  --teal-light: #e1f5ee;
+  --teal-brand: #56d6c9;
+  --teal-brand-dark: #2fa89c;
+  --shadow-panel: 0 20px 50px rgba(0,0,0,.16);
+  --shadow-soft: 0 10px 24px rgba(0,0,0,.10);
+  --radius-panel: 24px;
 }
-body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--text)}
-header.hero{
-color:#fff;min-height:420px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;
-background:linear-gradient(rgba(8,12,20,.18),rgba(8,12,20,.42)),url('../imagenes/Santodomingo.jpg') center/cover no-repeat;
-text-align:center;
-}
-header.hero::after{
-content:'';
-position:absolute;
-left:0;right:0;bottom:0;
-height:120px;
-background:linear-gradient(to bottom, rgba(245,246,248,0) 0%, rgba(245,246,248,1) 100%);
-pointer-events:none;
-}
-.hero-inner{position:relative;z-index:2;max-width:1100px;width:100%;margin:0 auto}
-.hero-eyebrow{display:inline-block;margin-bottom:14px;padding:8px 16px;border-radius:999px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.18);font-size:13px;font-weight:700;letter-spacing:.02em;color:#fff}
-.hero h1{margin:0;font-weight:800;line-height:1.02;font-size:clamp(2.6rem,4vw + .5rem,4.2rem);letter-spacing:-.03em;text-shadow:0 10px 30px rgba(0,0,0,.28)}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, Helvetica, sans-serif; background: var(--bg-page); color: var(--slate-dark); -webkit-font-smoothing: antialiased; }
 
-.intro-wrap{max-width:1000px;margin:-150px auto 12px;display:flex;align-items:flex-end;gap:0;position:relative;z-index:20}
-.intro-seneca{width:110px;margin-right:-12px;z-index:2}
-.intro-seneca img{max-width:110px;display:block}
-.instructions{
-flex:1;
-;margin:-40px auto 20px;background:#ffffff;
-padding:25px;border-radius:24px;box-shadow:0 20px 50px rgba(0,0,0,.16)
+/* ── HERO ── */
+header.hero {
+  color: #fff; position: relative; min-height: 300px;
+  padding: 48px 24px 140px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; text-align: center;
+  background:
+    linear-gradient(to bottom, rgba(8,12,20,.08), rgba(8,12,20,.12), rgba(8,12,20,.20)),
+    url("../imagenes/Santodomingo.jpg") center center / cover no-repeat;
 }
-.workspace{
-max-width:1600px;margin:auto;padding:0 20px 20px;
-display:grid;grid-template-columns:320px 420px 1fr;gap:18px;
+header.hero::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,0) 65%, var(--bg-page) 100%);
+  pointer-events: none;
 }
-.panel{
-background:#fff;border-radius:24px;box-shadow:0 10px 24px rgba(0,0,0,.1);overflow:hidden;
+.hero-inner { max-width: 1100px; width: 100%; margin: 0 auto; position: relative; z-index: 2; }
+.hero-eyebrow {
+  display: inline-block; margin-bottom: 14px; padding: 8px 16px;
+  border-radius: 999px; background: rgba(255,255,255,.16);
+  border: 1px solid rgba(255,255,255,.18); font-size: 13px; font-weight: 700;
+  letter-spacing: .02em;
 }
-.header{padding:18px;border-bottom:1px solid #e5e7eb;font-weight:bold}
-.list{max-height:700px;overflow:auto}
-.item{padding:16px;border-bottom:1px solid #eee;cursor:pointer}
-.item:hover{background:#f8fafc}
-.item.active{background:#1f2937;color:white}
+header.hero h1 {
+  margin: 0; font-weight: 800; line-height: 1.02;
+  font-size: clamp(2.2rem, 4vw + .5rem, 3.8rem);
+  letter-spacing: -.03em; text-shadow: 0 10px 30px rgba(0,0,0,.28);
+}
+.back-button { position: absolute; top: 24px; left: 24px; z-index: 20; }
+.back-button a {
+  width: 52px; height: 52px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.22);
+  text-decoration: none; box-shadow: 0 8px 20px rgba(0,0,0,.18);
+  transition: transform .2s, background .2s; backdrop-filter: blur(4px);
+}
+.back-button a:hover { transform: translateY(-2px); background: rgba(255,255,255,0.26); }
+.back-button svg { width: 24px; height: 24px; stroke: #fff; }
 
-
-#dashboards .item.active{
-    background:#1f2937;
-    color:white;
+/* ── INTRO ── */
+.intro-wrap {
+  position: relative; max-width: 900px; margin: -100px auto 16px;
+  z-index: 10; padding: 0 16px; display: flex; align-items: flex-end; gap: 0;
+}
+.intro-seneca { position: relative; flex-shrink: 0; width: 100px; margin-right: -16px; z-index: 13; }
+.intro-seneca img { max-width: 100px; height: auto; display: block; filter: drop-shadow(0 10px 18px rgba(0,0,0,.16)); }
+.intro-panel {
+  flex: 1; z-index: 12; padding: 20px 22px 20px 32px;
+  background: var(--bg-glass); border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel); text-align: left;
+  border: 1px solid rgba(255,255,255,.28);
+  font-size: .93rem; line-height: 1.7;
 }
 
-#dashboards .item.active{
-    background:#1f2937;
-    color:white;
-    border-left:4px solid #56d6c9;
+/* ── MAIN ── */
+.main { max-width: 1600px; margin: 12px auto 56px; padding: 0 20px; }
+.section-heading { margin: 0 0 14px; }
+.section-heading h2 { font-size: 1.1rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 4px; }
+.section-heading p { color: var(--muted); font-size: .88rem; }
+
+/* ── WORKSPACE 3 COLS ── */
+.workspace { display: grid; grid-template-columns: 280px 300px 1fr; gap: 18px; align-items: start; }
+.col-panel { background: var(--bg-white); border-radius: var(--radius-panel); box-shadow: var(--shadow-soft); overflow: hidden; display: flex; flex-direction: column; }
+.col-header { padding: 18px 20px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.col-header h3 { font-size: .95rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
+.col-header p { color: var(--muted); font-size: .81rem; line-height: 1.5; }
+
+/* ── UNITS LIST ── */
+.units-scroll { overflow-y: auto; }
+.units-scroll::-webkit-scrollbar { width: 4px; }
+.units-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+.unit-item {
+  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+  cursor: pointer; border: none; background: transparent; text-align: left;
+  border-bottom: 1px solid var(--border); width: 100%; transition: background .15s;
 }
-  
-.preview{height:700px;display:flex;flex-direction:column}
-.previewtop{padding:15px;border-bottom:1px solid #eee;display:flex;justify-content:space-between}
-iframe{flex:1;border:none}
-.btn{background:var(--teal);color:white;padding:10px 15px;border-radius:999px;text-decoration:none;display:none}
-.placeholder{padding:50px;text-align:center;color:#6b7280}
+.unit-item:last-child { border-bottom: none; }
+.unit-item:hover { background: #f9fafb; }
+.unit-item.active { background: #1f2937; }
+.unit-item.active .unit-name { color: #fff; }
+.unit-item.active .unit-icon { background: rgba(255,255,255,.1); }
+.unit-item.active .unit-icon svg { stroke: #fff; }
+.unit-item.active .unit-count { background: rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
+.unit-icon { width: 36px; height: 36px; border-radius: 10px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.unit-icon svg { width: 17px; height: 17px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
+.unit-name { font-size: .88rem; font-weight: 800; color: var(--slate-dark); flex: 1; line-height: 1.3; }
+.unit-count { padding: 2px 7px; border-radius: 999px; background: #f3f4f6; color: var(--slate); font-size: .74rem; font-weight: 700; flex-shrink: 0; }
+.unit-item.disabled { opacity: .4; cursor: default; }
 
-.back-button{position:absolute;top:24px;left:24px;z-index:20}
-.back-button a{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.22);text-decoration:none;backdrop-filter:blur(4px)}
-.back-button svg{width:24px;height:24px;stroke:#fff}
+/* ── DASHBOARDS LIST ── */
+.dash-scroll { overflow-y: auto; max-height: 600px; }
+.dash-scroll::-webkit-scrollbar { width: 4px; }
+.dash-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
 
+.dash-item {
+  display: flex; flex-direction: column; gap: 3px; padding: 14px 18px;
+  cursor: pointer; border: none; background: transparent; text-align: left;
+  border-bottom: 1px solid var(--border); width: 100%; transition: background .15s;
+}
+.dash-item:last-child { border-bottom: none; }
+.dash-item:hover { background: #f9fafb; }
+.dash-item.active { background: #1f2937; border-left: 3px solid var(--teal-brand); }
+.dash-item.active .dash-title { color: #fff; }
+.dash-item.active .dash-type { background: rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
+.dash-title { font-size: .87rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; }
+.dash-type { display: inline-block; padding: 2px 7px; border-radius: 999px; background: #f0fdf4; color: #166534; font-size: .72rem; font-weight: 700; margin-top: 2px; }
+.dash-type.soon { background: #f3f4f6; color: var(--muted); }
+.empty-state { padding: 32px 20px; text-align: center; color: var(--muted); font-size: .86rem; line-height: 1.7; }
 
-footer{text-align:center;color:#6b7280;padding:12px 20px 36px;font-size:14px}
+/* ── PREVIEW PANEL ── */
+.preview-panel { display: flex; flex-direction: column; min-height: 600px; }
+.preview-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.preview-header-info { flex: 1; }
+.preview-title { font-size: .95rem; font-weight: 800; color: var(--slate-dark); }
+.preview-meta { font-size: .79rem; color: var(--muted); margin-top: 2px; }
+.action-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+  border-radius: 999px; border: none; font-size: .82rem; font-weight: 800;
+  cursor: pointer; text-decoration: none; transition: transform .15s, background .15s;
+}
+.action-btn:hover { transform: translateY(-1px); }
+.action-btn--primary { background: #1f2937; color: #fff; }
+.action-btn--teal { background: var(--teal-light); color: var(--teal); }
+.preview-body { flex: 1; position: relative; min-height: 500px; }
+.preview-iframe { width: 100%; height: 100%; min-height: 500px; border: none; display: none; }
+
+.preview-placeholder {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  color: var(--muted); font-size: .9rem; text-align: center; padding: 40px;
+}
+.preview-placeholder svg { width: 48px; height: 48px; stroke: #d1d5db; fill: none; stroke-width: 1.4; }
+
+.preview-loading {
+  position: absolute; inset: 0; display: none; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px;
+  background: #f8fafc; color: var(--muted); font-size: .88rem;
+}
+.preview-loading.show { display: flex; }
+.spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: var(--teal-brand); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.countdown-wrap { width: 220px; height: 4px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
+.countdown-bar { height: 100%; background: var(--teal-brand); border-radius: 999px; width: 100%; }
+
+.preview-timeout {
+  position: absolute; inset: 0; display: none; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+  background: #f8fafc; padding: 40px; text-align: center;
+}
+.preview-timeout.show { display: flex; }
+.timeout-title { font-size: 1rem; font-weight: 800; color: var(--slate-dark); }
+.timeout-desc { color: var(--muted); font-size: .87rem; line-height: 1.6; max-width: 360px; }
+
+/* ── TOAST ── */
+.toast { display: none; position: fixed; bottom: 28px; right: 28px; z-index: 3000; background: #1f2937; color: #fff; padding: 13px 20px; border-radius: 14px; font-size: .88rem; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
+
+footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-size: 14px; }
+
+@media (max-width: 1100px) { .workspace { grid-template-columns: 240px 260px 1fr; } }
+@media (max-width: 860px) { .workspace { grid-template-columns: 1fr 1fr; } .preview-col { grid-column: span 2; } }
+@media (max-width: 580px) { .workspace { grid-template-columns: 1fr; } .preview-col { grid-column: auto; } .intro-seneca { display: none; } header.hero { min-height: 260px; padding: 64px 18px 110px; } }
 </style>
 </head>
 <body>
+
 <header class="hero">
-<div class="back-button">
-<a href="../../index.html" aria-label="Go back">
-<svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-<path d="M3 10.5 12 3l9 7.5"></path>
-<path d="M5.5 9.5V20h13V9.5"></path>
-</svg>
-</a>
-</div>
-<div class="hero-inner">
-<div class="hero-eyebrow">International Office UASM · Information System Management & Data Center</div>
-<h1>KPIs for International Accreditations</h1>
-</div>
+  <div class="back-button">
+    <a href="../../index.html" aria-label="Go back">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/>
+      </svg>
+    </a>
+  </div>
+  <div class="hero-inner">
+    <div class="hero-eyebrow">International Office UASM · Information System & Data Center</div>
+    <h1>KPIs for International Accreditations</h1>
+  </div>
 </header>
 
-<div class="intro-wrap"><div class="intro-seneca"><img src="../imagenes/seneca.png" alt="Seneca"></div><div class="instructions">
-Dynamic BaseRoom with key information from the different areas of the School of Management.
-Select a unit, then a dashboard, and preview it on the right.
-</div></div>
-
-<div class="workspace">
-<div class="panel">
-<div class="header">Units</div>
-<div class="list">
-<div class="item active" onclick="loadUnit('faculty',this)">Faculty</div>
-<div class="item" onclick="loadUnit('internationalization',this)">Internationalization</div>
-<div class="item">Alumni & Career Services</div>
-<div class="item">Executive Education</div>
-<div class="item">Academic Programs</div>
-<div class="item">Research and Development</div>
-<div class="item">Resources and Admin</div>
-</div>
+<div class="intro-wrap">
+  <div class="intro-seneca" aria-hidden="true">
+    <img src="../imagenes/seneca.png" alt="Seneca">
+  </div>
+  <div class="intro-panel">
+    Dynamic BaseRoom with key information from the different areas of the School of Management, to report in international rankings and accreditations.
+    <strong> Select a unit, then a dashboard to preview it.</strong>
+  </div>
 </div>
 
-<div class="panel">
-<div class="header">Dashboards</div>
-<div id="dashboards" class="list"></div>
-</div>
+<section class="main">
+  <div class="workspace">
 
-<div class="panel">
-<div class="preview">
-<div class="previewtop">
-<span id="title">Select a dashboard</span>
-<a id="openBtn" class="btn" target="_blank">Open Dashboard ↗</a>
-</div>
-<div id="placeholder" class="placeholder">Select a dashboard to preview it.</div>
-<iframe id="frame" style="display:none"></iframe>
-<div id="external" class="placeholder" style="display:none">
-This dashboard cannot be embedded directly due to browser security restrictions.<br><br>
-<a id="externalLink" target="_blank" class="btn" style="display:inline-block">Open Dashboard ↗</a>
-</div>
-</div>
-</div>
-</div>
+    <!-- UNITS -->
+    <div class="col-panel">
+      <div class="col-header">
+        <h3>Units</h3>
+        <p>Select a unit to see its dashboards</p>
+      </div>
+      <div class="units-scroll" id="unitList"></div>
+    </div>
 
-<script>
-const DATA={
-faculty:[
-["Full-time Faculty Composition","https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/"],
-["Full-time Faculty Staffing Levels","https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/"],
-["Distribution by Academic Area","https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/"],
-["Faculty Demographics","https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/"],
-["Full-time Faculty Questionnaire","https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/"],
-["Faculty Qualifications","https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/"],
-["Triennial Evaluation","#"]
-],
-internationalization:[
-["International Faculty & Visiting Professors","#"],
-["International Publications & Conferences","#"],
-["Faculty Academic Activities","#"],
-["International Research Seminars","#"],
-["Internationalization of the Campus","#"],
-["International Weeks & Activities","#"],
-["UASM Seminars","#"],
-["Student & PhD Mobility","#"],
-["Signed Agreements","#"]
-]
-};
+    <!-- DASHBOARDS -->
+    <div class="col-panel">
+      <div class="col-header">
+        <h3>Dashboards</h3>
+        <p id="dashColDesc">Select a unit first</p>
+      </div>
+      <div class="dash-scroll" id="dashList"></div>
+    </div>
 
-function loadUnit(unit,el){
-document.querySelectorAll('.list .item').forEach(x=>x.classList.remove('active'));
-el.classList.add('active');
-const d=document.getElementById('dashboards');
-d.innerHTML='';
-DATA[unit].forEach(x=>{
-let div=document.createElement('div');
-div.className='item';
-div.textContent=x[0];
+    <!-- PREVIEW -->
+    <div class="col-panel preview-col">
+      <div class="preview-panel">
+        <div class="preview-header">
+          <div class="preview-header-info">
+            <div class="preview-title" id="previewTitle">Select a dashboard</div>
+            <div class="preview-meta" id="previewMeta">Choose a unit and dashboard on the left</div>
+          </div>
+          <a href="#" class="action-btn action-btn--teal" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open ↗</a>
+        </div>
+        <div class="preview-body" id="previewBody">
+          <div class="preview-placeholder" id="previewPlaceholder">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
+            <div>Select a dashboard to preview it here</div>
+          </div>
+          <div class="preview-loading" id="previewLoading">
+            <div class="spinner"></div>
+            <div>Loading dashboard…</div>
+            <div class="countdown-wrap"><div class="countdown-bar" id="countdownBar"></div></div>
+            <div id="countdownText" style="font-size:.78rem;color:#9ca3af;">Waiting up to 30 seconds</div>
+          </div>
+          <iframe class="preview-iframe" id="previewIframe" allow="fullscreen; scripts; same-origin; popups" allowfullscreen></iframe>
+          <div class="preview-timeout" id="previewTimeout">
+            <div style="font-size:2.5rem;opacity:.25;">⚡</div>
+            <div class="timeout-title">Dashboard taking too long</div>
+            <div class="timeout-desc">The preview could not load in time. Open the dashboard directly in a new tab.</div>
+            <a href="#" class="action-btn action-btn--primary" id="timeoutBtn" target="_blank" rel="noopener">Open dashboard ↗</a>
+          </div>
+        </div>
+      </div>
+    </div>
 
-div.onclick=()=>{
-    document.querySelectorAll('#dashboards .item')
-        .forEach(i=>i.classList.remove('active'));
-
-    div.classList.add('active');
-
-    openDash(x[0],x[1]);
-};
-
-d.appendChild(div);
-});
-  
-}
-function openDash(title,url){
-document.getElementById('title').innerText=title;
-if(url=='#') return;
-document.getElementById('placeholder').style.display='none';
-let f=document.getElementById('frame');
-let ext=document.getElementById('external');
-let b=document.getElementById('openBtn');
-b.href=url;
-document.getElementById('externalLink').href=url;
-b.style.display='inline-block';
-if(url.includes('streamlit.app')){
-ext.style.display='none';
-f.style.display='block';
-f.src=url.includes('?') ? url + '&embed=true' : url + '?embed=true';
-}else{
-ext.style.display='none';
-f.style.display='block';
-f.src=url;
-}
-}
-loadUnit('faculty',document.querySelector('.item'));
-</script>
+  </div>
+</section>
 
 <footer>International Office · School of Management · Internal use only</footer>
+<div class="toast" id="toast"></div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────
+const UNITS = [
+  {
+    id: "faculty",
+    name: "Faculty",
+    icon: `<circle cx="12" cy="7" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>`,
+    dashboards: [
+      { title: "Full-time Faculty Composition",    url: "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/" },
+      { title: "Full-time Faculty Staffing Levels", url: "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/" },
+      { title: "Distribution by Academic Area",    url: "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/" },
+      { title: "Faculty Demographics",             url: "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/" },
+      { title: "Full-time Faculty Questionnaire",  url: "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/" },
+      { title: "Faculty Qualifications",           url: "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/" },
+      { title: "Triennial Evaluation",             url: "#", soon: true }
+    ]
+  },
+  {
+    id: "internationalization",
+    name: "Internationalization",
+    icon: `<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 4 3 14 0 18M12 3c-3 4-3 14 0 18" stroke-width="1.3"/>`,
+    dashboards: [
+      { title: "International Faculty & Visiting Professors", url: "#", soon: true },
+      { title: "International Publications & Conferences",    url: "#", soon: true },
+      { title: "Faculty Academic Activities",                 url: "#", soon: true },
+      { title: "International Research Seminars",             url: "#", soon: true },
+      { title: "Internationalization of the Campus",          url: "#", soon: true },
+      { title: "International Weeks & Activities",            url: "#", soon: true },
+      { title: "UASM Seminars",                               url: "#", soon: true },
+      { title: "Student & PhD Mobility",                      url: "#", soon: true },
+      { title: "Signed Agreements",                           url: "#", soon: true }
+    ]
+  },
+  { id: "alumni",           name: "Alumni & Career Services",  icon: `<path d="M9 7V6a3 3 0 0 1 6 0v1"/><rect x="3" y="7" width="18" height="12" rx="2"/>`,                  dashboards: [], soon: true },
+  { id: "executive",        name: "Executive Education",       icon: `<rect x="4" y="3" width="10" height="18" rx="2"/><path d="M8 7h6M8 11h6M8 15h4"/>`,                    dashboards: [], soon: true },
+  { id: "programs",         name: "Academic Programs",         icon: `<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 4v3M16 4v3M3 10h18"/>`,                   dashboards: [], soon: true },
+  { id: "research",         name: "Research & Development",    icon: `<path d="M9 3v5l-4.5 8A3 3 0 0 0 7.3 20h9.4a3 3 0 0 0 2.8-4L15 8V3"/>`,                              dashboards: [], soon: true },
+  { id: "resources",        name: "Resources & Admin",         icon: `<path d="M12 2a7 7 0 1 0 0 14A7 7 0 0 0 12 2z"/><path d="M12 16v6M8 20h8"/>`,                          dashboards: [], soon: true },
+];
+
+// ── STATE ────────────────────────────────────────────────────────────────
+let selectedUnit = null;
+let selectedDash = null;
+let previewTimer = null;
+let countdownInterval = null;
+const TIMEOUT_MS = 30000;
+
+// ── RENDER UNITS ─────────────────────────────────────────────────────────
+function renderUnits() {
+  const el = document.getElementById("unitList");
+  el.innerHTML = "";
+  UNITS.forEach(unit => {
+    const btn = document.createElement("button");
+    const isActive = selectedUnit === unit.id;
+    const isSoon = unit.soon && unit.dashboards.length === 0;
+    btn.className = "unit-item" + (isActive ? " active" : "") + (isSoon ? " disabled" : "");
+    btn.disabled = isSoon;
+    btn.innerHTML = `
+      <div class="unit-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${unit.icon}</svg></div>
+      <span class="unit-name">${unit.name}</span>
+      <span class="unit-count">${isSoon ? "Soon" : unit.dashboards.length}</span>`;
+    btn.addEventListener("click", () => {
+      selectedUnit = unit.id;
+      selectedDash = null;
+      renderUnits();
+      renderDashboards();
+      resetPreview();
+    });
+    el.appendChild(btn);
+  });
+}
+
+// ── RENDER DASHBOARDS ─────────────────────────────────────────────────────
+function renderDashboards() {
+  const el = document.getElementById("dashList");
+  const desc = document.getElementById("dashColDesc");
+  if (!selectedUnit) {
+    desc.textContent = "Select a unit first";
+    el.innerHTML = `<div class="empty-state">Click a unit to see its dashboards.</div>`;
+    return;
+  }
+  const unit = UNITS.find(u => u.id === selectedUnit);
+  desc.textContent = unit.name;
+  el.innerHTML = "";
+  if (!unit.dashboards.length) {
+    el.innerHTML = `<div class="empty-state">Dashboards coming soon.</div>`;
+    return;
+  }
+  unit.dashboards.forEach((d, i) => {
+    const btn = document.createElement("button");
+    const isActive = selectedDash === i;
+    btn.className = "dash-item" + (isActive ? " active" : "");
+    const label = d.soon ? "Coming soon" : "Streamlit";
+    btn.innerHTML = `<span class="dash-title">${d.title}</span><span class="dash-type${d.soon ? " soon" : ""}">${label}</span>`;
+    btn.addEventListener("click", () => {
+      if (d.soon || d.url === "#") { showToast("This dashboard is coming soon."); return; }
+      selectedDash = i;
+      renderDashboards();
+      openPreview(d.title, d.url);
+    });
+    el.appendChild(btn);
+  });
+}
+
+// ── PREVIEW ───────────────────────────────────────────────────────────────
+function openPreview(title, url) {
+  clearTimeout(previewTimer);
+  clearInterval(countdownInterval);
+
+  const iframe   = document.getElementById("previewIframe");
+  const loading  = document.getElementById("previewLoading");
+  const timeout  = document.getElementById("previewTimeout");
+  const ph       = document.getElementById("previewPlaceholder");
+  const extBtn   = document.getElementById("openExtBtn");
+  const toBtn    = document.getElementById("timeoutBtn");
+  const bar      = document.getElementById("countdownBar");
+
+  document.getElementById("previewTitle").textContent = title;
+  document.getElementById("previewMeta").textContent  = url.replace("https://", "").replace(/\/$/, "");
+
+  const embedUrl = url.includes("?") ? url + "&embed=true" : url + "?embed=true";
+
+  extBtn.href = url; extBtn.style.display = "inline-flex";
+  toBtn.href  = url;
+
+  ph.style.display      = "none";
+  timeout.classList.remove("show");
+  iframe.style.display  = "none";
+  iframe.src            = "";
+  loading.classList.add("show");
+
+  // Countdown bar
+  bar.style.transition  = "none";
+  bar.style.width       = "100%";
+  requestAnimationFrame(() => {
+    bar.style.transition = `width ${TIMEOUT_MS}ms linear`;
+    bar.style.width      = "0%";
+  });
+
+  let s = Math.floor(TIMEOUT_MS / 1000);
+  document.getElementById("countdownText").textContent = `Waiting up to ${s} seconds`;
+  countdownInterval = setInterval(() => {
+    s--;
+    document.getElementById("countdownText").textContent =
+      s > 0 ? `Waiting up to ${s} seconds` : "Almost there…";
+  }, 1000);
+
+  iframe.onload = () => {
+    clearTimeout(previewTimer);
+    clearInterval(countdownInterval);
+    loading.classList.remove("show");
+    iframe.style.display = "block";
+    document.getElementById("previewMeta").textContent = "Loaded · " + url.replace("https://","").replace(/\/$/,"");
+  };
+
+  previewTimer = setTimeout(() => {
+    clearInterval(countdownInterval);
+    loading.classList.remove("show");
+    iframe.style.display = "none";
+    timeout.classList.add("show");
+    document.getElementById("previewMeta").textContent = "Could not load in preview";
+  }, TIMEOUT_MS);
+
+  iframe.src = embedUrl;
+}
+
+function resetPreview() {
+  clearTimeout(previewTimer);
+  clearInterval(countdownInterval);
+  const iframe = document.getElementById("previewIframe");
+  iframe.src = "";
+  iframe.style.display = "none";
+  document.getElementById("previewLoading").classList.remove("show");
+  document.getElementById("previewTimeout").classList.remove("show");
+  document.getElementById("previewPlaceholder").style.display = "flex";
+  document.getElementById("previewTitle").textContent = "Select a dashboard";
+  document.getElementById("previewMeta").textContent  = "Choose a unit and dashboard on the left";
+  document.getElementById("openExtBtn").style.display = "none";
+}
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.style.display = "block";
+  setTimeout(() => { t.style.display = "none"; }, 3000);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+selectedUnit = "faculty";
+renderUnits();
+renderDashboards();
+</script>
 </body>
 </html>
