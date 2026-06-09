@@ -175,7 +175,23 @@ _render_update_banner()
 # ── Sidebar navigation ─────────────────────────────────────────────────────────
 _nav_sidebar("5 Full-time Faculty Questionnaire")
 
-EXCEL_PATH = "data/Faculty/BD_Faculty.xlsx"
+EXCEL_PATH = _download_excel()
+
+import requests as _requests
+
+DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
+
+@st.cache_data(ttl=300)
+def _download_excel() -> str:
+    """Download BD_Faculty.xlsx from Google Drive to /tmp and return local path."""
+    url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+    path = "/tmp/BD_Faculty.xlsx"
+    response = _requests.get(url, stream=True)
+    with open(path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
+    return path
 
 @st.cache_data(ttl=0)
 def load_fulltime():
@@ -634,5 +650,3 @@ with cTb:
                         df_noncredit_sheet,
 
                         f"{safe_name_noncr}_full.xlsx")
-
-
