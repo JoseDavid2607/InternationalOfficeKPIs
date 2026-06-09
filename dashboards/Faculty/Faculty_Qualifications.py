@@ -94,8 +94,6 @@ st.markdown(
 
 # ── Inline helpers ─────────────────────────────────────────────────────────────
 import io as _io, base64 as _b64, datetime as _dt_mod
-import os as _os
-_DATA = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "..", "data", "Faculty", "BD_Faculty.xlsx")
 
 def _xlsx_bytes(df, sheet_name="Data"):
     buf = _io.BytesIO()
@@ -179,14 +177,14 @@ _render_update_banner()
 _nav_sidebar("6 Faculty Qualifications")
 @st.cache_data(ttl=0)
 def load_faculty_distribution():
-    xls = pd.ExcelFile(_DATA)
+    xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
     df = pd.read_excel(xls, sheet_name="Faculty Distribution")
     df.columns = df.columns.str.strip()
     return df
 
 @st.cache_data(ttl=0)
 def load_cartelera():
-    xls = pd.ExcelFile(_DATA)
+    xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
     df = pd.read_excel(xls, sheet_name="BD Cartelera 2020-2025")
     df.columns = df.columns.str.strip()
     return df
@@ -194,7 +192,7 @@ def load_cartelera():
 @st.cache_data(ttl=0)
 def _load_planta_sheet():
     try:
-        xls = pd.ExcelFile(_DATA)
+        xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
         dfp = pd.read_excel(xls, sheet_name="BD PLANTA 2020-2025")
         dfp.columns = dfp.columns.str.strip()
         return dfp
@@ -3329,7 +3327,7 @@ if not SENS.get("on", False):
     @st.cache_data(ttl=0)
     def _load_planta_sheet():
         try:
-            xls = pd.ExcelFile(_DATA)
+            xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
             dfp = pd.read_excel(xls, sheet_name="BD PLANTA 2020-2025")
             dfp.columns = dfp.columns.str.strip()
             return dfp
