@@ -2,6 +2,7 @@
 #  Full-time Faculty Activities · UASM
 #  Self-contained · no external module dependencies
 # ===========================================================================
+import re
 import streamlit as st
 import pandas as pd
 import numpy as np
