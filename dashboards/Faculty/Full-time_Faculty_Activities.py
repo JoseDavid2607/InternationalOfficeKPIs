@@ -175,8 +175,6 @@ _render_update_banner()
 # ── Sidebar navigation ─────────────────────────────────────────────────────────
 _nav_sidebar("5 Full-time Faculty Questionnaire")
 
-EXCEL_PATH = _download_excel()
-
 import requests as _requests
 
 DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
@@ -192,6 +190,8 @@ def _download_excel() -> str:
             if chunk:
                 f.write(chunk)
     return path
+
+EXCEL_PATH = _download_excel()
 
 @st.cache_data(ttl=0)
 def load_fulltime():
@@ -650,3 +650,5 @@ with cTb:
                         df_noncredit_sheet,
 
                         f"{safe_name_noncr}_full.xlsx")
+
+
