@@ -1051,7 +1051,17 @@ with st.sidebar:
             st.success("Reset.")
 
     if not sens_mode:
-        _nav_sidebar("6 Faculty Qualifications")
+        # Navigation selectbox (unique key to avoid duplicate widget ID)
+        _nav_choices = list(_NAV.keys())
+        _nav_idx = _nav_choices.index("6 Faculty Qualifications") if "6 Faculty Qualifications" in _nav_choices else 0
+        _nav_sel = st.selectbox("Go to dashboard", _nav_choices, index=_nav_idx,
+                                label_visibility="collapsed", key="qual_nav_sel")
+        st.link_button("🔗 Open Dashboard", _NAV[_nav_sel], use_container_width=True)
+        st.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
+        if st.button("🔄 Update Data", use_container_width=True, key="qual_upd_btn"):
+            st.cache_data.clear()
+            st.rerun()
+        st.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
 
     st.markdown('---')
     st.markdown("#### Timeframe")
@@ -3712,3 +3722,47 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
