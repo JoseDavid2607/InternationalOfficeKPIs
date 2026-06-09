@@ -273,6 +273,12 @@ with st.sidebar:
     sel = st.selectbox("Select…", choices, index=default_idx)
     st.link_button("Open", _NAV[sel], use_container_width=True)
 
+#================= CONSTANTS ==================================================
+TOT_PROFESSORS = 64           # denominator for % (donuts)
+MINT      = "#56D6C9"          # mint for "YES"
+MINT_DARK = "#1FA89B"          # darker mint (center text)
+GREY      = "#C7C7C7"          # grey for "NO"
+DONUT_H   = 160                # height of each donut
 #================= YEARS (fixed 2020–2025) ====================================
 YEARS = [2020, 2021, 2022, 2023, 2024, 2025]
 def _norm(s: pd.Series) -> pd.Series:
@@ -661,5 +667,3 @@ with cTb:
                         df_noncredit_sheet,
 
                         f"{safe_name_noncr}_full.xlsx")
-
-
