@@ -232,6 +232,11 @@ def load_parttime():
 df_full = load_fulltime()
 df_part = load_parttime()
 
+# ── Session state initialisation (must run before sidebar reads it) ──
+if "modo_faculty" not in st.session_state:
+    st.session_state.modo_faculty = "Full-time"
+
+
 # ========= SIDEBAR (KPI -> Faculty Type -> Timeframe -> Periodo -> Descarga BD) =========
 
 with st.sidebar:
@@ -569,3 +574,6 @@ st.dataframe(detail_out, use_container_width=True)
 # Descarga de la tabla de detalle
 fname_det = f"Detail_{'FT' if st.session_state.modo_faculty=='Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ','_')}.xlsx"
 _download_link("Descargar tabla (Excel)", detail_out, fname_det)
+
+
+
