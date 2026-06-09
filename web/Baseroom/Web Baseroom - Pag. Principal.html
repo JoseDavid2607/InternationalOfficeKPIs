@@ -180,19 +180,6 @@ header.hero h1 {
 .period-alert--red { background:#fee2e2; color:#dc2626; }
 .period-alert--yellow { background:#fef9c3; color:#92400e; }
 .period-alert--grey { background:#f3f4f6; color:#9ca3af; }
-.pending-file-item { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border); }
-.pending-file-item:last-child { border-bottom:none; }
-.pending-file-icon { width:36px;height:36px;border-radius:10px;background:#eef2f7;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
-.pending-file-icon svg { width:18px;height:18px;stroke:#374151;fill:none;stroke-width:1.7; }
-.pending-file-name { flex:1;font-size:.9rem;font-weight:700;color:#1f2937; }
-.pending-file-meta { font-size:.76rem;color:#6b7280;margin-top:2px; }
-.pending-file-actions { display:flex;gap:8px; }
-.btn-accept { padding:6px 14px;border-radius:999px;border:none;background:#1f2937;color:#fff;font-size:.8rem;font-weight:800;cursor:pointer;transition:background .15s; }
-.btn-accept:hover { background:#374151; }
-.btn-reject { padding:6px 14px;border-radius:999px;border:1.5px solid #fee2e2;background:#fff5f5;color:#dc2626;font-size:.8rem;font-weight:800;cursor:pointer;transition:background .15s; }
-.btn-reject:hover { background:#dc2626;color:#fff;border-color:#dc2626; }
-.drive-scan-btn { display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;border:1.5px solid var(--border);background:#fff;color:var(--slate-mid);font-size:.78rem;font-weight:800;cursor:pointer;transition:background .15s; }
-.drive-scan-btn:hover { background:#1f2937;color:#fff;border-color:#1f2937; }
 
 /* MODALS */
 .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000; align-items: center; justify-content: center; }
@@ -402,10 +389,6 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="docExpirationInput">Expiration date <span style="font-weight:400;color:#9ca3af;">(YYYY-MM-DD)</span></label>
-      <input class="form-input" type="date" id="docExpirationInput">
-    </div>
-    <div class="form-group">
       <label class="form-label" for="docNotesInput">Notes (optional)</label>
       <input class="form-input" type="text" id="docNotesInput" placeholder="e.g. Updated figures for 2025 review">
     </div>
@@ -464,19 +447,6 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 </div>
 
 <div class="toast" id="toast"></div>
-
-<!-- PENDING DRIVE FILES MODAL -->
-<div class="modal-overlay" id="pendingModal">
-  <div class="modal-box" style="max-width:580px;">
-    <button class="modal-close" onclick="closeModal('pendingModal')">×</button>
-    <div class="modal-title">New files detected in Drive</div>
-    <div class="modal-sub" id="pendingModalSub">The following files were found in the Drive folder. Accept to add them to the BaseRoom, or reject to ignore.</div>
-    <div id="pendingFileList" style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:16px;margin-bottom:4px;"></div>
-    <div class="modal-actions" style="justify-content:flex-start;">
-      <button class="btn-cancel" onclick="closeModal('pendingModal')">Close</button>
-    </div>
-  </div>
-</div>
 
 <script>
 // =====================
@@ -607,11 +577,82 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
 // =====================
 // SHEETS — read & write metadata
 // =====================
+async function loadFromSheet() {
+  try {
+    const range = encodeURIComponent(SHEET_NAME + "!A:I");
+    // Try with Bearer token first (works always when logged in),
+    // fall back to API key (works only when Sheet is public)
+    let res;
+    if (googleAccessToken) {
+      res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,
+        { headers: { Authorization: "Bearer " + googleAccessToken } }
+      );
+    } else {
+      res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
+      );
+    }
+    if (!res.ok) {
+      console.warn("Sheet load failed:", res.status, await res.text());
+      return;
+    }
+    const data = await res.json();
+    const rows = data.values || [];
+    if (rows.length < 2) return;
+    const headers = rows[0];
+    const idx = (h) => headers.indexOf(h);
+    // Build map: last row per docId wins (most recent upload)
+    const byDoc = {};
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const docId = r[idx("docId")];
+      if (!docId) continue;
+      const titleVal = r[idx("title")] || "";
+      if (titleVal === "__DELETED__") { delete byDoc[docId]; continue; }
+      byDoc[docId] = {
+        title:       r[idx("title")]       || "",
+        responsible: r[idx("responsible")] || "",
+        updatedAt:   r[idx("updatedAt")]   || "",
+        url:         r[idx("previewUrl")]  || "",
+        viewUrl:     r[idx("driveUrl")]    || "",
+        uploadedBy:  r[idx("uploadedBy")]  || "",
+        notes:       r[idx("Notes")]       || "",
+        type:        r[idx("type")]        || "PDF"
+      };
+    }
+    // Clear stale overrides so deleted rows are removed
+    Object.keys(docOverrides).forEach(k => delete docOverrides[k]);
+    Object.assign(docOverrides, byDoc);
+    // For added docs (ids starting with "added_"), inject them into DATA if missing
+    for(const [docId, meta] of Object.entries(byDoc)){
+      if(!docId.startsWith("added_")) continue;
+      const folderId=docId.replace("added_","").replace(/_\d+$/,"");
+      let found=false;
+      for(const ch of DATA.chapters){
+        for(const fo of ch.folders){
+          if(fo.documents.find(d=>d.id===docId)){found=true;break;}
+        }
+        if(found) break;
+      }
+      if(!found){
+        for(const ch of DATA.chapters){
+          const fo=ch.folders.find(f=>f.id===folderId);
+          if(fo){
+            fo.documents.push({id:docId,title:meta.title||"Added document",type:meta.type||"PDF",meta:meta.title||"",responsible:meta.responsible||"",updatedAt:meta.updatedAt||null,accreditations:fo.accreditations,url:meta.url||"#"});
+            break;
+          }
+        }
+      }
+    }
+    render();
+  } catch(e) { console.warn("Could not load from Sheet", e); }
+}
 
-function writeToSheet(docId, title, responsible, updatedAt, expirationDate, driveUrl, previewUrl, uploadedBy, notes='', type='PDF') {
+function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes='', type='PDF') {
   const token = googleAccessToken;
-  const range = SHEET_NAME + "!A:J";
-  const body = { values: [[docId, title, responsible, updatedAt, expirationDate, driveUrl, previewUrl, uploadedBy, notes, type]] };
+  const range = SHEET_NAME + "!A:I";
+  const body = { values: [[docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes, type]] };
   fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
     method: "POST",
     headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
@@ -1190,11 +1231,9 @@ function renderDocs(){
     desc.textContent="Select a folder to view its documents";
     el.innerHTML=`<div class="empty-state">Click a folder to see its documents.</div>`;
     if(addBtn) addBtn.style.visibility="hidden";
-  updateScanBtnVisibility();
     return;
   }
   if(addBtn) addBtn.style.visibility="visible";
-  updateScanBtnVisibility();
   const f=getFolders().find(f=>f.id===state.selectedFolder);
   desc.textContent=f?f.title:"";
   const docs=getDocs();el.innerHTML="";
@@ -1204,23 +1243,20 @@ function renderDocs(){
     const item=document.createElement("div");
     item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");
     const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:"Not yet uploaded";
-    // Expiration date alert
+    // Periodicidad alert
     let alertHtml="";
-    if(!doc.updatedAt){
-      alertHtml=`<span class="period-alert period-alert--grey">Not uploaded</span>`;
-    } else if(doc.expirationDate){
-      const now=Date.now();
-      const exp=new Date(doc.expirationDate+"T00:00:00").getTime();
-      const total=exp-new Date(doc.updatedAt+"T00:00:00").getTime();
-      const remaining=exp-now;
-      const pctLeft=remaining/total;
-      if(remaining<0){
-        const daysOver=Math.floor(-remaining/86400000);
-        alertHtml=`<span class="period-alert period-alert--red" title="Expired on ${doc.expirationDate}">⚠ Not valid (${daysOver}d ago)</span>`;
-      } else if(pctLeft<=0.2){
-        const daysleft=Math.ceil(remaining/86400000);
-        alertHtml=`<span class="period-alert period-alert--yellow" title="Expires on ${doc.expirationDate}">⏰ Expires in ${daysleft}d</span>`;
+    const folder=getFolders().find(f=>f.id===state.selectedFolder);
+    if(folder&&folder.periodicidad&&doc.updatedAt){
+      const periodMap={"Cada semestre":180,"Cada año":365,"Cada 5 años":1825};
+      const days=periodMap[folder.periodicidad]||null;
+      if(days){
+        const diffDays=Math.floor((Date.now()-new Date(doc.updatedAt+"T00:00:00"))/86400000);
+        const pct=diffDays/days;
+        if(pct>=1) alertHtml=`<span class="period-alert period-alert--red" title="Overdue: ${folder.periodicidad}">⚠ Overdue</span>`;
+        else if(pct>=0.8) alertHtml=`<span class="period-alert period-alert--yellow" title="Due soon: ${folder.periodicidad}">⏰ Due soon</span>`;
       }
+    } else if(!doc.updatedAt){
+      alertHtml=`<span class="period-alert period-alert--grey">Not uploaded</span>`;
     }
     const notesHtml=doc.notes?`<div class="doc-notes">${doc.notes}</div>`:"";
     const uploadedHtml=doc.uploadedBy?`<div class="doc-uploaded-by">Uploaded by: ${doc.uploadedBy}</div>`:"";
@@ -1247,81 +1283,6 @@ function renderDocs(){
 }
 
 function render(){renderChapters();renderFolders();renderDocs();}
-
-function _injectAddedDocs(byDoc) {
-  for(const [docId, meta] of Object.entries(byDoc)){
-    if(!docId.startsWith("added_")) continue;
-    const folderId=docId.replace("added_","").replace(/_\d+$/,"");
-    let found=false;
-    for(const ch of DATA.chapters){
-      for(const fo of ch.folders){
-        if(fo.documents.find(d=>d.id===docId)){found=true;break;}
-      }
-      if(found) break;
-    }
-    if(!found){
-      for(const ch of DATA.chapters){
-        const fo=ch.folders.find(f=>f.id===folderId);
-        if(fo){
-          fo.documents.push({id:docId,title:meta.title||"Added document",type:meta.type||"PDF",meta:meta.title||"",responsible:meta.responsible||"",updatedAt:meta.updatedAt||null,accreditations:fo.accreditations,url:meta.url||"#"});
-          break;
-        }
-      }
-    }
-  }
-}
-
-async function loadFromSheet() {
-  try {
-    const range = encodeURIComponent(SHEET_NAME + "!A:J");
-    // Always try API key first (sheet is public — works without login)
-    // If that fails, try with Bearer token
-    let res = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
-    );
-    // If API key failed and we have a token, try with token
-    if (!res.ok && googleAccessToken) {
-      res = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,
-        { headers: { Authorization: "Bearer " + googleAccessToken } }
-      );
-    }
-    if (!res.ok) {
-      console.warn("Sheet load failed:", res.status);
-      return;
-    }
-    const data = await res.json();
-    const rows = data.values || [];
-    if (rows.length < 2) return;
-    const headers = rows[0];
-    const idx = (h) => headers.indexOf(h);
-    const byDoc = {};
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i];
-      const docId = r[idx("docId")];
-      if (!docId) continue;
-      const titleVal = r[idx("title")] || "";
-      if (titleVal === "__DELETED__") { delete byDoc[docId]; continue; }
-      byDoc[docId] = {
-        title:          r[idx("title")]          || "",
-        responsible:    r[idx("responsible")]    || "",
-        updatedAt:      r[idx("updatedAt")]      || "",
-        expirationDate: r[idx("expirationDate")] || "",
-        url:            r[idx("previewUrl")]     || "",
-        viewUrl:        r[idx("driveUrl")]       || "",
-        uploadedBy:     r[idx("uploadedBy")]     || "",
-        notes:          r[idx("Notes")]          || "",
-        type:           r[idx("type")]           || "PDF"
-      };
-    }
-    Object.keys(docOverrides).forEach(k => delete docOverrides[k]);
-    Object.assign(docOverrides, byDoc);
-    _injectAddedDocs(byDoc);
-    render();
-  } catch(e) { console.warn("Could not load from Sheet:", e); }
-}
-
-
 
 // FILTER
 document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn=>{
@@ -1358,7 +1319,6 @@ function resetModal(){
   document.getElementById("docNotesInput").value="";
   document.getElementById("dashUrlInput").value="";
   document.getElementById("dashOpenBtn").style.display="none";
-  document.getElementById("docExpirationInput").value="";
   const fd=document.getElementById("fileDrop");
   fd.classList.remove("has-file");
   fd.querySelector("strong").textContent="Click to browse or drag and drop";
@@ -1382,7 +1342,6 @@ function openUploadModal(docId){
   document.getElementById("modalSub").textContent=`"${doc.title}" → ${folder.title}`;
   document.getElementById("docNameInput").value=doc.title||"";
   document.getElementById("docResponsibleInput").value=doc.responsible||"";
-  document.getElementById("docExpirationInput").value=doc.expirationDate||"";
   // Pre-fill type from existing doc
   if(doc.type==="Dashboard"||doc.type==="Link"){
     setUploadType("dashboard");
@@ -1446,7 +1405,6 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
     const dashUrl=document.getElementById("dashUrlInput").value.trim();
     if(!dashUrl){showToast("Please enter a dashboard URL.");return;}
     const today=new Date().toISOString().split("T")[0];
-    const expDate=document.getElementById("docExpirationInput").value||"";
     const embedUrl=dashUrl.includes("streamlit.app")&&!dashUrl.includes("embed=true")
       ? dashUrl+(dashUrl.includes("?")?"&":"?")+"embed=true"
       : dashUrl;
@@ -1456,8 +1414,8 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
       const folder=getFolders().find(fo=>fo.id===state.selectedFolder);
       if(folder) folder.documents.push({id:currentUploadDocId,title:name,type:"Dashboard",meta:name,responsible,updatedAt:today,accreditations:folder.accreditations,url:embedUrl});
     }
-    docOverrides[currentUploadDocId]={title:name,responsible,type:"Dashboard",updatedAt:today,expirationDate:expDate,url:embedUrl,viewUrl:dashUrl,uploadedBy:googleUserEmail,notes};
-    writeToSheet(currentUploadDocId,name,responsible,today,expDate,dashUrl,embedUrl,googleUserEmail,notes,'Dashboard');
+    docOverrides[currentUploadDocId]={title:name,responsible,type:"Dashboard",updatedAt:today,url:embedUrl,viewUrl:dashUrl,uploadedBy:googleUserEmail,notes};
+    writeToSheet(currentUploadDocId,name,responsible,today,dashUrl,embedUrl,googleUserEmail,notes,'Dashboard');
     closeModal("uploadModal");
     showToast("Dashboard saved.");
     state.selectedDoc=currentUploadDocId;
@@ -1466,7 +1424,6 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
   }
 
   // File upload
-  const expDate=document.getElementById("docExpirationInput").value||"";
   const file=document.getElementById("fileInput").files[0];
   if(!file){showToast("Please select a file.");return;}
   if(!currentFolderId){showToast("No Drive folder configured for this folder yet.");return;}
@@ -1491,8 +1448,8 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
         const folder=getFolders().find(fo=>fo.id===state.selectedFolder);
         if(folder) folder.documents.push({id:currentUploadDocId,title:name,type:"PDF",meta:name,responsible,updatedAt:today,accreditations:folder.accreditations,url:result.previewUrl});
       }
-      docOverrides[currentUploadDocId]={title:name,responsible,type:docType,updatedAt:today,expirationDate:expDate,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:googleUserEmail,notes};
-      writeToSheet(currentUploadDocId,name,responsible,today,expDate,result.viewUrl,result.previewUrl,googleUserEmail,notes,'PDF');
+      docOverrides[currentUploadDocId]={title:name,responsible,type:docType,updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:googleUserEmail,notes};
+      writeToSheet(currentUploadDocId,name,responsible,today,result.viewUrl,result.previewUrl,googleUserEmail,notes,'PDF');
       // Update the actual Drive file name to match the repository name
       if(result.fileId){
         fetch(`https://www.googleapis.com/drive/v3/files/${result.fileId}`,{
@@ -1589,8 +1546,7 @@ function openViewer(docId){
   const embedUrl=rawUrl?getViewerSrc(rawUrl,doc.type):"";
   document.getElementById("viewerTitle").textContent=doc.title;
   const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:(doc.responsible||"");
-  const expInfo=doc.expirationDate?` · Expires: ${fmtDate(doc.expirationDate)}`:""; 
-  document.getElementById("viewerMeta").textContent=`${doc.type} · ${upd}${expInfo}`;
+  document.getElementById("viewerMeta").textContent=`${doc.type} · ${upd}`;
   const cleanUrl=rawUrl.replace(/[?&]embed=true/,"");
   document.getElementById("viewerOpenBtn").href=doc.viewUrl||cleanUrl||folder.sharepointUrl||"#";
   document.getElementById("viewerUpdateBtn").onclick=()=>{closeModal("viewerModal");resetViewer();requireLogin(()=>openUploadModal(docId));};
@@ -1615,165 +1571,16 @@ document.getElementById("viewerModal").addEventListener("click",(e)=>{if(e.targe
 
 function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";setTimeout(()=>{t.style.display="none";},3500);}
 
-// =====================
-// DRIVE FOLDER SCANNER (Chapter 1 / Folder 1)
-// =====================
-// Tracks which Drive file IDs have already been accepted or rejected
-const driveSeenIds = JSON.parse(sessionStorage.getItem("br_drive_seen") || "{}");
-
-function saveDriveSeen(){ sessionStorage.setItem("br_drive_seen", JSON.stringify(driveSeenIds)); }
-
-async function scanDriveFolder(folderId, folderDataId, folderTitle){
-  if(!googleAccessToken){ showToast("Sign in to scan Drive."); return; }
-  try {
-    const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
-    const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,createdTime,size)&pageSize=50`,
-      { headers:{ Authorization:"Bearer "+googleAccessToken } }
-    );
-    const data = await res.json();
-    const files = (data.files||[]).filter(f=>!driveSeenIds[f.id]);
-    if(!files.length){ showToast("No new files found in Drive folder."); return; }
-    openPendingModal(files, folderId, folderDataId, folderTitle);
-  } catch(e){ showToast("Could not scan Drive folder: "+e.message); }
-}
-
-function openPendingModal(files, folderId, folderDataId, folderTitle){
-  document.getElementById("pendingModalSub").textContent =
-    `${files.length} new file(s) found in "${folderTitle}". Accept to add to the BaseRoom.`;
-  const list = document.getElementById("pendingFileList");
-  list.innerHTML = "";
-  files.forEach(file=>{
-    const div = document.createElement("div");
-    div.className = "pending-file-item";
-    const ext = file.name.split(".").pop().toUpperCase();
-    const size = file.size ? (file.size/1024/1024).toFixed(2)+" MB" : "";
-    const created = file.createdTime ? new Date(file.createdTime).toLocaleDateString("en-GB") : "";
-    div.innerHTML = `
-      <div class="pending-file-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
-      <div style="flex:1">
-        <div class="pending-file-name">${file.name}</div>
-        <div class="pending-file-meta">${ext}${size?" · "+size:""}${created?" · Added "+created:""}</div>
-      </div>
-      <div class="pending-file-actions">
-        <button class="btn-accept" data-fileid="${file.id}" data-name="${file.name}" data-folderid="${folderId}" data-folderdata="${folderDataId}">Accept</button>
-        <button class="btn-reject" data-fileid="${file.id}">Ignore</button>
-      </div>`;
-
-    div.querySelector(".btn-accept").addEventListener("click", (e)=>{
-      const btn = e.currentTarget;
-      const fileId = btn.dataset.fileid;
-      const fileName = btn.dataset.name;
-      const fDataId = btn.dataset.folderdata;
-      driveSeenIds[fileId] = "accepted";
-      saveDriveSeen();
-      // Add to repository: create docOverride with Drive preview URL
-      const newDocId = "added_"+fDataId+"_"+Date.now();
-      const today = new Date().toISOString().split("T")[0];
-      const previewUrl = `https://drive.google.com/file/d/${fileId}/preview`;
-      const viewUrl    = `https://drive.google.com/file/d/${fileId}/view`;
-      docOverrides[newDocId] = {
-        title: fileName.replace(/\.[^/.]+$/, ""),
-        responsible: googleUserEmail,
-        type: "PDF",
-        updatedAt: today,
-        expirationDate: "",
-        url: previewUrl,
-        viewUrl: viewUrl,
-        uploadedBy: googleUserEmail,
-        notes: "Added from Drive scan"
-      };
-      // Inject into DATA
-      const fo = (() => { for(const ch of DATA.chapters) { const f=ch.folders.find(f=>f.id===fDataId); if(f) return f; } return null; })();
-      if(fo && !fo.documents.find(d=>d.id===newDocId)){
-        fo.documents.push({id:newDocId,title:docOverrides[newDocId].title,type:"PDF",meta:"Imported from Drive",responsible:googleUserEmail,updatedAt:today,accreditations:fo.accreditations,url:previewUrl});
-      }
-      writeToSheet(newDocId, docOverrides[newDocId].title, googleUserEmail, today, "", viewUrl, previewUrl, googleUserEmail, "Added from Drive scan", "PDF");
-      div.style.opacity="0.4";
-      btn.textContent="✓ Added";
-      btn.disabled=true;
-      renderDocs();
-    });
-
-    div.querySelector(".btn-reject").addEventListener("click", (e)=>{
-      const fileId = e.currentTarget.dataset.fileid;
-      driveSeenIds[fileId] = "rejected";
-      saveDriveSeen();
-      div.style.opacity="0.4";
-      e.currentTarget.textContent="Ignored";
-      e.currentTarget.disabled=true;
-    });
-
-    list.appendChild(div);
-  });
-  document.getElementById("pendingModal").classList.add("open");
-}
-
-// Show scan button only when folder f1-1 is selected (has Drive folder configured)
-function updateScanBtnVisibility(){
-  const btn = document.getElementById("driveScanBtn");
-  if(!btn) return;
-  const fid = DRIVE_FOLDERS[state.selectedFolder];
-  btn.style.display = (fid && state.selectedFolder) ? "inline-flex" : "none";
-}
-
-document.getElementById("driveScanBtn").addEventListener("click",()=>{
-  if(!state.selectedFolder){ showToast("Select a folder first."); return; }
-  const fid = DRIVE_FOLDERS[state.selectedFolder];
-  if(!fid){ showToast("No Drive folder configured for this folder."); return; }
-  const fo = getFolders().find(f=>f.id===state.selectedFolder);
-  requireLogin(()=>scanDriveFolder(fid, state.selectedFolder, fo?.title||"this folder"));
-});
-
 render();
-
-// ── Startup sequence ──────────────────────────────────────────────────────
-// The Sheet is public (API key), so we can always load data on page open.
-// If the user has a stored session, we also silently refresh the token so
-// write operations (upload, delete) keep working without a new login prompt.
-(async function init() {
-  // Step 1: load sheet with API key (public read — always works)
-  await loadFromSheet();
-
-  // Step 2: if user had a previous session, silently refresh the OAuth token
-  // so they don't need to click "Sign in" again for write operations
-  if (googleUserEmail) {
-    try {
-      await new Promise((resolve) => {
-        // Give GSI library time to initialize
-        const tryRefresh = () => {
-          if (typeof google === "undefined" || !google.accounts) {
-            setTimeout(tryRefresh, 200);
-            return;
-          }
-          const client = google.accounts.oauth2.initTokenClient({
-            client_id: GOOGLE_CLIENT_ID,
-            scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
-            hint: googleUserEmail,
-            prompt: "",  // silent — no popup
-            callback: (resp) => {
-              if (!resp.error && resp.access_token) {
-                googleAccessToken = resp.access_token;
-                sessionStorage.setItem("br_token", googleAccessToken);
-                touchSession();
-                // Reload sheet with the fresh token in case API key had issues
-                loadFromSheet();
-              } else {
-                // Token couldn't be refreshed silently — user stays logged out
-                // but sheet data is already loaded via API key above
-                googleAccessToken = null;
-                sessionStorage.removeItem("br_token");
-              }
-              resolve();
-            }
-          });
-          client.requestAccessToken();
-        };
-        tryRefresh();
-      });
-    } catch(e) { /* silent fail — sheet already loaded */ }
-  }
-})();
+// Load sheet data on startup — if API key fails (sheet not public),
+// it will retry automatically when the user logs in
+loadFromSheet().then(() => {
+  // If session was restored from sessionStorage, sheet loaded with token — good.
+}).catch(() => {});
+// Silently refresh token if user was previously signed in
+if(googleUserEmail){
+  window.addEventListener("load", ()=>{ setTimeout(silentTokenRefresh, 1000); });
+}
 </script>
 </body>
 </html>
