@@ -174,6 +174,12 @@ _render_update_banner()
 
 # ── Sidebar navigation ─────────────────────────────────────────────────────────
 _nav_sidebar("5 Full-time Faculty Questionnaire")
+
+import os as _os
+EXCEL_PATH = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "..", "data", "Faculty", "BD_Faculty.xlsx")
+if not _os.path.exists(EXCEL_PATH):
+    EXCEL_PATH = "data/Faculty/BD_Faculty.xlsx"  # fallback
+
 @st.cache_data(ttl=0)
 def load_fulltime():
     df = pd.read_excel(EXCEL_PATH, sheet_name="BD PLANTA 2020-2025")
@@ -237,15 +243,13 @@ df_credit_sheet, df_noncredit_sheet, credit_sheet_name, noncredit_sheet_name = l
 with st.sidebar:
     st.markdown("### 📊 Go to KPI:")
     
-    choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
+    choices = [k for k, u in _NAV.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
     default_label = "5 Full-time Faculty Questionnaire"  # etiqueta de este KPI en tu lista
     default_idx = choices.index(default_label) if default_label in choices else 0
 
     sel = st.selectbox("Select…", choices, index=default_idx)
-    st.link_button("Open", options[sel], use_container_width=True)
+    st.link_button("Open", _NAV[sel], use_container_width=True)
 
-# ================= HEADER (solo título) =========================
-st.markdown("---")
 #================= YEARS (fixed 2020–2025) ====================================
 def _norm(s: pd.Series) -> pd.Series:
     return s.astype(str).str.strip().str.lower()
