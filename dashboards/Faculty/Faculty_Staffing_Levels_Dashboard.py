@@ -93,8 +93,6 @@ st.markdown(
 
 # ── Inline helpers ─────────────────────────────────────────────────────────────
 import io as _io, base64 as _b64, datetime as _dt_mod
-import os as _os
-_DATA = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "..", "data", "Faculty", "BD_Faculty.xlsx")
 
 def _xlsx_bytes(df, sheet_name="Data"):
     buf = _io.BytesIO()
@@ -178,7 +176,7 @@ _render_update_banner()
 _nav_sidebar("2 Full-time Staffing Levels")
 @st.cache_data
 def load_data():
-    df_ = pd.read_excel(_DATA, sheet_name="BD PLANTA 2020-2025")
+    df_ = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="BD PLANTA 2020-2025")
 
     # Build 'Periodo' soportando intersemestral, pero nos quedaremos con semestral
     def _norm_per(val):
