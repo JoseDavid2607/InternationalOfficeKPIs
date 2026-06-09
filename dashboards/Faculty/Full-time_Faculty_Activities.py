@@ -168,13 +168,6 @@ def _highlight_band(fig, label, all_labels):
     return fig
 
 
-# ── Header ─────────────────────────────────────────────────────────────────────
-_render_header("Full-time Faculty Activities", "Questionnaire-based engagement summary 2020–2025")
-_render_update_banner()
-
-# ── Sidebar navigation ─────────────────────────────────────────────────────────
-_nav_sidebar("5 Full-time Faculty Questionnaire")
-
 import requests as _requests
 
 DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
@@ -192,6 +185,16 @@ def _download_excel() -> str:
     return path
 
 EXCEL_PATH = _download_excel()
+
+# ── Helper functions (from original) ────────────────────────────────────────
+def resolve_column(df: pd.DataFrame, target: str) -> Optional[str]:
+    t = target.strip().casefold()
+    for c in df.columns:
+        if c.strip().casefold() == t:
+            return c
+    return None
+
+@st.cache_data(ttl=0)
 
 @st.cache_data(ttl=0)
 def load_fulltime():
@@ -247,6 +250,13 @@ def load_courses_sheets():
     if not df_credit.empty: df_credit.columns = df_credit.columns.str.strip()
     if not df_noncr.empty:  df_noncr.columns  = df_noncr.columns.str.strip()
     return df_credit, df_noncr, sh_credit, sh_noncr
+
+# ── Header ─────────────────────────────────────────────────────────────────────
+_render_header("Full-time Faculty Activities", "Questionnaire-based engagement summary 2020–2025")
+_render_update_banner()
+
+# ── Sidebar navigation ─────────────────────────────────────────────────────────
+_nav_sidebar("5 Full-time Faculty Questionnaire")
 
 df_full = load_fulltime()
 df_q    = load_questionnaire()
