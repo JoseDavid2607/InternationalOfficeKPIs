@@ -93,6 +93,8 @@ st.markdown(
 
 # ── Inline helpers ─────────────────────────────────────────────────────────────
 import io as _io, base64 as _b64, datetime as _dt_mod
+import os as _os
+_DATA = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "..", "data", "Faculty", "BD_Faculty.xlsx")
 
 def _xlsx_bytes(df, sheet_name="Data"):
     buf = _io.BytesIO()
@@ -176,7 +178,7 @@ _render_update_banner()
 _nav_sidebar("2 Full-time Staffing Levels")
 @st.cache_data
 def load_data():
-    df_ = pd.read_excel(r"data/Faculty/BD_Faculty.xlsx", sheet_name="BD PLANTA 2020-2025")
+    df_ = pd.read_excel(_DATA, sheet_name="BD PLANTA 2020-2025")
 
     # Build 'Periodo' soportando intersemestral, pero nos quedaremos con semestral
     def _norm_per(val):
@@ -214,13 +216,9 @@ sem_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)',
 with st.sidebar:
     st.markdown("### 📊 Go to KPI:")
     # Solo entradas con URL http(s)
-    choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
+    choices = [k for k, u in _NAV.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
 
-    default_label = "2 Full-time Faculty Staffing Levels"
-    default_idx = choices.index(default_label) if default_label in choices else 0
-
-    choice = st.selectbox("Select…", choices, index=default_idx)
-    st.link_button("Open", options[choice], use_container_width=True)
+    # Navigation handled by _nav_sidebar() above
 
     # ---- Selector SOLO SEMESTRE (visible sin guion)
     st.markdown("---")
@@ -595,3 +593,9 @@ else:
 
         # ---- Botón de descarga minimalista (igual a los otros)
         _download_link("Descargar trayectoria (Excel)", out_df, f"Trajectory_{chosen_id}.xlsx")
+
+
+
+
+
+
