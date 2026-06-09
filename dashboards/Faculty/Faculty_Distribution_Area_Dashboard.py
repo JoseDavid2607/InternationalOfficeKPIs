@@ -167,12 +167,6 @@ def _highlight_band(fig, label, all_labels):
     return fig
 
 
-# ── Header ─────────────────────────────────────────────────────────────────────
-_render_header("Distribution by Academic Area", "Faculty distribution and evolution across academic areas")
-_render_update_banner()
-
-# ── Sidebar navigation ─────────────────────────────────────────────────────────
-_nav_sidebar("3 Distribution by Academic Area")
 import requests as _requests
 
 DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
@@ -188,6 +182,50 @@ def _download_excel() -> str:
             if chunk:
                 f.write(chunk)
     return path
+
+# ── Helper functions (from original) ────────────────────────────────────────
+def _is_sem_label(p: str) -> bool:
+    return bool(re.fullmatch(r"\d{4}-(10|20)", str(p)))
+
+def _is_inter_label(p: str) -> bool:
+    return bool(re.fullmatch(r"\d{4}\s+Intersemestral", str(p)))
+
+def _display_label_sem(p_internal: str) -> str:
+    # para mostrar semestres sin guion
+    return str(p_internal).replace("-", "")
+
+def _filter_for_timeframe(df_in: pd.DataFrame, time_mode: str, value: str | int | None):
+    """
+    value:
+      - Semestral: visible 'YYYY10'/'YYYY20' pero internamente mapeamos a 'YYYY-10/20'
+      - Anual: 'YYYY' -> incluir ambos semestres y el intersemestral, deduplicando por profesor/año
+      - Intersemestral: 'YYYY Intersemestral'
+    """
+    if value is None:
+        return df_in.iloc[0:0].copy()
+
+    dfb = df_in.copy()
+    pcol = "Periodo"
+
+    if time_mode == "Semestral":
+        sem_internal = f"{str(value)[:4]}-{str(value)[-2:]}"
+        return dfb[dfb[pcol].astype(str).eq(sem_internal)].copy()
+
+    if time_mode == "Anual":
+        y = str(value)
+        dfy = dfb[dfb[pcol].astype(str).str.startswith(y)].copy()
+        if "ID" in dfy.columns:
+            dfy["__Year"] = dfy[pcol].astype(str).str[:4]
+            dfy = dfy.sort_values(by=[pcol]).drop_duplicates(subset=["ID", "__Year"], keep="last")
+            dfy = dfy.drop(columns=["__Year"])
+        return dfy
+
+    # Intersemestral
+    inter_label = str(value)
+    return dfb[dfb[pcol].astype(str).eq(inter_label)].copy()
+
+# ========= DATA LOAD =========
+@st.cache_data(ttl=0)
 
 @st.cache_data(ttl=0)
 def load_fulltime():
@@ -228,6 +266,13 @@ def load_parttime():
     if "AREA_PROFESOR" not in df.columns and "Academic Area" in df.columns:
         df["AREA_PROFESOR"] = df["Academic Area"]
     return df
+
+# ── Header ─────────────────────────────────────────────────────────────────────
+_render_header("Distribution by Academic Area", "Faculty distribution and evolution across academic areas")
+_render_update_banner()
+
+# ── Sidebar navigation ─────────────────────────────────────────────────────────
+_nav_sidebar("3 Distribution by Academic Area")
 
 df_full = load_fulltime()
 df_part = load_parttime()
