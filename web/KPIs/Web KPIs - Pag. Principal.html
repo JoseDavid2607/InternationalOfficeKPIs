@@ -18,7 +18,7 @@
 body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--text)}
 header.hero{
 color:#fff;min-height:340px;display:flex;align-items:center;justify-content:center;
-background:linear-gradient(rgba(8,12,20,.18),rgba(8,12,20,.42)),url('Santodomingo.jpg') center/cover no-repeat;
+background:linear-gradient(rgba(8,12,20,.18),rgba(8,12,20,.42)),url('./Santodomingo.jpg') center/cover no-repeat;
 text-align:center;
 }
 .hero h1{font-size:4rem;margin:0}
@@ -59,7 +59,7 @@ iframe{flex:1;border:none}
 </div>
 </header>
 
-<div class="intro-wrap"><div class="intro-seneca"><img src="seneca.png" alt="Seneca"></div><div class="instructions">
+<div class="intro-wrap"><div class="intro-seneca"><img src="./seneca.png" alt="Seneca"></div><div class="instructions">
 Dynamic BaseRoom with key information from the different areas of the School of Management.
 Select a unit, then a dashboard, and preview it on the right.
 </div></div>
@@ -145,8 +145,9 @@ b.href=url;
 document.getElementById('externalLink').href=url;
 b.style.display='inline-block';
 if(url.includes('streamlit.app')){
-f.style.display='none';
-ext.style.display='flex';
+ext.style.display='none';
+f.style.display='block';
+f.src=url.includes('?') ? url + '&embed=true' : url + '?embed=true';
 }else{
 ext.style.display='none';
 f.style.display='block';
