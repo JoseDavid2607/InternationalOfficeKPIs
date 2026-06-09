@@ -231,13 +231,7 @@ df = load_data()
 # SIDEBAR — Nav + Refresh + Timeframe
 # =============================
 
-st.sidebar.markdown("### 📊 Go to KPI:")
-sel_nav = st.sidebar.selectbox("Select…", list(options.keys()), index=0)
-st.sidebar.link_button("Open", options[sel_nav], use_container_width=True)
-
-if st.sidebar.button("🔄 Refresh data"):
-    st.cache_data.clear()
-    st.rerun()
+# Navigation handled by _nav_sidebar() above
 
 all_periods   = df["Periodo"].astype(str).unique().tolist()
 sem_periods   = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
