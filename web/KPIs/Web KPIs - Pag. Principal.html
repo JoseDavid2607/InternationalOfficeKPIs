@@ -23,8 +23,13 @@ text-align:center;
 }
 .hero h1{font-size:4rem;margin:0}
 .hero h2{font-size:1.2rem}
+
+.intro-wrap{max-width:1000px;margin:-40px auto 20px;display:flex;align-items:flex-end;gap:0}
+.intro-seneca{width:100px;margin-right:-12px;z-index:2}
+.intro-seneca img{max-width:100px;display:block}
 .instructions{
-max-width:1000px;margin:-40px auto 20px;background:rgba(255,255,255,.93);
+flex:1;
+;margin:-40px auto 20px;background:rgba(255,255,255,.93);
 padding:25px;border-radius:24px;box-shadow:0 20px 50px rgba(0,0,0,.16)
 }
 .workspace{
@@ -54,10 +59,10 @@ iframe{flex:1;border:none}
 </div>
 </header>
 
-<div class="instructions">
+<div class="intro-wrap"><div class="intro-seneca"><img src="seneca.png" alt="Seneca"></div><div class="instructions">
 Dynamic BaseRoom with key information from the different areas of the School of Management.
 Select a unit, then a dashboard, and preview it on the right.
-</div>
+</div></div>
 
 <div class="workspace">
 <div class="panel">
@@ -86,6 +91,10 @@ Select a unit, then a dashboard, and preview it on the right.
 </div>
 <div id="placeholder" class="placeholder">Select a dashboard to preview it.</div>
 <iframe id="frame" style="display:none"></iframe>
+<div id="external" class="placeholder" style="display:none">
+This dashboard cannot be embedded directly due to browser security restrictions.<br><br>
+<a id="externalLink" target="_blank" class="btn" style="display:inline-block">Open Dashboard ↗</a>
+</div>
 </div>
 </div>
 </div>
@@ -130,11 +139,19 @@ document.getElementById('title').innerText=title;
 if(url=='#') return;
 document.getElementById('placeholder').style.display='none';
 let f=document.getElementById('frame');
-f.style.display='block';
-f.src=url;
+let ext=document.getElementById('external');
 let b=document.getElementById('openBtn');
 b.href=url;
-setTimeout(()=>b.style.display='inline-block',5000);
+document.getElementById('externalLink').href=url;
+b.style.display='inline-block';
+if(url.includes('streamlit.app')){
+f.style.display='none';
+ext.style.display='flex';
+}else{
+ext.style.display='none';
+f.style.display='block';
+f.src=url;
+}
 }
 loadUnit('faculty',document.querySelector('.item'));
 </script>
