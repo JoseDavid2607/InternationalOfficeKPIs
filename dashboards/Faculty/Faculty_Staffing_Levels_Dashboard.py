@@ -174,9 +174,25 @@ _render_update_banner()
 
 # ── Sidebar navigation ─────────────────────────────────────────────────────────
 _nav_sidebar("2 Full-time Staffing Levels")
+import requests as _requests
+
+DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
+
+@st.cache_data(ttl=300)
+def _download_excel() -> str:
+    """Download BD_Faculty.xlsx from Google Drive to /tmp and return local path."""
+    url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+    path = "/tmp/BD_Faculty.xlsx"
+    response = _requests.get(url, stream=True)
+    with open(path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
+    return path
+
 @st.cache_data
 def load_data():
-    df_ = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="BD PLANTA 2020-2025")
+    df_ = pd.read_excel(_download_excel(), sheet_name="BD PLANTA 2020-2025")
 
     # Build 'Periodo' soportando intersemestral, pero nos quedaremos con semestral
     def _norm_per(val):
@@ -591,9 +607,3 @@ else:
 
         # ---- Botón de descarga minimalista (igual a los otros)
         _download_link("Descargar trayectoria (Excel)", out_df, f"Trajectory_{chosen_id}.xlsx")
-
-
-
-
-
-
