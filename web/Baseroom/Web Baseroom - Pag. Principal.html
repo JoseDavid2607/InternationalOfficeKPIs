@@ -633,57 +633,20 @@ function _injectAddedDocs(byDoc) {
 async function loadFromSheet() {
   try {
     const range = encodeURIComponent(SHEET_NAME + "!A:J");
-    // Try with Bearer token first (works always when logged in),
-    // fall back to API key (works only when Sheet is public)
-    let res;
-    if (googleAccessToken) {
+    // Always try API key first (sheet is public — works without login)
+    // If that fails, try with Bearer token
+    let res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
+    );
+    // If API key failed and we have a token, try with token
+    if (!res.ok && googleAccessToken) {
       res = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,
         { headers: { Authorization: "Bearer " + googleAccessToken } }
       );
-    } else {
-      res = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
-      );
     }
     if (!res.ok) {
-      const errText = await res.text();
-      console.warn("Sheet load failed:", res.status, errText);
-      // If token was expired (401), clear it so next call uses API key
-      if (res.status === 401) {
-        googleAccessToken = null;
-        sessionStorage.removeItem("br_token");
-        // Retry with API key
-        const retryRes = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
-        );
-        if (retryRes.ok) {
-          const retryData = await retryRes.json();
-          // continue processing with retryData
-          const rows2 = retryData.values || [];
-          if (rows2.length >= 2) {
-            const headers2 = rows2[0];
-            const idx2 = (h) => headers2.indexOf(h);
-            const byDoc2 = {};
-            for (let i = 1; i < rows2.length; i++) {
-              const r = rows2[i];
-              const docId = r[idx2("docId")]; if (!docId) continue;
-              if ((r[idx2("title")]||"") === "__DELETED__") { delete byDoc2[docId]; continue; }
-              byDoc2[docId] = {
-                title: r[idx2("title")]||"", responsible: r[idx2("responsible")]||"",
-                updatedAt: r[idx2("updatedAt")]||"", expirationDate: r[idx2("expirationDate")]||"",
-                url: r[idx2("previewUrl")]||"", viewUrl: r[idx2("driveUrl")]||"",
-                uploadedBy: r[idx2("uploadedBy")]||"", notes: r[idx2("Notes")]||"",
-                type: r[idx2("type")]||"PDF"
-              };
-            }
-            Object.keys(docOverrides).forEach(k => delete docOverrides[k]);
-            Object.assign(docOverrides, byDoc2);
-            _injectAddedDocs(byDoc2);
-            render();
-          }
-        }
-      }
+      console.warn("Sheet load failed:", res.status);
       return;
     }
     const data = await res.json();
@@ -691,7 +654,6 @@ async function loadFromSheet() {
     if (rows.length < 2) return;
     const headers = rows[0];
     const idx = (h) => headers.indexOf(h);
-    // Build map: last row per docId wins (most recent upload)
     const byDoc = {};
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
@@ -711,13 +673,13 @@ async function loadFromSheet() {
         type:           r[idx("type")]           || "PDF"
       };
     }
-    // Clear stale overrides so deleted rows are removed
     Object.keys(docOverrides).forEach(k => delete docOverrides[k]);
     Object.assign(docOverrides, byDoc);
     _injectAddedDocs(byDoc);
     render();
-  } catch(e) { console.warn("Could not load from Sheet", e); }
+  } catch(e) { console.warn("Could not load from Sheet:", e); }
 }
+
 
 function writeToSheet(docId, title, responsible, updatedAt, expirationDate, driveUrl, previewUrl, uploadedBy, notes='', type='PDF') {
   const token = googleAccessToken;
