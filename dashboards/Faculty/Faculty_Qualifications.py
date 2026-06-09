@@ -9,46 +9,29 @@ import numpy as np
 from io import BytesIO
 
 # ------------------------ PAGE CONFIG & STYLES ------------------------
-st.set_page_config(
-    page_title="Faculty Qualifications",
-    page_icon=":bar_chart:",
-    layout="wide",
-    initial_sidebar_state="expanded",
+from suite_styles import (
+    apply_page_config, inject_global_css, render_header,
+    render_sidebar_nav, render_update_banner, kpi_card_row, section_divider,
+    apply_chart_style, add_period_highlight, PALETTE,
+    _xlsx_bytes, _download_xlsx_button,
 )
-with st.container():
-    st.markdown(
-        """
-        <style>
-        .header-title { color:#21877D; font-weight:700; text-align:center; font-size:32px; }
-        .header-btn { background-color:#21877D; padding:8px 16px; border:none; border-radius:8px; cursor:pointer; font-size:14px; display:inline-block; }
-        a.header-btn, a.header-btn:link, a.header-btn:visited, a.header-btn:hover, a.header-btn:active { color:#ffffff !important; text-decoration:none !important; }
-        .scroll-wrap-600 { max-height:600px; overflow-y:auto; }
-        .scroll-wrap-400 { max-height:400px; overflow-y:auto; }
-        .scroll-wrap-program { max-height:520px; overflow-y:auto; }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
 
-# DOWNLOAD BUTTONS — minimal style
+apply_page_config("Faculty Qualifications · UASM")
+inject_global_css()
+# Scroll helpers (kept — not in global CSS)
 st.markdown("""
 <style>
-div.stDownloadButton > button {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  color: #21877D !important;
-  font-size: 13px !important;
-  padding: 0 !important;
-  text-decoration: underline !important;
-}
-div.stDownloadButton { margin: 2px 0 8px 0; }
-div.stDownloadButton > button:hover { opacity: 0.9; }
+.scroll-wrap-600  { max-height:600px; overflow-y:auto; }
+.scroll-wrap-400  { max-height:400px; overflow-y:auto; }
+.scroll-wrap-program { max-height:520px; overflow-y:auto; }
 </style>
 """, unsafe_allow_html=True)
 
 # ------------------------ HEADER ------------------------
-st.markdown('<div class="header-title">Full-time Faculty Qualifications</div>', unsafe_allow_html=True)
+render_header(
+    "Full-time Faculty Qualifications",
+    subtitle="P/S and qualification type analysis (SA, PA, SP, IP) with sensitivity mode",
+)
 
 # ------------------------ DATA LOAD ------------------------
 @st.cache_data(ttl=0)
@@ -188,12 +171,15 @@ def _slugify(s: str) -> str:
 def _sanitize_for_export(df: pd.DataFrame) -> pd.DataFrame:
     return df[[c for c in df.columns if not str(c).startswith("_")]].copy()
 
-def _xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
+# _xlsx_bytes is imported from suite_styles — local definition removed
+# (keeping the function below for _download_xlsx_button which uses it)
+def _xlsx_bytes_local(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
     buf = BytesIO()
     with pd.ExcelWriter(buf) as writer:
         df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
     buf.seek(0)
     return buf.getvalue()
+_xlsx_bytes = _xlsx_bytes_local  # alias so existing calls still work
 
 def _download_xlsx_button(df: pd.DataFrame, fname: str, key: str, label: str = "Download Excel"):
     safe = _sanitize_for_export(df)
@@ -917,20 +903,8 @@ with st.sidebar:
             st.success("Reset.")
 
     if not sens_mode:
-        st.markdown("### 📊 Go to KPI:")
-        options = {
-            "1 Full-time Composition": "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-            "2 Full-time Staffing Levels": "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
-            "3 Distribution by Academic Area": "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
-            "4 Faculty Demographics": "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
-            "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
-            "6 Faculty Qualifications": "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-        }
-        choices = list(options.keys())
-        default_label = "6 Faculty Qualifications"
-        default_idx = choices.index(default_label) if default_label in choices else 0
-        choice = st.selectbox("Select…", choices, index=default_idx, key="kpi_nav_top")
-        st.link_button("Open", options[choice], use_container_width=True)
+        # ── Shared suite navigation (Update Data button included) ──
+        render_sidebar_nav(current_key="6 · Faculty Qualifications")
 
     st.markdown('---')
     st.markdown("#### Timeframe")
@@ -3597,47 +3571,3 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
