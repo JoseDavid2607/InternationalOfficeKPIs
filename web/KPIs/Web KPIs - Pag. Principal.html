@@ -9,6 +9,7 @@
   --bg-page: #f5f6f8;
   --bg-glass: rgba(255,255,255,.93);
   --bg-white: #ffffff;
+  --slate: #4b5563;
   --slate-dark: #1f2937;
   --slate-mid: #374151;
   --muted: #6b7280;
@@ -302,54 +303,49 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 </div>
 
 <script>
-// ── GOOGLE AUTH ──────────────────────────────────────────────────────────
-const CLIENT_ID   = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email";
-const DOMAIN      = "uniandes.edu.co";
-const INACTIVITY  = 10 * 60 * 1000;
+// ── AUTH (shared session with BaseRoom via sessionStorage) ───────────────
+const GOOGLE_CLIENT_ID_KPI = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
+const SCOPES_KPI   = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets";
+const ALLOWED_KPI  = "uniandes.edu.co";
+const SESSION_MS_KPI = 10 * 60 * 1000;
 
-let gToken  = sessionStorage.getItem("br_token") || null;
-let gEmail  = sessionStorage.getItem("br_email") || null;
-let gExpiry = parseInt(sessionStorage.getItem("br_expiry")||"0")||null;
-let gRefreshTimer = null;
+let kpiToken    = sessionStorage.getItem("br_token") || null;
+let kpiEmail    = sessionStorage.getItem("br_email") || null;
+let kpiExpiry   = parseInt(sessionStorage.getItem("br_expiry") || "0") || null;
 let pendingDash = null;
 
-function isAuthed(){
-  return gToken && gEmail && gEmail.endsWith("@"+DOMAIN) && gExpiry && Date.now()<gExpiry;
+function isLoggedIn() {
+  return kpiToken && kpiEmail && kpiEmail.endsWith("@" + ALLOWED_KPI) &&
+         kpiExpiry && Date.now() < kpiExpiry;
 }
-function touchSession(){
-  if(!gToken) return;
-  gExpiry = Date.now()+INACTIVITY;
-  sessionStorage.setItem("br_expiry",String(gExpiry));
+function touchKpiSession() {
+  kpiExpiry = Date.now() + SESSION_MS_KPI;
+  sessionStorage.setItem("br_expiry", String(kpiExpiry));
 }
-function clearSession(){
-  gToken=gEmail=gExpiry=null;
-  sessionStorage.removeItem("br_token");
-  sessionStorage.removeItem("br_email");
-  sessionStorage.removeItem("br_expiry");
-  if(gRefreshTimer){clearInterval(gRefreshTimer);gRefreshTimer=null;}
-}
-function silentRefresh(){
-  if(!gEmail) return;
-  try {
-    google.accounts.oauth2.initTokenClient({
-      client_id:CLIENT_ID, scope:DRIVE_SCOPE, hint:gEmail, prompt:"",
-      callback:(r)=>{ if(!r.error&&r.access_token){ gToken=r.access_token; sessionStorage.setItem("br_token",gToken); touchSession(); } }
-    }).requestAccessToken();
-  } catch(e){}
-}
-function startRefreshCycle(){
-  if(gRefreshTimer) clearInterval(gRefreshTimer);
-  gRefreshTimer = setInterval(silentRefresh, 50*60*1000);
-}
-function onSessionExpired(){
-  clearSession(); resetPreview(); showToast("Session expired. Please sign in again.");
-}
-setInterval(()=>{ if(gToken&&gExpiry&&Date.now()>gExpiry) onSessionExpired(); },15000);
-["click","keydown","mousemove","touchstart"].forEach(ev=>
-  document.addEventListener(ev,()=>{ if(gToken) touchSession(); },{passive:true})
+["click","keydown","mousemove","touchstart"].forEach(ev =>
+  document.addEventListener(ev, () => { if(isLoggedIn()) touchKpiSession(); }, {passive:true})
 );
-window.addEventListener("load",()=>{ if(gEmail){ touchSession(); silentRefresh(); startRefreshCycle(); } });
+setInterval(() => {
+  if (kpiToken && kpiExpiry && Date.now() > kpiExpiry) {
+    kpiToken = kpiEmail = kpiExpiry = null;
+    sessionStorage.removeItem("br_token");
+    sessionStorage.removeItem("br_email");
+    sessionStorage.removeItem("br_expiry");
+    showToast("Session expired. Please sign in again.");
+    resetPreview();
+  }
+}, 15000);
+
+function requireKpiLogin(action) {
+  if (isLoggedIn()) { action(); return; }
+  pendingDash = action;
+  // Show inline login panel in the preview area
+  document.getElementById("previewPlaceholder").style.display = "none";
+  document.getElementById("previewLoading").classList.remove("show");
+  document.getElementById("previewTimeout").classList.remove("show");
+  document.getElementById("previewIframe").style.display = "none";
+  document.getElementById("previewLogin").classList.add("show");
+}
 
 // ── DATA ──────────────────────────────────────────────────────────────────
 const UNITS = [
@@ -547,26 +543,25 @@ function showToast(msg) {
 // ── LOGIN BUTTON ─────────────────────────────────────────────────────────
 document.getElementById("kpiLoginGoogleBtn").addEventListener("click", () => {
   const client = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: DRIVE_SCOPE,
+    client_id: GOOGLE_CLIENT_ID_KPI,
+    scope: SCOPES_KPI + " https://www.googleapis.com/auth/userinfo.email",
     callback: (resp) => {
       if (resp.error) { showToast("Authentication error: " + resp.error); return; }
-      gToken = resp.access_token;
+      kpiToken = resp.access_token;
       fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: "Bearer " + gToken }
+        headers: { Authorization: "Bearer " + kpiToken }
       }).then(r => r.json()).then(info => {
-        gEmail = info.email || "";
-        if (!gEmail.endsWith("@" + DOMAIN)) {
-          gToken = gEmail = null;
+        kpiEmail = info.email || "";
+        if (!kpiEmail.endsWith("@" + ALLOWED_KPI)) {
+          kpiToken = kpiEmail = null;
           showToast("Access denied. Only @uniandes.edu.co accounts are allowed.");
           return;
         }
-        touchSession();
-        startRefreshCycle();
-        sessionStorage.setItem("br_token", gToken);
-        sessionStorage.setItem("br_email", gEmail);
+        touchKpiSession();
+        sessionStorage.setItem("br_token", kpiToken);
+        sessionStorage.setItem("br_email", kpiEmail);
         
-        showToast("Signed in as " + gEmail);
+        showToast("Signed in as " + kpiEmail);
         document.getElementById("previewLogin").classList.remove("show");
         if (pendingDash) { const a = pendingDash; pendingDash = null; a(); }
       }).catch(() => showToast("Could not verify account."));
