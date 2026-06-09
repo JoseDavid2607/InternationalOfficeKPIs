@@ -173,9 +173,25 @@ _render_update_banner()
 
 # ── Sidebar navigation ─────────────────────────────────────────────────────────
 _nav_sidebar("4 Faculty Demographics")
+import requests as _requests
+
+DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
+
+@st.cache_data(ttl=300)
+def _download_excel() -> str:
+    """Download BD_Faculty.xlsx from Google Drive to /tmp and return local path."""
+    url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+    path = "/tmp/BD_Faculty.xlsx"
+    response = _requests.get(url, stream=True)
+    with open(path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
+    return path
+
 @st.cache_data(ttl=0)
 def load_fulltime():
-    df = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="BD PLANTA 2020-2025")
+    df = pd.read_excel(_download_excel(), sheet_name="BD PLANTA 2020-2025")
 
     # Periodo soportando Intersemestral: YYYY10/YYYY20 o "YYYY Intersemestral"
     if "Semestre" in df.columns:
@@ -199,7 +215,7 @@ def load_fulltime():
 
 @st.cache_data(ttl=0)
 def load_parttime():
-    df = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="Faculty Distribution")
+    df = pd.read_excel(_download_excel(), sheet_name="Faculty Distribution")
 
     # Filtra CÁTEDRA (normaliza acento)
     if "PLANTA_CATEDRA" in df.columns:
@@ -1038,11 +1054,3 @@ with row2_right:
             pop2 = st.expander("🔎 Ver detalle de nacionalidad (profesores)")
         with pop2:
             st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True)
-
-
-
-
-
-
-
-
