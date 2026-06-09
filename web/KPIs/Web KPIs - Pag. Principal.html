@@ -85,14 +85,14 @@ header.hero h1 {
 .section-heading p { color: var(--muted); font-size: .88rem; }
 
 /* ── WORKSPACE 3 COLS ── */
-.workspace { display: grid; grid-template-columns: 280px 300px 1fr; gap: 18px; align-items: start; }
-.col-panel { background: var(--bg-white); border-radius: var(--radius-panel); box-shadow: var(--shadow-soft); overflow: hidden; display: flex; flex-direction: column; }
+.workspace { display: grid; grid-template-columns: 280px 300px 1fr; gap: 18px; align-items: stretch; }
+.col-panel { background: var(--bg-white); border-radius: var(--radius-panel); box-shadow: var(--shadow-soft); overflow: hidden; display: flex; flex-direction: column; height: 700px; }
 .col-header { padding: 18px 20px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .col-header h3 { font-size: .95rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
 .col-header p { color: var(--muted); font-size: .81rem; line-height: 1.5; }
 
 /* ── UNITS LIST ── */
-.units-scroll { overflow-y: auto; }
+.units-scroll { overflow-y: auto; flex: 1; }
 .units-scroll::-webkit-scrollbar { width: 4px; }
 .units-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
 
@@ -118,7 +118,7 @@ header.hero h1 {
 .unit-item.disabled { opacity: .4; cursor: default; }
 
 /* ── DASHBOARDS LIST ── */
-.dash-scroll { overflow-y: auto; max-height: 600px; }
+.dash-scroll { overflow-y: auto; flex: 1; }
 .dash-scroll::-webkit-scrollbar { width: 4px; }
 .dash-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
 
@@ -140,7 +140,7 @@ header.hero h1 {
 .empty-state { padding: 32px 20px; text-align: center; color: var(--muted); font-size: .86rem; line-height: 1.7; }
 
 /* ── PREVIEW PANEL ── */
-.preview-panel { display: flex; flex-direction: column; min-height: 600px; }
+.preview-panel { display: flex; flex-direction: column; flex: 1; height: 100%; }
 .preview-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .preview-header-info { flex: 1; }
 .preview-title { font-size: .95rem; font-weight: 800; color: var(--slate-dark); }
@@ -153,8 +153,8 @@ header.hero h1 {
 .action-btn:hover { transform: translateY(-1px); }
 .action-btn--primary { background: #1f2937; color: #fff; }
 .action-btn--teal { background: var(--teal-light); color: var(--teal); }
-.preview-body { flex: 1; position: relative; min-height: 500px; }
-.preview-iframe { width: 100%; height: 100%; min-height: 500px; border: none; display: none; }
+.preview-body { flex: 1; position: relative; overflow: hidden; }
+.preview-iframe { width: 100%; height: 100%; border: none; display: none; position: absolute; inset: 0; }
 
 .preview-placeholder {
   position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -188,9 +188,9 @@ header.hero h1 {
 
 footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-size: 14px; }
 
-@media (max-width: 1100px) { .workspace { grid-template-columns: 240px 260px 1fr; } }
-@media (max-width: 860px) { .workspace { grid-template-columns: 1fr 1fr; } .preview-col { grid-column: span 2; } }
-@media (max-width: 580px) { .workspace { grid-template-columns: 1fr; } .preview-col { grid-column: auto; } .intro-seneca { display: none; } header.hero { min-height: 260px; padding: 64px 18px 110px; } }
+@media (max-width: 1100px) { .workspace { grid-template-columns: 240px 260px 1fr; } .col-panel { height: 700px; } }
+@media (max-width: 860px) { .workspace { grid-template-columns: 1fr 1fr; } .col-panel { height: 400px; } .preview-col { grid-column: span 2; height: 600px; } }
+@media (max-width: 580px) { .workspace { grid-template-columns: 1fr; } .col-panel { height: 380px; } .preview-col { grid-column: auto; height: 520px; } .intro-seneca { display: none; } header.hero { min-height: 260px; padding: 64px 18px 110px; } }
 </style>
 </head>
 <body>
@@ -249,7 +249,8 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
             <div class="preview-meta" id="previewMeta">Choose a unit and dashboard on the left</div>
           <div id="previewDesc" style="font-size:.8rem;color:#9ca3af;margin-top:3px;text-align:left;line-height:1.5;"></div>
           </div>
-          <a href="#" class="action-btn action-btn--teal" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open ↗</a>
+          <a href="#" class="action-btn action-btn--teal" id="updateBtn" target="_blank" rel="noopener" style="display:none;">Update ↗</a>
+          <a href="#" class="action-btn action-btn--primary" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open ↗</a>
         </div>
         <div class="preview-body" id="previewBody">
           <div class="preview-placeholder" id="previewPlaceholder">
@@ -409,8 +410,10 @@ function openPreview(title, url) {
 
   const embedUrl = url.includes("?") ? url + "&embed=true" : url + "?embed=true";
 
-  extBtn.href = url; extBtn.style.display = "inline-flex";
-  toBtn.href  = url;
+  extBtn.href  = url; extBtn.style.display = "inline-flex";
+  toBtn.href   = url;
+  const updBtn = document.getElementById("updateBtn");
+  updBtn.href  = url; updBtn.style.display = "inline-flex";
 
   ph.style.display      = "none";
   timeout.classList.remove("show");
@@ -465,6 +468,7 @@ function resetPreview() {
   document.getElementById("previewTitle").textContent = "Select a dashboard";
   document.getElementById("previewMeta").textContent  = "Choose a unit and dashboard on the left";
   document.getElementById("openExtBtn").style.display = "none";
+  document.getElementById("updateBtn").style.display = "none";
 }
 
 function showToast(msg) {
