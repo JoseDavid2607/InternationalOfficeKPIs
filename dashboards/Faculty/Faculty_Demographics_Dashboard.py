@@ -92,6 +92,8 @@ st.markdown(
 
 # ── Inline helpers ─────────────────────────────────────────────────────────────
 import io as _io, base64 as _b64, datetime as _dt_mod
+import os as _os
+_DATA = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "..", "data", "Faculty", "BD_Faculty.xlsx")
 
 def _xlsx_bytes(df, sheet_name="Data"):
     buf = _io.BytesIO()
@@ -175,7 +177,7 @@ _render_update_banner()
 _nav_sidebar("4 Faculty Demographics")
 @st.cache_data(ttl=0)
 def load_fulltime():
-    df = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="BD PLANTA 2020-2025")
+    df = pd.read_excel(_DATA, sheet_name="BD PLANTA 2020-2025")
 
     # Periodo soportando Intersemestral: YYYY10/YYYY20 o "YYYY Intersemestral"
     if "Semestre" in df.columns:
@@ -199,7 +201,7 @@ def load_fulltime():
 
 @st.cache_data(ttl=0)
 def load_parttime():
-    df = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="Faculty Distribution")
+    df = pd.read_excel(_DATA, sheet_name="Faculty Distribution")
 
     # Filtra CÁTEDRA (normaliza acento)
     if "PLANTA_CATEDRA" in df.columns:
@@ -357,14 +359,14 @@ if "sel_tf_label" not in st.session_state:
 with st.sidebar:
     st.markdown("### 📊 Go to KPI:")
     # Solo opciones con URL http(s)
-    choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
+    choices = [k for k, u in _NAV.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
 
     # Selección (marca por defecto este KPI si existe)
     default = "4 Faculty Demographics" if "4 Faculty Demographics" in choices else choices[0]
     choice = st.selectbox("Select…", choices, index=choices.index(default))
 
     # Botón OPEN (sin meta refresh, sin webbrowser)
-    url = options.get(choice)
+    url = _NAV.get(choice)
     if url:
         st.link_button("Open", url, use_container_width=True)
 
@@ -382,14 +384,7 @@ if mode_sidebar != st.session_state.modo_faculty:
     st.session_state.sel_tf_label = None  # reset selección al cambiar modo
     st.rerun()
 
-if options[choice]:
-    target = options[choice]
-    if target.endswith(".html"):
-        abs_path = os.path.abspath(target)
-        webbrowser.open(f"file:///{abs_path}")
-        st.success("The Faculty menu was opened in a new browser tab.")
-    else:
-        st.markdown(f'<meta http-equiv="refresh" content="0; url={target}" />', unsafe_allow_html=True)
+# Navigation handled by _nav_sidebar() above
 
 #================= SIDEBAR: TIMEFRAME + SELECTOR DE PERIODO ===================
 with st.sidebar:
