@@ -173,9 +173,25 @@ _render_update_banner()
 
 # ── Sidebar navigation ─────────────────────────────────────────────────────────
 _nav_sidebar("3 Distribution by Academic Area")
+import requests as _requests
+
+DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
+
+@st.cache_data(ttl=300)
+def _download_excel() -> str:
+    """Download BD_Faculty.xlsx from Google Drive to /tmp and return local path."""
+    url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+    path = "/tmp/BD_Faculty.xlsx"
+    response = _requests.get(url, stream=True)
+    with open(path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
+    return path
+
 @st.cache_data(ttl=0)
 def load_fulltime():
-    df = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="BD PLANTA 2020-2025")
+    df = pd.read_excel(_download_excel(), sheet_name="BD PLANTA 2020-2025")
     # Periodo soportando intersemestral
     if "Semestre" in df.columns:
         sem = df["Semestre"].astype(str).str.strip()
@@ -197,7 +213,7 @@ def load_fulltime():
 
 @st.cache_data(ttl=0)
 def load_parttime():
-    df = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="Faculty Distribution")
+    df = pd.read_excel(_download_excel(), sheet_name="Faculty Distribution")
     # NO excluir intersemestral; construir Periodo consistente
     if "PLANTA_CATEDRA" in df.columns:
         col = df["PLANTA_CATEDRA"].astype(str).str.strip()
@@ -553,6 +569,3 @@ st.dataframe(detail_out, use_container_width=True)
 # Descarga de la tabla de detalle
 fname_det = f"Detail_{'FT' if st.session_state.modo_faculty=='Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ','_')}.xlsx"
 _download_link("Descargar tabla (Excel)", detail_out, fname_det)
-
-
-
