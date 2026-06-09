@@ -92,6 +92,8 @@ st.markdown(
 
 # ── Inline helpers ─────────────────────────────────────────────────────────────
 import io as _io, base64 as _b64, datetime as _dt_mod
+import os as _os
+_DATA = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "..", "data", "Faculty", "BD_Faculty.xlsx")
 
 def _xlsx_bytes(df, sheet_name="Data"):
     buf = _io.BytesIO()
@@ -175,7 +177,7 @@ _render_update_banner()
 _nav_sidebar("3 Distribution by Academic Area")
 @st.cache_data(ttl=0)
 def load_fulltime():
-    df = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="BD PLANTA 2020-2025")
+    df = pd.read_excel(_DATA, sheet_name="BD PLANTA 2020-2025")
     # Periodo soportando intersemestral
     if "Semestre" in df.columns:
         sem = df["Semestre"].astype(str).str.strip()
@@ -197,7 +199,7 @@ def load_fulltime():
 
 @st.cache_data(ttl=0)
 def load_parttime():
-    df = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="Faculty Distribution")
+    df = pd.read_excel(_DATA, sheet_name="Faculty Distribution")
     # NO excluir intersemestral; construir Periodo consistente
     if "PLANTA_CATEDRA" in df.columns:
         col = df["PLANTA_CATEDRA"].astype(str).str.strip()
@@ -221,14 +223,13 @@ df_part = load_parttime()
 with st.sidebar:
     st.markdown("### 📊 Go to KPI:")
     # Solo entradas con URL http(s)
-    choices = [k for k, u in options.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
+    choices = [k for k, u in _NAV.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
 
     # Marca por defecto este KPI si existe
     default_label = "3 Distribution by Academic Area"
     default_idx = choices.index(default_label) if default_label in choices else 0
 
-    choice = st.selectbox("Select…", choices, index=default_idx)
-    st.link_button("Open", options[choice], use_container_width=True)
+    # Navigation handled by _nav_sidebar() above
     st.markdown("---")
 
     st.markdown("#### Faculty Type")
@@ -280,15 +281,7 @@ with st.sidebar:
     fname = f"{'FT' if st.session_state.modo_faculty=='Full-time' else 'PT'}_{tmode}_{str(sel_label).replace(' ','_')}.xlsx"
     _download_link(f"Descargar base (Excel) — {st.session_state.modo_faculty} — {sel_label}", export_df, fname)
 
-# ========= KPI NAV =========
-if options[choice]:
-    target = options[choice]
-    if target.endswith(".html"):
-        abs_path = os.path.abspath(target)
-        webbrowser.open(f"file:///{abs_path}")
-        st.success("The Faculty menu was opened in a new browser tab.")
-    else:
-        st.markdown(f'<meta http-equiv="refresh" content="0; url={target}" />', unsafe_allow_html=True)
+# ========= PICK DATA BY MODE =========
 
 # ========= PICK DATA BY MODE =========
 MINT = "#00A896"
@@ -562,3 +555,6 @@ st.dataframe(detail_out, use_container_width=True)
 # Descarga de la tabla de detalle
 fname_det = f"Detail_{'FT' if st.session_state.modo_faculty=='Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ','_')}.xlsx"
 _download_link("Descargar tabla (Excel)", detail_out, fname_det)
+
+
+
