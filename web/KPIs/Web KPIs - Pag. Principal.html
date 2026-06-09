@@ -18,7 +18,7 @@
 body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--text)}
 header.hero{
 color:#fff;min-height:340px;display:flex;align-items:center;justify-content:center;
-background:linear-gradient(rgba(8,12,20,.18),rgba(8,12,20,.42)),url('./Santodomingo.jpg') center/cover no-repeat;
+background:linear-gradient(rgba(8,12,20,.18),rgba(8,12,20,.42)),url('../imagenes/Santodomingo.jpg') center/cover no-repeat;
 text-align:center;
 }
 .hero h1{font-size:4rem;margin:0}
@@ -49,17 +49,30 @@ background:#fff;border-radius:24px;box-shadow:0 10px 24px rgba(0,0,0,.1);overflo
 iframe{flex:1;border:none}
 .btn{background:var(--teal);color:white;padding:10px 15px;border-radius:999px;text-decoration:none;display:none}
 .placeholder{padding:50px;text-align:center;color:#6b7280}
+
+.back-button{position:absolute;top:24px;left:24px;z-index:20}
+.back-button a{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.22);text-decoration:none;backdrop-filter:blur(4px)}
+.back-button svg{width:24px;height:24px;stroke:#fff}
+
 </style>
 </head>
 <body>
 <header class="hero">
+<div class="back-button">
+<a href="../index.html" aria-label="Go back">
+<svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M3 10.5 12 3l9 7.5"></path>
+<path d="M5.5 9.5V20h13V9.5"></path>
+</svg>
+</a>
+</div>
 <div>
 <h1>KPIs for International Accreditations</h1>
 <h2>International Office UASM</h2>
 </div>
 </header>
 
-<div class="intro-wrap"><div class="intro-seneca"><img src="./seneca.png" alt="Seneca"></div><div class="instructions">
+<div class="intro-wrap"><div class="intro-seneca"><img src="../imagenes/seneca.png" alt="Seneca"></div><div class="instructions">
 Dynamic BaseRoom with key information from the different areas of the School of Management.
 Select a unit, then a dashboard, and preview it on the right.
 </div></div>
