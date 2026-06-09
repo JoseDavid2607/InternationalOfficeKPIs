@@ -92,8 +92,6 @@ st.markdown(
 
 # ── Inline helpers ─────────────────────────────────────────────────────────────
 import io as _io, base64 as _b64, datetime as _dt_mod
-import os as _os
-_DATA = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "..", "data", "Faculty", "BD_Faculty.xlsx")
 
 def _xlsx_bytes(df, sheet_name="Data"):
     buf = _io.BytesIO()
@@ -177,7 +175,7 @@ _render_update_banner()
 _nav_sidebar("4 Faculty Demographics")
 @st.cache_data(ttl=0)
 def load_fulltime():
-    df = pd.read_excel(_DATA, sheet_name="BD PLANTA 2020-2025")
+    df = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="BD PLANTA 2020-2025")
 
     # Periodo soportando Intersemestral: YYYY10/YYYY20 o "YYYY Intersemestral"
     if "Semestre" in df.columns:
@@ -201,7 +199,7 @@ def load_fulltime():
 
 @st.cache_data(ttl=0)
 def load_parttime():
-    df = pd.read_excel(_DATA, sheet_name="Faculty Distribution")
+    df = pd.read_excel("data/Faculty/BD_Faculty.xlsx", sheet_name="Faculty Distribution")
 
     # Filtra CÁTEDRA (normaliza acento)
     if "PLANTA_CATEDRA" in df.columns:
