@@ -175,16 +175,32 @@ _render_update_banner()
 
 # ── Sidebar navigation ─────────────────────────────────────────────────────────
 _nav_sidebar("6 Faculty Qualifications")
+import requests as _requests
+
+DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
+
+@st.cache_data(ttl=300)
+def _download_excel() -> str:
+    """Download BD_Faculty.xlsx from Google Drive to /tmp and return local path."""
+    url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+    path = "/tmp/BD_Faculty.xlsx"
+    response = _requests.get(url, stream=True)
+    with open(path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
+    return path
+
 @st.cache_data(ttl=0)
 def load_faculty_distribution():
-    xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
+    xls = pd.ExcelFile(_download_excel())
     df = pd.read_excel(xls, sheet_name="Faculty Distribution")
     df.columns = df.columns.str.strip()
     return df
 
 @st.cache_data(ttl=0)
 def load_cartelera():
-    xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
+    xls = pd.ExcelFile(_download_excel())
     df = pd.read_excel(xls, sheet_name="BD Cartelera 2020-2025")
     df.columns = df.columns.str.strip()
     return df
@@ -192,7 +208,7 @@ def load_cartelera():
 @st.cache_data(ttl=0)
 def _load_planta_sheet():
     try:
-        xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
+        xls = pd.ExcelFile(_download_excel())
         dfp = pd.read_excel(xls, sheet_name="BD PLANTA 2020-2025")
         dfp.columns = dfp.columns.str.strip()
         return dfp
@@ -3327,7 +3343,7 @@ if not SENS.get("on", False):
     @st.cache_data(ttl=0)
     def _load_planta_sheet():
         try:
-            xls = pd.ExcelFile("data/Faculty/BD_Faculty.xlsx")
+            xls = pd.ExcelFile(_download_excel())
             dfp = pd.read_excel(xls, sheet_name="BD PLANTA 2020-2025")
             dfp.columns = dfp.columns.str.strip()
             return dfp
@@ -3696,47 +3712,3 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
