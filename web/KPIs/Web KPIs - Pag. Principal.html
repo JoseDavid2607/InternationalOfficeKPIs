@@ -112,6 +112,9 @@ header.hero h1 {
 .unit-icon svg { width: 17px; height: 17px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
 .unit-name { font-size: .88rem; font-weight: 800; color: var(--slate-dark); flex: 1; line-height: 1.3; }
 .unit-count { padding: 2px 7px; border-radius: 999px; background: #f3f4f6; color: var(--slate); font-size: .74rem; font-weight: 700; flex-shrink: 0; }
+.unit-desc { font-size: .76rem; color: var(--muted); line-height: 1.4; margin-top: 2px; font-weight: 400; }
+.unit-item.active .unit-desc { color: rgba(255,255,255,.65); }
+.unit-item.active .unit-name { color: #fff; }
 .unit-item.disabled { opacity: .4; cursor: default; }
 
 /* ── DASHBOARDS LIST ── */
@@ -132,6 +135,8 @@ header.hero h1 {
 .dash-title { font-size: .87rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; }
 .dash-type { display: inline-block; padding: 2px 7px; border-radius: 999px; background: #f0fdf4; color: #166534; font-size: .72rem; font-weight: 700; margin-top: 2px; }
 .dash-type.soon { background: #f3f4f6; color: var(--muted); }
+.dash-desc { font-size: .76rem; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+.dash-item.active .dash-desc { color: rgba(255,255,255,.65); }
 .empty-state { padding: 32px 20px; text-align: center; color: var(--muted); font-size: .86rem; line-height: 1.7; }
 
 /* ── PREVIEW PANEL ── */
@@ -242,6 +247,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
           <div class="preview-header-info">
             <div class="preview-title" id="previewTitle">Select a dashboard</div>
             <div class="preview-meta" id="previewMeta">Choose a unit and dashboard on the left</div>
+          <div id="previewDesc" style="font-size:.8rem;color:#9ca3af;margin-top:3px;text-align:left;line-height:1.5;"></div>
           </div>
           <a href="#" class="action-btn action-btn--teal" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open ↗</a>
         </div>
@@ -279,38 +285,40 @@ const UNITS = [
   {
     id: "faculty",
     name: "Faculty",
+    desc: "Faculty deployment, qualifications, demographics, workload, and accreditation-relevant academic profiles.",
     icon: `<circle cx="12" cy="7" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>`,
     dashboards: [
-      { title: "Full-time Faculty Composition",    url: "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/" },
-      { title: "Full-time Faculty Staffing Levels", url: "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/" },
-      { title: "Distribution by Academic Area",    url: "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/" },
-      { title: "Faculty Demographics",             url: "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/" },
-      { title: "Full-time Faculty Questionnaire",  url: "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/" },
-      { title: "Faculty Qualifications",           url: "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/" },
-      { title: "Triennial Evaluation",             url: "#", soon: true }
+      { title: "Full-time Faculty Composition",    desc: "Composition by type of full-time faculty ranking, historical evolution, and detailed academic distribution.",                     url: "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/" },
+      { title: "Full-time Faculty Staffing Levels", desc: "Staffing levels, number of professors, teaching load, and detailed information on faculty allocation.",                          url: "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/" },
+      { title: "Distribution by Academic Area",    desc: "Distribution of full-time and part-time faculty by academic area, with evolution and comparative detail.",                       url: "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/" },
+      { title: "Faculty Demographics",             desc: "Demographic indicators of full-time and part-time faculty, including gender, nationality, and age patterns.",                    url: "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/" },
+      { title: "Full-time Faculty Questionnaire",  desc: "Survey results related to faculty activities, participation patterns, and relevant institutional insights.",                     url: "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/" },
+      { title: "Faculty Qualifications",           desc: "Faculty sufficiency and qualification indicators aligned with international accreditation standards.",                            url: "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/" },
+      { title: "Triennial Evaluation",             desc: "Consolidated results from triennial evaluation processes and strategic review indicators.",                                       url: "#", soon: true }
     ]
   },
   {
     id: "internationalization",
     name: "Internationalization",
+    desc: "Mobility, agreements, visiting faculty, international activities, and global engagement indicators.",
     icon: `<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 4 3 14 0 18M12 3c-3 4-3 14 0 18" stroke-width="1.3"/>`,
     dashboards: [
-      { title: "International Faculty & Visiting Professors", url: "#", soon: true },
-      { title: "International Publications & Conferences",    url: "#", soon: true },
-      { title: "Faculty Academic Activities",                 url: "#", soon: true },
-      { title: "International Research Seminars",             url: "#", soon: true },
-      { title: "Internationalization of the Campus",          url: "#", soon: true },
-      { title: "International Weeks & Activities",            url: "#", soon: true },
-      { title: "UASM Seminars",                               url: "#", soon: true },
-      { title: "Student & PhD Mobility",                      url: "#", soon: true },
-      { title: "Signed Agreements",                           url: "#", soon: true }
+      { title: "International Faculty & Visiting Professors", desc: "International faculty and visiting professors metrics, origin countries, and engagement history.",        url: "#", soon: true },
+      { title: "International Publications & Conferences",    desc: "Publications, conference participation, and academic output with international reach.",                   url: "#", soon: true },
+      { title: "Faculty Academic Activities",                 desc: "International teaching activities, lectures, workshops, and academic engagements abroad.",               url: "#", soon: true },
+      { title: "International Research Seminars",             desc: "International research seminars hosted, speaker profiles, and academic contribution data.",              url: "#", soon: true },
+      { title: "Internationalization of the Campus",          desc: "Campus internationalization indicators, graduation requirements, and cross-cultural programmes.",        url: "#", soon: true },
+      { title: "International Weeks & Activities",            desc: "International weeks, global activities, partnerships events, and student participation rates.",          url: "#", soon: true },
+      { title: "UASM Seminars",                               desc: "Seminar series data, invited speakers, attendance figures, and contribution to academic positioning.",   url: "#", soon: true },
+      { title: "Student & PhD Mobility",                      desc: "Outgoing and incoming student mobility, PhD exchange programmes, and partner institution breakdown.",    url: "#", soon: true },
+      { title: "Signed Agreements",                           desc: "Active international agreements, MoUs, partnership tiers, and geographic distribution of alliances.",   url: "#", soon: true }
     ]
   },
-  { id: "alumni",           name: "Alumni & Career Services",  icon: `<path d="M9 7V6a3 3 0 0 1 6 0v1"/><rect x="3" y="7" width="18" height="12" rx="2"/>`,                  dashboards: [], soon: true },
-  { id: "executive",        name: "Executive Education",       icon: `<rect x="4" y="3" width="10" height="18" rx="2"/><path d="M8 7h6M8 11h6M8 15h4"/>`,                    dashboards: [], soon: true },
-  { id: "programs",         name: "Academic Programs",         icon: `<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 4v3M16 4v3M3 10h18"/>`,                   dashboards: [], soon: true },
-  { id: "research",         name: "Research & Development",    icon: `<path d="M9 3v5l-4.5 8A3 3 0 0 0 7.3 20h9.4a3 3 0 0 0 2.8-4L15 8V3"/>`,                              dashboards: [], soon: true },
-  { id: "resources",        name: "Resources & Admin",         icon: `<path d="M12 2a7 7 0 1 0 0 14A7 7 0 0 0 12 2z"/><path d="M12 16v6M8 20h8"/>`,                          dashboards: [], soon: true },
+  { id: "alumni",     name: "Alumni & Career Services",  desc: "Employment distribution, salary trends, career outcomes, and placement indicators for graduates.",                         icon: `<path d="M9 7V6a3 3 0 0 1 6 0v1"/><rect x="3" y="7" width="18" height="12" rx="2"/>`,  dashboards: [], soon: true },
+  { id: "executive",  name: "Executive Education",       desc: "Consolidated KPIs related to executive programs, participation, reach, and operational performance.",                      icon: `<rect x="4" y="3" width="10" height="18" rx="2"/><path d="M8 7h6M8 11h6M8 15h4"/>`,    dashboards: [], soon: true },
+  { id: "programs",   name: "Academic Programs",         desc: "Admissions, student demographics, academic deployment, GPA behavior, and financial indicators.",                           icon: `<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 4v3M16 4v3M3 10h18"/>`,   dashboards: [], soon: true },
+  { id: "research",   name: "Research & Development",    desc: "Publications, research activity, academic production, projects, and broader scholarly impact.",                            icon: `<path d="M9 3v5l-4.5 8A3 3 0 0 0 7.3 20h9.4a3 3 0 0 0 2.8-4L15 8V3"/>`,              dashboards: [], soon: true },
+  { id: "resources",  name: "Resources & Admin",         desc: "Budget, funding, staffing, administrative support, and core operational resources of the School.",                         icon: `<path d="M12 2a7 7 0 1 0 0 14A7 7 0 0 0 12 2z"/><path d="M12 16v6M8 20h8"/>`,          dashboards: [], soon: true },
 ];
 
 // ── STATE ────────────────────────────────────────────────────────────────
@@ -332,7 +340,10 @@ function renderUnits() {
     btn.disabled = isSoon;
     btn.innerHTML = `
       <div class="unit-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${unit.icon}</svg></div>
-      <span class="unit-name">${unit.name}</span>
+      <div style="flex:1;min-width:0;">
+        <div class="unit-name">${unit.name}</div>
+        ${unit.desc ? `<div class="unit-desc">${unit.desc}</div>` : ""}
+      </div>
       <span class="unit-count">${isSoon ? "Soon" : unit.dashboards.length}</span>`;
     btn.addEventListener("click", () => {
       selectedUnit = unit.id;
@@ -366,7 +377,7 @@ function renderDashboards() {
     const isActive = selectedDash === i;
     btn.className = "dash-item" + (isActive ? " active" : "");
     const label = d.soon ? "Coming soon" : "Streamlit";
-    btn.innerHTML = `<span class="dash-title">${d.title}</span><span class="dash-type${d.soon ? " soon" : ""}">${label}</span>`;
+    btn.innerHTML = `<span class="dash-title">${d.title}</span>${d.desc ? `<span class="dash-desc">${d.desc}</span>` : ""}<span class="dash-type${d.soon ? " soon" : ""}">${label}</span>`;
     btn.addEventListener("click", () => {
       if (d.soon || d.url === "#") { showToast("This dashboard is coming soon."); return; }
       selectedDash = i;
@@ -390,8 +401,11 @@ function openPreview(title, url) {
   const toBtn    = document.getElementById("timeoutBtn");
   const bar      = document.getElementById("countdownBar");
 
+  const dashObj = UNITS.find(u=>u.id===selectedUnit)?.dashboards.find(d=>d.title===title);
   document.getElementById("previewTitle").textContent = title;
   document.getElementById("previewMeta").textContent  = url.replace("https://", "").replace(/\/$/, "");
+  const descEl = document.getElementById("previewDesc");
+  if(descEl) descEl.textContent = dashObj?.desc || "";
 
   const embedUrl = url.includes("?") ? url + "&embed=true" : url + "?embed=true";
 
