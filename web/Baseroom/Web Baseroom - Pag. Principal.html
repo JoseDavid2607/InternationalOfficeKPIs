@@ -607,24 +607,46 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
 // =====================
 // SHEETS — read & write metadata
 // =====================
+function _injectAddedDocs(byDoc) {
+  for(const [docId, meta] of Object.entries(byDoc)){
+    if(!docId.startsWith("added_")) continue;
+    const folderId=docId.replace("added_","").replace(/_\d+$/,"");
+    let found=false;
+    for(const ch of DATA.chapters){
+      for(const fo of ch.folders){
+        if(fo.documents.find(d=>d.id===docId)){found=true;break;}
+      }
+      if(found) break;
+    }
+    if(!found){
+      for(const ch of DATA.chapters){
+        const fo=ch.folders.find(f=>f.id===folderId);
+        if(fo){
+          fo.documents.push({id:docId,title:meta.title||"Added document",type:meta.type||"PDF",meta:meta.title||"",responsible:meta.responsible||"",updatedAt:meta.updatedAt||null,accreditations:fo.accreditations,url:meta.url||"#"});
+          break;
+        }
+      }
+    }
+  }
+}
+
 async function loadFromSheet() {
   try {
     const range = encodeURIComponent(SHEET_NAME + "!A:J");
-    // Try with Bearer token first (works always when logged in),
-    // fall back to API key (works only when Sheet is public)
-    let res;
-    if (googleAccessToken) {
+    // Always try API key first (sheet is public — works without login)
+    // If that fails, try with Bearer token
+    let res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
+    );
+    // If API key failed and we have a token, try with token
+    if (!res.ok && googleAccessToken) {
       res = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,
         { headers: { Authorization: "Bearer " + googleAccessToken } }
       );
-    } else {
-      res = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
-      );
     }
     if (!res.ok) {
-      console.warn("Sheet load failed:", res.status, await res.text());
+      console.warn("Sheet load failed:", res.status);
       return;
     }
     const data = await res.json();
@@ -632,7 +654,6 @@ async function loadFromSheet() {
     if (rows.length < 2) return;
     const headers = rows[0];
     const idx = (h) => headers.indexOf(h);
-    // Build map: last row per docId wins (most recent upload)
     const byDoc = {};
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
@@ -652,33 +673,13 @@ async function loadFromSheet() {
         type:           r[idx("type")]           || "PDF"
       };
     }
-    // Clear stale overrides so deleted rows are removed
     Object.keys(docOverrides).forEach(k => delete docOverrides[k]);
     Object.assign(docOverrides, byDoc);
-    // For added docs (ids starting with "added_"), inject them into DATA if missing
-    for(const [docId, meta] of Object.entries(byDoc)){
-      if(!docId.startsWith("added_")) continue;
-      const folderId=docId.replace("added_","").replace(/_\d+$/,"");
-      let found=false;
-      for(const ch of DATA.chapters){
-        for(const fo of ch.folders){
-          if(fo.documents.find(d=>d.id===docId)){found=true;break;}
-        }
-        if(found) break;
-      }
-      if(!found){
-        for(const ch of DATA.chapters){
-          const fo=ch.folders.find(f=>f.id===folderId);
-          if(fo){
-            fo.documents.push({id:docId,title:meta.title||"Added document",type:meta.type||"PDF",meta:meta.title||"",responsible:meta.responsible||"",updatedAt:meta.updatedAt||null,accreditations:fo.accreditations,url:meta.url||"#"});
-            break;
-          }
-        }
-      }
-    }
+    _injectAddedDocs(byDoc);
     render();
-  } catch(e) { console.warn("Could not load from Sheet", e); }
+  } catch(e) { console.warn("Could not load from Sheet:", e); }
 }
+
 
 function writeToSheet(docId, title, responsible, updatedAt, expirationDate, driveUrl, previewUrl, uploadedBy, notes='', type='PDF') {
   const token = googleAccessToken;
@@ -1723,15 +1724,54 @@ document.getElementById("driveScanBtn").addEventListener("click",()=>{
 });
 
 render();
-// Load sheet data on startup — if API key fails (sheet not public),
-// it will retry automatically when the user logs in
-loadFromSheet().then(() => {
-  // If session was restored from sessionStorage, sheet loaded with token — good.
-}).catch(() => {});
-// Silently refresh token if user was previously signed in
-if(googleUserEmail){
-  window.addEventListener("load", ()=>{ setTimeout(silentTokenRefresh, 1000); });
-}
+
+// ── Startup sequence ──────────────────────────────────────────────────────
+// The Sheet is public (API key), so we can always load data on page open.
+// If the user has a stored session, we also silently refresh the token so
+// write operations (upload, delete) keep working without a new login prompt.
+(async function init() {
+  // Step 1: load sheet with API key (public read — always works)
+  await loadFromSheet();
+
+  // Step 2: if user had a previous session, silently refresh the OAuth token
+  // so they don't need to click "Sign in" again for write operations
+  if (googleUserEmail) {
+    try {
+      await new Promise((resolve) => {
+        // Give GSI library time to initialize
+        const tryRefresh = () => {
+          if (typeof google === "undefined" || !google.accounts) {
+            setTimeout(tryRefresh, 200);
+            return;
+          }
+          const client = google.accounts.oauth2.initTokenClient({
+            client_id: GOOGLE_CLIENT_ID,
+            scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
+            hint: googleUserEmail,
+            prompt: "",  // silent — no popup
+            callback: (resp) => {
+              if (!resp.error && resp.access_token) {
+                googleAccessToken = resp.access_token;
+                sessionStorage.setItem("br_token", googleAccessToken);
+                touchSession();
+                // Reload sheet with the fresh token in case API key had issues
+                loadFromSheet();
+              } else {
+                // Token couldn't be refreshed silently — user stays logged out
+                // but sheet data is already loaded via API key above
+                googleAccessToken = null;
+                sessionStorage.removeItem("br_token");
+              }
+              resolve();
+            }
+          });
+          client.requestAccessToken();
+        };
+        tryRefresh();
+      });
+    } catch(e) { /* silent fail — sheet already loaded */ }
+  }
+})();
 </script>
 </body>
 </html>
