@@ -274,6 +274,7 @@ with st.sidebar:
     st.link_button("Open", _NAV[sel], use_container_width=True)
 
 #================= YEARS (fixed 2020–2025) ====================================
+YEARS = [2020, 2021, 2022, 2023, 2024, 2025]
 def _norm(s: pd.Series) -> pd.Series:
     return s.astype(str).str.strip().str.lower()
 
