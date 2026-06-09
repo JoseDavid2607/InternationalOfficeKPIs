@@ -607,79 +607,6 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
 // =====================
 // SHEETS — read & write metadata
 // =====================
-function _injectAddedDocs(byDoc) {
-  for(const [docId, meta] of Object.entries(byDoc)){
-    if(!docId.startsWith("added_")) continue;
-    const folderId=docId.replace("added_","").replace(/_\d+$/,"");
-    let found=false;
-    for(const ch of DATA.chapters){
-      for(const fo of ch.folders){
-        if(fo.documents.find(d=>d.id===docId)){found=true;break;}
-      }
-      if(found) break;
-    }
-    if(!found){
-      for(const ch of DATA.chapters){
-        const fo=ch.folders.find(f=>f.id===folderId);
-        if(fo){
-          fo.documents.push({id:docId,title:meta.title||"Added document",type:meta.type||"PDF",meta:meta.title||"",responsible:meta.responsible||"",updatedAt:meta.updatedAt||null,accreditations:fo.accreditations,url:meta.url||"#"});
-          break;
-        }
-      }
-    }
-  }
-}
-
-async function loadFromSheet() {
-  try {
-    const range = encodeURIComponent(SHEET_NAME + "!A:J");
-    // Always try API key first (sheet is public — works without login)
-    // If that fails, try with Bearer token
-    let res = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
-    );
-    // If API key failed and we have a token, try with token
-    if (!res.ok && googleAccessToken) {
-      res = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,
-        { headers: { Authorization: "Bearer " + googleAccessToken } }
-      );
-    }
-    if (!res.ok) {
-      console.warn("Sheet load failed:", res.status);
-      return;
-    }
-    const data = await res.json();
-    const rows = data.values || [];
-    if (rows.length < 2) return;
-    const headers = rows[0];
-    const idx = (h) => headers.indexOf(h);
-    const byDoc = {};
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i];
-      const docId = r[idx("docId")];
-      if (!docId) continue;
-      const titleVal = r[idx("title")] || "";
-      if (titleVal === "__DELETED__") { delete byDoc[docId]; continue; }
-      byDoc[docId] = {
-        title:          r[idx("title")]          || "",
-        responsible:    r[idx("responsible")]    || "",
-        updatedAt:      r[idx("updatedAt")]      || "",
-        expirationDate: r[idx("expirationDate")] || "",
-        url:            r[idx("previewUrl")]     || "",
-        viewUrl:        r[idx("driveUrl")]       || "",
-        uploadedBy:     r[idx("uploadedBy")]     || "",
-        notes:          r[idx("Notes")]          || "",
-        type:           r[idx("type")]           || "PDF"
-      };
-    }
-    Object.keys(docOverrides).forEach(k => delete docOverrides[k]);
-    Object.assign(docOverrides, byDoc);
-    _injectAddedDocs(byDoc);
-    render();
-  } catch(e) { console.warn("Could not load from Sheet:", e); }
-}
-
 
 function writeToSheet(docId, title, responsible, updatedAt, expirationDate, driveUrl, previewUrl, uploadedBy, notes='', type='PDF') {
   const token = googleAccessToken;
@@ -1320,6 +1247,81 @@ function renderDocs(){
 }
 
 function render(){renderChapters();renderFolders();renderDocs();}
+
+function _injectAddedDocs(byDoc) {
+  for(const [docId, meta] of Object.entries(byDoc)){
+    if(!docId.startsWith("added_")) continue;
+    const folderId=docId.replace("added_","").replace(/_\d+$/,"");
+    let found=false;
+    for(const ch of DATA.chapters){
+      for(const fo of ch.folders){
+        if(fo.documents.find(d=>d.id===docId)){found=true;break;}
+      }
+      if(found) break;
+    }
+    if(!found){
+      for(const ch of DATA.chapters){
+        const fo=ch.folders.find(f=>f.id===folderId);
+        if(fo){
+          fo.documents.push({id:docId,title:meta.title||"Added document",type:meta.type||"PDF",meta:meta.title||"",responsible:meta.responsible||"",updatedAt:meta.updatedAt||null,accreditations:fo.accreditations,url:meta.url||"#"});
+          break;
+        }
+      }
+    }
+  }
+}
+
+async function loadFromSheet() {
+  try {
+    const range = encodeURIComponent(SHEET_NAME + "!A:J");
+    // Always try API key first (sheet is public — works without login)
+    // If that fails, try with Bearer token
+    let res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
+    );
+    // If API key failed and we have a token, try with token
+    if (!res.ok && googleAccessToken) {
+      res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,
+        { headers: { Authorization: "Bearer " + googleAccessToken } }
+      );
+    }
+    if (!res.ok) {
+      console.warn("Sheet load failed:", res.status);
+      return;
+    }
+    const data = await res.json();
+    const rows = data.values || [];
+    if (rows.length < 2) return;
+    const headers = rows[0];
+    const idx = (h) => headers.indexOf(h);
+    const byDoc = {};
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const docId = r[idx("docId")];
+      if (!docId) continue;
+      const titleVal = r[idx("title")] || "";
+      if (titleVal === "__DELETED__") { delete byDoc[docId]; continue; }
+      byDoc[docId] = {
+        title:          r[idx("title")]          || "",
+        responsible:    r[idx("responsible")]    || "",
+        updatedAt:      r[idx("updatedAt")]      || "",
+        expirationDate: r[idx("expirationDate")] || "",
+        url:            r[idx("previewUrl")]     || "",
+        viewUrl:        r[idx("driveUrl")]       || "",
+        uploadedBy:     r[idx("uploadedBy")]     || "",
+        notes:          r[idx("Notes")]          || "",
+        type:           r[idx("type")]           || "PDF"
+      };
+    }
+    Object.keys(docOverrides).forEach(k => delete docOverrides[k]);
+    Object.assign(docOverrides, byDoc);
+    _injectAddedDocs(byDoc);
+    render();
+  } catch(e) { console.warn("Could not load from Sheet:", e); }
+}
+
+
 
 // FILTER
 document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn=>{
