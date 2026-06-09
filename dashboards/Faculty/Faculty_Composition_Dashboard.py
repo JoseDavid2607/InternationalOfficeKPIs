@@ -1,34 +1,188 @@
-# =============================================================================
-#  1 · Full-time Faculty Composition  — UASM Faculty Analytics Suite
-#  Refactored: design, UX, structure.  Business logic UNCHANGED.
-# =============================================================================
-import re
-import datetime
-import requests
+# ===========================================================================
+#  Full-time Faculty Composition · UASM
+#  Self-contained · no external module dependencies
+# ===========================================================================
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import re
+import io, base64
+import requests
+import requests
 
-from suite_styles import (
-    apply_page_config, inject_global_css, render_header,
-    render_sidebar_nav, render_update_banner, kpi_card_row, section_divider,
-    apply_chart_style, add_period_highlight,
-    PALETTE, RANKING_PALETTE,
-    _xlsx_bytes, _download_link,
+# ── Page config ────────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Full-time Faculty Composition · UASM",
+    page_icon="🎓",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# ── Page bootstrap ─────────────────────────────────────────────────────────────
-apply_page_config("Full-time Faculty Composition · UASM")
-inject_global_css()
+# ── Design tokens ─────────────────────────────────────────────────────────────
+_P = {
+    "primary":       "#21877D",
+    "primary_dark":  "#004d47",
+    "primary_light": "#dff7f2",
+    "accent1":       "#2EC4B6",
+    "accent2":       "#00A896",
+    "accent3":       "#56D6C9",
+    "danger":        "#E63946",
+    "success":       "#06D6A0",
+    "neutral":       "#C7C7C7",
+    "highlight":     "#D0E5F5",
+    "text_muted":    "#6B7280",
+    "border":        "#D1E8E4",
+}
 
-# ── Data Load ──────────────────────────────────────────────────────────────────
+_NAV = {
+    "1 Full-time Composition":           "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
+    "2 Full-time Staffing Levels":       "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+    "3 Distribution by Academic Area":   "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
+    "4 Faculty Demographics":            "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
+    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
+    "6 Faculty Qualifications":          "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
+}
+
+# ── Global CSS ─────────────────────────────────────────────────────────────────
+st.markdown(
+    "<style>"
+    ".suite-header{display:flex;flex-direction:column;align-items:center;"
+    "padding:16px 24px 12px;"
+    "background:linear-gradient(135deg,#004d47 0%,#21877D 60%,#2EC4B6 100%);"
+    "border-radius:12px;box-shadow:0 2px 8px rgba(0,77,71,.18);margin-bottom:14px;}"
+    ".sh-super{font-size:11px;font-weight:700;letter-spacing:2px;"
+    "color:#56D6C9;text-transform:uppercase;margin-bottom:2px;}"
+    ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
+    ".sh-sub{font-size:13px;color:rgba(255,255,255,.75);margin-top:4px;text-align:center;}"
+    ".kpi-row{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;}"
+    ".kpi-card{flex:1;min-width:120px;background:#F8FFFE;border:1px solid #D1E8E4;"
+    "border-radius:10px;padding:12px 14px;text-align:center;"
+    "box-shadow:0 1px 4px rgba(0,77,71,.07);}"
+    ".kv{font-size:28px;font-weight:800;color:#21877D;line-height:1.1;}"
+    ".kl{font-size:11px;font-weight:600;color:#6B7280;"
+    "text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}"
+    ".upd-banner{display:flex;align-items:center;gap:10px;background:#dff7f2;"
+    "border:1px solid #D1E8E4;border-radius:8px;padding:6px 14px;"
+    "margin-bottom:14px;font-size:13px;}"
+    ".upd-dot{width:8px;height:8px;border-radius:50%;"
+    "background:#06D6A0;flex-shrink:0;}"
+    ".sec-sep{border:none;border-top:1px solid #D1E8E4;margin:16px 0;opacity:.6;}"
+    ".period-label{text-align:center;font-weight:700;font-size:1.05rem;color:#21877D;}"
+    "a.dl-min,a.dl-min:link,a.dl-min:visited{color:#00A896 !important;"
+    "text-decoration:underline !important;font-size:13px;"
+    "display:inline-block;margin-top:6px;}"
+    "a.dl-min:hover{opacity:.85;}"
+    "div.stDownloadButton>button{background:transparent !important;"
+    "border:none !important;box-shadow:none !important;"
+    "color:#21877D !important;font-size:13px !important;"
+    "padding:0 !important;text-decoration:underline !important;}"
+    "div.stDownloadButton{margin:2px 0 8px 0;}"
+    "thead th{background:#dff7f2 !important;color:#004d47 !important;"
+    "font-weight:700 !important;}"
+    "section[data-testid='stSidebar']{background:#F0F7F6 !important;}"
+    "#mode-pill [role='radiogroup']{display:flex;gap:8px;margin-top:0;}"
+    "#mode-pill [role='radio']{flex:1;justify-content:center;"
+    "border:1px solid #d0d4d9;border-radius:999px;padding:8px 12px;"
+    "background:#f0f2f6;color:#666;font-weight:600;cursor:pointer;text-align:center;}"
+    "#mode-pill [role='radio'][aria-checked='true']{"
+    "background:#dff7f2;color:#004d47;border-color:#8fd7cc;}"
+    "#mode-pill [data-baseweb='radio'] input{display:none !important;}"
+    "</style>",
+    unsafe_allow_html=True,
+)
+
+# ── Inline helpers ─────────────────────────────────────────────────────────────
+import io as _io, base64 as _b64, datetime as _dt_mod
+
+def _xlsx_bytes(df, sheet_name="Data"):
+    buf = _io.BytesIO()
+    with pd.ExcelWriter(buf) as w:
+        df.to_excel(w, index=False, sheet_name=sheet_name[:31])
+    buf.seek(0)
+    return buf.getvalue()
+
+def _download_link(label, df, filename):
+    b64 = _b64.b64encode(_xlsx_bytes(df)).decode()
+    href = ("data:application/vnd.openxmlformats-officedocument"
+            ".spreadsheetml.sheet;base64," + b64)
+    st.markdown(
+        '<a class="dl-min" download="' + filename + '" href="' + href + '">' + label + '</a>',
+        unsafe_allow_html=True,
+    )
+
+def _render_header(title, subtitle=""):
+    sub = '<div class="sh-sub">' + subtitle + '</div>' if subtitle else ""
+    st.markdown(
+        '<div class="suite-header">'
+        '<div class="sh-super">UASM \u00b7 Faculty Analytics</div>'
+        '<div class="sh-title">' + title + '</div>' + sub +
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+def _render_update_banner():
+    t = _dt_mod.datetime.now().strftime("%d %b %Y \u00b7 %H:%M")
+    st.markdown(
+        '<div class="upd-banner"><span class="upd-dot"></span>'
+        '<b>Last updated:</b>&nbsp;' + t + '&nbsp;\u00b7&nbsp;Data is current</div>',
+        unsafe_allow_html=True,
+    )
+
+def _kpi_row(cards):
+    html = '<div class="kpi-row">'
+    for c in cards:
+        html += ('<div class="kpi-card"><div class="kv">' + str(c.get("v", "\u2014")) +
+                 '</div><div class="kl">' + str(c.get("l", "")) + '</div></div>')
+    html += "</div>"
+    st.markdown(html, unsafe_allow_html=True)
+
+def _sec_div():
+    st.markdown('<hr class="sec-sep">', unsafe_allow_html=True)
+
+def _nav_sidebar(current):
+    st.sidebar.markdown(
+        "<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;"
+        "color:#6B7280;text-transform:uppercase;margin-bottom:6px'>Navigation</div>",
+        unsafe_allow_html=True,
+    )
+    choices = list(_NAV.keys())
+    idx = choices.index(current) if current in choices else 0
+    sel = st.sidebar.selectbox(
+        "Go to dashboard", choices, index=idx, label_visibility="collapsed"
+    )
+    st.sidebar.link_button("🔗 Open Dashboard", _NAV[sel], use_container_width=True)
+    st.sidebar.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
+    if st.sidebar.button("🔄 Update Data", use_container_width=True, key="upd_data_btn"):
+        st.cache_data.clear()
+        st.rerun()
+    st.sidebar.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
+
+def _highlight_band(fig, label, all_labels):
+    if label in all_labels:
+        pos = all_labels.index(label)
+        fig.add_shape(
+            type="rect", xref="x", yref="paper",
+            x0=pos - 0.4, x1=pos + 0.4, y0=0, y1=1,
+            fillcolor=_P["highlight"], opacity=0.35, line_width=0,
+        )
+    return fig
+
+
+# ── Header ─────────────────────────────────────────────────────────────────────
+_render_header("Full-time Faculty Composition", "Evolution and distribution of full-time faculty by ranking")
+_render_update_banner()
+
+# ── Sidebar navigation ─────────────────────────────────────────────────────────
+_nav_sidebar("1 Full-time Composition")
 DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
 
 @st.cache_data(ttl=300)
 def load_data():
-    # ── Business logic UNCHANGED ──
+    # URL de exportación directa — funciona con archivos .xlsx públicos en Google Drive
     url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
     output_path = "/tmp/BD_Faculty.xlsx"
+
+    import requests
     response = requests.get(url, stream=True)
     with open(output_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=32768):
@@ -49,45 +203,95 @@ def load_data():
 
     first_col = df_.columns[0]
     df_["Periodo"] = df_[first_col].map(_norm_per)
+
     valid = df_["Periodo"].astype(str).str.match(
         r'^(?:19|20)\d{2}-(10|20)$|^(?:19|20)\d{2}\sIntersemestral$'
     )
     df_ = df_.loc[valid].copy()
+
     if "ID Nr." in df_.columns and "ID" not in df_.columns:
         df_ = df_.rename(columns={"ID Nr.": "ID"})
 
     def _key(p):
-        s = str(p); y = int(s[:4])
+        s = str(p)
+        y = int(s[:4])
         suf = 30 if "Intersemestral" in s else int(s[-2:])
         return (y, suf)
     df_ = df_.sort_values(by="Periodo", key=lambda s: s.map(_key))
-    return df_, datetime.datetime.now()
+    return df_
 
-df, _load_ts = load_data()
-# unwrap tuple if cached result is tuple
-if isinstance(df, tuple):
-    df, _load_ts = df
+df = load_data()
 
-# ── Ranking & color setup (UNCHANGED logic) ────────────────────────────────────
-base_order = [
-    "Full Professor", "Associate Professor", "Assistant Professor", "Instructor",
-    "Adjunct Faculty", "Distinguished Practitioner", "Emeritus Professor",
-]
-uniq_ranks    = df["Faculty Ranking"].dropna().astype(str).unique().tolist()
-ranking_order = [x for x in base_order if x in uniq_ranks] + [x for x in uniq_ranks if x not in base_order]
-if "Faculty Ranking" in df.columns:
-    df["Faculty Ranking"] = pd.Categorical(df["Faculty Ranking"], categories=ranking_order, ordered=True)
-color_map_rk = {rk: RANKING_PALETTE[i % len(RANKING_PALETTE)] for i, rk in enumerate(ranking_order)}
+# =============================
+# UTILS
+# =============================
 
-# ── Period helpers (UNCHANGED logic) ──────────────────────────────────────────
+
+# =============================
+# SIDEBAR — Nav + Refresh + Timeframe
+# =============================
+
+st.sidebar.markdown("### 📊 Go to KPI:")
+sel_nav = st.sidebar.selectbox("Select…", list(options.keys()), index=0)
+st.sidebar.link_button("Open", options[sel_nav], use_container_width=True)
+
+if st.sidebar.button("🔄 Refresh data"):
+    st.cache_data.clear()
+    st.rerun()
+
 all_periods   = df["Periodo"].astype(str).unique().tolist()
 sem_periods   = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
 inter_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sIntersemestral', p)]
 years         = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 
+with st.sidebar:
+    st.markdown("---")
+    st.markdown("#### Timeframe")
+    tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
+
+    if tmode == "Semestral":
+        vis = [p.replace("-", "") for p in sem_periods]
+        idx = len(vis) - 1 if vis else 0
+        sel_vis = st.selectbox("Periodo", vis, index=idx if vis else None)
+        sel_period_internal = sem_periods[vis.index(sel_vis)] if vis else None
+        sel_period_label    = sel_vis
+    elif tmode == "Anual":
+        idx = len(years) - 1 if years else 0
+        sel_period_internal = st.selectbox("Periodo", years, index=idx if years else None)
+        sel_period_label    = sel_period_internal
+    else:
+        idx = len(inter_periods) - 1 if inter_periods else 0
+        sel_period_internal = st.selectbox("Periodo", inter_periods, index=idx if inter_periods else None)
+        sel_period_label    = sel_period_internal
+
+    _download_link("Descargar base completa (Excel)", df, "FT_Base_Completa.xlsx")
+
+# =============================
+# RANKING ORDER & COLOR MAP
+# =============================
+base_order = [
+    "Full Professor", "Associate Professor", "Assistant Professor", "Instructor",
+    "Adjunct Faculty", "Distinguished Practitioner", "Emeritus Professor"
+]
+uniq_ranks    = df["Faculty Ranking"].dropna().astype(str).unique().tolist()
+ranking_order = [x for x in base_order if x in uniq_ranks] + [x for x in uniq_ranks if x not in base_order]
+
+if "Faculty Ranking" in df.columns:
+    df["Faculty Ranking"] = pd.Categorical(df["Faculty Ranking"], categories=ranking_order, ordered=True)
+
+palette = [
+    "#037C70","#27BDAE","#4FFF98","#FFD166",
+    "#F4A261","#E76F51","#9D4EDD","#6D597A",
+    "#118AB2","#073B4C","#8AC926","#FF70A6"
+]
+color_map_rk = {rk: palette[i % len(palette)] for i, rk in enumerate(ranking_order)}
+
+# =============================
+# HELPERS
+# =============================
 def periods_for_tables():
-    if tmode == "Semestral":      return sem_periods
-    if tmode == "Intersemestral": return inter_periods
+    if tmode == "Semestral":       return sem_periods
+    if tmode == "Intersemestral":  return inter_periods
     return years
 
 def df_active_for_selection():
@@ -102,18 +306,21 @@ def df_active_for_selection():
 def pivot_counts_by_ranking():
     cols = periods_for_tables()
     if tmode in ("Semestral", "Intersemestral"):
-        return pd.pivot_table(
-            df[df["Periodo"].isin(cols)],
-            index="Faculty Ranking", columns="Periodo",
-            values="ID", aggfunc="count", fill_value=0,
-        ).reindex(ranking_order)
+        return (
+            pd.pivot_table(
+                df[df["Periodo"].isin(cols)],
+                index="Faculty Ranking", columns="Periodo",
+                values="ID", aggfunc="count", fill_value=0
+            ).reindex(ranking_order)
+        )
     out = {rk: {y: 0 for y in cols} for rk in ranking_order}
     for y in cols:
         dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
+        if dfa.empty: continue
         dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
-        for rk in ranking_order:
-            out[rk][y] = int(dfa[dfa["Faculty Ranking"] == rk]["ID"].count())
-    return pd.DataFrame(out).T
+        for rk, v in dfa.groupby("Faculty Ranking")["ID"].count().items():
+            out.setdefault(rk, {})[y] = int(v)
+    return pd.DataFrame(out).T.reindex(ranking_order).reindex(columns=cols, fill_value=0)
 
 def line_source_all():
     cols = periods_for_tables()
@@ -134,7 +341,8 @@ def line_source_all():
                .reindex(ranking_order, fill_value=0).reset_index()
                .rename(columns={"ID":"Count"})
         )
-        cts["Periodo"] = str(y); rows.append(cts)
+        cts["Periodo"] = str(y)
+        rows.append(cts)
     out = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(columns=["Faculty Ranking","Count","Periodo"])
     out["Periodo"] = pd.Categorical(out["Periodo"], categories=cols, ordered=True)
     return out, cols
@@ -155,89 +363,47 @@ def line_source_single(rank):
         vals.append({"Periodo": str(y), "Count": int(dfa[dfa["Faculty Ranking"] == rank]["ID"].count())})
     return pd.DataFrame(vals), cols
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
-with st.sidebar:
-    render_sidebar_nav(current_key="1 · Full-time Composition")
+def highlight_current_period(fig, current_period, xcats):
+    if not current_period or current_period not in xcats: return
+    pos = xcats.index(current_period)
+    fig.add_shape(
+        type="rect", xref="x", yref="paper",
+        x0=pos-0.4, x1=pos+0.4, y0=0, y1=1,
+        fillcolor="#D0E5F5", opacity=0.35, line_width=0
+    )
 
-    st.sidebar.markdown("#### ⏱ Timeframe")
-    tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
-
-    if tmode == "Semestral":
-        vis = [p.replace("-", "") for p in sem_periods]
-        idx = len(vis) - 1 if vis else 0
-        sel_vis = st.selectbox("Period", vis, index=idx if vis else None)
-        sel_period_internal = sem_periods[vis.index(sel_vis)] if vis else None
-        sel_period_label    = sel_vis
-    elif tmode == "Anual":
-        idx = len(years) - 1 if years else 0
-        sel_period_internal = st.selectbox("Year", years, index=idx if years else None)
-        sel_period_label    = sel_period_internal
-    else:
-        idx = len(inter_periods) - 1 if inter_periods else 0
-        sel_period_internal = st.selectbox("Period", inter_periods, index=idx if inter_periods else None)
-        sel_period_label    = sel_period_internal
-
-    st.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
-    _download_link("⬇ Download full dataset (Excel)", df, "FT_Base_Completa.xlsx")
-
-# ── Header ─────────────────────────────────────────────────────────────────────
-render_header(
-    "Full-time Faculty Composition",
-    subtitle="Evolution and distribution of full-time faculty by ranking",
-)
-render_update_banner(last_updated=_load_ts, is_fresh=True)
-
-# ── KPI Row ─────────────────────────────────────────────────────────────────────
-active_kpi = df_active_for_selection()
-total_now  = int(active_kpi["ID"].count()) if not active_kpi.empty else 0
-n_ranks    = int(active_kpi["Faculty Ranking"].nunique()) if not active_kpi.empty else 0
-top_rank   = (
-    active_kpi["Faculty Ranking"].value_counts().idxmax()
-    if not active_kpi.empty else "—"
-)
-kpi_card_row([
-    {"value": sel_period_label or "—", "label": "Selected Period"},
-    {"value": total_now,               "label": "Total Faculty"},
-    {"value": n_ranks,                 "label": "Active Rankings"},
-    {"value": top_rank,                "label": "Largest Ranking"},
-])
-
-section_divider()
-
-# ── Pivot Table ────────────────────────────────────────────────────────────────
+# =============================
+# PIVOT TABLE
+# =============================
 pivot = pivot_counts_by_ranking().reindex(ranking_order)
 pivot.loc["Total"] = pivot.sum(numeric_only=True)
 
-st.subheader("📋 Faculty Count by Ranking")
+st.subheader("Number of Full-time Faculty by Ranking")
 
 def _bold_total(df_):
     s = pd.DataFrame("", index=df_.index, columns=df_.columns)
-    if "Total" in df_.index:
-        s.loc["Total", :] = "font-weight:700;"
+    if "Total" in df_.index: s.loc["Total", :] = "font-weight:700;"
     return s
 
 def _highlight_last(df_):
     s = pd.DataFrame("", index=df_.index, columns=df_.columns)
     if len(df_.columns) > 0 and "Total" in df_.index:
-        s.loc["Total", df_.columns[-1]] = (
-            f"background-color:{PALETTE['primary_light']};"
-            f"color:{PALETTE['primary_dark']};font-weight:700;"
-        )
+        s.loc["Total", df_.columns[-1]] = "background-color:#dff7f2;color:#004d47;font-weight:700;"
     return s
 
 st.dataframe(
     pivot.style.apply(_bold_total, axis=None).apply(_highlight_last, axis=None).format(precision=0),
-    use_container_width=True,
+    use_container_width=True
 )
 _download_link(
-    "⬇ Download table (Excel)",
-    pivot.reset_index().rename(columns={"index": "Faculty Ranking"}),
-    f"FT_Composition_{tmode}.xlsx",
+    "Descargar tabla (Excel)",
+    pivot.reset_index().rename(columns={"index":"Faculty Ranking"}),
+    f"FT_Composition_{tmode}.xlsx"
 )
 
-section_divider()
-
-# ── Charts: Evolution (left) + Composition bar (right) ─────────────────────────
+# =============================
+# CHARTS
+# =============================
 periods_sorted = periods_for_tables()
 st.session_state.setdefault("show_all", True)
 st.session_state.setdefault("single_ranking", "Select...")
@@ -250,22 +416,20 @@ def on_toggle_show_all():
     if st.session_state.show_all:
         st.session_state.single_ranking = "Select..."
 
-st.subheader("📈 Evolution & Composition")
-col_left, col_right = st.columns([3, 2])
+st.header("Evolution & composition")
+col_left, col_right = st.columns(2)
 
-# ── RIGHT: Bar chart for selected period ───────────────────────────────────────
 with col_right:
+    st.subheader("Composition by period")
     st.markdown(
-        f"<div style='text-align:center;font-weight:700;font-size:1rem;"
-        f"color:{PALETTE[\"primary\"]};margin-bottom:4px'>"
-        f"Composition — {sel_period_label}</div>",
-        unsafe_allow_html=True,
+        f"<div style='text-align:center;font-weight:800;font-size:2rem;padding-top:4px;'>{sel_period_label}</div>",
+        unsafe_allow_html=True
     )
     if tmode in ("Semestral", "Intersemestral"):
         dfbar = df[df["Periodo"].astype(str).eq(sel_period_internal)]
     else:
-        y_   = str(sel_period_internal)
-        dfa  = df[df["Periodo"].astype(str).str.startswith(y_)].copy()
+        y    = str(sel_period_internal)
+        dfa  = df[df["Periodo"].astype(str).str.startswith(y)].copy()
         dfbar = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
 
     bar_counts = (
@@ -273,30 +437,23 @@ with col_right:
              .reindex(ranking_order).fillna(0).reset_index()
     )
     bar_counts.columns = ["Faculty Ranking", "Count"]
-    total_bar = int(bar_counts["Count"].sum())
-    st.metric("Total Faculty", total_bar)
+    st.metric("Total Faculty:", int(bar_counts["Count"].sum()))
 
     fig_bar = px.bar(
         bar_counts, x="Count", y="Faculty Ranking", orientation="h",
-        text="Count", color="Faculty Ranking",
-        color_discrete_map=color_map_rk,
-        category_orders={"Faculty Ranking": ranking_order[::-1]},
+        text="Count", color="Faculty Ranking", color_discrete_map=color_map_rk,
+        category_orders={"Faculty Ranking": ranking_order[::-1]}
     )
     fig_bar.update_xaxes(range=[0, max(1, int(bar_counts["Count"].max() or 0)) + 5], title=None)
     fig_bar.update_yaxes(title=None)
     fig_bar.update_traces(textposition="outside")
-    apply_chart_style(fig_bar, height=360)
     st.plotly_chart(fig_bar, use_container_width=True)
 
-# ── LEFT: Line chart (evolution) ───────────────────────────────────────────────
 with col_left:
+    st.subheader("Evolution of rankings")
     st.checkbox("Show all lines", key="show_all", on_change=on_toggle_show_all)
-    st.selectbox(
-        "Filter to ranking:",
-        ["Select..."] + ranking_order,
-        key="single_ranking",
-        on_change=on_select_ranking,
-    )
+    st.selectbox("Select a ranking:", ["Select..."] + ranking_order,
+                 key="single_ranking", on_change=on_select_ranking)
 
     fig_line = None
     xcats    = periods_sorted
@@ -308,11 +465,11 @@ with col_left:
             data_long, x="Periodo", y="Count", color="Faculty Ranking",
             markers=True, title="Evolution — all rankings",
             color_discrete_map=color_map_rk,
-            category_orders={"Periodo": xcats, "Faculty Ranking": ranking_order},
+            category_orders={"Periodo": xcats, "Faculty Ranking": ranking_order}
         )
         fig_line.update_yaxes(range=[0, y_max + 1], title=None)
         fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title=None)
-        apply_chart_style(fig_line, height=400, show_legend=False)
+        fig_line.update_layout(height=550, showlegend=False)
     else:
         rk = st.session_state.single_ranking
         if rk != "Select...":
@@ -321,51 +478,46 @@ with col_left:
             fig_line = px.line(
                 data_single, x="Periodo", y="Count", markers=True,
                 title=f"Evolution — {rk}",
-                color_discrete_sequence=[color_map_rk.get(rk, PALETTE["accent1"])],
-                category_orders={"Periodo": xcats},
+                color_discrete_sequence=[color_map_rk.get(rk, "#00A896")],
+                category_orders={"Periodo": xcats}
             )
             fig_line.update_yaxes(range=[0, y_max + 1], title=None)
             fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title=None)
-            apply_chart_style(fig_line, height=400)
+            fig_line.update_layout(height=480)
         else:
             st.info("Select a ranking to visualize its evolution.")
 
     if fig_line is not None:
-        add_period_highlight(fig_line, sel_period_internal, list(xcats))
+        _highlight_band(fig_line, sel_period_internal, list(xcats))
         st.plotly_chart(fig_line, use_container_width=True)
 
-section_divider()
-
-# ── Detail Table ───────────────────────────────────────────────────────────────
-st.subheader("🔍 Faculty Detail")
+# =============================
+# DETAIL TABLE
+# =============================
+st.subheader("Faculty Detail")
 active = df_active_for_selection()
 selected_ranking = (
-    None
-    if st.session_state.show_all or st.session_state.single_ranking == "Select..."
+    None if st.session_state.show_all or st.session_state.single_ranking == "Select..."
     else st.session_state.single_ranking
 )
 
 if selected_ranking:
-    detail_df  = active[active["Faculty Ranking"] == selected_ranking].copy()
-    title_txt  = (
-        f"**{len(detail_df)}** · {selected_ranking} "
-        f"— period **{sel_period_label}**"
-    )
+    detail_df = active[active["Faculty Ranking"] == selected_ranking].copy()
+    title_txt = f"### **{len(detail_df)}** **{selected_ranking}** in period **{sel_period_label}**"
 else:
-    detail_df  = active.copy()
-    title_txt  = f"**{len(detail_df)}** Full-time Faculty — period **{sel_period_label}**"
+    detail_df = active.copy()
+    title_txt = f"### **{len(detail_df)}** Full-time Faculty in period **{sel_period_label}**"
 
 st.markdown(title_txt)
-
 detail_cols = [
     "Periodo","ID","ID Nr.","Full Name","Academic Area",
     "Faculty Ranking","Subcategorization","Faculty Qualific.","P/S",
-    "Highest Earned Degree","Year","University","Normal professional Resp.",
+    "Highest Earned Degree","Year","University","Normal professional Resp."
 ]
 show_cols = [c for c in detail_cols if c in detail_df.columns]
 st.dataframe(detail_df[show_cols], use_container_width=True)
 _download_link(
-    "⬇ Download detail (Excel)",
+    "Descargar detalle (Excel)",
     detail_df[show_cols],
-    f"FT_Composition_Detail_{sel_period_label}.xlsx",
+    f"FT_Composition_Detail_{sel_period_label}.xlsx"
 )
