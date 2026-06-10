@@ -380,33 +380,33 @@ years         = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 with st.sidebar:
     col_logo, col_title = st.columns([1, 3])
     with col_logo:
-        st.image("web/imagenes/logo.png", width=60)
+        st.image("web/imagenes/logo.png", width=65)
     with col_title:
-        st.markdown("""
-        <div style="
-            padding-top:8px;
-            padding-left:2px;
-        ">
-            <div style="
-                color:#004d47;
-                font-size:24px;
-                font-weight:800;
-                line-height:1.1;
-                margin-bottom:2px;
-            ">
-                UASM Faculty KPIs
-            </div>
+        st.markdown(
+            """
+            <div style="padding-top:8px;">
+                <div style="
+                    color:#004d47;
+                    font-size:28px;
+                    font-weight:800;
+                    line-height:1.0;
+                ">
+                    UASM Faculty KPIs
+                </div>
 
-            <div style="
-                color:#6B7280;
-                font-size:11px;
-                letter-spacing:1px;
-                text-transform:uppercase;
-            ">
-                Analytics Dashboard
+                <div style="
+                    color:#6B7280;
+                    font-size:11px;
+                    letter-spacing:1px;
+                    text-transform:uppercase;
+                    margin-top:4px;
+                ">
+                    Analytics Dashboard
+                </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True,
+        )
     st.markdown("---")
     st.markdown("#### Timeframe")
     tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
