@@ -192,7 +192,7 @@ def _download_excel() -> str:
 
 @st.cache_data
 def load_data():
-    df_ = pd.read_excel(_download_excel(), sheet_name="BD PLANTA 2020-2025")
+    df_ = pd.read_excel(_download_excel(), sheet_name="BD_PLANTA")
 
     # Build 'Periodo' soportando intersemestral, pero nos quedaremos con semestral
     def _norm_per(val):
