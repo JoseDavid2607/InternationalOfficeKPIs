@@ -331,7 +331,7 @@ def load_data():
             if chunk:
                 f.write(chunk)
 
-    df_ = pd.read_excel(output_path, sheet_name="BD PLANTA 2020-2025")
+    df_ = pd.read_excel(output_path, sheet_name="BD_PLANTA")
 
     def _norm_per(val):
         s = str(val).strip()
