@@ -282,9 +282,52 @@ with st.sidebar:
     xlsx_data = _xlsx_bytes(df)
     b64 = _b64.b64encode(xlsx_data).decode()
     
+    st.markdown("""
+    <style>
+    
+    .modern-btn-light{
+        display:block;
+        width:100%;
+        text-align:center;
+        padding:10px 16px;
+        background:#F8FFFE;
+        border:1px solid #D1E8E4;
+        border-radius:10px;
+        color:#004d47 !important;
+        font-weight:700;
+        text-decoration:none !important;
+        margin-bottom:10px;
+        box-shadow:0 1px 4px rgba(0,77,71,.08);
+        transition:all .2s ease;
+    }
+    
+    .modern-btn-light:hover{
+        background:#dff7f2;
+        border-color:#8fd7cc;
+    }
+    
+    div[data-testid="stButton"] > button{
+        background:#F8FFFE !important;
+        border:1px solid #D1E8E4 !important;
+        border-radius:10px !important;
+        color:#004d47 !important;
+        font-weight:700 !important;
+        box-shadow:0 1px 4px rgba(0,77,71,.08) !important;
+        height:44px !important;
+    }
+    
+    div[data-testid="stButton"] > button:hover{
+        background:#dff7f2 !important;
+        border-color:#8fd7cc !important;
+    }
+    
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Botón Descargar
     st.markdown(
         f"""
-        <a class="modern-btn"
+        <a class="modern-btn-light"
            download="FT_Base_Completa.xlsx"
            href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}">
            📥 Descargar Base Completa
@@ -292,6 +335,8 @@ with st.sidebar:
         """,
         unsafe_allow_html=True
     )
+    
+    # Botón Actualizar
     if st.button(
         "🔄 Actualizar Data",
         use_container_width=True
