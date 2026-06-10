@@ -39,8 +39,9 @@ st.markdown(
     "<style>"
     ".suite-header{display:flex;flex-direction:column;align-items:center;"
     "padding:16px 24px 12px;"
+    "margin-top:-65px;"
     "background:linear-gradient(135deg,#004d47 0%,#21877D 60%,#2EC4B6 100%);"
-    "border-radius:12px;box-shadow:0 2px 8px rgba(0,77,71,.18);margin-bottom:14px;}"
+    "border-radius:12px;box-shadow:0 2px 8px rgba(0,77,71,.18);margin-bottom:14px;margin-top:0px;}"
     ".sh-super{font-size:11px;font-weight:700;letter-spacing:2px;"
     "color:#56D6C9;text-transform:uppercase;margin-bottom:2px;}"
     ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
@@ -78,6 +79,34 @@ st.markdown(
     "#mode-pill [role='radio'][aria-checked='true']{"
     "background:#dff7f2;color:#004d47;border-color:#8fd7cc;}"
     "#mode-pill [data-baseweb='radio'] input{display:none !important;}"
+
+    ".modern-btn{"
+    "background:linear-gradient(135deg,#21877D,#2EC4B6);"
+    "color:white !important;"
+    "padding:10px 18px;"
+    "border-radius:10px;"
+    "font-weight:700;"
+    "text-decoration:none !important;"
+    "display:block;"
+    "text-align:center;"
+    "margin-bottom:10px;"
+    "box-shadow:0 3px 10px rgba(0,77,71,.18);"
+    "transition:all .2s ease;"
+    "}"
+    
+    ".modern-btn:hover{"
+    "transform:translateY(-2px);"
+    "opacity:.95;"
+    "}"
+    
+    ".refresh-box{"
+    "background:#ffffff;"
+    "border:1px solid #D1E8E4;"
+    "border-radius:10px;"
+    "padding:8px;"
+    "margin-bottom:15px;"
+    "}"
+    
     "</style>",
     unsafe_allow_html=True,
 )
@@ -250,7 +279,25 @@ with st.sidebar:
         sel_period_internal = st.selectbox("Periodo", inter_periods, index=idx if inter_periods else None)
         sel_period_label    = sel_period_internal
 
-    _download_link("Descargar base completa (Excel)", df, "FT_Base_Completa.xlsx")
+    xlsx_data = _xlsx_bytes(df)
+    b64 = _b64.b64encode(xlsx_data).decode()
+    
+    st.markdown(
+        f"""
+        <a class="modern-btn"
+           download="FT_Base_Completa.xlsx"
+           href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}">
+           📥 Descargar Base Completa
+        </a>
+        """,
+        unsafe_allow_html=True
+    )
+    if st.button(
+        "🔄 Actualizar Data",
+        use_container_width=True
+    ):
+        st.cache_data.clear()
+        st.rerun()
 
 # =============================
 # RANKING ORDER & COLOR MAP
