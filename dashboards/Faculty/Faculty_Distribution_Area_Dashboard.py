@@ -33,6 +33,15 @@ _P = {
     "border":        "#D1E8E4",
 }
 
+_NAV = {
+    "1 Full-time Composition":           "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
+    "2 Full-time Staffing Levels":       "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
+    "3 Distribution by Academic Area":   "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
+    "4 Faculty Demographics":            "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
+    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
+    "6 Faculty Qualifications":          "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
+}
+
 # ── Global CSS ─────────────────────────────────────────────────────────────────
 st.markdown(
     "<style>"
@@ -128,7 +137,25 @@ def _kpi_row(cards):
 
 def _sec_div():
     st.markdown('<hr class="sec-sep">', unsafe_allow_html=True)
-    
+
+def _nav_sidebar(current):
+    st.sidebar.markdown(
+        "<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;"
+        "color:#6B7280;text-transform:uppercase;margin-bottom:6px'>Navigation</div>",
+        unsafe_allow_html=True,
+    )
+    choices = list(_NAV.keys())
+    idx = choices.index(current) if current in choices else 0
+    sel = st.sidebar.selectbox(
+        "Go to dashboard", choices, index=idx, label_visibility="collapsed"
+    )
+    st.sidebar.link_button("🔗 Open Dashboard", _NAV[sel], use_container_width=True)
+    st.sidebar.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
+    if st.sidebar.button("🔄 Update Data", use_container_width=True, key="upd_data_btn"):
+        st.cache_data.clear()
+        st.rerun()
+    st.sidebar.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
+
 def _highlight_band(fig, label, all_labels):
     if label in all_labels:
         pos = all_labels.index(label)
@@ -138,6 +165,7 @@ def _highlight_band(fig, label, all_labels):
             fillcolor=_P["highlight"], opacity=0.35, line_width=0,
         )
     return fig
+
 
 import requests as _requests
 
@@ -243,6 +271,9 @@ def load_parttime():
 _render_header("Distribution by Academic Area", "Faculty distribution and evolution across academic areas")
 _render_update_banner()
 
+# ── Sidebar navigation ─────────────────────────────────────────────────────────
+_nav_sidebar("3 Distribution by Academic Area")
+
 df_full = load_fulltime()
 df_part = load_parttime()
 
@@ -250,15 +281,19 @@ df_part = load_parttime()
 if "modo_faculty" not in st.session_state:
     st.session_state.modo_faculty = "Full-time"
 
+
 # ========= SIDEBAR (KPI -> Faculty Type -> Timeframe -> Periodo -> Descarga BD) =========
 
 with st.sidebar:
+    st.markdown("### 📊 Go to KPI:")
     # Solo entradas con URL http(s)
     choices = [k for k, u in _NAV.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
 
     # Marca por defecto este KPI si existe
     default_label = "3 Distribution by Academic Area"
     default_idx = choices.index(default_label) if default_label in choices else 0
+
+    # Navigation handled by _nav_sidebar() above
     st.markdown("---")
 
     st.markdown("#### Faculty Type")
@@ -584,4 +619,6 @@ st.dataframe(detail_out, use_container_width=True)
 # Descarga de la tabla de detalle
 fname_det = f"Detail_{'FT' if st.session_state.modo_faculty=='Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ','_')}.xlsx"
 _download_link("Descargar tabla (Excel)", detail_out, fname_det)
+
+
 
