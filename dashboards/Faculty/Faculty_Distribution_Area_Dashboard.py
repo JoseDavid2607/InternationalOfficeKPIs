@@ -229,7 +229,7 @@ def _filter_for_timeframe(df_in: pd.DataFrame, time_mode: str, value: str | int 
 
 @st.cache_data(ttl=0)
 def load_fulltime():
-    df = pd.read_excel(_download_excel(), sheet_name="BD PLANTA 2020-2025")
+    df = pd.read_excel(_download_excel(), sheet_name="BD_PLANTA")
     # Periodo soportando intersemestral
     if "Semestre" in df.columns:
         sem = df["Semestre"].astype(str).str.strip()
