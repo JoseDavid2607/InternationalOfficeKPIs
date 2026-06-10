@@ -161,7 +161,7 @@ def _download_excel() -> str:
 
 @st.cache_data(ttl=0)
 def load_fulltime():
-    df = pd.read_excel(_download_excel(), sheet_name="BD PLANTA 2020-2025")
+    df = pd.read_excel(_download_excel(), sheet_name="BD_PLANTA")
 
     # Periodo soportando Intersemestral: YYYY10/YYYY20 o "YYYY Intersemestral"
     if "Semestre" in df.columns:
