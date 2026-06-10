@@ -289,7 +289,6 @@ _render_header(
     "Full-time Faculty Composition",
     "Evolution and distribution of full-time faculty by ranking"
 )
-_render_update_banner()
 
 DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
 
