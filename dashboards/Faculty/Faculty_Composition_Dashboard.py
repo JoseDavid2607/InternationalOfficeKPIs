@@ -378,7 +378,7 @@ inter_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sInters
 years         = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 
 with st.sidebar:
-    st.image("web/imagenes/logo.png", width=180)
+    st.image("web/imagenes/logo.png", width=67)
     st.markdown("""
     <div style="
         text-align:center;
