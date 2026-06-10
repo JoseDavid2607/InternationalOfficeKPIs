@@ -378,31 +378,35 @@ inter_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sInters
 years         = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 
 with st.sidebar:
-    st.image("web/imagenes/logo.png", width=67)
-    st.markdown("""
-    <div style="
-        text-align:center;
-        padding-top:5px;
-        padding-bottom:20px;
-    ">
-        <h1 style="
-            color:#004d47;
-            font-size:28px;
-            font-weight:800;
-            margin-bottom:0px;
-        ">
-            UASM Faculty KPIs
-        </h1>
+    col_logo, col_title = st.columns([1, 3])
+    with col_logo:
+        st.image("web/imagenes/logo.png", width=60)
+    with col_title:
+        st.markdown("""
         <div style="
-            color:#6B7280;
-            font-size:12px;
-            letter-spacing:1px;
-            text-transform:uppercase;
+            padding-top:8px;
+            padding-left:2px;
         ">
-            Analytics Dashboard
+            <div style="
+                color:#004d47;
+                font-size:24px;
+                font-weight:800;
+                line-height:1.1;
+                margin-bottom:2px;
+            ">
+                UASM Faculty KPIs
+            </div>
+
+            <div style="
+                color:#6B7280;
+                font-size:11px;
+                letter-spacing:1px;
+                text-transform:uppercase;
+            ">
+                Analytics Dashboard
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("#### Timeframe")
     tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
