@@ -106,6 +106,43 @@ st.markdown(
     "padding:8px;"
     "margin-bottom:15px;"
     "}"
+
+    .modern-btn{
+    background:#FFFFFF;
+    border:1px solid #D1E8E4;
+    border-radius:10px;
+    padding:12px 14px;
+    color:#374151 !important;
+    font-size:14px;
+    font-weight:600;
+    text-decoration:none !important;
+    display:block;
+    text-align:center;
+    margin-bottom:10px;
+    transition:all .2s ease;
+    box-shadow:0 1px 3px rgba(0,0,0,.04);
+}
+
+.modern-btn:hover{
+    background:#F8FFFE;
+    border-color:#B7DCD6;
+}
+
+div[data-testid="stButton"] button{
+    background:#FFFFFF !important;
+    border:1px solid #D1E8E4 !important;
+    border-radius:10px !important;
+    color:#374151 !important;
+    font-size:14px !important;
+    font-weight:600 !important;
+    height:48px !important;
+    box-shadow:0 1px 3px rgba(0,0,0,.04) !important;
+}
+
+div[data-testid="stButton"] button:hover{
+    background:#F8FFFE !important;
+    border-color:#B7DCD6 !important;
+}
     
     "</style>",
     unsafe_allow_html=True,
@@ -282,63 +319,19 @@ with st.sidebar:
     xlsx_data = _xlsx_bytes(df)
     b64 = _b64.b64encode(xlsx_data).decode()
     
-    st.markdown("""
-    <style>
-    
-    .modern-btn-light{
-        display:block;
-        width:100%;
-        text-align:center;
-        padding:10px 16px;
-        background:#F8FFFE;
-        border:1px solid #D1E8E4;
-        border-radius:10px;
-        color:#004d47 !important;
-        font-weight:700;
-        text-decoration:none !important;
-        margin-bottom:10px;
-        box-shadow:0 1px 4px rgba(0,77,71,.08);
-        transition:all .2s ease;
-    }
-    
-    .modern-btn-light:hover{
-        background:#dff7f2;
-        border-color:#8fd7cc;
-    }
-    
-    div[data-testid="stButton"] > button{
-        background:#F8FFFE !important;
-        border:1px solid #D1E8E4 !important;
-        border-radius:10px !important;
-        color:#004d47 !important;
-        font-weight:700 !important;
-        box-shadow:0 1px 4px rgba(0,77,71,.08) !important;
-        height:44px !important;
-    }
-    
-    div[data-testid="stButton"] > button:hover{
-        background:#dff7f2 !important;
-        border-color:#8fd7cc !important;
-    }
-    
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Botón Descargar
     st.markdown(
         f"""
-        <a class="modern-btn-light"
+        <a class="modern-btn"
            download="FT_Base_Completa.xlsx"
            href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}">
-           📥 Descargar Base Completa
+           ⭳ Descargar Base Completa
         </a>
         """,
         unsafe_allow_html=True
     )
     
-    # Botón Actualizar
     if st.button(
-        "🔄 Actualizar Data",
+        "↻ Actualizar Data",
         use_container_width=True
     ):
         st.cache_data.clear()
