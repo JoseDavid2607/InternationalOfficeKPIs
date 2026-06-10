@@ -35,15 +35,6 @@ _P = {
     "border":        "#D1E8E4",
 }
 
-_NAV = {
-    "1 Full-time Composition":           "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-    "2 Full-time Staffing Levels":       "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
-    "3 Distribution by Academic Area":   "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
-    "4 Faculty Demographics":            "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
-    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
-    "6 Faculty Qualifications":          "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-}
-
 # ── Global CSS ─────────────────────────────────────────────────────────────────
 st.markdown(
     "<style>"
@@ -139,25 +130,7 @@ def _kpi_row(cards):
 
 def _sec_div():
     st.markdown('<hr class="sec-sep">', unsafe_allow_html=True)
-
-def _nav_sidebar(current):
-    st.sidebar.markdown(
-        "<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;"
-        "color:#6B7280;text-transform:uppercase;margin-bottom:6px'>Navigation</div>",
-        unsafe_allow_html=True,
-    )
-    choices = list(_NAV.keys())
-    idx = choices.index(current) if current in choices else 0
-    sel = st.sidebar.selectbox(
-        "Go to dashboard", choices, index=idx, label_visibility="collapsed"
-    )
-    st.sidebar.link_button("🔗 Open Dashboard", _NAV[sel], use_container_width=True)
-    st.sidebar.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
-    if st.sidebar.button("🔄 Update Data", use_container_width=True, key="upd_data_btn"):
-        st.cache_data.clear()
-        st.rerun()
-    st.sidebar.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
-
+    
 def _highlight_band(fig, label, all_labels):
     if label in all_labels:
         pos = all_labels.index(label)
@@ -168,13 +141,10 @@ def _highlight_band(fig, label, all_labels):
         )
     return fig
 
-
 # ── Header ─────────────────────────────────────────────────────────────────────
 _render_header("Full-time Faculty Qualifications", "P/S and qualification type analysis with sensitivity mode")
 _render_update_banner()
 
-# ── Sidebar navigation ─────────────────────────────────────────────────────────
-_nav_sidebar("6 Faculty Qualifications")
 import requests as _requests
 
 DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
@@ -327,7 +297,6 @@ def _slugify(s: str) -> str:
 # —— utilidades de descarga ——
 def _sanitize_for_export(df: pd.DataFrame) -> pd.DataFrame:
     return df[[c for c in df.columns if not str(c).startswith("_")]].copy()
-
 
 def _download_xlsx_button(df: pd.DataFrame, fname: str, key: str, label: str = "Download Excel"):
     safe = _sanitize_for_export(df)
@@ -592,7 +561,6 @@ def _period_sort_key(p: str) -> tuple[int,int]:
         suf_i = 0
     return (y, suf_i)
 
-
 def build_time_axis_for_history(df_hist: pd.DataFrame):
     time_mode = st.session_state.get("time_mode", "Semestral")
     if "_SEM" not in df_hist.columns:
@@ -618,7 +586,6 @@ def build_time_axis_for_history(df_hist: pd.DataFrame):
     x_map = {lab: i for i, lab in enumerate(x_labels)}
     return "_SEM", x_labels, x_map
 
-
 def transform_for_time_mode_ps(df_ps: pd.DataFrame):
     time_mode = st.session_state.get("time_mode", "Semestral")
     base = df_ps.copy()
@@ -638,7 +605,6 @@ def transform_for_time_mode_ps(df_ps: pd.DataFrame):
     if "P" in g and "S" in g:
         g["P_share"] = (g["P"] / (g["P"] + g["S"]).replace(0, pd.NA)) * 100
     return g.rename(columns={"_INTER_LABEL":"_SEM"})
-
 
 def transform_for_time_mode_tipo(df_tipo: pd.DataFrame, share_col_name: str):
     time_mode = st.session_state.get("time_mode", "Semestral")
@@ -667,7 +633,6 @@ def transform_for_time_mode_tipo(df_tipo: pd.DataFrame, share_col_name: str):
     else:
         g["OTHER_share"] = (g["OTHER"] / den) * 100
     return g.rename(columns={"_INTER_LABEL":"_SEM"})
-
 
 # === aplicar sensibilidad sobre series históricas SOLO en el período seleccionado ===
 def apply_sensitivity_to_history(
@@ -744,7 +709,6 @@ def apply_sensitivity_to_history(
         ttq.loc[mask_period_ttq, "OTHER_share"] = (ttq.loc[mask_period_ttq, "OTHER"] / den_ttq * 100).fillna(0.0)
 
     return ps, tq, tps, ttq
-
 
 # --------- Gráfica histórica ---------
 def draw_history(fig_title, level_name, level_values, metric_kind, total_series_builders, agg_ps_all, agg_tipo_all, x_labels, x_map, sel_x):
@@ -930,7 +894,6 @@ def draw_history(fig_title, level_name, level_values, metric_kind, total_series_
     fname = f"chart_{_slugify(fig_title)}_{_slugify(metric_choice)}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx"
     _download_xlsx_button(export_df, fname, key=f"dl_hist_{_slugify(fig_title)}_{metric_choice}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}", label="⬇️ Datos de la gráfica (Excel)")
 
-
 # ============== NORMALIZACIÓN BÁSICA EN CARTELERA ==============
 col_sem = _get_any(df_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
 if "_SEM" not in df_car.columns and col_sem:
@@ -939,7 +902,6 @@ else:
     df_car["_SEM"] = df_car.get("_SEM", pd.Series(dtype=str))
 df_car["_YEAR"] = df_car["_SEM"].map(extract_year_from_period)
 df_car["_IS_INTER"] = df_car["_SEM"].str.lower().str.contains("inter", na=False)
-
 
 # ================== TIMEFRAME FILTERS ==================
 def mask_timeframe(series_sem: pd.Series, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.Series:
@@ -953,7 +915,6 @@ def mask_timeframe(series_sem: pd.Series, mode: str, selected_year: int | None, 
     # <<< antes: devolvías todo True (muestra TODO el histórico)
     return pd.Series([False]*len(s), index=series_sem.index)
 
-
 def filter_df_car(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
     if "_SEM" not in df.columns:
         sc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
@@ -963,7 +924,6 @@ def filter_df_car(df: pd.DataFrame, mode: str, selected_year: int | None, select
             return df
     m = mask_timeframe(df["_SEM"], mode, selected_year, selected_sem)
     return df[m].copy()
-
 
 def filter_df_fd(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
     semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
@@ -976,7 +936,6 @@ def filter_df_fd(df: pd.DataFrame, mode: str, selected_year: int | None, selecte
     elif ycol and selected_year is not None:
         out = out[pd.to_numeric(out[ycol], errors="coerce").astype("Int64") == int(selected_year)].copy()
     return out
-
 
 # ================== SIDEBAR ==================
 SEMESTRAL_PERIODS = list_periods_semestral()
@@ -1051,16 +1010,6 @@ with st.sidebar:
             st.success("Reset.")
 
     if not sens_mode:
-        # Navigation selectbox (unique key to avoid duplicate widget ID)
-        _nav_choices = list(_NAV.keys())
-        _nav_idx = _nav_choices.index("6 Faculty Qualifications") if "6 Faculty Qualifications" in _nav_choices else 0
-        _nav_sel = st.selectbox("Go to dashboard", _nav_choices, index=_nav_idx,
-                                label_visibility="collapsed", key="qual_nav_sel")
-        st.link_button("🔗 Open Dashboard", _NAV[_nav_sel], use_container_width=True)
-        st.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
-        if st.button("🔄 Update Data", use_container_width=True, key="qual_upd_btn"):
-            st.cache_data.clear()
-            st.rerun()
         st.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
 
     st.markdown('---')
@@ -1092,7 +1041,6 @@ with st.sidebar:
     st.session_state.setdefault("view_mode", "By Academic Area")
     view_mode = st.selectbox("View", ["By Program", "By Academic Area", "By Field"], key="view_mode")
     dl_bd_placeholder = st.empty()
-
 
 # ================== FILTROS BASE ==================
 df_car_base = df_car.copy()
@@ -1374,7 +1322,6 @@ def _style_impact_heatmap(df: pd.DataFrame, id_col: str):
 
     return sty
 
-
 # ================== PRINCIPAL ==================
 st.markdown("---")
 
@@ -1454,7 +1401,6 @@ def _filter_fd_by_timeframe(df_fd: pd.DataFrame, time_mode: str, sel_year, sel_s
         return df_fd[m].copy()
 
     return df_fd.copy()
-
 
 def _count_teaching_from_fd_timeaware(df_fd: pd.DataFrame, time_mode: str, sel_year, sel_sem) -> dict[str,int]:
     """
@@ -2307,7 +2253,6 @@ else:
                     agg_tipo_all=agg_tipo_all_p_tm,
                     x_labels=x_labels_p, x_map=x_map_p, sel_x=sel_x_p
                 )
-
 
 # --------------------------
 # CREDIT SUMS (EXPANDER)
@@ -3219,9 +3164,6 @@ if not SENS.get("on", False):
                     use_container_width=True, hide_index=True
                 )
 
-
-
-
     # ===================== MODO PIVOT ORIGINAL (AREA / TYPE) =====================
     else:
         # Define filas según modo
@@ -3323,7 +3265,6 @@ if not SENS.get("on", False):
                 key=f"dl_chart_ps_perc_{_slugify(row_name)}_{_slugify(st.session_state.get('sel_label','sel'))}",
                 label="Download (Excel)"
             )
-
 
 # ==========================================================
 # MÓDULO FINAL: Top 5 (más/menos créditos) y FT sin cursos + Buscador
@@ -3722,47 +3663,4 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
