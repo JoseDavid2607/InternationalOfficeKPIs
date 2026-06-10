@@ -109,26 +109,6 @@ st.markdown(
         margin-top:3px;
     }
 
-    .upd-banner{
-        display:flex;
-        align-items:center;
-        gap:10px;
-        background:#dff7f2;
-        border:1px solid #D1E8E4;
-        border-radius:8px;
-        padding:6px 14px;
-        margin-bottom:14px;
-        font-size:13px;
-    }
-
-    .upd-dot{
-        width:8px;
-        height:8px;
-        border-radius:50%;
-        background:#06D6A0;
-        flex-shrink:0;
-    }
-
     .sec-sep{
         border:none;
         border-top:1px solid #D1E8E4;
@@ -283,14 +263,6 @@ def _render_header(title, subtitle=""):
         unsafe_allow_html=True,
     )
 
-def _render_update_banner():
-    t = _dt_mod.datetime.now().strftime("%d %b %Y \u00b7 %H:%M")
-    st.markdown(
-        '<div class="upd-banner"><span class="upd-dot"></span>'
-        '<b>Last updated:</b>&nbsp;' + t + '&nbsp;\u00b7&nbsp;Data is current</div>',
-        unsafe_allow_html=True,
-    )
-
 def _kpi_row(cards):
     html = '<div class="kpi-row">'
     for c in cards:
@@ -313,7 +285,10 @@ def _highlight_band(fig, label, all_labels):
     return fig
 
 # ── Header ─────────────────────────────────────────────────────────────────────
-_render_header("Full-time Faculty Composition", "Evolution and distribution of full-time faculty by ranking")
+_render_header(
+    "Full-time Faculty Composition",
+    "Evolution and distribution of full-time faculty by ranking"
+)
 _render_update_banner()
 
 DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
@@ -421,13 +396,6 @@ with st.sidebar:
         """,
         unsafe_allow_html=True
     )
-    
-    if st.button(
-        "↻ Actualizar Data",
-        use_container_width=True
-    ):
-        st.cache_data.clear()
-        st.rerun()
 
 # =============================
 # RANKING ORDER & COLOR MAP
