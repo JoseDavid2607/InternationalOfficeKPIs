@@ -44,7 +44,7 @@ st.markdown(
         flex-direction:column;
         align-items:center;
         padding:16px 24px 12px;
-        margin-top:-35px;
+        margin-top:-30px;
         background:linear-gradient(135deg,#004d47 0%,#21877D 60%,#2EC4B6 100%);
         border-radius:12px;
         box-shadow:0 2px 8px rgba(0,77,71,.18);
