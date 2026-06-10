@@ -171,7 +171,7 @@ def load_faculty_distribution():
 @st.cache_data(ttl=0)
 def load_cartelera():
     xls = pd.ExcelFile(_download_excel())
-    df = pd.read_excel(xls, sheet_name="BD Cartelera 2020-2025")
+    df = pd.read_excel(xls, sheet_name="BD_Cartelera")
     df.columns = df.columns.str.strip()
     return df
 
@@ -179,7 +179,7 @@ def load_cartelera():
 def _load_planta_sheet():
     try:
         xls = pd.ExcelFile(_download_excel())
-        dfp = pd.read_excel(xls, sheet_name="BD PLANTA 2020-2025")
+        dfp = pd.read_excel(xls, sheet_name="BD_PLANTA")
         dfp.columns = dfp.columns.str.strip()
         return dfp
     except Exception:
@@ -3295,7 +3295,7 @@ if not SENS.get("on", False):
     def _load_planta_sheet():
         try:
             xls = pd.ExcelFile(_download_excel())
-            dfp = pd.read_excel(xls, sheet_name="BD PLANTA 2020-2025")
+            dfp = pd.read_excel(xls, sheet_name="BD_PLANTA")
             dfp.columns = dfp.columns.str.strip()
             return dfp
         except Exception:
