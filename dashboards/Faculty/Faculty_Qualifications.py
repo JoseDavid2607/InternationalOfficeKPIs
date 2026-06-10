@@ -1469,7 +1469,7 @@ st.subheader(f"Faculty Sufficiency and Qualifications — {st.session_state.get(
 
 # ====== NORMALIZACIÓN BASE PARA CARTELERA + EXCLUSIONES ======
 if not all([col_cred, col_tipoC, col_areaCourse]):
-    st.error("Missing columns in 'BD Cartelera 2020-2025': 'Credits', 'TIPO', and/or 'Academic Area (course)'.")
+    st.error("Missing columns in 'BD_Cartelera': 'Credits', 'TIPO', and/or 'Academic Area (course)'.")
 else:
     df_car_n = df_car.copy()
     df_car_n["_CRED"] = pd.to_numeric(df_car_n[col_cred], errors="coerce").fillna(0.0)
@@ -3420,7 +3420,7 @@ if not SENS.get("on", False):
             col_period_pl = _get_any(df_planta, "Periodo","PERIODO","Semestre")
             col_id_pl     = _get_any(df_planta, "ID Nr.","ID","Documento")
             if df_planta.empty or not all([col_period_pl, col_id_pl]):
-                st.info("Load 'BD PLANTA 2020-2025' to compute FT with 0 courses.")
+                st.info("Load 'BD_PLANTA' to compute FT with 0 courses.")
             else:
                 # Alcance temporal para PLANTA y DISTRIBUTION
                 col_sem_fd_all = _get_any(df_fd, "Semestre","Periodo","Periodo Académico","Periodo academico")
