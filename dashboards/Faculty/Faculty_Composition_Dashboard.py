@@ -206,6 +206,31 @@ inter_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sInters
 years         = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 
 with st.sidebar:
+
+    st.markdown("""
+    <div style="
+        text-align:center;
+        padding-top:5px;
+        padding-bottom:20px;
+    ">
+        <h1 style="
+            color:#004d47;
+            font-size:28px;
+            font-weight:800;
+            margin-bottom:0px;
+        ">
+            UASM Faculty KPIs
+        </h1>
+        <div style="
+            color:#6B7280;
+            font-size:12px;
+            letter-spacing:1px;
+            text-transform:uppercase;
+        ">
+            Analytics Dashboard
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("#### Timeframe")
     tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
