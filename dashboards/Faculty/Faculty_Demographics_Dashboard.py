@@ -338,49 +338,59 @@ if "sel_tf_label" not in st.session_state:
 
 # ======= HEADER: solo título grande =======
 
-# ======= SIDEBAR: selector + botón OPEN =======
+#================= SIDEBAR ===================
+with st.sidebar:
 
     st.markdown("---")
+
     st.markdown("#### Faculty Type")
+
     st.markdown('<div id="mode-pill">', unsafe_allow_html=True)
+
     mode_sidebar = st.radio(
-        "Mode", ["Full-time", "Part-time"],
+        "Mode",
+        ["Full-time", "Part-time"],
         index=0 if st.session_state.modo_faculty == "Full-time" else 1,
-        horizontal=True, label_visibility="collapsed", key="mode_pill_radio"
+        horizontal=True,
+        label_visibility="collapsed",
+        key="mode_pill_radio"
     )
 
-if mode_sidebar != st.session_state.modo_faculty:
-    st.session_state.modo_faculty = mode_sidebar
-    st.session_state.sel_tf_label = None  # reset selección al cambiar modo
-    st.rerun()
+    if mode_sidebar != st.session_state.modo_faculty:
+        st.session_state.modo_faculty = mode_sidebar
+        st.session_state.sel_tf_label = None
+        st.rerun()
 
-#================= SIDEBAR: TIMEFRAME + SELECTOR DE PERIODO ===================
-with st.sidebar:
     st.markdown("#### Timeframe")
+
     time_mode_side = st.radio(
-        "Timeframe", ["Semestral", "Anual", "Intersemestral"],
-        key="time_mode_side", label_visibility="collapsed"
+        "Timeframe",
+        ["Semestral", "Anual", "Intersemestral"],
+        key="time_mode_side",
+        label_visibility="collapsed"
     )
 
     # Dataset según modo
-    df_base = df_full if st.session_state.get("modo_faculty", "Full-time") == "Full-time" else df_part
+    df_base = (
+        df_full
+        if st.session_state.modo_faculty == "Full-time"
+        else df_part
+    )
 
-    # Opciones del selector según timeframe
     options_tf = _options_for_timeframe(df_base, time_mode_side)
-    # Default: el último disponible
-    default_opt = options_tf[-1] if options_tf else None
 
     sel_label = st.selectbox(
         "Periodo",
         options_tf,
-        index=(options_tf.index(st.session_state.sel_tf_label) if st.session_state.sel_tf_label in options_tf else (len(options_tf)-1 if options_tf else 0)),
-        help="Selecciona el periodo para filtrar las gráficas y tablas.",
+        index=(
+            options_tf.index(st.session_state.sel_tf_label)
+            if st.session_state.sel_tf_label in options_tf
+            else len(options_tf) - 1
+        ),
     ) if options_tf else None
 
-    # Guarda selección
     if sel_label != st.session_state.get("sel_tf_label"):
         st.session_state.sel_tf_label = sel_label
-
     # --- Export según selección ---
     if sel_label:
         if time_mode_side == "Semestral":
