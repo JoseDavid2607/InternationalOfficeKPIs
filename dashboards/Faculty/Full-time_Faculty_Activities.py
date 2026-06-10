@@ -171,7 +171,7 @@ def resolve_column(df: pd.DataFrame, target: str) -> Optional[str]:
 
 @st.cache_data(ttl=0)
 def load_fulltime():
-    df = pd.read_excel(EXCEL_PATH, sheet_name="BD PLANTA 2020-2025")
+    df = pd.read_excel(EXCEL_PATH, sheet_name="BD_PLANTA")
     raw = df.iloc[:, 0].astype(str)
     df["Periodo"] = raw.str.slice(0, 4) + "-" + raw.str.slice(4, 6)
     if "ID Nr." in df.columns and "ID" not in df.columns:
