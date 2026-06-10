@@ -34,15 +34,6 @@ _P = {
     "border":        "#D1E8E4",
 }
 
-_NAV = {
-    "1 Full-time Composition":           "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/",
-    "2 Full-time Staffing Levels":       "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/",
-    "3 Distribution by Academic Area":   "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/",
-    "4 Faculty Demographics":            "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/",
-    "5 Full-time Faculty Questionnaire": "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/",
-    "6 Faculty Qualifications":          "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",
-}
-
 # ── Global CSS ─────────────────────────────────────────────────────────────────
 st.markdown(
     "<style>"
@@ -138,25 +129,7 @@ def _kpi_row(cards):
 
 def _sec_div():
     st.markdown('<hr class="sec-sep">', unsafe_allow_html=True)
-
-def _nav_sidebar(current):
-    st.sidebar.markdown(
-        "<div style='font-size:11px;font-weight:700;letter-spacing:1.5px;"
-        "color:#6B7280;text-transform:uppercase;margin-bottom:6px'>Navigation</div>",
-        unsafe_allow_html=True,
-    )
-    choices = list(_NAV.keys())
-    idx = choices.index(current) if current in choices else 0
-    sel = st.sidebar.selectbox(
-        "Go to dashboard", choices, index=idx, label_visibility="collapsed"
-    )
-    st.sidebar.link_button("🔗 Open Dashboard", _NAV[sel], use_container_width=True)
-    st.sidebar.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
-    if st.sidebar.button("🔄 Update Data", use_container_width=True, key="upd_data_btn"):
-        st.cache_data.clear()
-        st.rerun()
-    st.sidebar.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
-
+    
 def _highlight_band(fig, label, all_labels):
     if label in all_labels:
         pos = all_labels.index(label)
@@ -167,13 +140,10 @@ def _highlight_band(fig, label, all_labels):
         )
     return fig
 
-
 # ── Header ─────────────────────────────────────────────────────────────────────
 _render_header("Full-time Faculty Composition", "Evolution and distribution of full-time faculty by ranking")
 _render_update_banner()
 
-# ── Sidebar navigation ─────────────────────────────────────────────────────────
-_nav_sidebar("1 Full-time Composition")
 DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
 
 @st.cache_data(ttl=300)
@@ -226,12 +196,9 @@ df = load_data()
 # UTILS
 # =============================
 
-
 # =============================
 # SIDEBAR — Nav + Refresh + Timeframe
 # =============================
-
-# Navigation handled by _nav_sidebar() above
 
 all_periods   = df["Periodo"].astype(str).unique().tolist()
 sem_periods   = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
