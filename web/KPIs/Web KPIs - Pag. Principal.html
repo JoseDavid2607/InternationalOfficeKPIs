@@ -186,7 +186,144 @@ header.hero h1 {
 .timeout-title { font-size: 1rem; font-weight: 800; color: var(--slate-dark); }
 .timeout-desc { color: var(--muted); font-size: .87rem; line-height: 1.6; max-width: 360px; }
 
-/* ── TOAST ── */
+/* ── UPDATE MODAL ── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 5000;
+  background: rgba(15,20,30,.55); backdrop-filter: blur(4px);
+  align-items: center; justify-content: center; padding: 20px;
+}
+.modal-overlay.show { display: flex; }
+.modal-box {
+  background: #fff; border-radius: 20px; width: 100%; max-width: 760px;
+  max-height: 90vh; overflow-y: auto; box-shadow: 0 32px 80px rgba(0,0,0,.28);
+  display: flex; flex-direction: column;
+}
+.modal-box::-webkit-scrollbar { width: 5px; }
+.modal-box::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+.modal-head {
+  padding: 24px 28px 18px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: flex-start; gap: 14px; flex-shrink: 0;
+  position: sticky; top: 0; background: #fff; z-index: 2; border-radius: 20px 20px 0 0;
+}
+.modal-head-icon {
+  width: 44px; height: 44px; border-radius: 12px; background: var(--teal-light);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.modal-head-icon svg { width: 22px; height: 22px; stroke: var(--teal); fill: none; stroke-width: 1.8; }
+.modal-head-text { flex: 1; }
+.modal-head-text h2 { font-size: 1.05rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
+.modal-head-text p { font-size: .82rem; color: var(--muted); }
+.modal-close {
+  width: 32px; height: 32px; border-radius: 50%; border: none; background: #f3f4f6;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .15s; flex-shrink: 0; margin-top: 2px;
+}
+.modal-close:hover { background: #e5e7eb; }
+.modal-close svg { width: 16px; height: 16px; stroke: var(--slate); fill: none; stroke-width: 2.2; }
+
+.modal-status-bar {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--border); border-bottom: 1px solid var(--border);
+}
+.status-cell {
+  background: #fafafa; padding: 14px 18px;
+}
+.status-cell:first-child { border-radius: 0; }
+.status-label { font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+.status-value { font-size: .88rem; font-weight: 800; color: var(--slate-dark); }
+.status-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700;
+}
+.status-badge.ok { background: #dcfce7; color: #166534; }
+.status-badge.warn { background: #fef9c3; color: #854d0e; }
+.status-badge.dot::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+  display: inline-block;
+}
+
+.modal-body { padding: 22px 28px 10px; flex: 1; }
+.modal-section-title {
+  font-size: .72rem; font-weight: 800; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 14px;
+}
+
+.file-card {
+  border: 1.5px solid var(--border); border-radius: 14px;
+  margin-bottom: 14px; overflow: hidden; transition: border-color .2s;
+}
+.file-card.file-selected { border-color: var(--teal-brand); }
+.file-card-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; background: #fafafa; border-bottom: 1px solid var(--border);
+}
+.file-card.file-selected .file-card-head { background: #f0fdf9; border-color: #a7f3d0; }
+.file-icon {
+  width: 36px; height: 36px; border-radius: 9px; background: #f3f4f6;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.file-card.file-selected .file-icon { background: var(--teal-light); }
+.file-icon svg { width: 17px; height: 17px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
+.file-card.file-selected .file-icon svg { stroke: var(--teal); }
+.file-name { font-size: .9rem; font-weight: 800; color: var(--slate-dark); flex: 1; }
+.file-selected-badge {
+  display: none; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px;
+  background: #dcfce7; color: #15803d; font-size: .75rem; font-weight: 700;
+}
+.file-selected-badge svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.5; }
+.file-card.file-selected .file-selected-badge { display: inline-flex; }
+
+.file-meta-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
+  border-bottom: 1px solid var(--border);
+}
+.file-meta-cell { padding: 11px 18px; border-right: 1px solid var(--border); }
+.file-meta-cell:last-child { border-right: none; }
+.file-meta-label { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+.file-meta-val { font-size: .84rem; font-weight: 700; color: var(--slate-dark); }
+
+.file-actions { display: flex; align-items: center; gap: 10px; padding: 12px 18px; }
+.btn-download {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 999px; border: 1.5px solid var(--border);
+  background: #fff; color: var(--slate-dark); font-size: .8rem; font-weight: 700;
+  cursor: pointer; transition: background .15s, border-color .15s; white-space: nowrap;
+}
+.btn-download:hover { background: #f3f4f6; border-color: #d1d5db; }
+.btn-download svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+
+.file-attach-label {
+  flex: 1; display: flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: 999px; border: 1.5px dashed #d1d5db;
+  background: #fafafa; color: var(--muted); font-size: .8rem; font-weight: 600;
+  cursor: pointer; transition: background .15s, border-color .15s; user-select: none;
+}
+.file-attach-label:hover { background: #f0fdf9; border-color: var(--teal-brand); color: var(--teal); }
+.file-attach-label svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+.file-attach-input { display: none; }
+
+.modal-footer {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  padding: 18px 28px 24px; border-top: 1px solid var(--border);
+  position: sticky; bottom: 0; background: #fff; z-index: 2;
+  border-radius: 0 0 20px 20px; flex-shrink: 0;
+}
+.btn-cancel {
+  padding: 9px 22px; border-radius: 999px; border: 1.5px solid var(--border);
+  background: #fff; color: var(--slate); font-size: .87rem; font-weight: 700;
+  cursor: pointer; transition: background .15s;
+}
+.btn-cancel:hover { background: #f3f4f6; }
+.btn-upload {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 22px; border-radius: 999px; border: none;
+  background: #1f2937; color: #fff; font-size: .87rem; font-weight: 800;
+  cursor: pointer; transition: background .15s, transform .15s;
+}
+.btn-upload:hover { background: #111827; transform: translateY(-1px); }
+.btn-upload svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+
 .toast { display: none; position: fixed; bottom: 28px; right: 28px; z-index: 3000; background: #1f2937; color: #fff; padding: 13px 20px; border-radius: 14px; font-size: .88rem; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
 
 footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-size: 14px; }
@@ -251,8 +388,8 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
           <div class="preview-header-info" style="flex:1;">
             <div class="preview-title" id="previewTitle" style="font-size:.9rem;font-weight:800;color:#1f2937;"></div>
           </div>
-          <a href="#" class="action-btn action-btn--teal" id="updateBtn" target="_blank" rel="noopener" style="display:none;">Update ↗</a>
-          <a href="#" class="action-btn action-btn--primary" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open ↗</a>
+          <button class="action-btn action-btn--teal" id="updateBtn" style="display:none;" onclick="openUpdateModal()">Update ↗</button>
+          <a href="#" class="action-btn action-btn--primary" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open Dashboard ↗</a>
         </div>
         <div class="preview-body" id="previewBody">
           <div class="preview-placeholder" id="previewPlaceholder">
@@ -291,6 +428,183 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 
 <footer>International Office · School of Management · Internal use only</footer>
 <div class="toast" id="toast"></div>
+<!-- ── UPDATE MODAL ─────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="updateModal" onclick="handleModalOverlayClick(event)">
+  <div class="modal-box" id="updateModalBox">
+
+    <!-- Header -->
+    <div class="modal-head">
+      <div class="modal-head-icon">
+        <svg viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 10 12 4 17 10"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
+      </div>
+      <div class="modal-head-text">
+        <h2>Update Dashboard Data Sources</h2>
+        <p>Upload new source files to refresh the dashboards with the latest data.</p>
+      </div>
+      <button class="modal-close" onclick="closeUpdateModal()" aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <!-- Global status bar -->
+    <div class="modal-status-bar">
+      <div class="status-cell">
+        <div class="status-label">Last Update</div>
+        <div class="status-value">Jun 3, 2025</div>
+      </div>
+      <div class="status-cell">
+        <div class="status-label">Last Period Loaded</div>
+        <div class="status-value">2025 – S1</div>
+      </div>
+      <div class="status-cell">
+        <div class="status-label">Next Expected Period</div>
+        <div class="status-value">2025 – S2</div>
+      </div>
+      <div class="status-cell">
+        <div class="status-label">Update Status</div>
+        <div class="status-value">
+          <span class="status-badge ok dot">Up to date</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- File cards -->
+    <div class="modal-body">
+      <div class="modal-section-title">Source Files</div>
+
+      <!-- BD_PLANTA -->
+      <div class="file-card" id="card-bd-planta">
+        <div class="file-card-head">
+          <div class="file-icon">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+          </div>
+          <span class="file-name">BD_PLANTA</span>
+          <span class="file-selected-badge" id="badge-bd-planta">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            File selected
+          </span>
+        </div>
+        <div class="file-meta-grid">
+          <div class="file-meta-cell">
+            <div class="file-meta-label">Last Update</div>
+            <div class="file-meta-val">Jun 3, 2025</div>
+          </div>
+          <div class="file-meta-cell">
+            <div class="file-meta-label">Last Period Loaded</div>
+            <div class="file-meta-val">2025 – S1</div>
+          </div>
+          <div class="file-meta-cell">
+            <div class="file-meta-label">Next Expected Period</div>
+            <div class="file-meta-val">2025 – S2</div>
+          </div>
+        </div>
+        <div class="file-actions">
+          <button class="btn-download" onclick="handleDownload('BD_PLANTA')">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download Template
+          </button>
+          <label class="file-attach-label" for="file-bd-planta">
+            <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            <span id="label-bd-planta">Attach new file…</span>
+          </label>
+          <input type="file" id="file-bd-planta" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this, 'bd-planta')">
+        </div>
+      </div>
+
+      <!-- BD_Cartelera -->
+      <div class="file-card" id="card-bd-cartelera">
+        <div class="file-card-head">
+          <div class="file-icon">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+          </div>
+          <span class="file-name">BD_Cartelera</span>
+          <span class="file-selected-badge" id="badge-bd-cartelera">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            File selected
+          </span>
+        </div>
+        <div class="file-meta-grid">
+          <div class="file-meta-cell">
+            <div class="file-meta-label">Last Update</div>
+            <div class="file-meta-val">May 28, 2025</div>
+          </div>
+          <div class="file-meta-cell">
+            <div class="file-meta-label">Last Period Loaded</div>
+            <div class="file-meta-val">2025 – S1</div>
+          </div>
+          <div class="file-meta-cell">
+            <div class="file-meta-label">Next Expected Period</div>
+            <div class="file-meta-val">2025 – S2</div>
+          </div>
+        </div>
+        <div class="file-actions">
+          <button class="btn-download" onclick="handleDownload('BD_Cartelera')">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download Template
+          </button>
+          <label class="file-attach-label" for="file-bd-cartelera">
+            <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            <span id="label-bd-cartelera">Attach new file…</span>
+          </label>
+          <input type="file" id="file-bd-cartelera" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this, 'bd-cartelera')">
+        </div>
+      </div>
+
+      <!-- Faculty_Questionnaire -->
+      <div class="file-card" id="card-faculty-q">
+        <div class="file-card-head">
+          <div class="file-icon">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+          </div>
+          <span class="file-name">Faculty_Questionnaire</span>
+          <span class="file-selected-badge" id="badge-faculty-q">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            File selected
+          </span>
+        </div>
+        <div class="file-meta-grid">
+          <div class="file-meta-cell">
+            <div class="file-meta-label">Last Update</div>
+            <div class="file-meta-val">Apr 15, 2025</div>
+          </div>
+          <div class="file-meta-cell">
+            <div class="file-meta-label">Last Period Loaded</div>
+            <div class="file-meta-val">2024 – S2</div>
+          </div>
+          <div class="file-meta-cell">
+            <div class="file-meta-label">Next Expected Period</div>
+            <div class="file-meta-val">2025 – S1</div>
+          </div>
+        </div>
+        <div class="file-actions">
+          <button class="btn-download" onclick="handleDownload('Faculty_Questionnaire')">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download Template
+          </button>
+          <label class="file-attach-label" for="file-faculty-q">
+            <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            <span id="label-faculty-q">Attach new file…</span>
+          </label>
+          <input type="file" id="file-faculty-q" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this, 'faculty-q')">
+        </div>
+      </div>
+
+    </div><!-- /modal-body -->
+
+    <!-- Footer -->
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeUpdateModal()">Cancel</button>
+      <button class="btn-upload" id="uploadBtn" onclick="handleUpload()">
+        <svg viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 10 12 4 17 10"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
+        Upload &amp; Update Data
+      </button>
+    </div>
+
+  </div>
+</div>
+<!-- ── /UPDATE MODAL ─────────────────────────────────────────────────── -->
+
+
     <script>
 // ── AUTH (shared session with BaseRoom via sessionStorage) ───────────────
 const GOOGLE_CLIENT_ID_KPI = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
@@ -468,7 +782,7 @@ function openPreview(title, url) {
   extBtn.href  = url; extBtn.style.display = "inline-flex";
   toBtn.href   = url;
   const updBtn = document.getElementById("updateBtn");
-  updBtn.href  = url; updBtn.style.display = "inline-flex";
+  updBtn.style.display = "inline-flex";
 
   ph.style.display      = "none";
   timeout.classList.remove("show");
@@ -569,6 +883,41 @@ selectedDash = null;
 renderUnits();
 renderDashboards();
 resetPreview();
+
+// ── UPDATE MODAL ──────────────────────────────────────────────────────────
+function openUpdateModal() {
+  document.getElementById("updateModal").classList.add("show");
+  document.body.style.overflow = "hidden";
+}
+function closeUpdateModal() {
+  document.getElementById("updateModal").classList.remove("show");
+  document.body.style.overflow = "";
+}
+function handleModalOverlayClick(e) {
+  if (e.target === document.getElementById("updateModal")) closeUpdateModal();
+}
+function handleFileSelect(input, key) {
+  const card  = document.getElementById("card-" + key);
+  const lbl   = document.getElementById("label-" + key);
+  if (input.files && input.files.length > 0) {
+    card.classList.add("file-selected");
+    lbl.textContent = input.files[0].name;
+  } else {
+    card.classList.remove("file-selected");
+    lbl.textContent = "Attach new file…";
+  }
+}
+function handleDownload(fileName) {
+  showToast("Template download for " + fileName + " — backend not connected yet.");
+}
+function handleUpload() {
+  const ids = ["file-bd-planta","file-bd-cartelera","file-faculty-q"];
+  const any = ids.some(id => { const f = document.getElementById(id); return f && f.files && f.files.length > 0; });
+  if (!any) { showToast("Please attach at least one file before uploading."); return; }
+  showToast("Upload & Update — backend not connected yet.");
+  closeUpdateModal();
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeUpdateModal(); });
 </script>
 </body>
 </html>
