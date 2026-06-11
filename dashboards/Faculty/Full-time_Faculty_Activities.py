@@ -113,11 +113,13 @@ def _download_link(label, df, filename):
         unsafe_allow_html=True,
     )
 
-def _render_update_banner():
-    t = _dt_mod.datetime.now().strftime("%d %b %Y \u00b7 %H:%M")
+def _render_header(title, subtitle=""):
+    sub = '<div class="sh-sub">' + subtitle + '</div>' if subtitle else ""
     st.markdown(
-        '<div class="upd-banner"><span class="upd-dot"></span>'
-        '<b>Last updated:</b>&nbsp;' + t + '&nbsp;\u00b7&nbsp;Data is current</div>',
+        '<div class="suite-header">'
+        '<div class="sh-super">UASM \u00b7 Faculty Analytics</div>'
+        '<div class="sh-title">' + title + '</div>' + sub +
+        '</div>',
         unsafe_allow_html=True,
     )
 
@@ -227,7 +229,6 @@ def load_courses_sheets():
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 _render_header("Full-time Faculty Activities", "Questionnaire-based engagement summary 2020–2025")
-_render_update_banner()
 
 df_full = load_fulltime()
 df_q    = load_questionnaire()
