@@ -87,6 +87,19 @@ st.markdown(
     "#mode-pill [role='radio'][aria-checked='true']{"
     "background:#dff7f2;color:#004d47;border-color:#8fd7cc;}"
     "#mode-pill [data-baseweb='radio'] input{display:none !important;}"
+    ".modern-btn{background:#FFFFFF;border:1px solid #D1E8E4;"
+    "border-radius:10px;padding:12px 14px;color:#374151 !important;"
+    "font-size:14px;font-weight:600;text-decoration:none !important;"
+    "display:block;text-align:center;margin-bottom:10px;"
+    "transition:all .2s ease;box-shadow:0 1px 3px rgba(0,0,0,.04);}"
+    ".modern-btn:hover{background:#F8FFFE;border-color:#B7DCD6;}"
+    "div[data-testid='stButton'] button{background:#FFFFFF !important;"
+    "border:1px solid #D1E8E4 !important;border-radius:10px !important;"
+    "color:#374151 !important;font-size:14px !important;"
+    "font-weight:600 !important;height:48px !important;"
+    "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
+    "div[data-testid='stButton'] button:hover{"
+    "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -228,6 +241,33 @@ sem_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)',
 
 # Sidebar
 with st.sidebar:
+
+    # ── Logo UASM ──────────────────────────────────────────────────────────
+    col_logo, col_title = st.columns([1, 3])
+
+    with col_logo:
+        st.image("web/imagenes/logo.png", width=65)
+
+    with col_title:
+        st.markdown(
+            """
+            <div style="
+                padding-top:10px;
+                color:#004d47;
+                font-size:24px;
+                font-weight:800;
+                line-height:1.1;
+            ">
+                UASM Faculty KPIs
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.caption("Analytics Dashboard")
+
+    st.markdown("---")
+
     st.markdown("### 📊 Go to KPI:")
     # Solo entradas con URL http(s)
     choices = [k for k, u in _NAV.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
@@ -244,7 +284,13 @@ with st.sidebar:
     sel_period_label = sel_vis  # 'YYYY10' / 'YYYY20'
 
     # ---- Descarga BD completa
-    _download_link("Descargar base completa (Excel) — Full-time", df, "FT_Base_Completa.xlsx")
+    _b64_dl = _b64.b64encode(_xlsx_bytes(df)).decode()
+    st.markdown(
+        '<a class="modern-btn" download="FT_Base_Completa.xlsx" '
+        f'href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{_b64_dl}">'
+        '⭳ Descargar Base Completa</a>',
+        unsafe_allow_html=True,
+    )
 
 # =============================
 # HELPERS (solo semestral)
