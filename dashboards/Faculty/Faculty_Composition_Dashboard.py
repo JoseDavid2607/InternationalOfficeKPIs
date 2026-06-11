@@ -357,48 +357,67 @@ years         = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 with st.sidebar:
 
     # ── Logo UASM ──────────────────────────────────────────────────────────
+    col_logo, col_title = st.columns([1, 3])
+    
+    with col_logo:
+        st.image("web/imagenes/logo.png", width=65)
+    
     with col_title:
-    st.markdown("""
-    <div style="padding-top:12px;">
-        <div style="
-            color:#004d47;
-            font-size:24px;
-            font-weight:800;
-            line-height:1.1;
-        ">
-            UASM Faculty KPIs
-        </div>
-
-        <div style="
-            color:#6B7280;
-            font-size:11px;
-            letter-spacing:1px;
-            text-transform:uppercase;
-        ">
-    """, unsafe_allow_html=True)
-
-    st.caption("Analytics Dashboard")
+        st.markdown(
+            """
+            <div style="
+                padding-top:10px;
+                color:#004d47;
+                font-size:24px;
+                font-weight:800;
+                line-height:1.1;
+            ">
+                UASM Faculty KPIs
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    
+        st.caption("Analytics Dashboard")
+    
+    st.markdown("---")
+    
     st.markdown("#### Timeframe")
-    tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
-
+    
+    tmode = st.radio(
+        "",
+        ["Semestral", "Anual", "Intersemestral"],
+        key="ft_comp_timeframe"
+    )
+    
     if tmode == "Semestral":
         vis = [p.replace("-", "") for p in sem_periods]
         idx = len(vis) - 1 if vis else 0
         sel_vis = st.selectbox("Periodo", vis, index=idx if vis else None)
         sel_period_internal = sem_periods[vis.index(sel_vis)] if vis else None
-        sel_period_label    = sel_vis
+        sel_period_label = sel_vis
+    
     elif tmode == "Anual":
         idx = len(years) - 1 if years else 0
-        sel_period_internal = st.selectbox("Periodo", years, index=idx if years else None)
-        sel_period_label    = sel_period_internal
+        sel_period_internal = st.selectbox(
+            "Periodo",
+            years,
+            index=idx if years else None
+        )
+        sel_period_label = sel_period_internal
+    
     else:
         idx = len(inter_periods) - 1 if inter_periods else 0
-        sel_period_internal = st.selectbox("Periodo", inter_periods, index=idx if inter_periods else None)
-        sel_period_label    = sel_period_internal
-
+        sel_period_internal = st.selectbox(
+            "Periodo",
+            inter_periods,
+            index=idx if inter_periods else None
+        )
+        sel_period_label = sel_period_internal
+    
     xlsx_data = _xlsx_bytes(df)
     b64 = _b64.b64encode(xlsx_data).decode()
-
+    
     st.markdown(
         f"""
         <a class="modern-btn"
@@ -409,7 +428,6 @@ with st.sidebar:
         """,
         unsafe_allow_html=True
     )
-
 # =============================
 # RANKING ORDER & COLOR MAP
 # =============================
