@@ -52,10 +52,8 @@ st.markdown(
     ".kv{font-size:28px;font-weight:800;color:#21877D;line-height:1.1;}"
     ".kl{font-size:11px;font-weight:600;color:#6B7280;"
     "text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}"
-    ".upd-banner{display:flex;align-items:center;gap:10px;background:#dff7f2;"
     "border:1px solid #D1E8E4;border-radius:8px;padding:6px 14px;"
     "margin-bottom:14px;font-size:13px;}"
-    ".upd-dot{width:8px;height:8px;border-radius:50%;"
     "background:#06D6A0;flex-shrink:0;}"
     ".sec-sep{border:none;border-top:1px solid #D1E8E4;margin:16px 0;opacity:.6;}"
     ".period-label{text-align:center;font-weight:700;font-size:1.05rem;color:#21877D;}"
@@ -96,7 +94,7 @@ st.markdown(
 )
 
 # ── Inline helpers ─────────────────────────────────────────────────────────────
-import io as _io, base64 as _b64, datetime as _dt_mod
+import io as _io, base64 as _b64
 
 def _xlsx_bytes(df, sheet_name="Data"):
     buf = _io.BytesIO()
@@ -121,14 +119,6 @@ def _render_header(title, subtitle=""):
         '<div class="sh-super">UASM \u00b7 Faculty Analytics</div>'
         '<div class="sh-title">' + title + '</div>' + sub +
         '</div>',
-        unsafe_allow_html=True,
-    )
-
-def _render_update_banner():
-    t = _dt_mod.datetime.now().strftime("%d %b %Y \u00b7 %H:%M")
-    st.markdown(
-        '<div class="upd-banner"><span class="upd-dot"></span>'
-        '<b>Last updated:</b>&nbsp;' + t + '&nbsp;\u00b7&nbsp;Data is current</div>',
         unsafe_allow_html=True,
     )
 
@@ -257,7 +247,6 @@ def load_parttime():
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 _render_header("Distribution by Academic Area", "Faculty distribution and evolution across academic areas")
-_render_update_banner()
 
 # ── Sidebar navigation ─────────────────────────────────────────────────────────
 
