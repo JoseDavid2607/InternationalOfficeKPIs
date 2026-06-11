@@ -65,7 +65,7 @@ header.hero h1 {
 
 /* ── INTRO ── */
 .intro-wrap {
-  position: relative; max-width: 900px; margin: -125px auto 16px;
+  position: relative; max-width: 900px; margin: -135px auto 12px;
   z-index: 10; padding: 0 16px; display: flex; align-items: flex-end; gap: 0;
 }
 .intro-seneca { position: relative; flex-shrink: 0; width: 100px; margin-right: -16px; z-index: 13; }
@@ -284,6 +284,16 @@ header.hero h1 {
 .file-meta-cell:last-child { border-right: none; }
 .file-meta-label { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
 .file-meta-val { font-size: .84rem; font-weight: 700; color: var(--slate-dark); }
+.meta-next-wrap { display: flex; flex-direction: column; gap: 5px; }
+.update-alert {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px; font-size: .7rem; font-weight: 700;
+  white-space: nowrap;
+}
+.update-alert.overdue  { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; }
+.update-alert.due-soon { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
+.update-alert.ok       { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+.update-alert svg      { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2.5; }
 
 .file-actions { display: flex; align-items: center; gap: 10px; padding: 12px 18px; }
 .btn-download {
@@ -520,7 +530,10 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
             </div>
             <div class="file-meta-cell">
               <div class="file-meta-label">Next Expected Period</div>
-              <div class="file-meta-val" id="meta-planta-next">—</div>
+              <div class="meta-next-wrap">
+                <div class="file-meta-val" id="meta-planta-next">—</div>
+                <span class="update-alert" id="alert-planta" style="display:none;"></span>
+              </div>
             </div>
           </div>
           <!-- Validation feedback -->
@@ -566,7 +579,10 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
             </div>
             <div class="file-meta-cell">
               <div class="file-meta-label">Next Expected Period</div>
-              <div class="file-meta-val" id="meta-catedra-next">—</div>
+              <div class="meta-next-wrap">
+                <div class="file-meta-val" id="meta-catedra-next">—</div>
+                <span class="update-alert" id="alert-catedra" style="display:none;"></span>
+              </div>
             </div>
           </div>
           <div id="validation-bd-catedra" class="validation-msg" style="display:none;"></div>
@@ -611,7 +627,10 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
             </div>
             <div class="file-meta-cell">
               <div class="file-meta-label">Next Expected Period</div>
-              <div class="file-meta-val" id="meta-fq-next">—</div>
+              <div class="meta-next-wrap">
+                <div class="file-meta-val" id="meta-fq-next">—</div>
+                <span class="update-alert" id="alert-fq" style="display:none;"></span>
+              </div>
             </div>
           </div>
           <div id="validation-faculty-q" class="validation-msg" style="display:none;"></div>
@@ -941,11 +960,11 @@ const SHEET_CONFIG = {
   "Faculty_Questionnaire": { periodCol: "Year",    metaId: "fq",      cardId: "faculty-q"  }
 };
 
-// Template sheet names (each sheet in Template_BDFaculty matches the BD name exactly)
+// Template sheet names — exact names in Template_BDFaculty for column validation
 const TEMPLATE_SHEET_MAP = {
   "BD_PLANTA":             "BD_PLANTA",
-  "BD_Catedra":            "BD_Catedra",
-  "Faculty_Questionnaire": "Faculty_Questionnaire"
+  "BD_Catedra":            "BD_Cartelera",
+  "Faculty_Questionnaire": "Faculty_questionnaire"
 };
 
 // Holds template columns per sheet once loaded
@@ -954,44 +973,84 @@ const templateColumns = {};
 const sheetPeriods = {};
 
 // ── Helpers ──────────────────────────────────────────────────────────────
-function nextPeriod(period, colName) {
-  if (!period) return "—";
+
+// Normalize raw period to { year, sem } where sem = "10" | "20" | null
+function parsePeriod(raw, colName) {
+  if (!raw || String(raw).trim() === "" || String(raw).trim() === "—") return null;
   if (colName === "Year") {
-    const y = parseInt(period);
-    return isNaN(y) ? "—" : String(y + 1);
+    const y = parseInt(raw);
+    return isNaN(y) ? null : { year: y, sem: null };
   }
-  // Normalize: remove spaces and dashes to get a raw number like 202510, 202520
-  const raw = String(period).trim().replace(/[\s\-–]/g, "");
-  // Format: YYYYSS where SS = 10 (first semester) or 20 (second semester)
-  // e.g. 202510 → 202520, 202520 → 202610, 202610 → 202620, 202620 → 202710
-  const m = raw.match(/^(\d{4})(10|20)$/);
-  if (m) {
-    const y = parseInt(m[1]), s = m[2];
-    if (s === "10") return `${y}20`;
-    if (s === "20") return `${y + 1}10`;
-  }
-  // Fallback: old format "2025-1" / "2025-2"
-  const m2 = raw.match(/^(\d{4})([12])$/);
-  if (m2) {
-    const y = parseInt(m2[1]), s = m2[2];
-    if (s === "1") return `${y}20`;
-    if (s === "2") return `${y + 1}10`;
-  }
-  return "—";
+  const str = String(raw).trim().replace(/[\s\-–]/g, "");
+  // YYYYSS format: 202510, 202520
+  const m = str.match(/^(\d{4})(10|20)$/);
+  if (m) return { year: parseInt(m[1]), sem: m[2] };
+  // Old format: 20251 or 20252
+  const m2 = str.match(/^(\d{4})([12])$/);
+  if (m2) return { year: parseInt(m2[1]), sem: m2[2] === "1" ? "10" : "20" };
+  // With dash still present: 2025-10 or 2025-20
+  const m3 = String(raw).trim().match(/^(\d{4})[-–](10|20)$/);
+  if (m3) return { year: parseInt(m3[1]), sem: m3[2] };
+  return null;
 }
 
 function formatPeriod(raw, colName) {
-  if (raw === null || raw === undefined || raw === "") return "—";
-  if (colName === "Year") return String(raw);
-  const str = String(raw).trim();
-  // Normalize to display format
-  const cleaned = str.replace(/[\s\-–]/g, "");
-  const m = cleaned.match(/^(\d{4})(10|20)$/);
-  if (m) return `${m[1]}-${m[2]}`;
-  // Old format "2025-1"
-  const m2 = str.match(/(\d{4})\s*[-–]\s*([12])/);
-  if (m2) return `${m2[1]}-${m2[2] === "1" ? "10" : "20"}`;
-  return str;
+  if (raw === null || raw === undefined || raw === "" || String(raw).trim() === "—") return "—";
+  if (colName === "Year") return String(raw).trim();
+  const p = parsePeriod(raw, colName);
+  if (p && p.sem) return `${p.year}-${p.sem}`;
+  return String(raw).trim();
+}
+
+function nextPeriod(raw, colName) {
+  if (!raw || String(raw).trim() === "" || String(raw).trim() === "—") return "—";
+  if (colName === "Year") {
+    const y = parseInt(raw);
+    return isNaN(y) ? "—" : String(y + 1);
+  }
+  const p = parsePeriod(raw, colName);
+  if (!p || !p.sem) return "—";
+  if (p.sem === "10") return `${p.year}-20`;
+  if (p.sem === "20") return `${p.year + 1}-10`;
+  return "—";
+}
+
+// Returns { cls, label } for the update alert badge
+// -10 periods: deadline = July 31 of that year
+// -20 periods: deadline = Feb 28 of next year
+// Year-based (Faculty_Questionnaire): deadline = July 31 of that year
+function updateAlert(raw, colName) {
+  const today = new Date();
+  let deadline = null;
+
+  if (colName === "Year") {
+    // next expected = year + 1, deadline = July 31 of the NEXT expected year
+    const y = parseInt(raw);
+    if (isNaN(y)) return null;
+    // The next period is year+1, its data should be ready by Jul 31 of year+1
+    deadline = new Date(y + 1, 6, 31); // month 6 = July (0-indexed)
+  } else {
+    const p = parsePeriod(raw, colName);
+    if (!p || !p.sem) return null;
+    if (p.sem === "10") {
+      // next is YYYY-20, deadline = Jul 31 of same year
+      deadline = new Date(p.year, 6, 31);
+    } else {
+      // next is (YYYY+1)-10, deadline = Feb 28 of next year
+      deadline = new Date(p.year + 1, 1, 28);
+    }
+  }
+
+  const msLeft = deadline - today;
+  const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+
+  if (daysLeft < 0) {
+    return { cls: "overdue",  label: "⚠ Update overdue" };
+  } else if (daysLeft <= 45) {
+    return { cls: "due-soon", label: `⏰ Due in ${daysLeft}d` };
+  } else {
+    return { cls: "ok",       label: "✓ Up to date" };
+  }
 }
 
 // Parse a Google Sheets CSV export for a given sheet
@@ -1068,19 +1127,18 @@ async function loadModalData() {
       // BD data — get last period
       try {
         const { headers, rows } = await fetchSheetCSV(BD_FILE_ID, sheetName);
-        // Find the period column (case-insensitive)
+        // Find the period column (case-insensitive, trim whitespace)
         const periodHeader = headers.find(h => h.trim().toLowerCase() === cfg.periodCol.toLowerCase());
         let lastPeriod = "—";
         if (periodHeader && rows.length > 0) {
-          // Get all non-empty period values and pick the max
           const periods = rows
             .map(r => r[periodHeader])
-            .filter(v => v && String(v).trim() !== "");
+            .filter(v => v !== undefined && v !== null && String(v).trim() !== "" && String(v).trim() !== "—");
           if (periods.length > 0) {
-            // Sort numerically/lexicographically and take last
             periods.sort((a, b) => {
-              const na = parseFloat(String(a).replace(/\D/g, ""));
-              const nb = parseFloat(String(b).replace(/\D/g, ""));
+              // Normalize both to pure digits for numeric sort
+              const na = parseFloat(String(a).replace(/[^0-9]/g, ""));
+              const nb = parseFloat(String(b).replace(/[^0-9]/g, ""));
               return isNaN(na) || isNaN(nb) ? String(a).localeCompare(String(b)) : na - nb;
             });
             lastPeriod = periods[periods.length - 1];
@@ -1088,6 +1146,7 @@ async function loadModalData() {
         }
         sheetPeriods[sheetName] = { raw: lastPeriod, col: cfg.periodCol, headers };
       } catch(e) {
+        console.warn("Could not fetch sheet", sheetName, e);
         sheetPeriods[sheetName] = { raw: "—", col: cfg.periodCol, headers: [] };
       }
 
@@ -1102,18 +1161,30 @@ async function loadModalData() {
 
     // Populate UI
     const entries = [
-      { sheetName: "BD_PLANTA",             metaDate: "meta-planta-date", metaPeriod: "meta-planta-period", metaNext: "meta-planta-next" },
-      { sheetName: "BD_Catedra",            metaDate: "meta-catedra-date", metaPeriod: "meta-catedra-period", metaNext: "meta-catedra-next" },
-      { sheetName: "Faculty_Questionnaire", metaDate: "meta-fq-date",     metaPeriod: "meta-fq-period",     metaNext: "meta-fq-next"     }
+      { sheetName: "BD_PLANTA",             metaDate: "meta-planta-date", metaPeriod: "meta-planta-period", metaNext: "meta-planta-next", alertId: "alert-planta"  },
+      { sheetName: "BD_Catedra",            metaDate: "meta-catedra-date", metaPeriod: "meta-catedra-period", metaNext: "meta-catedra-next", alertId: "alert-catedra" },
+      { sheetName: "Faculty_Questionnaire", metaDate: "meta-fq-date",     metaPeriod: "meta-fq-period",     metaNext: "meta-fq-next",     alertId: "alert-fq"      }
     ];
 
-    entries.forEach(({ sheetName, metaDate, metaPeriod, metaNext }) => {
+    entries.forEach(({ sheetName, metaDate, metaPeriod, metaNext, alertId }) => {
       const sp = sheetPeriods[sheetName] || { raw: "—", col: "Periodo" };
       const formatted = formatPeriod(sp.raw, sp.col);
-      const nxt = nextPeriod(sp.raw, sp.col);
+      const nxt       = nextPeriod(sp.raw, sp.col);
+
       document.getElementById(metaDate).textContent   = modDate || (isLoggedIn() ? "—" : "Sign in to view");
       document.getElementById(metaPeriod).textContent = formatted;
       document.getElementById(metaNext).textContent   = nxt;
+
+      // Alert badge
+      const alertEl = document.getElementById(alertId);
+      if (alertEl && sp.raw && sp.raw !== "—") {
+        const info = updateAlert(sp.raw, sp.col);
+        if (info) {
+          alertEl.textContent = info.label;
+          alertEl.className   = `update-alert ${info.cls}`;
+          alertEl.style.display = "inline-flex";
+        }
+      }
     });
 
     loading.style.display = "none";
