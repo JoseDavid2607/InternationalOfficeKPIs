@@ -79,6 +79,19 @@ st.markdown(
     "#mode-pill [role='radio'][aria-checked='true']{"
     "background:#dff7f2;color:#004d47;border-color:#8fd7cc;}"
     "#mode-pill [data-baseweb='radio'] input{display:none !important;}"
+    ".modern-btn{background:#FFFFFF;border:1px solid #D1E8E4;"
+    "border-radius:10px;padding:12px 14px;color:#374151 !important;"
+    "font-size:14px;font-weight:600;text-decoration:none !important;"
+    "display:block;text-align:center;margin-bottom:10px;"
+    "transition:all .2s ease;box-shadow:0 1px 3px rgba(0,0,0,.04);}"
+    ".modern-btn:hover{background:#F8FFFE;border-color:#B7DCD6;}"
+    "div[data-testid='stButton'] button{background:#FFFFFF !important;"
+    "border:1px solid #D1E8E4 !important;border-radius:10px !important;"
+    "color:#374151 !important;font-size:14px !important;"
+    "font-weight:600 !important;height:48px !important;"
+    "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
+    "div[data-testid='stButton'] button:hover{"
+    "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -326,7 +339,33 @@ if "manual_execed" not in st.session_state:
     st.session_state.manual_execed[2025] = 46
 
 with st.sidebar:
+
+    # ── Logo UASM ──────────────────────────────────────────────────────────
+    col_logo, col_title = st.columns([1, 3])
+
+    with col_logo:
+        st.image("web/imagenes/logo.png", width=65)
+
+    with col_title:
+        st.markdown(
+            """
+            <div style="
+                padding-top:10px;
+                color:#004d47;
+                font-size:24px;
+                font-weight:800;
+                line-height:1.1;
+            ">
+                UASM Faculty KPIs
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.caption("Analytics Dashboard")
+
     st.markdown("---")
+
     y_edit = st.selectbox("Year to edit (rows 8 and 9)", YEARS, index=len(YEARS)-1)
     edit_admin = st.checkbox("Edit Administrative Positions", value=(st.session_state.manual_admin[y_edit] is not None))
     if edit_admin:
