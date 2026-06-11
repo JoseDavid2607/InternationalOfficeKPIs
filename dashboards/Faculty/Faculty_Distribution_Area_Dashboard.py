@@ -86,6 +86,19 @@ st.markdown(
     "#mode-pill [role='radio'][aria-checked='true']{"
     "background:#dff7f2;color:#004d47;border-color:#8fd7cc;}"
     "#mode-pill [data-baseweb='radio'] input{display:none !important;}"
+    ".modern-btn{background:#FFFFFF;border:1px solid #D1E8E4;"
+    "border-radius:10px;padding:12px 14px;color:#374151 !important;"
+    "font-size:14px;font-weight:600;text-decoration:none !important;"
+    "display:block;text-align:center;margin-bottom:10px;"
+    "transition:all .2s ease;box-shadow:0 1px 3px rgba(0,0,0,.04);}"
+    ".modern-btn:hover{background:#F8FFFE;border-color:#B7DCD6;}"
+    "div[data-testid='stButton'] button{background:#FFFFFF !important;"
+    "border:1px solid #D1E8E4 !important;border-radius:10px !important;"
+    "color:#374151 !important;font-size:14px !important;"
+    "font-weight:600 !important;height:48px !important;"
+    "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
+    "div[data-testid='stButton'] button:hover{"
+    "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -285,6 +298,33 @@ if "modo_faculty" not in st.session_state:
 # ========= SIDEBAR (KPI -> Faculty Type -> Timeframe -> Periodo -> Descarga BD) =========
 
 with st.sidebar:
+
+    # ── Logo UASM ──────────────────────────────────────────────────────────
+    col_logo, col_title = st.columns([1, 3])
+
+    with col_logo:
+        st.image("web/imagenes/logo.png", width=65)
+
+    with col_title:
+        st.markdown(
+            """
+            <div style="
+                padding-top:10px;
+                color:#004d47;
+                font-size:24px;
+                font-weight:800;
+                line-height:1.1;
+            ">
+                UASM Faculty KPIs
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.caption("Analytics Dashboard")
+
+    st.markdown("---")
+
     st.markdown("### 📊 Go to KPI:")
     # Solo entradas con URL http(s)
     choices = [k for k, u in _NAV.items() if isinstance(u, str) and (u.startswith("http://") or u.startswith("https://"))]
@@ -343,7 +383,13 @@ with st.sidebar:
     # 5) Descarga BD completa (según timeframe/periodo seleccionado)
     export_df = _filter_for_timeframe(df_base, tmode, sel_value)
     fname = f"{'FT' if st.session_state.modo_faculty=='Full-time' else 'PT'}_{tmode}_{str(sel_label).replace(' ','_')}.xlsx"
-    _download_link(f"Descargar base (Excel) — {st.session_state.modo_faculty} — {sel_label}", export_df, fname)
+    _b64_dl = _b64.b64encode(_xlsx_bytes(export_df)).decode()
+    st.markdown(
+        f'<a class="modern-btn" download="{fname}" '
+        f'href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{_b64_dl}">'
+        f'⭳ Descargar Base — {st.session_state.modo_faculty} — {sel_label}</a>',
+        unsafe_allow_html=True,
+    )
 
 # ========= PICK DATA BY MODE =========
 
@@ -619,6 +665,3 @@ st.dataframe(detail_out, use_container_width=True)
 # Descarga de la tabla de detalle
 fname_det = f"Detail_{'FT' if st.session_state.modo_faculty=='Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ','_')}.xlsx"
 _download_link("Descargar tabla (Excel)", detail_out, fname_det)
-
-
-
