@@ -357,41 +357,34 @@ years         = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 with st.sidebar:
 
     # ── Logo UASM ──────────────────────────────────────────────────────────
-    st.markdown(
-        """
-        <div style="text-align:center; padding: 10px 0 4px 0;">
-            <img src="https://uniandes.edu.co/sites/default/files/logo.png"
-                 onerror="this.style.display='none'"
-                 style="max-width:120px; height:auto; margin-bottom:6px;" />
+    col_logo, col_title = st.columns([1, 3])
+    
+    with col_logo:
+        st.image("web/imagenes/logo.png", width=65)
+    
+    with col_title:
+        st.markdown("""
+        <div style="padding-top:12px;">
+            <div style="
+                color:#004d47;
+                font-size:24px;
+                font-weight:800;
+                line-height:1.1;
+            ">
+                UASM Faculty KPIs
+            </div>
+    
+            <div style="
+                color:#6B7280;
+                font-size:11px;
+                letter-spacing:1px;
+                text-transform:uppercase;
+            ">
+                Analytics Dashboard
+            </div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("""
-    <div style="
-        text-align:center;
-        padding-top:0px;
-        padding-bottom:20px;
-    ">
-        <h1 style="
-            color:#004d47;
-            font-size:22px;
-            font-weight:800;
-            margin-bottom:0px;
-        ">
-            UASM Faculty KPIs
-        </h1>
-        <div style="
-            color:#6B7280;
-            font-size:12px;
-            letter-spacing:1px;
-            text-transform:uppercase;
-        ">
-            Analytics Dashboard
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+    
     st.markdown("---")
     st.markdown("#### Timeframe")
     tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
