@@ -249,13 +249,15 @@ header.hero h1 {
 }
 
 .file-card {
-  border: 1.5px solid var(--border); border-radius: 14px;
-  margin-bottom: 14px; overflow: hidden; transition: border-color .2s;
+  border: 1.5px solid #d1d9e6; border-radius: 14px;
+  margin-bottom: 20px; overflow: hidden; transition: border-color .2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,.05);
 }
-.file-card.file-selected { border-color: var(--teal-brand); }
+.file-card:last-of-type { margin-bottom: 0; }
+.file-card.file-selected { border-color: var(--teal-brand); box-shadow: 0 0 0 3px rgba(13,148,136,.08); }
 .file-card-head {
   display: flex; align-items: center; gap: 12px;
-  padding: 14px 18px; background: #fafafa; border-bottom: 1px solid var(--border);
+  padding: 14px 18px; background: #f4f6fa; border-bottom: 2px solid #d1d9e6;
 }
 .file-card.file-selected .file-card-head { background: #f0fdf9; border-color: #a7f3d0; }
 .file-icon {
@@ -276,9 +278,9 @@ header.hero h1 {
 
 .file-meta-grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid #d1d9e6; background: #fff;
 }
-.file-meta-cell { padding: 11px 18px; border-right: 1px solid var(--border); }
+.file-meta-cell { padding: 11px 18px; border-right: 1px solid #d1d9e6; }
 .file-meta-cell:last-child { border-right: none; }
 .file-meta-label { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
 .file-meta-val { font-size: .84rem; font-weight: 700; color: var(--slate-dark); }
@@ -286,21 +288,35 @@ header.hero h1 {
 .file-actions { display: flex; align-items: center; gap: 10px; padding: 12px 18px; }
 .btn-download {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 14px; border-radius: 999px; border: 1.5px solid var(--border);
-  background: #fff; color: var(--slate-dark); font-size: .8rem; font-weight: 700;
+  padding: 7px 14px; border-radius: 999px;
+  border: 1.5px solid #b6d8f2;
+  background: #e8f4fd; color: #1565a8; font-size: .8rem; font-weight: 700;
   cursor: pointer; transition: background .15s, border-color .15s; white-space: nowrap;
 }
-.btn-download:hover { background: #f3f4f6; border-color: #d1d5db; }
+.btn-download:hover { background: #d0eaf9; border-color: #7dbde8; }
 .btn-download svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2.2; }
 
+.file-attach-wrapper { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.btn-trash {
+  width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%;
+  border: 1.5px solid #fca5a5; background: #fef2f2; color: #dc2626;
+  display: none; align-items: center; justify-content: center;
+  cursor: pointer; transition: background .15s;
+}
+.btn-trash:hover { background: #fee2e2; }
+.btn-trash svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+.btn-trash.visible { display: flex; }
+
 .file-attach-label {
-  flex: 1; display: flex; align-items: center; gap: 7px;
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px;
   padding: 7px 14px; border-radius: 999px; border: 1.5px dashed #d1d5db;
   background: #fafafa; color: var(--muted); font-size: .8rem; font-weight: 600;
   cursor: pointer; transition: background .15s, border-color .15s; user-select: none;
+  overflow: hidden;
 }
+.file-attach-label span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .file-attach-label:hover { background: #f0fdf9; border-color: var(--teal-brand); color: var(--teal); }
-.file-attach-label svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+.file-attach-label svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; flex-shrink: 0; }
 .file-attach-input { display: none; }
 
 .modal-footer {
@@ -402,7 +418,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
           <div class="preview-header-info" style="flex:1;">
             <div class="preview-title" id="previewTitle" style="font-size:.9rem;font-weight:800;color:#1f2937;"></div>
           </div>
-          <button class="action-btn action-btn--teal" id="updateBtn" style="display:none;" onclick="openUpdateModal()">Update ↗</button>
+          <button class="action-btn action-btn--teal" id="updateBtn" style="display:none;" onclick="openUpdateModal()">Update data ↗</button>
           <a href="#" class="action-btn action-btn--primary" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open Dashboard ↗</a>
         </div>
         <div class="preview-body" id="previewBody">
@@ -514,10 +530,15 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
               <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Download Template
             </button>
-            <label class="file-attach-label" for="file-bd-planta">
-              <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-              <span id="label-bd-planta">Attach new file…</span>
-            </label>
+            <div class="file-attach-wrapper">
+              <label class="file-attach-label" for="file-bd-planta">
+                <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                <span id="label-bd-planta">Attach new file…</span>
+              </label>
+              <button class="btn-trash" id="trash-bd-planta" title="Remove file" onclick="clearFile('bd-planta')">
+                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              </button>
+            </div>
             <input type="file" id="file-bd-planta" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'bd-planta','BD_PLANTA','Periodo')">
           </div>
         </div>
@@ -554,10 +575,15 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
               <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Download Template
             </button>
-            <label class="file-attach-label" for="file-bd-catedra">
-              <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-              <span id="label-bd-catedra">Attach new file…</span>
-            </label>
+            <div class="file-attach-wrapper">
+              <label class="file-attach-label" for="file-bd-catedra">
+                <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                <span id="label-bd-catedra">Attach new file…</span>
+              </label>
+              <button class="btn-trash" id="trash-bd-catedra" title="Remove file" onclick="clearFile('bd-catedra')">
+                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              </button>
+            </div>
             <input type="file" id="file-bd-catedra" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'bd-catedra','BD_Catedra','Periodo')">
           </div>
         </div>
@@ -594,10 +620,15 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
               <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Download Template
             </button>
-            <label class="file-attach-label" for="file-faculty-q">
-              <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-              <span id="label-faculty-q">Attach new file…</span>
-            </label>
+            <div class="file-attach-wrapper">
+              <label class="file-attach-label" for="file-faculty-q">
+                <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                <span id="label-faculty-q">Attach new file…</span>
+              </label>
+              <button class="btn-trash" id="trash-faculty-q" title="Remove file" onclick="clearFile('faculty-q')">
+                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              </button>
+            </div>
             <input type="file" id="file-faculty-q" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'faculty-q','Faculty_Questionnaire','Year')">
           </div>
         </div>
@@ -926,25 +957,25 @@ const sheetPeriods = {};
 function nextPeriod(period, colName) {
   if (!period) return "—";
   if (colName === "Year") {
-    // period is a year number
     const y = parseInt(period);
     return isNaN(y) ? "—" : String(y + 1);
   }
-  // period format: "2025-1", "2025-2", "2025 - 1", "20251", etc.
-  const str = String(period).trim();
-  // Try patterns like "2025-1", "2025-2", "2025 - 1"
-  const m = str.match(/(\d{4})\s*[-–]\s*([12])/);
+  // Normalize: remove spaces and dashes to get a raw number like 202510, 202520
+  const raw = String(period).trim().replace(/[\s\-–]/g, "");
+  // Format: YYYYSS where SS = 10 (first semester) or 20 (second semester)
+  // e.g. 202510 → 202520, 202520 → 202610, 202610 → 202620, 202620 → 202710
+  const m = raw.match(/^(\d{4})(10|20)$/);
   if (m) {
-    const y = parseInt(m[1]), s = parseInt(m[2]);
-    if (s === 1) return `${y} – 2`;
-    if (s === 2) return `${y + 1} – 1`;
+    const y = parseInt(m[1]), s = m[2];
+    if (s === "10") return `${y}20`;
+    if (s === "20") return `${y + 1}10`;
   }
-  // Try "20251" or "20252"
-  const m2 = str.match(/^(\d{4})([12])$/);
+  // Fallback: old format "2025-1" / "2025-2"
+  const m2 = raw.match(/^(\d{4})([12])$/);
   if (m2) {
-    const y = parseInt(m2[1]), s = parseInt(m2[2]);
-    if (s === 1) return `${y} – 2`;
-    if (s === 2) return `${y + 1} – 1`;
+    const y = parseInt(m2[1]), s = m2[2];
+    if (s === "1") return `${y}20`;
+    if (s === "2") return `${y + 1}10`;
   }
   return "—";
 }
@@ -953,10 +984,13 @@ function formatPeriod(raw, colName) {
   if (raw === null || raw === undefined || raw === "") return "—";
   if (colName === "Year") return String(raw);
   const str = String(raw).trim();
-  const m = str.match(/(\d{4})\s*[-–]\s*([12])/);
-  if (m) return `${m[1]} – ${m[2]}`;
-  const m2 = str.match(/^(\d{4})([12])$/);
-  if (m2) return `${m2[1]} – ${m2[2]}`;
+  // Normalize to display format
+  const cleaned = str.replace(/[\s\-–]/g, "");
+  const m = cleaned.match(/^(\d{4})(10|20)$/);
+  if (m) return `${m[1]}-${m[2]}`;
+  // Old format "2025-1"
+  const m2 = str.match(/(\d{4})\s*[-–]\s*([12])/);
+  if (m2) return `${m2[1]}-${m2[2] === "1" ? "10" : "20"}`;
   return str;
 }
 
@@ -1111,10 +1145,12 @@ async function handleFileSelect(input, cardKey, sheetName, periodCol) {
   const card     = document.getElementById("card-" + cardKey);
   const lbl      = document.getElementById("label-" + cardKey);
   const valDiv   = document.getElementById("validation-" + cardKey);
+  const trash    = document.getElementById("trash-" + cardKey);
 
   if (!input.files || input.files.length === 0) {
     card.classList.remove("file-selected");
     lbl.textContent = "Attach new file…";
+    if (trash) trash.classList.remove("visible");
     valDiv.style.display = "none";
     valDiv.className = "validation-msg";
     return;
@@ -1122,6 +1158,7 @@ async function handleFileSelect(input, cardKey, sheetName, periodCol) {
 
   const file = input.files[0];
   lbl.textContent = file.name;
+  if (trash) trash.classList.add("visible");
   valDiv.style.display = "block";
   valDiv.className = "validation-msg";
   valDiv.textContent = "Validating columns…";
@@ -1203,15 +1240,34 @@ function loadScript(src) {
 }
 
 // ── Download template ─────────────────────────────────────────────────────
-function handleDownload(sheetName) {
-  // Export the specific sheet as xlsx from the template Google Sheets file
-  const gid = { "BD_PLANTA": 0, "BD_Catedra": 1, "Faculty_Questionnaire": 2 };
-  // Use the export URL — gid is unknown so we use sheet name export
+// Maps dashboard key → exact sheet name in Template_BDFaculty
+const DOWNLOAD_SHEET_MAP = {
+  "BD_PLANTA":             "BD_PLANTA",
+  "BD_Catedra":            "BD_Cartelera",
+  "Faculty_Questionnaire": "Faculty_questionnaire"
+};
+
+function handleDownload(sheetKey) {
+  const sheetName = DOWNLOAD_SHEET_MAP[sheetKey] || sheetKey;
   const url = `https://docs.google.com/spreadsheets/d/${TEMPLATE_FILE_ID}/export?format=xlsx&sheet=${encodeURIComponent(sheetName)}`;
   const a = document.createElement("a");
   a.href = url; a.target = "_blank"; a.rel = "noopener";
   a.download = `Template_${sheetName}.xlsx`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+// ── Clear attached file ───────────────────────────────────────────────────
+function clearFile(key) {
+  const input = document.getElementById("file-" + key);
+  const card  = document.getElementById("card-" + key);
+  const lbl   = document.getElementById("label-" + key);
+  const trash = document.getElementById("trash-" + key);
+  const val   = document.getElementById("validation-" + key);
+  if (input) input.value = "";
+  card.classList.remove("file-selected");
+  lbl.textContent = "Attach new file…";
+  if (trash) trash.classList.remove("visible");
+  if (val) { val.style.display = "none"; val.className = "validation-msg"; }
 }
 
 // ── Upload (disabled for now) ─────────────────────────────────────────────
