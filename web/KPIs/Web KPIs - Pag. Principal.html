@@ -415,20 +415,11 @@ function renderDashboards() {
   const el = document.getElementById("dashList");
   const desc = document.getElementById("dashColDesc");
   if (!selectedUnit) {
-    desc.textContent = "No unit selected";
-  
-    el.innerHTML = `
-      <div class="empty-state">
-        <div style="font-size:2rem;margin-bottom:10px;">📊</div>
-        <div style="font-weight:700;margin-bottom:6px;">
-          Select a unit
-        </div>
-        <div>
-          Choose a unit from the left panel to view available dashboards.
-        </div>
-      </div>
-    `;
-  
+    desc.textContent = "Select a unit first";
+    el.innerHTML =
+      `<div class="empty-state">
+          Click a unit to see its dashboards.
+       </div>`;
     return;
   }
   const unit = UNITS.find(u => u.id === selectedUnit);
