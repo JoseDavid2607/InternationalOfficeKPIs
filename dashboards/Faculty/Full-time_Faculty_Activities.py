@@ -53,10 +53,8 @@ st.markdown(
     ".kv{font-size:28px;font-weight:800;color:#21877D;line-height:1.1;}"
     ".kl{font-size:11px;font-weight:600;color:#6B7280;"
     "text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}"
-    ".upd-banner{display:flex;align-items:center;gap:10px;background:#dff7f2;"
     "border:1px solid #D1E8E4;border-radius:8px;padding:6px 14px;"
     "margin-bottom:14px;font-size:13px;}"
-    ".upd-dot{width:8px;height:8px;border-radius:50%;"
     "background:#06D6A0;flex-shrink:0;}"
     ".sec-sep{border:none;border-top:1px solid #D1E8E4;margin:16px 0;opacity:.6;}"
     ".period-label{text-align:center;font-weight:700;font-size:1.05rem;color:#21877D;}"
@@ -97,7 +95,7 @@ st.markdown(
 )
 
 # ── Inline helpers ─────────────────────────────────────────────────────────────
-import io as _io, base64 as _b64, datetime as _dt_mod
+import io as _io, base64 as _b64
 
 def _xlsx_bytes(df, sheet_name="Data"):
     buf = _io.BytesIO()
@@ -112,16 +110,6 @@ def _download_link(label, df, filename):
             ".spreadsheetml.sheet;base64," + b64)
     st.markdown(
         '<a class="dl-min" download="' + filename + '" href="' + href + '">' + label + '</a>',
-        unsafe_allow_html=True,
-    )
-
-def _render_header(title, subtitle=""):
-    sub = '<div class="sh-sub">' + subtitle + '</div>' if subtitle else ""
-    st.markdown(
-        '<div class="suite-header">'
-        '<div class="sh-super">UASM \u00b7 Faculty Analytics</div>'
-        '<div class="sh-title">' + title + '</div>' + sub +
-        '</div>',
         unsafe_allow_html=True,
     )
 
