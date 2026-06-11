@@ -1,13 +1,11 @@
 # ===========================================================================
 #  Full-time Faculty Composition · UASM
-#  Self-contained · no external module dependencies
 # ===========================================================================
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import re
 import io, base64
-import requests
 import requests
 
 # ── Page config ────────────────────────────────────────────────────────────────
@@ -107,26 +105,6 @@ st.markdown(
         text-transform:uppercase;
         letter-spacing:.5px;
         margin-top:3px;
-    }
-
-    .upd-banner{
-        display:flex;
-        align-items:center;
-        gap:10px;
-        background:#dff7f2;
-        border:1px solid #D1E8E4;
-        border-radius:8px;
-        padding:6px 14px;
-        margin-bottom:14px;
-        font-size:13px;
-    }
-
-    .upd-dot{
-        width:8px;
-        height:8px;
-        border-radius:50%;
-        background:#06D6A0;
-        flex-shrink:0;
     }
 
     .sec-sep{
@@ -255,7 +233,7 @@ st.markdown(
 )
 
 # ── Inline helpers ─────────────────────────────────────────────────────────────
-import io as _io, base64 as _b64, datetime as _dt_mod
+import io as _io, base64 as _b64
 
 def _xlsx_bytes(df, sheet_name="Data"):
     buf = _io.BytesIO()
@@ -283,14 +261,6 @@ def _render_header(title, subtitle=""):
         unsafe_allow_html=True,
     )
 
-def _render_update_banner():
-    t = _dt_mod.datetime.now().strftime("%d %b %Y \u00b7 %H:%M")
-    st.markdown(
-        '<div class="upd-banner"><span class="upd-dot"></span>'
-        '<b>Last updated:</b>&nbsp;' + t + '&nbsp;\u00b7&nbsp;Data is current</div>',
-        unsafe_allow_html=True,
-    )
-
 def _kpi_row(cards):
     html = '<div class="kpi-row">'
     for c in cards:
@@ -314,24 +284,31 @@ def _highlight_band(fig, label, all_labels):
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 _render_header("Full-time Faculty Composition", "Evolution and distribution of full-time faculty by ranking")
-_render_update_banner()
 
 DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
 
 @st.cache_data(ttl=300)
 def load_data():
-    # URL de exportación directa — funciona con archivos .xlsx públicos en Google Drive
     url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
     output_path = "/tmp/BD_Faculty.xlsx"
 
-    import requests
-    response = requests.get(url, stream=True)
+    import requests as _req
+    response = _req.get(url, stream=True)
     with open(output_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=32768):
             if chunk:
                 f.write(chunk)
 
-    df_ = pd.read_excel(output_path, sheet_name="BD PLANTA 2020-2025")
+    # ── Robust sheet detection: never breaks when the sheet is renamed ──
+    xls = pd.ExcelFile(output_path)
+    possible = ["BD_PLANTA", "BD PLANTA", "BD_PLANTA 2020-2025",
+                "BD PLANTA 2020-2025", "BD PLANTA 2020-2026",
+                "BD_PLANTA 2020-2025", "BD_PLANTA 2020-2026"]
+    sheet_found = next((s for s in possible if s in xls.sheet_names), None)
+    if sheet_found is None:
+        # Fall back to first sheet as last resort
+        sheet_found = xls.sheet_names[0]
+    df_ = pd.read_excel(output_path, sheet_name=sheet_found)
 
     def _norm_per(val):
         s = str(val).strip()
@@ -379,15 +356,27 @@ years         = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 
 with st.sidebar:
 
+    # ── Logo UASM ──────────────────────────────────────────────────────────
+    st.markdown(
+        """
+        <div style="text-align:center; padding: 10px 0 4px 0;">
+            <img src="https://uniandes.edu.co/sites/default/files/logo-uniandes.png"
+                 onerror="this.style.display='none'"
+                 style="max-width:120px; height:auto; margin-bottom:6px;" />
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.markdown("""
     <div style="
         text-align:center;
-        padding-top:5px;
+        padding-top:0px;
         padding-bottom:20px;
     ">
         <h1 style="
             color:#004d47;
-            font-size:28px;
+            font-size:22px;
             font-weight:800;
             margin-bottom:0px;
         ">
@@ -424,7 +413,7 @@ with st.sidebar:
 
     xlsx_data = _xlsx_bytes(df)
     b64 = _b64.b64encode(xlsx_data).decode()
-    
+
     st.markdown(
         f"""
         <a class="modern-btn"
@@ -435,13 +424,6 @@ with st.sidebar:
         """,
         unsafe_allow_html=True
     )
-    
-    if st.button(
-        "↻ Actualizar Data",
-        use_container_width=True
-    ):
-        st.cache_data.clear()
-        st.rerun()
 
 # =============================
 # RANKING ORDER & COLOR MAP
