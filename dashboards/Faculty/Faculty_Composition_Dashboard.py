@@ -360,7 +360,7 @@ with st.sidebar:
     st.markdown(
         """
         <div style="text-align:center; padding: 10px 0 4px 0;">
-            <img src="https://uniandes.edu.co/sites/default/files/logo-uniandes.png"
+            <img src="https://uniandes.edu.co/sites/default/files/logo.png"
                  onerror="this.style.display='none'"
                  style="max-width:120px; height:auto; margin-bottom:6px;" />
         </div>
