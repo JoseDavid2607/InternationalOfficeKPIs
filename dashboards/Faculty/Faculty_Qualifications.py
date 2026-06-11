@@ -79,6 +79,19 @@ st.markdown(
     "#mode-pill [role='radio'][aria-checked='true']{"
     "background:#dff7f2;color:#004d47;border-color:#8fd7cc;}"
     "#mode-pill [data-baseweb='radio'] input{display:none !important;}"
+    ".modern-btn{background:#FFFFFF;border:1px solid #D1E8E4;"
+    "border-radius:10px;padding:12px 14px;color:#374151 !important;"
+    "font-size:14px;font-weight:600;text-decoration:none !important;"
+    "display:block;text-align:center;margin-bottom:10px;"
+    "transition:all .2s ease;box-shadow:0 1px 3px rgba(0,0,0,.04);}"
+    ".modern-btn:hover{background:#F8FFFE;border-color:#B7DCD6;}"
+    "div[data-testid='stButton'] button{background:#FFFFFF !important;"
+    "border:1px solid #D1E8E4 !important;border-radius:10px !important;"
+    "color:#374151 !important;font-size:14px !important;"
+    "font-weight:600 !important;height:48px !important;"
+    "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
+    "div[data-testid='stButton'] button:hover{"
+    "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -943,6 +956,33 @@ YEARS_ALL = list_years_from_sem()
 INTER_YEARS = years_with_inter()
 
 with st.sidebar:
+
+    # ── Logo UASM ──────────────────────────────────────────────────────────
+    col_logo, col_title = st.columns([1, 3])
+
+    with col_logo:
+        st.image("web/imagenes/logo.png", width=65)
+
+    with col_title:
+        st.markdown(
+            """
+            <div style="
+                padding-top:10px;
+                color:#004d47;
+                font-size:24px;
+                font-weight:800;
+                line-height:1.1;
+            ">
+                UASM Faculty KPIs
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.caption("Analytics Dashboard")
+
+    st.markdown("---")
+
     st.markdown("#### Sensitivity analysis")
 
     sens_mode = st.toggle(
@@ -1050,12 +1090,13 @@ f = filter_df_fd(df_fd, time_mode, sel_year, sel_sem)
 
 if 'dl_bd_placeholder' in locals():
     safe = _sanitize_for_export(df_car_filt_all)
-    dl_bd_placeholder.download_button(
-        "Download DB (Excel)",
-        data=_xlsx_bytes(safe),
-        file_name=f"BD_Cartelera_{_slugify(sel_label)}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key=f"dl_bd_{_slugify(sel_label)}"
+    _b64_dl = _b64.b64encode(_xlsx_bytes(safe)).decode()
+    _fname_dl = f"BD_Cartelera_{_slugify(sel_label)}.xlsx"
+    dl_bd_placeholder.markdown(
+        f'<a class="modern-btn" download="{_fname_dl}" '
+        f'href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{_b64_dl}">'
+        '⭳ Download DB (Excel)</a>',
+        unsafe_allow_html=True,
     )
 
 # --------- Sensitivity: “Apply to” ---------
@@ -3663,4 +3704,3 @@ if not SENS.get("on", False):
             label="Download Results (Excel)"
         )
         st.dataframe(res_out, use_container_width=True, hide_index=True)
-
