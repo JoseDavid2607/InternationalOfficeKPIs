@@ -38,7 +38,7 @@ _P = {
 # ── Global CSS ─────────────────────────────────────────────────────────────────
 st.markdown(
     "<style>"
-    ".suite-header{display:flex;flex-direction:column;align-items:center;"
+    ".suite-header{display:flex;flex-direction:column;margin-top:-35px;align-items:center;"
     "padding:16px 24px 12px;"
     "background:linear-gradient(135deg,#004d47 0%,#21877D 60%,#2EC4B6 100%);"
     "border-radius:12px;box-shadow:0 2px 8px rgba(0,77,71,.18);margin-bottom:14px;}"
