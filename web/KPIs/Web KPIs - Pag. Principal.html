@@ -323,6 +323,20 @@ header.hero h1 {
 }
 .btn-upload:hover { background: #111827; transform: translateY(-1px); }
 .btn-upload svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+.btn-upload:disabled {
+  background: #d1d5db; color: #9ca3af; cursor: not-allowed; transform: none !important;
+}
+.btn-upload:disabled:hover { background: #d1d5db; transform: none; }
+
+.validation-msg {
+  margin: 0 18px 8px; padding: 9px 14px; border-radius: 8px;
+  font-size: .8rem; font-weight: 600; line-height: 1.5;
+  border-left: 3px solid transparent;
+}
+.validation-msg.error { background: #fef2f2; color: #991b1b; border-color: #f87171; }
+.validation-msg.success { background: #f0fdf4; color: #166534; border-color: #4ade80; }
+.validation-msg ul { margin: 4px 0 0 16px; }
+.validation-msg li { margin-bottom: 2px; }
 
 .toast { display: none; position: fixed; bottom: 28px; right: 28px; z-index: 3000; background: #1f2937; color: #fff; padding: 13px 20px; border-radius: 14px; font-size: .88rem; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
 
@@ -446,159 +460,160 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       </button>
     </div>
 
-    <!-- Global status bar -->
-    <div class="modal-status-bar">
-      <div class="status-cell">
-        <div class="status-label">Last Update</div>
-        <div class="status-value">Jun 3, 2025</div>
-      </div>
-      <div class="status-cell">
-        <div class="status-label">Last Period Loaded</div>
-        <div class="status-value">2025 – S1</div>
-      </div>
-      <div class="status-cell">
-        <div class="status-label">Next Expected Period</div>
-        <div class="status-value">2025 – S2</div>
-      </div>
-      <div class="status-cell">
-        <div class="status-label">Update Status</div>
-        <div class="status-value">
-          <span class="status-badge ok dot">Up to date</span>
-        </div>
-      </div>
+    <!-- Modal loading skeleton -->
+    <div id="modalLoadingState" style="padding:48px 28px;display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--muted);font-size:.88rem;">
+      <div class="spinner"></div>
+      <div>Loading current data status…</div>
     </div>
 
-    <!-- File cards -->
-    <div class="modal-body">
-      <div class="modal-section-title">Source Files</div>
-
-      <!-- BD_PLANTA -->
-      <div class="file-card" id="card-bd-planta">
-        <div class="file-card-head">
-          <div class="file-icon">
-            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-          </div>
-          <span class="file-name">BD_PLANTA</span>
-          <span class="file-selected-badge" id="badge-bd-planta">
-            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-            File selected
-          </span>
-        </div>
-        <div class="file-meta-grid">
-          <div class="file-meta-cell">
-            <div class="file-meta-label">Last Update</div>
-            <div class="file-meta-val">Jun 3, 2025</div>
-          </div>
-          <div class="file-meta-cell">
-            <div class="file-meta-label">Last Period Loaded</div>
-            <div class="file-meta-val">2025 – S1</div>
-          </div>
-          <div class="file-meta-cell">
-            <div class="file-meta-label">Next Expected Period</div>
-            <div class="file-meta-val">2025 – S2</div>
-          </div>
-        </div>
-        <div class="file-actions">
-          <button class="btn-download" onclick="handleDownload('BD_PLANTA')">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download Template
-          </button>
-          <label class="file-attach-label" for="file-bd-planta">
-            <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-            <span id="label-bd-planta">Attach new file…</span>
-          </label>
-          <input type="file" id="file-bd-planta" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this, 'bd-planta')">
-        </div>
-      </div>
-
-      <!-- BD_Cartelera -->
-      <div class="file-card" id="card-bd-cartelera">
-        <div class="file-card-head">
-          <div class="file-icon">
-            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-          </div>
-          <span class="file-name">BD_Cartelera</span>
-          <span class="file-selected-badge" id="badge-bd-cartelera">
-            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-            File selected
-          </span>
-        </div>
-        <div class="file-meta-grid">
-          <div class="file-meta-cell">
-            <div class="file-meta-label">Last Update</div>
-            <div class="file-meta-val">May 28, 2025</div>
-          </div>
-          <div class="file-meta-cell">
-            <div class="file-meta-label">Last Period Loaded</div>
-            <div class="file-meta-val">2025 – S1</div>
-          </div>
-          <div class="file-meta-cell">
-            <div class="file-meta-label">Next Expected Period</div>
-            <div class="file-meta-val">2025 – S2</div>
-          </div>
-        </div>
-        <div class="file-actions">
-          <button class="btn-download" onclick="handleDownload('BD_Cartelera')">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download Template
-          </button>
-          <label class="file-attach-label" for="file-bd-cartelera">
-            <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-            <span id="label-bd-cartelera">Attach new file…</span>
-          </label>
-          <input type="file" id="file-bd-cartelera" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this, 'bd-cartelera')">
-        </div>
-      </div>
-
-      <!-- Faculty_Questionnaire -->
-      <div class="file-card" id="card-faculty-q">
-        <div class="file-card-head">
-          <div class="file-icon">
-            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-          </div>
-          <span class="file-name">Faculty_Questionnaire</span>
-          <span class="file-selected-badge" id="badge-faculty-q">
-            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-            File selected
-          </span>
-        </div>
-        <div class="file-meta-grid">
-          <div class="file-meta-cell">
-            <div class="file-meta-label">Last Update</div>
-            <div class="file-meta-val">Apr 15, 2025</div>
-          </div>
-          <div class="file-meta-cell">
-            <div class="file-meta-label">Last Period Loaded</div>
-            <div class="file-meta-val">2024 – S2</div>
-          </div>
-          <div class="file-meta-cell">
-            <div class="file-meta-label">Next Expected Period</div>
-            <div class="file-meta-val">2025 – S1</div>
-          </div>
-        </div>
-        <div class="file-actions">
-          <button class="btn-download" onclick="handleDownload('Faculty_Questionnaire')">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download Template
-          </button>
-          <label class="file-attach-label" for="file-faculty-q">
-            <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-            <span id="label-faculty-q">Attach new file…</span>
-          </label>
-          <input type="file" id="file-faculty-q" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this, 'faculty-q')">
-        </div>
-      </div>
-
-    </div><!-- /modal-body -->
-
-    <!-- Footer -->
-    <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeUpdateModal()">Cancel</button>
-      <button class="btn-upload" id="uploadBtn" onclick="handleUpload()">
-        <svg viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 10 12 4 17 10"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
-        Upload &amp; Update Data
-      </button>
+    <!-- Modal error state -->
+    <div id="modalErrorState" style="display:none;padding:40px 28px;text-align:center;">
+      <div style="font-size:2rem;margin-bottom:10px;">⚠️</div>
+      <div style="font-size:.9rem;font-weight:700;color:#1f2937;margin-bottom:6px;">Could not load data</div>
+      <div id="modalErrorMsg" style="font-size:.82rem;color:var(--muted);margin-bottom:18px;"></div>
+      <button class="btn-download" onclick="loadModalData()">Retry</button>
     </div>
+
+    <!-- Main modal content (hidden until data loads) -->
+    <div id="modalContent" style="display:none;">
+
+      <!-- File cards -->
+      <div class="modal-body">
+        <div class="modal-section-title">Source Files</div>
+
+        <!-- BD_PLANTA card -->
+        <div class="file-card" id="card-bd-planta">
+          <div class="file-card-head">
+            <div class="file-icon">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            </div>
+            <span class="file-name">BD_PLANTA</span>
+            <span class="file-selected-badge" id="badge-bd-planta">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              File ready
+            </span>
+          </div>
+          <div class="file-meta-grid">
+            <div class="file-meta-cell">
+              <div class="file-meta-label">Last Update</div>
+              <div class="file-meta-val" id="meta-planta-date">—</div>
+            </div>
+            <div class="file-meta-cell">
+              <div class="file-meta-label">Last Period Loaded</div>
+              <div class="file-meta-val" id="meta-planta-period">—</div>
+            </div>
+            <div class="file-meta-cell">
+              <div class="file-meta-label">Next Expected Period</div>
+              <div class="file-meta-val" id="meta-planta-next">—</div>
+            </div>
+          </div>
+          <!-- Validation feedback -->
+          <div id="validation-bd-planta" class="validation-msg" style="display:none;"></div>
+          <div class="file-actions">
+            <button class="btn-download" onclick="handleDownload('BD_PLANTA')">
+              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Template
+            </button>
+            <label class="file-attach-label" for="file-bd-planta">
+              <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              <span id="label-bd-planta">Attach new file…</span>
+            </label>
+            <input type="file" id="file-bd-planta" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'bd-planta','BD_PLANTA','Periodo')">
+          </div>
+        </div>
+
+        <!-- BD_Catedra card -->
+        <div class="file-card" id="card-bd-catedra">
+          <div class="file-card-head">
+            <div class="file-icon">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            </div>
+            <span class="file-name">BD_Catedra</span>
+            <span class="file-selected-badge" id="badge-bd-catedra">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              File ready
+            </span>
+          </div>
+          <div class="file-meta-grid">
+            <div class="file-meta-cell">
+              <div class="file-meta-label">Last Update</div>
+              <div class="file-meta-val" id="meta-catedra-date">—</div>
+            </div>
+            <div class="file-meta-cell">
+              <div class="file-meta-label">Last Period Loaded</div>
+              <div class="file-meta-val" id="meta-catedra-period">—</div>
+            </div>
+            <div class="file-meta-cell">
+              <div class="file-meta-label">Next Expected Period</div>
+              <div class="file-meta-val" id="meta-catedra-next">—</div>
+            </div>
+          </div>
+          <div id="validation-bd-catedra" class="validation-msg" style="display:none;"></div>
+          <div class="file-actions">
+            <button class="btn-download" onclick="handleDownload('BD_Catedra')">
+              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Template
+            </button>
+            <label class="file-attach-label" for="file-bd-catedra">
+              <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              <span id="label-bd-catedra">Attach new file…</span>
+            </label>
+            <input type="file" id="file-bd-catedra" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'bd-catedra','BD_Catedra','Periodo')">
+          </div>
+        </div>
+
+        <!-- Faculty_Questionnaire card -->
+        <div class="file-card" id="card-faculty-q">
+          <div class="file-card-head">
+            <div class="file-icon">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            </div>
+            <span class="file-name">Faculty_Questionnaire</span>
+            <span class="file-selected-badge" id="badge-faculty-q">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              File ready
+            </span>
+          </div>
+          <div class="file-meta-grid">
+            <div class="file-meta-cell">
+              <div class="file-meta-label">Last Update</div>
+              <div class="file-meta-val" id="meta-fq-date">—</div>
+            </div>
+            <div class="file-meta-cell">
+              <div class="file-meta-label">Last Period Loaded</div>
+              <div class="file-meta-val" id="meta-fq-period">—</div>
+            </div>
+            <div class="file-meta-cell">
+              <div class="file-meta-label">Next Expected Period</div>
+              <div class="file-meta-val" id="meta-fq-next">—</div>
+            </div>
+          </div>
+          <div id="validation-faculty-q" class="validation-msg" style="display:none;"></div>
+          <div class="file-actions">
+            <button class="btn-download" onclick="handleDownload('Faculty_Questionnaire')">
+              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Template
+            </button>
+            <label class="file-attach-label" for="file-faculty-q">
+              <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              <span id="label-faculty-q">Attach new file…</span>
+            </label>
+            <input type="file" id="file-faculty-q" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'faculty-q','Faculty_Questionnaire','Year')">
+          </div>
+        </div>
+
+      </div><!-- /modal-body -->
+
+      <!-- Footer -->
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeUpdateModal()">Cancel</button>
+        <button class="btn-upload" id="uploadBtn" disabled title="Upload functionality coming soon">
+          <svg viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 10 12 4 17 10"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
+          Upload &amp; Update Data
+        </button>
+      </div>
+
+    </div><!-- /modalContent -->
 
   </div>
 </div>
@@ -885,9 +900,203 @@ renderDashboards();
 resetPreview();
 
 // ── UPDATE MODAL ──────────────────────────────────────────────────────────
+const BD_FILE_ID       = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-";
+const TEMPLATE_FILE_ID = "1qhwyKzANWG_qt0cF-94UyZ_1itTPYOyYumd92HwfHiM";
+
+// Sheets config: sheetName → { periodCol, metaIdSuffix }
+const SHEET_CONFIG = {
+  "BD_PLANTA":             { periodCol: "Periodo", metaId: "planta",  cardId: "bd-planta"  },
+  "BD_Catedra":            { periodCol: "Periodo", metaId: "catedra", cardId: "bd-catedra" },
+  "Faculty_Questionnaire": { periodCol: "Year",    metaId: "fq",      cardId: "faculty-q"  }
+};
+
+// Template sheet names (each sheet in Template_BDFaculty matches the BD name exactly)
+const TEMPLATE_SHEET_MAP = {
+  "BD_PLANTA":             "BD_PLANTA",
+  "BD_Catedra":            "BD_Catedra",
+  "Faculty_Questionnaire": "Faculty_Questionnaire"
+};
+
+// Holds template columns per sheet once loaded
+const templateColumns = {};
+// Holds last period per sheet once loaded
+const sheetPeriods = {};
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function nextPeriod(period, colName) {
+  if (!period) return "—";
+  if (colName === "Year") {
+    // period is a year number
+    const y = parseInt(period);
+    return isNaN(y) ? "—" : String(y + 1);
+  }
+  // period format: "2025-1", "2025-2", "2025 - 1", "20251", etc.
+  const str = String(period).trim();
+  // Try patterns like "2025-1", "2025-2", "2025 - 1"
+  const m = str.match(/(\d{4})\s*[-–]\s*([12])/);
+  if (m) {
+    const y = parseInt(m[1]), s = parseInt(m[2]);
+    if (s === 1) return `${y} – 2`;
+    if (s === 2) return `${y + 1} – 1`;
+  }
+  // Try "20251" or "20252"
+  const m2 = str.match(/^(\d{4})([12])$/);
+  if (m2) {
+    const y = parseInt(m2[1]), s = parseInt(m2[2]);
+    if (s === 1) return `${y} – 2`;
+    if (s === 2) return `${y + 1} – 1`;
+  }
+  return "—";
+}
+
+function formatPeriod(raw, colName) {
+  if (raw === null || raw === undefined || raw === "") return "—";
+  if (colName === "Year") return String(raw);
+  const str = String(raw).trim();
+  const m = str.match(/(\d{4})\s*[-–]\s*([12])/);
+  if (m) return `${m[1]} – ${m[2]}`;
+  const m2 = str.match(/^(\d{4})([12])$/);
+  if (m2) return `${m2[1]} – ${m2[2]}`;
+  return str;
+}
+
+// Parse a Google Sheets CSV export for a given sheet
+async function fetchSheetCSV(fileId, sheetName) {
+  // Use Google Sheets export URL with gid not needed — use sheet name via export
+  const url = `https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching sheet "${sheetName}"`);
+  const text = await resp.text();
+  return parseCSV(text);
+}
+
+// Minimal CSV parser (handles quoted fields)
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return { headers: [], rows: [] };
+  const headers = splitCSVLine(lines[0]);
+  const rows = lines.slice(1).map(l => {
+    const vals = splitCSVLine(l);
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] !== undefined ? vals[i] : ""; });
+    return obj;
+  });
+  return { headers, rows };
+}
+
+function splitCSVLine(line) {
+  const result = [];
+  let cur = "", inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (c === ',' && !inQ) {
+      result.push(cur.trim()); cur = "";
+    } else cur += c;
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+// Get last modified date of a Google Drive file (requires OAuth token)
+async function getDriveFileModifiedDate(fileId, token) {
+  const resp = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=modifiedTime`,
+    { headers: { Authorization: "Bearer " + token } }
+  );
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  if (!data.modifiedTime) return null;
+  return new Date(data.modifiedTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// ── Load modal data ───────────────────────────────────────────────────────
+async function loadModalData() {
+  const loading = document.getElementById("modalLoadingState");
+  const error   = document.getElementById("modalErrorState");
+  const content = document.getElementById("modalContent");
+
+  loading.style.display = "flex";
+  error.style.display   = "none";
+  content.style.display = "none";
+
+  try {
+    // Fetch modified date if logged in
+    let modDate = null;
+    if (isLoggedIn()) {
+      modDate = await getDriveFileModifiedDate(BD_FILE_ID, kpiToken);
+    }
+
+    // Fetch each sheet to get last period and template columns
+    for (const [sheetName, cfg] of Object.entries(SHEET_CONFIG)) {
+      // BD data — get last period
+      try {
+        const { headers, rows } = await fetchSheetCSV(BD_FILE_ID, sheetName);
+        // Find the period column (case-insensitive)
+        const periodHeader = headers.find(h => h.trim().toLowerCase() === cfg.periodCol.toLowerCase());
+        let lastPeriod = "—";
+        if (periodHeader && rows.length > 0) {
+          // Get all non-empty period values and pick the max
+          const periods = rows
+            .map(r => r[periodHeader])
+            .filter(v => v && String(v).trim() !== "");
+          if (periods.length > 0) {
+            // Sort numerically/lexicographically and take last
+            periods.sort((a, b) => {
+              const na = parseFloat(String(a).replace(/\D/g, ""));
+              const nb = parseFloat(String(b).replace(/\D/g, ""));
+              return isNaN(na) || isNaN(nb) ? String(a).localeCompare(String(b)) : na - nb;
+            });
+            lastPeriod = periods[periods.length - 1];
+          }
+        }
+        sheetPeriods[sheetName] = { raw: lastPeriod, col: cfg.periodCol, headers };
+      } catch(e) {
+        sheetPeriods[sheetName] = { raw: "—", col: cfg.periodCol, headers: [] };
+      }
+
+      // Template — get column list
+      try {
+        const { headers: tplHeaders } = await fetchSheetCSV(TEMPLATE_FILE_ID, TEMPLATE_SHEET_MAP[sheetName]);
+        templateColumns[sheetName] = tplHeaders.map(h => h.trim().toLowerCase()).filter(h => h);
+      } catch(e) {
+        templateColumns[sheetName] = [];
+      }
+    }
+
+    // Populate UI
+    const entries = [
+      { sheetName: "BD_PLANTA",             metaDate: "meta-planta-date", metaPeriod: "meta-planta-period", metaNext: "meta-planta-next" },
+      { sheetName: "BD_Catedra",            metaDate: "meta-catedra-date", metaPeriod: "meta-catedra-period", metaNext: "meta-catedra-next" },
+      { sheetName: "Faculty_Questionnaire", metaDate: "meta-fq-date",     metaPeriod: "meta-fq-period",     metaNext: "meta-fq-next"     }
+    ];
+
+    entries.forEach(({ sheetName, metaDate, metaPeriod, metaNext }) => {
+      const sp = sheetPeriods[sheetName] || { raw: "—", col: "Periodo" };
+      const formatted = formatPeriod(sp.raw, sp.col);
+      const nxt = nextPeriod(sp.raw, sp.col);
+      document.getElementById(metaDate).textContent   = modDate || (isLoggedIn() ? "—" : "Sign in to view");
+      document.getElementById(metaPeriod).textContent = formatted;
+      document.getElementById(metaNext).textContent   = nxt;
+    });
+
+    loading.style.display = "none";
+    content.style.display = "block";
+
+  } catch (err) {
+    loading.style.display = "none";
+    document.getElementById("modalErrorMsg").textContent = err.message || "Unknown error.";
+    error.style.display = "block";
+  }
+}
+
+// ── Modal open/close ──────────────────────────────────────────────────────
 function openUpdateModal() {
   document.getElementById("updateModal").classList.add("show");
   document.body.style.overflow = "hidden";
+  loadModalData();
 }
 function closeUpdateModal() {
   document.getElementById("updateModal").classList.remove("show");
@@ -896,28 +1105,120 @@ function closeUpdateModal() {
 function handleModalOverlayClick(e) {
   if (e.target === document.getElementById("updateModal")) closeUpdateModal();
 }
-function handleFileSelect(input, key) {
-  const card  = document.getElementById("card-" + key);
-  const lbl   = document.getElementById("label-" + key);
-  if (input.files && input.files.length > 0) {
-    card.classList.add("file-selected");
-    lbl.textContent = input.files[0].name;
-  } else {
+
+// ── File selection + validation ───────────────────────────────────────────
+async function handleFileSelect(input, cardKey, sheetName, periodCol) {
+  const card     = document.getElementById("card-" + cardKey);
+  const lbl      = document.getElementById("label-" + cardKey);
+  const valDiv   = document.getElementById("validation-" + cardKey);
+
+  if (!input.files || input.files.length === 0) {
     card.classList.remove("file-selected");
     lbl.textContent = "Attach new file…";
+    valDiv.style.display = "none";
+    valDiv.className = "validation-msg";
+    return;
+  }
+
+  const file = input.files[0];
+  lbl.textContent = file.name;
+  valDiv.style.display = "block";
+  valDiv.className = "validation-msg";
+  valDiv.textContent = "Validating columns…";
+
+  try {
+    const fileColumns = await readFileColumns(file);
+
+    const expected = templateColumns[sheetName] || [];
+    if (expected.length === 0) {
+      // Template not loaded — skip validation
+      card.classList.add("file-selected");
+      valDiv.className = "validation-msg success";
+      valDiv.textContent = "✓ File selected. Column template not available for comparison.";
+      return;
+    }
+
+    const fileCols = fileColumns.map(h => h.trim().toLowerCase()).filter(h => h);
+    const missing  = expected.filter(e => !fileCols.includes(e));
+    const extra    = fileCols.filter(f => !expected.includes(f));
+
+    if (missing.length === 0) {
+      card.classList.add("file-selected");
+      valDiv.className = "validation-msg success";
+      valDiv.innerHTML = `✓ All ${expected.length} required columns present.` +
+        (extra.length > 0 ? ` <span style="font-weight:400;opacity:.75;">(${extra.length} extra column${extra.length>1?"s":""} ignored)</span>` : "");
+    } else {
+      card.classList.remove("file-selected");
+      valDiv.className = "validation-msg error";
+      valDiv.innerHTML = `⚠ Missing ${missing.length} required column${missing.length>1?"s":""}:<ul>` +
+        missing.map(m => `<li>${m}</li>`).join("") + `</ul>`;
+    }
+  } catch (err) {
+    card.classList.remove("file-selected");
+    valDiv.className = "validation-msg error";
+    valDiv.textContent = "Could not read file: " + err.message;
   }
 }
-function handleDownload(fileName) {
-  showToast("Template download for " + fileName + " — backend not connected yet.");
+
+// Read column headers from an uploaded .xlsx / .xls / .csv file
+async function readFileColumns(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("File read error"));
+    const ext = file.name.split(".").pop().toLowerCase();
+
+    if (ext === "csv") {
+      reader.onload = (e) => {
+        const text = e.target.result;
+        const firstLine = text.split(/\r?\n/)[0] || "";
+        resolve(splitCSVLine(firstLine));
+      };
+      reader.readAsText(file);
+    } else {
+      // xlsx / xls — use SheetJS via CDN (loaded dynamically)
+      reader.onload = async (e) => {
+        try {
+          if (!window.XLSX) {
+            await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+          }
+          const data = new Uint8Array(e.target.result);
+          const wb   = XLSX.read(data, { type: "array" });
+          const ws   = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+          resolve(rows[0] || []);
+        } catch(err) { reject(err); }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  });
 }
-function handleUpload() {
-  const ids = ["file-bd-planta","file-bd-cartelera","file-faculty-q"];
-  const any = ids.some(id => { const f = document.getElementById(id); return f && f.files && f.files.length > 0; });
-  if (!any) { showToast("Please attach at least one file before uploading."); return; }
-  showToast("Upload & Update — backend not connected yet.");
-  closeUpdateModal();
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement("script");
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
 }
+
+// ── Download template ─────────────────────────────────────────────────────
+function handleDownload(sheetName) {
+  // Export the specific sheet as xlsx from the template Google Sheets file
+  const gid = { "BD_PLANTA": 0, "BD_Catedra": 1, "Faculty_Questionnaire": 2 };
+  // Use the export URL — gid is unknown so we use sheet name export
+  const url = `https://docs.google.com/spreadsheets/d/${TEMPLATE_FILE_ID}/export?format=xlsx&sheet=${encodeURIComponent(sheetName)}`;
+  const a = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noopener";
+  a.download = `Template_${sheetName}.xlsx`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+// ── Upload (disabled for now) ─────────────────────────────────────────────
+// Upload button is disabled until backend is ready.
+
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeUpdateModal(); });
+
 </script>
 </body>
 </html>
