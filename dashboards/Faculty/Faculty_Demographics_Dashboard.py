@@ -162,10 +162,26 @@ DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
 
 @st.cache_data(ttl=300)
 def _download_excel() -> str:
-    """Download BD_Faculty.xlsx from Google Drive to /tmp and return local path."""
+    """Download BD_Faculty.xlsx from Google Drive to /tmp, handling confirm tokens."""
     url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
-    path = "/tmp/BD_Faculty.xlsx"
-    response = _requests.get(url, stream=True)
+    path = "/tmp/BD_Faculty_demo.xlsx"
+    session = _requests.Session()
+    response = session.get(url, stream=True)
+    # Handle Google Drive large-file confirm page
+    token = None
+    for key, value in response.cookies.items():
+        if key.startswith("download_warning"):
+            token = value
+            break
+    if token is None:
+        # Also check response content for confirmation token
+        import re as _re
+        m = _re.search(r'confirm=([0-9A-Za-z_]+)', response.text[:2000] if hasattr(response, 'text') else "")
+        if m:
+            token = m.group(1)
+    if token:
+        url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}&confirm={token}"
+        response = session.get(url, stream=True)
     with open(path, "wb") as f:
         for chunk in response.iter_content(chunk_size=32768):
             if chunk:
