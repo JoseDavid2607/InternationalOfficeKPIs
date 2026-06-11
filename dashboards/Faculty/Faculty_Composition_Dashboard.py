@@ -1,1224 +1,700 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KPIs for International Accreditations</title>
-<style>
-:root {
-  --bg-page: #f5f6f8;
-  --bg-glass: rgba(255,255,255,.93);
-  --bg-white: #ffffff;
-  --slate: #4b5563;
-  --slate-dark: #1f2937;
-  --slate-mid: #374151;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --teal: #0f6e56;
-  --teal-light: #e1f5ee;
-  --teal-brand: #56d6c9;
-  --teal-brand-dark: #2fa89c;
-  --shadow-panel: 0 20px 50px rgba(0,0,0,.16);
-  --shadow-soft: 0 10px 24px rgba(0,0,0,.10);
-  --radius-panel: 24px;
-}
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, Helvetica, sans-serif; background: var(--bg-page); color: var(--slate-dark); -webkit-font-smoothing: antialiased; }
+# ===========================================================================
+#  Full-time Faculty Composition · UASM
+#  Self-contained · no external module dependencies
+# ===========================================================================
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import re
+import io, base64
+import requests
+import requests
 
-/* ── HERO ── */
-header.hero {
-  color: #fff; position: relative; min-height: 300px;
-  padding: 48px 24px 140px;
-  display: flex; align-items: center; justify-content: center;
-  overflow: hidden; text-align: center;
-  background:
-    linear-gradient(to bottom, rgba(8,12,20,.08), rgba(8,12,20,.12), rgba(8,12,20,.20)),
-    url("../imagenes/Santodomingo.jpg") center center / cover no-repeat;
-}
-header.hero::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(to bottom, rgba(255,255,255,0) 65%, var(--bg-page) 100%);
-  pointer-events: none;
-}
-.hero-inner { max-width: 1100px; width: 100%; margin: 0 auto; position: relative; z-index: 2; }
-.hero-eyebrow {
-  display: inline-block; margin-bottom: 14px; padding: 8px 16px;
-  border-radius: 999px; background: rgba(255,255,255,.16);
-  border: 1px solid rgba(255,255,255,.18); font-size: 13px; font-weight: 700;
-  letter-spacing: .02em;
-}
-header.hero h1 {
-  margin: 0; font-weight: 800; line-height: 1.02;
-  font-size: clamp(2.2rem, 4vw + .5rem, 3.8rem);
-  letter-spacing: -.03em; text-shadow: 0 10px 30px rgba(0,0,0,.28);
-}
-.back-button { position: absolute; top: 24px; left: 24px; z-index: 20; }
-.back-button a {
-  width: 52px; height: 52px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.22);
-  text-decoration: none; box-shadow: 0 8px 20px rgba(0,0,0,.18);
-  transition: transform .2s, background .2s; backdrop-filter: blur(4px);
-}
-.back-button a:hover { transform: translateY(-2px); background: rgba(255,255,255,0.26); }
-.back-button svg { width: 24px; height: 24px; stroke: #fff; }
+# ── Page config ────────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Full-time Faculty Composition · UASM",
+    page_icon="🎓",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-/* ── INTRO ── */
-.intro-wrap {
-  position: relative; max-width: 900px; margin: -135px auto 12px;
-  z-index: 10; padding: 0 16px; display: flex; align-items: flex-end; gap: 0;
-}
-.intro-seneca { position: relative; flex-shrink: 0; width: 100px; margin-right: -16px; z-index: 13; }
-.intro-seneca img { max-width: 100px; height: auto; display: block; filter: drop-shadow(0 10px 18px rgba(0,0,0,.16)); }
-.intro-panel {
-  flex: 1; z-index: 12; padding: 20px 22px 20px 32px;
-  background: var(--bg-glass); border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-panel); text-align: left;
-  border: 1px solid rgba(255,255,255,.28);
-  font-size: .93rem; line-height: 1.7;
+# ── Design tokens ─────────────────────────────────────────────────────────────
+_P = {
+    "primary":       "#21877D",
+    "primary_dark":  "#004d47",
+    "primary_light": "#dff7f2",
+    "accent1":       "#2EC4B6",
+    "accent2":       "#00A896",
+    "accent3":       "#56D6C9",
+    "danger":        "#E63946",
+    "success":       "#06D6A0",
+    "neutral":       "#C7C7C7",
+    "highlight":     "#D0E5F5",
+    "text_muted":    "#6B7280",
+    "border":        "#D1E8E4",
 }
 
-/* ── MAIN ── */
-.main { max-width: 1600px; margin: 4px auto 56px; padding: 0 20px; }
-.section-heading { margin: 0 0 14px; }
-.section-heading h2 { font-size: 1.1rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 4px; }
-.section-heading p { color: var(--muted); font-size: .88rem; }
+# ── Global CSS ─────────────────────────────────────────────────────────────────
+st.markdown(
+    """
+    <style>
 
-/* ── WORKSPACE 3 COLS ── */
-.workspace { display: grid; grid-template-columns: 280px 300px 1fr; gap: 18px; align-items: stretch; }
-.col-panel { background: var(--bg-white); border-radius: var(--radius-panel); box-shadow: var(--shadow-soft); overflow: hidden; display: flex; flex-direction: column; height: 700px; }
-.col-header { padding: 18px 20px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.col-header h3 { font-size: .95rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
-.col-header p { color: var(--muted); font-size: .81rem; line-height: 1.5; }
+    .suite-header{
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        padding:16px 24px 12px;
+        margin-top:-65px;
+        background:linear-gradient(135deg,#004d47 0%,#21877D 60%,#2EC4B6 100%);
+        border-radius:12px;
+        box-shadow:0 2px 8px rgba(0,77,71,.18);
+        margin-bottom:14px;
+    }
 
-/* ── UNITS LIST ── */
-.units-scroll { overflow-y: auto; flex: 1; }
-.units-scroll::-webkit-scrollbar { width: 4px; }
-.units-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+    .sh-super{
+        font-size:11px;
+        font-weight:700;
+        letter-spacing:2px;
+        color:#56D6C9;
+        text-transform:uppercase;
+        margin-bottom:2px;
+    }
 
-.unit-item {
-  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
-  cursor: pointer; border: none; background: transparent; text-align: left;
-  border-bottom: 1px solid var(--border); width: 100%; transition: background .15s;
-}
-.unit-item:last-child { border-bottom: none; }
-.unit-item:hover { background: #f9fafb; }
-.unit-item.active { background: #1f2937; }
-.unit-item.active .unit-name { color: #fff; }
-.unit-item.active .unit-icon { background: rgba(255,255,255,.1); }
-.unit-item.active .unit-icon svg { stroke: #fff; }
-.unit-icon { width: 36px; height: 36px; border-radius: 10px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.unit-icon svg { width: 17px; height: 17px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
-.unit-name { font-size: .88rem; font-weight: 800; color: var(--slate-dark); flex: 1; line-height: 1.3; }
-.unit-desc { font-size: .76rem; color: var(--muted); line-height: 1.4; margin-top: 2px; font-weight: 400; }
-.unit-item.active .unit-desc { color: rgba(255,255,255,.65); }
-.unit-item.active .unit-name { color: #fff; }
+    .sh-title{
+        font-size:26px;
+        font-weight:800;
+        color:#fff;
+        text-align:center;
+        line-height:1.2;
+    }
 
-/* ── DASHBOARDS LIST ── */
-.dash-scroll { overflow-y: auto; flex: 1; }
-.dash-scroll::-webkit-scrollbar { width: 4px; }
-.dash-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+    .sh-sub{
+        font-size:13px;
+        color:rgba(255,255,255,.75);
+        margin-top:4px;
+        text-align:center;
+    }
 
-.dash-item {
-  display: flex; flex-direction: column; gap: 3px; padding: 14px 18px;
-  cursor: pointer; border: none; background: transparent; text-align: left;
-  border-bottom: 1px solid var(--border); width: 100%; transition: background .15s;
-}
-.dash-item:last-child { border-bottom: none; }
-.dash-item:hover { background: #f9fafb; }
-.dash-item.active { background: #1f2937; border-left: 3px solid var(--teal-brand); }
-.dash-item.active .dash-title { color: #fff; }
-.dash-item.active .dash-type { background: rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
-.dash-title { font-size: .87rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; }
-.dash-type { display: inline-block; padding: 2px 7px; border-radius: 999px; background: #f0fdf4; color: #166534; font-size: .72rem; font-weight: 700; margin-top: 2px; }
-.dash-type.soon { background: #f3f4f6; color: var(--muted); }
-.dash-desc { font-size: .76rem; color: var(--muted); line-height: 1.4; margin-top: 2px; }
-.dash-item.active .dash-desc { color: rgba(255,255,255,.65); }
-.empty-state { padding: 32px 20px; text-align: center; color: var(--muted); font-size: .86rem; line-height: 1.7; }
+    .kpi-row{
+        display:flex;
+        gap:12px;
+        margin-bottom:18px;
+        flex-wrap:wrap;
+    }
 
-/* ── PREVIEW PANEL ── */
-.preview-panel { display: flex; flex-direction: column; flex: 1; height: 100%; }
-.preview-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.preview-header-info { flex: 1; }
-.preview-title { font-size: .95rem; font-weight: 800; color: var(--slate-dark); }
-.preview-meta { font-size: .79rem; color: var(--muted); margin-top: 2px; }
-.action-btn {
-  display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
-  border-radius: 999px; border: none; font-size: .82rem; font-weight: 800;
-  cursor: pointer; text-decoration: none; transition: transform .15s, background .15s;
-}
-.action-btn:hover { transform: translateY(-1px); }
-.action-btn--primary { background: #1f2937; color: #fff; }
-.action-btn--teal { background: var(--teal-light); color: var(--teal); }
-.preview-body { flex: 1; position: relative; overflow: hidden; }
-.preview-iframe { width: 100%; height: 100%; border: none; display: none; position: absolute; inset: 0; }
+    .kpi-card{
+        flex:1;
+        min-width:120px;
+        background:#F8FFFE;
+        border:1px solid #D1E8E4;
+        border-radius:10px;
+        padding:12px 14px;
+        text-align:center;
+        box-shadow:0 1px 4px rgba(0,77,71,.07);
+    }
 
-.preview-placeholder {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 12px;
-  color: var(--muted); font-size: .9rem; text-align: center; padding: 40px;
-}
-.preview-placeholder svg { width: 48px; height: 48px; stroke: #d1d5db; fill: none; stroke-width: 1.4; }
+    .kv{
+        font-size:28px;
+        font-weight:800;
+        color:#21877D;
+        line-height:1.1;
+    }
 
-.preview-loading {
-  position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center; gap: 14px;
-  background: #f8fafc; color: var(--muted); font-size: .88rem;
-}
-.preview-loading.show { display: flex; }
-.spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: var(--teal-brand); border-radius: 50%; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.countdown-wrap { width: 220px; height: 4px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
-.countdown-bar { height: 100%; background: var(--teal-brand); border-radius: 999px; width: 100%; }
+    .kl{
+        font-size:11px;
+        font-weight:600;
+        color:#6B7280;
+        text-transform:uppercase;
+        letter-spacing:.5px;
+        margin-top:3px;
+    }
 
-.preview-timeout {
-  position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center; gap: 16px;
-  background: #f8fafc; padding: 40px; text-align: center;
-}
-.preview-timeout.show { display: flex; }
-.preview-login {
-  position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center;
-  background: #f8fafc; padding: 40px; text-align: center;
-}
-.preview-login.show { display: flex; }
-.timeout-title { font-size: 1rem; font-weight: 800; color: var(--slate-dark); }
-.timeout-desc { color: var(--muted); font-size: .87rem; line-height: 1.6; max-width: 360px; }
+    .upd-banner{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        background:#dff7f2;
+        border:1px solid #D1E8E4;
+        border-radius:8px;
+        padding:6px 14px;
+        margin-bottom:14px;
+        font-size:13px;
+    }
 
-/* ── UPDATE MODAL ── */
-.modal-overlay {
-  display: none; position: fixed; inset: 0; z-index: 5000;
-  background: rgba(15,20,30,.55); backdrop-filter: blur(4px);
-  align-items: center; justify-content: center; padding: 20px;
-}
-.modal-overlay.show { display: flex; }
-.modal-box {
-  background: #fff; border-radius: 20px; width: 100%; max-width: 760px;
-  max-height: 90vh; overflow-y: auto; box-shadow: 0 32px 80px rgba(0,0,0,.28);
-  display: flex; flex-direction: column;
-}
-.modal-box::-webkit-scrollbar { width: 5px; }
-.modal-box::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-.modal-head {
-  padding: 24px 28px 18px; border-bottom: 1px solid var(--border);
-  display: flex; align-items: flex-start; gap: 14px; flex-shrink: 0;
-  position: sticky; top: 0; background: #fff; z-index: 2; border-radius: 20px 20px 0 0;
-}
-.modal-head-icon {
-  width: 44px; height: 44px; border-radius: 12px; background: var(--teal-light);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.modal-head-icon svg { width: 22px; height: 22px; stroke: var(--teal); fill: none; stroke-width: 1.8; }
-.modal-head-text { flex: 1; }
-.modal-head-text h2 { font-size: 1.05rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
-.modal-head-text p { font-size: .82rem; color: var(--muted); }
-.modal-close {
-  width: 32px; height: 32px; border-radius: 50%; border: none; background: #f3f4f6;
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  transition: background .15s; flex-shrink: 0; margin-top: 2px;
-}
-.modal-close:hover { background: #e5e7eb; }
-.modal-close svg { width: 16px; height: 16px; stroke: var(--slate); fill: none; stroke-width: 2.2; }
+    .upd-dot{
+        width:8px;
+        height:8px;
+        border-radius:50%;
+        background:#06D6A0;
+        flex-shrink:0;
+    }
 
-.modal-status-bar {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
-  background: var(--border); border-bottom: 1px solid var(--border);
-}
-.status-cell {
-  background: #fafafa; padding: 14px 18px;
-}
-.status-cell:first-child { border-radius: 0; }
-.status-label { font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
-.status-value { font-size: .88rem; font-weight: 800; color: var(--slate-dark); }
-.status-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700;
-}
-.status-badge.ok { background: #dcfce7; color: #166534; }
-.status-badge.warn { background: #fef9c3; color: #854d0e; }
-.status-badge.dot::before {
-  content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor;
-  display: inline-block;
-}
+    .sec-sep{
+        border:none;
+        border-top:1px solid #D1E8E4;
+        margin:16px 0;
+        opacity:.6;
+    }
 
-.modal-body { padding: 22px 28px 10px; flex: 1; }
-.modal-section-title {
-  font-size: .72rem; font-weight: 800; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 14px;
-}
+    .period-label{
+        text-align:center;
+        font-weight:700;
+        font-size:1.05rem;
+        color:#21877D;
+    }
 
-.file-card {
-  border: 1.5px solid var(--border); border-radius: 14px;
-  margin-bottom: 14px; overflow: hidden; transition: border-color .2s;
-}
-.file-card.file-selected { border-color: var(--teal-brand); }
-.file-card-head {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 18px; background: #fafafa; border-bottom: 1px solid var(--border);
-}
-.file-card.file-selected .file-card-head { background: #f0fdf9; border-color: #a7f3d0; }
-.file-icon {
-  width: 36px; height: 36px; border-radius: 9px; background: #f3f4f6;
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.file-card.file-selected .file-icon { background: var(--teal-light); }
-.file-icon svg { width: 17px; height: 17px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
-.file-card.file-selected .file-icon svg { stroke: var(--teal); }
-.file-name { font-size: .9rem; font-weight: 800; color: var(--slate-dark); flex: 1; }
-.file-selected-badge {
-  display: none; align-items: center; gap: 5px;
-  padding: 3px 10px; border-radius: 999px;
-  background: #dcfce7; color: #15803d; font-size: .75rem; font-weight: 700;
-}
-.file-selected-badge svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.5; }
-.file-card.file-selected .file-selected-badge { display: inline-flex; }
+    a.dl-min,
+    a.dl-min:link,
+    a.dl-min:visited{
+        color:#00A896 !important;
+        text-decoration:underline !important;
+        font-size:13px;
+        display:inline-block;
+        margin-top:6px;
+    }
 
-.file-meta-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
-  border-bottom: 1px solid var(--border);
-}
-.file-meta-cell { padding: 11px 18px; border-right: 1px solid var(--border); }
-.file-meta-cell:last-child { border-right: none; }
-.file-meta-label { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
-.file-meta-val { font-size: .84rem; font-weight: 700; color: var(--slate-dark); }
+    a.dl-min:hover{
+        opacity:.85;
+    }
 
-.file-actions { display: flex; align-items: center; gap: 10px; padding: 12px 18px; }
-.btn-download {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 14px; border-radius: 999px; border: 1.5px solid var(--border);
-  background: #fff; color: var(--slate-dark); font-size: .8rem; font-weight: 700;
-  cursor: pointer; transition: background .15s, border-color .15s; white-space: nowrap;
-}
-.btn-download:hover { background: #f3f4f6; border-color: #d1d5db; }
-.btn-download svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+    div.stDownloadButton > button{
+        background:transparent !important;
+        border:none !important;
+        box-shadow:none !important;
+        color:#21877D !important;
+        font-size:13px !important;
+        padding:0 !important;
+        text-decoration:underline !important;
+    }
 
-.file-attach-label {
-  flex: 1; display: flex; align-items: center; gap: 7px;
-  padding: 7px 14px; border-radius: 999px; border: 1.5px dashed #d1d5db;
-  background: #fafafa; color: var(--muted); font-size: .8rem; font-weight: 600;
-  cursor: pointer; transition: background .15s, border-color .15s; user-select: none;
-}
-.file-attach-label:hover { background: #f0fdf9; border-color: var(--teal-brand); color: var(--teal); }
-.file-attach-label svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
-.file-attach-input { display: none; }
+    div.stDownloadButton{
+        margin:2px 0 8px 0;
+    }
 
-.modal-footer {
-  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
-  padding: 18px 28px 24px; border-top: 1px solid var(--border);
-  position: sticky; bottom: 0; background: #fff; z-index: 2;
-  border-radius: 0 0 20px 20px; flex-shrink: 0;
-}
-.btn-cancel {
-  padding: 9px 22px; border-radius: 999px; border: 1.5px solid var(--border);
-  background: #fff; color: var(--slate); font-size: .87rem; font-weight: 700;
-  cursor: pointer; transition: background .15s;
-}
-.btn-cancel:hover { background: #f3f4f6; }
-.btn-upload {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 22px; border-radius: 999px; border: none;
-  background: #1f2937; color: #fff; font-size: .87rem; font-weight: 800;
-  cursor: pointer; transition: background .15s, transform .15s;
-}
-.btn-upload:hover { background: #111827; transform: translateY(-1px); }
-.btn-upload svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.2; }
-.btn-upload:disabled {
-  background: #d1d5db; color: #9ca3af; cursor: not-allowed; transform: none !important;
-}
-.btn-upload:disabled:hover { background: #d1d5db; transform: none; }
+    thead th{
+        background:#dff7f2 !important;
+        color:#004d47 !important;
+        font-weight:700 !important;
+    }
 
-.validation-msg {
-  margin: 0 18px 8px; padding: 9px 14px; border-radius: 8px;
-  font-size: .8rem; font-weight: 600; line-height: 1.5;
-  border-left: 3px solid transparent;
-}
-.validation-msg.error { background: #fef2f2; color: #991b1b; border-color: #f87171; }
-.validation-msg.success { background: #f0fdf4; color: #166534; border-color: #4ade80; }
-.validation-msg ul { margin: 4px 0 0 16px; }
-.validation-msg li { margin-bottom: 2px; }
+    section[data-testid="stSidebar"]{
+        background:#F0F7F6 !important;
+    }
 
-.toast { display: none; position: fixed; bottom: 28px; right: 28px; z-index: 3000; background: #1f2937; color: #fff; padding: 13px 20px; border-radius: 14px; font-size: .88rem; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
+    #mode-pill [role="radiogroup"]{
+        display:flex;
+        gap:8px;
+        margin-top:0;
+    }
 
-footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-size: 14px; }
+    #mode-pill [role="radio"]{
+        flex:1;
+        justify-content:center;
+        border:1px solid #d0d4d9;
+        border-radius:999px;
+        padding:8px 12px;
+        background:#f0f2f6;
+        color:#666;
+        font-weight:600;
+        cursor:pointer;
+        text-align:center;
+    }
 
-@media (max-width: 1100px) { .workspace { grid-template-columns: 240px 260px 1fr; } .col-panel { height: 700px; } }
-@media (max-width: 860px) { .workspace { grid-template-columns: 1fr 1fr; } .col-panel { height: 400px; } .preview-col { grid-column: span 2; height: 600px; } }
-@media (max-width: 580px) { .workspace { grid-template-columns: 1fr; } .col-panel { height: 380px; } .preview-col { grid-column: auto; height: 520px; } .intro-seneca { display: none; } header.hero { min-height: 260px; padding: 64px 18px 110px; } }
-</style>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-</head>
-<body>
+    #mode-pill [role="radio"][aria-checked="true"]{
+        background:#dff7f2;
+        color:#004d47;
+        border-color:#8fd7cc;
+    }
 
-<header class="hero">
-  <div class="back-button">
-    <a href="../../index.html" aria-label="Go back">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/>
-      </svg>
-    </a>
-  </div>
-  <div class="hero-inner">
-    <div class="hero-eyebrow">International Office UASM · Information System & Data Center</div>
-    <h1>KPIs for International Accreditations</h1>
-  </div>
-</header>
+    #mode-pill [data-baseweb="radio"] input{
+        display:none !important;
+    }
 
-<div class="intro-wrap">
-  <div class="intro-seneca" aria-hidden="true">
-    <img src="../imagenes/seneca.png" alt="Seneca">
-  </div>
-  <div class="intro-panel">
-    Dynamic BaseRoom with key information from the different areas of the School of Management, to report in international rankings and accreditations.
-    <strong> Select a unit, then a dashboard to preview it.</strong>
-  </div>
-</div>
+    /* ===== BOTONES SIDEBAR ===== */
 
-<section class="main">
-  <div class="workspace">
+    .modern-btn{
+        background:#FFFFFF;
+        border:1px solid #D1E8E4;
+        border-radius:10px;
+        padding:12px 14px;
+        color:#374151 !important;
+        font-size:14px;
+        font-weight:600;
+        text-decoration:none !important;
+        display:block;
+        text-align:center;
+        margin-bottom:10px;
+        transition:all .2s ease;
+        box-shadow:0 1px 3px rgba(0,0,0,.04);
+    }
 
-    <!-- UNITS -->
-    <div class="col-panel">
-      <div class="col-header">
-        <h3>Units</h3>
-        <p>Select a unit to see its dashboards</p>
-      </div>
-      <div class="units-scroll" id="unitList"></div>
-    </div>
+    .modern-btn:hover{
+        background:#F8FFFE;
+        border-color:#B7DCD6;
+    }
 
-    <!-- DASHBOARDS -->
-    <div class="col-panel">
-      <div class="col-header">
-        <h3>Dashboards</h3>
-        <p id="dashColDesc">Select a unit first</p>
-      </div>
-      <div class="dash-scroll" id="dashList"></div>
-    </div>
+    div[data-testid="stButton"] button{
+        background:#FFFFFF !important;
+        border:1px solid #D1E8E4 !important;
+        border-radius:10px !important;
+        color:#374151 !important;
+        font-size:14px !important;
+        font-weight:600 !important;
+        height:48px !important;
+        box-shadow:0 1px 3px rgba(0,0,0,.04) !important;
+    }
 
-    <!-- PREVIEW -->
-    <div class="col-panel preview-col">
-      <div class="preview-panel">
-        <div class="preview-header" style="padding:12px 16px;">
-          <div class="preview-header-info" style="flex:1;">
-            <div class="preview-title" id="previewTitle" style="font-size:.9rem;font-weight:800;color:#1f2937;"></div>
-          </div>
-          <button class="action-btn action-btn--teal" id="updateBtn" style="display:none;" onclick="openUpdateModal()">Update ↗</button>
-          <a href="#" class="action-btn action-btn--primary" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open Dashboard ↗</a>
+    div[data-testid="stButton"] button:hover{
+        background:#F8FFFE !important;
+        border-color:#B7DCD6 !important;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ── Inline helpers ─────────────────────────────────────────────────────────────
+import io as _io, base64 as _b64, datetime as _dt_mod
+
+def _xlsx_bytes(df, sheet_name="Data"):
+    buf = _io.BytesIO()
+    with pd.ExcelWriter(buf) as w:
+        df.to_excel(w, index=False, sheet_name=sheet_name[:31])
+    buf.seek(0)
+    return buf.getvalue()
+
+def _download_link(label, df, filename):
+    b64 = _b64.b64encode(_xlsx_bytes(df)).decode()
+    href = ("data:application/vnd.openxmlformats-officedocument"
+            ".spreadsheetml.sheet;base64," + b64)
+    st.markdown(
+        '<a class="dl-min" download="' + filename + '" href="' + href + '">' + label + '</a>',
+        unsafe_allow_html=True,
+    )
+
+def _render_header(title, subtitle=""):
+    sub = '<div class="sh-sub">' + subtitle + '</div>' if subtitle else ""
+    st.markdown(
+        '<div class="suite-header">'
+        '<div class="sh-super">UASM \u00b7 Faculty Analytics</div>'
+        '<div class="sh-title">' + title + '</div>' + sub +
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+def _render_update_banner():
+    t = _dt_mod.datetime.now().strftime("%d %b %Y \u00b7 %H:%M")
+    st.markdown(
+        '<div class="upd-banner"><span class="upd-dot"></span>'
+        '<b>Last updated:</b>&nbsp;' + t + '&nbsp;\u00b7&nbsp;Data is current</div>',
+        unsafe_allow_html=True,
+    )
+
+def _kpi_row(cards):
+    html = '<div class="kpi-row">'
+    for c in cards:
+        html += ('<div class="kpi-card"><div class="kv">' + str(c.get("v", "\u2014")) +
+                 '</div><div class="kl">' + str(c.get("l", "")) + '</div></div>')
+    html += "</div>"
+    st.markdown(html, unsafe_allow_html=True)
+
+def _sec_div():
+    st.markdown('<hr class="sec-sep">', unsafe_allow_html=True)
+    
+def _highlight_band(fig, label, all_labels):
+    if label in all_labels:
+        pos = all_labels.index(label)
+        fig.add_shape(
+            type="rect", xref="x", yref="paper",
+            x0=pos - 0.4, x1=pos + 0.4, y0=0, y1=1,
+            fillcolor=_P["highlight"], opacity=0.35, line_width=0,
+        )
+    return fig
+
+# ── Header ─────────────────────────────────────────────────────────────────────
+_render_header("Full-time Faculty Composition", "Evolution and distribution of full-time faculty by ranking")
+_render_update_banner()
+
+DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
+
+@st.cache_data(ttl=300)
+def load_data():
+    # URL de exportación directa — funciona con archivos .xlsx públicos en Google Drive
+    url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+    output_path = "/tmp/BD_Faculty.xlsx"
+
+    import requests
+    response = requests.get(url, stream=True)
+    with open(output_path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
+
+    df_ = pd.read_excel(output_path, sheet_name="BD PLANTA 2020-2025")
+
+    def _norm_per(val):
+        s = str(val).strip()
+        m_inter = re.search(r'((?:19|20)\d{2}).{0,6}inter', s, flags=re.IGNORECASE)
+        if m_inter:
+            return f"{m_inter.group(1)} Intersemestral"
+        m = re.search(r'((?:19|20)\d{2})\D?(\d{2})', s)
+        if m:
+            return f"{m.group(1)}-{m.group(2)}"
+        return None
+
+    first_col = df_.columns[0]
+    df_["Periodo"] = df_[first_col].map(_norm_per)
+
+    valid = df_["Periodo"].astype(str).str.match(
+        r'^(?:19|20)\d{2}-(10|20)$|^(?:19|20)\d{2}\sIntersemestral$'
+    )
+    df_ = df_.loc[valid].copy()
+
+    if "ID Nr." in df_.columns and "ID" not in df_.columns:
+        df_ = df_.rename(columns={"ID Nr.": "ID"})
+
+    def _key(p):
+        s = str(p)
+        y = int(s[:4])
+        suf = 30 if "Intersemestral" in s else int(s[-2:])
+        return (y, suf)
+    df_ = df_.sort_values(by="Periodo", key=lambda s: s.map(_key))
+    return df_
+
+df = load_data()
+
+# =============================
+# UTILS
+# =============================
+
+# =============================
+# SIDEBAR — Nav + Refresh + Timeframe
+# =============================
+
+all_periods   = df["Periodo"].astype(str).unique().tolist()
+sem_periods   = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
+inter_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sIntersemestral', p)]
+years         = sorted(pd.Series(all_periods).str[:4].unique().tolist())
+
+with st.sidebar:
+
+    st.markdown("""
+    <div style="
+        text-align:center;
+        padding-top:5px;
+        padding-bottom:20px;
+    ">
+        <h1 style="
+            color:#004d47;
+            font-size:28px;
+            font-weight:800;
+            margin-bottom:0px;
+        ">
+            UASM Faculty KPIs
+        </h1>
+        <div style="
+            color:#6B7280;
+            font-size:12px;
+            letter-spacing:1px;
+            text-transform:uppercase;
+        ">
+            Analytics Dashboard
         </div>
-        <div class="preview-body" id="previewBody">
-          <div class="preview-placeholder" id="previewPlaceholder">
-            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
-            <div>Select a dashboard to preview it here</div>
-          </div>
-          <div class="preview-loading" id="previewLoading">
-            <div class="spinner"></div>
-            <div>Loading dashboard…</div>
-            <div class="countdown-wrap"><div class="countdown-bar" id="countdownBar"></div></div>
-            <div id="countdownText" style="font-size:.78rem;color:#9ca3af;">Waiting up to 30 seconds</div>
-          </div>
-          <iframe class="preview-iframe" id="previewIframe" allow="fullscreen; scripts; same-origin; popups" allowfullscreen></iframe>
-          <div class="preview-timeout" id="previewTimeout">
-            <div style="font-size:2.5rem;opacity:.25;">⚡</div>
-            <div class="timeout-title">Dashboard taking too long</div>
-            <div class="timeout-desc">The preview could not load in time. Open the dashboard directly in a new tab.</div>
-            <a href="#" class="action-btn action-btn--primary" id="timeoutBtn" target="_blank" rel="noopener">Open dashboard ↗</a>
-          </div>
-          <div class="preview-login" id="previewLogin">
-            <div style="font-size:2.2rem;margin-bottom:14px;">🔐</div>
-            <div style="font-size:1rem;font-weight:800;color:#1f2937;margin-bottom:8px;">Sign in to view dashboards</div>
-            <div style="color:#6b7280;font-size:.87rem;line-height:1.6;margin-bottom:22px;max-width:320px;">Sign in with your <strong>@uniandes.edu.co</strong> account to access the KPI dashboards.</div>
-            <button id="kpiLoginGoogleBtn" style="display:inline-flex;align-items:center;gap:10px;padding:12px 24px;border-radius:999px;border:1.5px solid #e5e7eb;background:#fff;color:#1f2937;font-size:.9rem;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.08);transition:box-shadow .18s,transform .18s;">
-              <svg width="20" height="20" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-              Continue with Google
-            </button>
-            <div style="font-size:.75rem;color:#9ca3af;margin-top:12px;">Only @uniandes.edu.co accounts are authorized.</div>
-          </div>
-        </div>
-      </div>
     </div>
-
-  </div>
-</section>
-
-<footer>International Office · School of Management · Internal use only</footer>
-<div class="toast" id="toast"></div>
-<!-- ── UPDATE MODAL ─────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="updateModal" onclick="handleModalOverlayClick(event)">
-  <div class="modal-box" id="updateModalBox">
-
-    <!-- Header -->
-    <div class="modal-head">
-      <div class="modal-head-icon">
-        <svg viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 10 12 4 17 10"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
-      </div>
-      <div class="modal-head-text">
-        <h2>Update Dashboard Data Sources</h2>
-        <p>Upload new source files to refresh the dashboards with the latest data.</p>
-      </div>
-      <button class="modal-close" onclick="closeUpdateModal()" aria-label="Close">
-        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-
-    <!-- Modal loading skeleton -->
-    <div id="modalLoadingState" style="padding:48px 28px;display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--muted);font-size:.88rem;">
-      <div class="spinner"></div>
-      <div>Loading current data status…</div>
-    </div>
-
-    <!-- Modal error state -->
-    <div id="modalErrorState" style="display:none;padding:40px 28px;text-align:center;">
-      <div style="font-size:2rem;margin-bottom:10px;">⚠️</div>
-      <div style="font-size:.9rem;font-weight:700;color:#1f2937;margin-bottom:6px;">Could not load data</div>
-      <div id="modalErrorMsg" style="font-size:.82rem;color:var(--muted);margin-bottom:18px;"></div>
-      <button class="btn-download" onclick="loadModalData()">Retry</button>
-    </div>
-
-    <!-- Main modal content (hidden until data loads) -->
-    <div id="modalContent" style="display:none;">
-
-      <!-- File cards -->
-      <div class="modal-body">
-        <div class="modal-section-title">Source Files</div>
-
-        <!-- BD_PLANTA card -->
-        <div class="file-card" id="card-bd-planta">
-          <div class="file-card-head">
-            <div class="file-icon">
-              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-            </div>
-            <span class="file-name">BD_PLANTA</span>
-            <span class="file-selected-badge" id="badge-bd-planta">
-              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-              File ready
-            </span>
-          </div>
-          <div class="file-meta-grid">
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Update</div>
-              <div class="file-meta-val" id="meta-planta-date">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Period Loaded</div>
-              <div class="file-meta-val" id="meta-planta-period">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Next Expected Period</div>
-              <div class="file-meta-val" id="meta-planta-next">—</div>
-            </div>
-          </div>
-          <!-- Validation feedback -->
-          <div id="validation-bd-planta" class="validation-msg" style="display:none;"></div>
-          <div class="file-actions">
-            <button class="btn-download" onclick="handleDownload('BD_PLANTA')">
-              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download Template
-            </button>
-            <label class="file-attach-label" for="file-bd-planta">
-              <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-              <span id="label-bd-planta">Attach new file…</span>
-            </label>
-            <input type="file" id="file-bd-planta" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'bd-planta','BD_PLANTA','Periodo')">
-          </div>
-        </div>
-
-        <!-- BD_Catedra card -->
-        <div class="file-card" id="card-bd-catedra">
-          <div class="file-card-head">
-            <div class="file-icon">
-              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-            </div>
-            <span class="file-name">BD_Catedra</span>
-            <span class="file-selected-badge" id="badge-bd-catedra">
-              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-              File ready
-            </span>
-          </div>
-          <div class="file-meta-grid">
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Update</div>
-              <div class="file-meta-val" id="meta-catedra-date">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Period Loaded</div>
-              <div class="file-meta-val" id="meta-catedra-period">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Next Expected Period</div>
-              <div class="file-meta-val" id="meta-catedra-next">—</div>
-            </div>
-          </div>
-          <div id="validation-bd-catedra" class="validation-msg" style="display:none;"></div>
-          <div class="file-actions">
-            <button class="btn-download" onclick="handleDownload('BD_Catedra')">
-              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download Template
-            </button>
-            <label class="file-attach-label" for="file-bd-catedra">
-              <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-              <span id="label-bd-catedra">Attach new file…</span>
-            </label>
-            <input type="file" id="file-bd-catedra" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'bd-catedra','BD_Catedra','Periodo')">
-          </div>
-        </div>
-
-        <!-- Faculty_Questionnaire card -->
-        <div class="file-card" id="card-faculty-q">
-          <div class="file-card-head">
-            <div class="file-icon">
-              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-            </div>
-            <span class="file-name">Faculty_Questionnaire</span>
-            <span class="file-selected-badge" id="badge-faculty-q">
-              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-              File ready
-            </span>
-          </div>
-          <div class="file-meta-grid">
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Update</div>
-              <div class="file-meta-val" id="meta-fq-date">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Period Loaded</div>
-              <div class="file-meta-val" id="meta-fq-period">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Next Expected Period</div>
-              <div class="file-meta-val" id="meta-fq-next">—</div>
-            </div>
-          </div>
-          <div id="validation-faculty-q" class="validation-msg" style="display:none;"></div>
-          <div class="file-actions">
-            <button class="btn-download" onclick="handleDownload('Faculty_Questionnaire')">
-              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download Template
-            </button>
-            <label class="file-attach-label" for="file-faculty-q">
-              <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-              <span id="label-faculty-q">Attach new file…</span>
-            </label>
-            <input type="file" id="file-faculty-q" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'faculty-q','Faculty_Questionnaire','Year')">
-          </div>
-        </div>
-
-      </div><!-- /modal-body -->
-
-      <!-- Footer -->
-      <div class="modal-footer">
-        <button class="btn-cancel" onclick="closeUpdateModal()">Cancel</button>
-        <button class="btn-upload" id="uploadBtn" disabled title="Upload functionality coming soon">
-          <svg viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 10 12 4 17 10"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
-          Upload &amp; Update Data
-        </button>
-      </div>
-
-    </div><!-- /modalContent -->
-
-  </div>
-</div>
-<!-- ── /UPDATE MODAL ─────────────────────────────────────────────────── -->
-
-
-    <script>
-// ── AUTH (shared session with BaseRoom via sessionStorage) ───────────────
-const GOOGLE_CLIENT_ID_KPI = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
-const SCOPES_KPI   = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets";
-const ALLOWED_KPI  = "uniandes.edu.co";
-const SESSION_MS_KPI = 10 * 60 * 1000;
-
-let kpiToken    = sessionStorage.getItem("br_token") || null;
-let kpiEmail    = sessionStorage.getItem("br_email") || null;
-let kpiExpiry   = parseInt(sessionStorage.getItem("br_expiry") || "0") || null;
-let pendingDash = null;
-
-function isLoggedIn() {
-  return kpiToken && kpiEmail && kpiEmail.endsWith("@" + ALLOWED_KPI) &&
-         kpiExpiry && Date.now() < kpiExpiry;
-}
-function touchKpiSession() {
-  kpiExpiry = Date.now() + SESSION_MS_KPI;
-  sessionStorage.setItem("br_expiry", String(kpiExpiry));
-}
-["click","keydown","mousemove","touchstart"].forEach(ev =>
-  document.addEventListener(ev, () => { if(isLoggedIn()) touchKpiSession(); }, {passive:true})
-);
-setInterval(() => {
-  if (kpiToken && kpiExpiry && Date.now() > kpiExpiry) {
-    kpiToken = kpiEmail = kpiExpiry = null;
-    sessionStorage.removeItem("br_token");
-    sessionStorage.removeItem("br_email");
-    sessionStorage.removeItem("br_expiry");
-    showToast("Session expired. Please sign in again.");
-    resetPreview();
-  }
-}, 15000);
-
-function requireKpiLogin(action) {
-  if (isLoggedIn()) { action(); return; }
-  pendingDash = action;
-  // Show inline login panel in the preview area
-  document.getElementById("previewPlaceholder").style.display = "none";
-  document.getElementById("previewLoading").classList.remove("show");
-  document.getElementById("previewTimeout").classList.remove("show");
-  document.getElementById("previewIframe").style.display = "none";
-  document.getElementById("previewLogin").classList.add("show");
-}
-
-// ── DATA ──────────────────────────────────────────────────────────────────
-const UNITS = [
-  {
-    id: "faculty",
-    name: "Faculty",
-    desc: "Faculty deployment, qualifications, demographics, workload, and accreditation-relevant academic profiles.",
-    icon: `<circle cx="12" cy="7" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>`,
-    dashboards: [
-      { title: "Full-time Faculty Composition",    desc: "Composition by type of full-time faculty ranking, historical evolution, and detailed academic distribution.",                     url: "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/" },
-      { title: "Full-time Faculty Staffing Levels", desc: "Staffing levels, number of professors, teaching load, and detailed information on faculty allocation.",                          url: "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/" },
-      { title: "Distribution by Academic Area",    desc: "Distribution of full-time and part-time faculty by academic area, with evolution and comparative detail.",                       url: "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/" },
-      { title: "Faculty Demographics",             desc: "Demographic indicators of full-time and part-time faculty, including gender, nationality, and age patterns.",                    url: "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/" },
-      { title: "Full-time Faculty Questionnaire",  desc: "Survey results related to faculty activities, participation patterns, and relevant institutional insights.",                     url: "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/" },
-      { title: "Faculty Qualifications",           desc: "Faculty sufficiency and qualification indicators aligned with international accreditation standards.",                            url: "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/" },
-      { title: "Triennial Evaluation",             desc: "Consolidated results from triennial evaluation processes and strategic review indicators.",                                       url: "#", soon: true }
-    ]
-  },
-  {
-    id: "internationalization",
-    name: "Internationalization",
-    desc: "Mobility, agreements, visiting faculty, international activities, and global engagement indicators.",
-    icon: `<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 4 3 14 0 18M12 3c-3 4-3 14 0 18" stroke-width="1.3"/>`,
-    dashboards: [
-      { title: "International Faculty & Visiting Professors", desc: "International faculty and visiting professors metrics, origin countries, and engagement history.",        url: "#", soon: true },
-      { title: "International Publications & Conferences",    desc: "Publications, conference participation, and academic output with international reach.",                   url: "#", soon: true },
-      { title: "Faculty Academic Activities",                 desc: "International teaching activities, lectures, workshops, and academic engagements abroad.",               url: "#", soon: true },
-      { title: "International Research Seminars",             desc: "International research seminars hosted, speaker profiles, and academic contribution data.",              url: "#", soon: true },
-      { title: "Internationalization of the Campus",          desc: "Campus internationalization indicators, graduation requirements, and cross-cultural programmes.",        url: "#", soon: true },
-      { title: "International Weeks & Activities",            desc: "International weeks, global activities, partnerships events, and student participation rates.",          url: "#", soon: true },
-      { title: "UASM Seminars",                               desc: "Seminar series data, invited speakers, attendance figures, and contribution to academic positioning.",   url: "#", soon: true },
-      { title: "Student & PhD Mobility",                      desc: "Outgoing and incoming student mobility, PhD exchange programmes, and partner institution breakdown.",    url: "#", soon: true },
-      { title: "Signed Agreements",                           desc: "Active international agreements, MoUs, partnership tiers, and geographic distribution of alliances.",   url: "#", soon: true }
-    ]
-  },
-  { id: "alumni",     name: "Alumni & Career Services",  desc: "Employment distribution, salary trends, career outcomes, and placement indicators for graduates.",                         icon: `<path d="M9 7V6a3 3 0 0 1 6 0v1"/><rect x="3" y="7" width="18" height="12" rx="2"/>`,  dashboards: [], soon: true },
-  { id: "executive",  name: "Executive Education",       desc: "Consolidated KPIs related to executive programs, participation, reach, and operational performance.",                      icon: `<rect x="4" y="3" width="10" height="18" rx="2"/><path d="M8 7h6M8 11h6M8 15h4"/>`,    dashboards: [], soon: true },
-  { id: "programs",   name: "Academic Programs",         desc: "Admissions, student demographics, academic deployment, GPA behavior, and financial indicators.",                           icon: `<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 4v3M16 4v3M3 10h18"/>`,   dashboards: [], soon: true },
-  { id: "research",   name: "Research & Development",    desc: "Publications, research activity, academic production, projects, and broader scholarly impact.",                            icon: `<path d="M9 3v5l-4.5 8A3 3 0 0 0 7.3 20h9.4a3 3 0 0 0 2.8-4L15 8V3"/>`,              dashboards: [], soon: true },
-  { id: "resources",  name: "Resources & Admin",         desc: "Budget, funding, staffing, administrative support, and core operational resources of the School.",                         icon: `<path d="M12 2a7 7 0 1 0 0 14A7 7 0 0 0 12 2z"/><path d="M12 16v6M8 20h8"/>`,          dashboards: [], soon: true },
-];
-
-// ── STATE ────────────────────────────────────────────────────────────────
-let selectedUnit = null;
-let selectedDash = null;
-let previewTimer = null;
-let countdownInterval = null;
-const TIMEOUT_MS = 30000;
-
-// ── RENDER UNITS ─────────────────────────────────────────────────────────
-function renderUnits() {
-  const el = document.getElementById("unitList");
-  el.innerHTML = "";
-  UNITS.forEach(unit => {
-    const btn = document.createElement("button");
-    const isActive = selectedUnit === unit.id;
-    btn.className = "unit-item" + (isActive ? " active" : "");
-    btn.innerHTML = `
-      <div class="unit-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${unit.icon}</svg></div>
-      <div style="flex:1;min-width:0;">
-        <div class="unit-name">${unit.name}</div>
-        ${unit.desc ? `<div class="unit-desc">${unit.desc}</div>` : ""}
-      </div>
-`;
-    btn.addEventListener("click", () => {
-      selectedUnit = unit.id;
-      selectedDash = null;
-      renderUnits();
-      renderDashboards();
-      resetPreview();
-    });
-    el.appendChild(btn);
-  });
-}
-
-// ── RENDER DASHBOARDS ─────────────────────────────────────────────────────
-function renderDashboards() {
-  const el = document.getElementById("dashList");
-  const desc = document.getElementById("dashColDesc");
-  if (!selectedUnit) {
-    desc.textContent = "Select a unit first";
-    el.innerHTML =
-      `<div class="empty-state">
-          Click a unit to see its dashboards.
-       </div>`;
-    return;
-  }
-  const unit = UNITS.find(u => u.id === selectedUnit);
-  desc.textContent = unit.name;
-  el.innerHTML = "";
-  if (!unit.dashboards.length) {
-    el.innerHTML = `<div class="empty-state">No dashboards updated yet for this unit.</div>`;
-    return;
-  }
-  unit.dashboards.forEach((d, i) => {
-    const btn = document.createElement("button");
-    const isActive = selectedDash === i;
-    btn.className = "dash-item" + (isActive ? " active" : "");
-    const label = d.soon ? "Not updated" : "Streamlit Dashboard";
-    btn.innerHTML = `<span class="dash-title">${d.title}</span>${d.desc ? `<span class="dash-desc">${d.desc}</span>` : ""}<span class="dash-type${d.soon ? " soon" : ""}">${label}</span>`;
-    btn.addEventListener("click", () => {
-      if (d.soon || d.url === "#") { showToast("This dashboard has not been updated yet."); return; }
-      requireKpiLogin(() => {
-        selectedDash = i;
-        renderDashboards();
-        openPreview(d.title, d.url);
-      });
-    });
-    el.appendChild(btn);
-  });
-}
-
-// ── PREVIEW ───────────────────────────────────────────────────────────────
-function openPreview(title, url) {
-  clearTimeout(previewTimer);
-  clearInterval(countdownInterval);
-
-  const iframe   = document.getElementById("previewIframe");
-  const loading  = document.getElementById("previewLoading");
-  const timeout  = document.getElementById("previewTimeout");
-  const ph       = document.getElementById("previewPlaceholder");
-  const extBtn   = document.getElementById("openExtBtn");
-  const toBtn    = document.getElementById("timeoutBtn");
-  const bar      = document.getElementById("countdownBar");
-
-  const dashObj = UNITS.find(u=>u.id===selectedUnit)?.dashboards.find(d=>d.title===title);
-  document.getElementById("previewTitle").textContent = title;
-
-  const embedUrl = url.includes("?") ? url + "&embed=true" : url + "?embed=true";
-
-  extBtn.href  = url; extBtn.style.display = "inline-flex";
-  toBtn.href   = url;
-  const updBtn = document.getElementById("updateBtn");
-  updBtn.style.display = "inline-flex";
-
-  ph.style.display      = "none";
-  timeout.classList.remove("show");
-  iframe.style.display  = "none";
-  iframe.src            = "";
-  loading.classList.add("show");
-
-  // Countdown bar
-  bar.style.transition  = "none";
-  bar.style.width       = "100%";
-  requestAnimationFrame(() => {
-    bar.style.transition = `width ${TIMEOUT_MS}ms linear`;
-    bar.style.width      = "0%";
-  });
-
-  let s = Math.floor(TIMEOUT_MS / 1000);
-  document.getElementById("countdownText").textContent = `Waiting up to ${s} seconds`;
-  countdownInterval = setInterval(() => {
-    s--;
-    document.getElementById("countdownText").textContent =
-      s > 0 ? `Waiting up to ${s} seconds` : "Almost there…";
-  }, 1000);
-
-  iframe.onload = () => {
-    clearTimeout(previewTimer);
-    clearInterval(countdownInterval);
-    loading.classList.remove("show");
-    iframe.style.display = "block";
-
-  };
-
-  previewTimer = setTimeout(() => {
-    clearInterval(countdownInterval);
-    loading.classList.remove("show");
-    iframe.style.display = "none";
-    timeout.classList.add("show");
-
-  }, TIMEOUT_MS);
-
-  iframe.src = embedUrl;
-}
-
-function resetPreview() {
-  clearTimeout(previewTimer);
-  clearInterval(countdownInterval);
-  const iframe = document.getElementById("previewIframe");
-  iframe.src = "";
-  iframe.style.display = "none";
-  document.getElementById("previewLoading").classList.remove("show");
-  document.getElementById("previewTimeout").classList.remove("show");
-  document.getElementById("previewPlaceholder").style.display = "flex";
-  document.getElementById("previewTitle").textContent = "";
-  document.getElementById("previewLogin").classList.remove("show");
-  document.getElementById("openExtBtn").style.display = "none";
-  document.getElementById("updateBtn").style.display = "none";
-}
-
-function showToast(msg) {
-  const t = document.getElementById("toast");
-  t.textContent = msg; t.style.display = "block";
-  setTimeout(() => { t.style.display = "none"; }, 3000);
-}
-
-// ── LOGIN BUTTON ─────────────────────────────────────────────────────────
-document.getElementById("kpiLoginGoogleBtn").addEventListener("click", () => {
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID_KPI,
-    scope: SCOPES_KPI + " https://www.googleapis.com/auth/userinfo.email",
-    callback: (resp) => {
-      if (resp.error) { showToast("Authentication error: " + resp.error); return; }
-      kpiToken = resp.access_token;
-      fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: "Bearer " + kpiToken }
-      }).then(r => r.json()).then(info => {
-        kpiEmail = info.email || "";
-        if (!kpiEmail.endsWith("@" + ALLOWED_KPI)) {
-          kpiToken = kpiEmail = null;
-          showToast("Access denied. Only @uniandes.edu.co accounts are allowed.");
-          return;
-        }
-        touchKpiSession();
-        sessionStorage.setItem("br_token", kpiToken);
-        sessionStorage.setItem("br_email", kpiEmail);
-        
-        showToast("Signed in as " + kpiEmail);
-        document.getElementById("previewLogin").classList.remove("show");
-        if (pendingDash) { const a = pendingDash; pendingDash = null; a(); }
-      }).catch(() => showToast("Could not verify account."));
-    }
-  });
-  client.requestAccessToken();
-});
-
-// ── INIT ─────────────────────────────────────────────────────────────────
-selectedUnit = null;
-selectedDash = null;
-
-renderUnits();
-renderDashboards();
-resetPreview();
-
-// ── UPDATE MODAL ──────────────────────────────────────────────────────────
-const BD_FILE_ID       = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-";
-const TEMPLATE_FILE_ID = "1qhwyKzANWG_qt0cF-94UyZ_1itTPYOyYumd92HwfHiM";
-
-// Sheets config: sheetName → { periodCol, metaIdSuffix }
-const SHEET_CONFIG = {
-  "BD_PLANTA":             { periodCol: "Periodo", metaId: "planta",  cardId: "bd-planta"  },
-  "BD_Catedra":            { periodCol: "Periodo", metaId: "catedra", cardId: "bd-catedra" },
-  "Faculty_Questionnaire": { periodCol: "Year",    metaId: "fq",      cardId: "faculty-q"  }
-};
-
-// Template sheet names (each sheet in Template_BDFaculty matches the BD name exactly)
-const TEMPLATE_SHEET_MAP = {
-  "BD_PLANTA":             "BD_PLANTA",
-  "BD_Catedra":            "BD_Catedra",
-  "Faculty_Questionnaire": "Faculty_Questionnaire"
-};
-
-// Holds template columns per sheet once loaded
-const templateColumns = {};
-// Holds last period per sheet once loaded
-const sheetPeriods = {};
-
-// ── Helpers ──────────────────────────────────────────────────────────────
-function nextPeriod(period, colName) {
-  if (!period) return "—";
-  if (colName === "Year") {
-    // period is a year number
-    const y = parseInt(period);
-    return isNaN(y) ? "—" : String(y + 1);
-  }
-  // period format: "2025-1", "2025-2", "2025 - 1", "20251", etc.
-  const str = String(period).trim();
-  // Try patterns like "2025-1", "2025-2", "2025 - 1"
-  const m = str.match(/(\d{4})\s*[-–]\s*([12])/);
-  if (m) {
-    const y = parseInt(m[1]), s = parseInt(m[2]);
-    if (s === 1) return `${y} – 2`;
-    if (s === 2) return `${y + 1} – 1`;
-  }
-  // Try "20251" or "20252"
-  const m2 = str.match(/^(\d{4})([12])$/);
-  if (m2) {
-    const y = parseInt(m2[1]), s = parseInt(m2[2]);
-    if (s === 1) return `${y} – 2`;
-    if (s === 2) return `${y + 1} – 1`;
-  }
-  return "—";
-}
-
-function formatPeriod(raw, colName) {
-  if (raw === null || raw === undefined || raw === "") return "—";
-  if (colName === "Year") return String(raw);
-  const str = String(raw).trim();
-  const m = str.match(/(\d{4})\s*[-–]\s*([12])/);
-  if (m) return `${m[1]} – ${m[2]}`;
-  const m2 = str.match(/^(\d{4})([12])$/);
-  if (m2) return `${m2[1]} – ${m2[2]}`;
-  return str;
-}
-
-// Parse a Google Sheets CSV export for a given sheet
-async function fetchSheetCSV(fileId, sheetName) {
-  // Use Google Sheets export URL with gid not needed — use sheet name via export
-  const url = `https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching sheet "${sheetName}"`);
-  const text = await resp.text();
-  return parseCSV(text);
-}
-
-// Minimal CSV parser (handles quoted fields)
-function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (!lines.length) return { headers: [], rows: [] };
-  const headers = splitCSVLine(lines[0]);
-  const rows = lines.slice(1).map(l => {
-    const vals = splitCSVLine(l);
-    const obj = {};
-    headers.forEach((h, i) => { obj[h] = vals[i] !== undefined ? vals[i] : ""; });
-    return obj;
-  });
-  return { headers, rows };
-}
-
-function splitCSVLine(line) {
-  const result = [];
-  let cur = "", inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (c === '"') {
-      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
-      else inQ = !inQ;
-    } else if (c === ',' && !inQ) {
-      result.push(cur.trim()); cur = "";
-    } else cur += c;
-  }
-  result.push(cur.trim());
-  return result;
-}
-
-// Get last modified date of a Google Drive file (requires OAuth token)
-async function getDriveFileModifiedDate(fileId, token) {
-  const resp = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=modifiedTime`,
-    { headers: { Authorization: "Bearer " + token } }
-  );
-  if (!resp.ok) return null;
-  const data = await resp.json();
-  if (!data.modifiedTime) return null;
-  return new Date(data.modifiedTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-// ── Load modal data ───────────────────────────────────────────────────────
-async function loadModalData() {
-  const loading = document.getElementById("modalLoadingState");
-  const error   = document.getElementById("modalErrorState");
-  const content = document.getElementById("modalContent");
-
-  loading.style.display = "flex";
-  error.style.display   = "none";
-  content.style.display = "none";
-
-  try {
-    // Fetch modified date if logged in
-    let modDate = null;
-    if (isLoggedIn()) {
-      modDate = await getDriveFileModifiedDate(BD_FILE_ID, kpiToken);
-    }
-
-    // Fetch each sheet to get last period and template columns
-    for (const [sheetName, cfg] of Object.entries(SHEET_CONFIG)) {
-      // BD data — get last period
-      try {
-        const { headers, rows } = await fetchSheetCSV(BD_FILE_ID, sheetName);
-        // Find the period column (case-insensitive)
-        const periodHeader = headers.find(h => h.trim().toLowerCase() === cfg.periodCol.toLowerCase());
-        let lastPeriod = "—";
-        if (periodHeader && rows.length > 0) {
-          // Get all non-empty period values and pick the max
-          const periods = rows
-            .map(r => r[periodHeader])
-            .filter(v => v && String(v).trim() !== "");
-          if (periods.length > 0) {
-            // Sort numerically/lexicographically and take last
-            periods.sort((a, b) => {
-              const na = parseFloat(String(a).replace(/\D/g, ""));
-              const nb = parseFloat(String(b).replace(/\D/g, ""));
-              return isNaN(na) || isNaN(nb) ? String(a).localeCompare(String(b)) : na - nb;
-            });
-            lastPeriod = periods[periods.length - 1];
-          }
-        }
-        sheetPeriods[sheetName] = { raw: lastPeriod, col: cfg.periodCol, headers };
-      } catch(e) {
-        sheetPeriods[sheetName] = { raw: "—", col: cfg.periodCol, headers: [] };
-      }
-
-      // Template — get column list
-      try {
-        const { headers: tplHeaders } = await fetchSheetCSV(TEMPLATE_FILE_ID, TEMPLATE_SHEET_MAP[sheetName]);
-        templateColumns[sheetName] = tplHeaders.map(h => h.trim().toLowerCase()).filter(h => h);
-      } catch(e) {
-        templateColumns[sheetName] = [];
-      }
-    }
-
-    // Populate UI
-    const entries = [
-      { sheetName: "BD_PLANTA",             metaDate: "meta-planta-date", metaPeriod: "meta-planta-period", metaNext: "meta-planta-next" },
-      { sheetName: "BD_Catedra",            metaDate: "meta-catedra-date", metaPeriod: "meta-catedra-period", metaNext: "meta-catedra-next" },
-      { sheetName: "Faculty_Questionnaire", metaDate: "meta-fq-date",     metaPeriod: "meta-fq-period",     metaNext: "meta-fq-next"     }
-    ];
-
-    entries.forEach(({ sheetName, metaDate, metaPeriod, metaNext }) => {
-      const sp = sheetPeriods[sheetName] || { raw: "—", col: "Periodo" };
-      const formatted = formatPeriod(sp.raw, sp.col);
-      const nxt = nextPeriod(sp.raw, sp.col);
-      document.getElementById(metaDate).textContent   = modDate || (isLoggedIn() ? "—" : "Sign in to view");
-      document.getElementById(metaPeriod).textContent = formatted;
-      document.getElementById(metaNext).textContent   = nxt;
-    });
-
-    loading.style.display = "none";
-    content.style.display = "block";
-
-  } catch (err) {
-    loading.style.display = "none";
-    document.getElementById("modalErrorMsg").textContent = err.message || "Unknown error.";
-    error.style.display = "block";
-  }
-}
-
-// ── Modal open/close ──────────────────────────────────────────────────────
-function openUpdateModal() {
-  document.getElementById("updateModal").classList.add("show");
-  document.body.style.overflow = "hidden";
-  loadModalData();
-}
-function closeUpdateModal() {
-  document.getElementById("updateModal").classList.remove("show");
-  document.body.style.overflow = "";
-}
-function handleModalOverlayClick(e) {
-  if (e.target === document.getElementById("updateModal")) closeUpdateModal();
-}
-
-// ── File selection + validation ───────────────────────────────────────────
-async function handleFileSelect(input, cardKey, sheetName, periodCol) {
-  const card     = document.getElementById("card-" + cardKey);
-  const lbl      = document.getElementById("label-" + cardKey);
-  const valDiv   = document.getElementById("validation-" + cardKey);
-
-  if (!input.files || input.files.length === 0) {
-    card.classList.remove("file-selected");
-    lbl.textContent = "Attach new file…";
-    valDiv.style.display = "none";
-    valDiv.className = "validation-msg";
-    return;
-  }
-
-  const file = input.files[0];
-  lbl.textContent = file.name;
-  valDiv.style.display = "block";
-  valDiv.className = "validation-msg";
-  valDiv.textContent = "Validating columns…";
-
-  try {
-    const fileColumns = await readFileColumns(file);
-
-    const expected = templateColumns[sheetName] || [];
-    if (expected.length === 0) {
-      // Template not loaded — skip validation
-      card.classList.add("file-selected");
-      valDiv.className = "validation-msg success";
-      valDiv.textContent = "✓ File selected. Column template not available for comparison.";
-      return;
-    }
-
-    const fileCols = fileColumns.map(h => h.trim().toLowerCase()).filter(h => h);
-    const missing  = expected.filter(e => !fileCols.includes(e));
-    const extra    = fileCols.filter(f => !expected.includes(f));
-
-    if (missing.length === 0) {
-      card.classList.add("file-selected");
-      valDiv.className = "validation-msg success";
-      valDiv.innerHTML = `✓ All ${expected.length} required columns present.` +
-        (extra.length > 0 ? ` <span style="font-weight:400;opacity:.75;">(${extra.length} extra column${extra.length>1?"s":""} ignored)</span>` : "");
-    } else {
-      card.classList.remove("file-selected");
-      valDiv.className = "validation-msg error";
-      valDiv.innerHTML = `⚠ Missing ${missing.length} required column${missing.length>1?"s":""}:<ul>` +
-        missing.map(m => `<li>${m}</li>`).join("") + `</ul>`;
-    }
-  } catch (err) {
-    card.classList.remove("file-selected");
-    valDiv.className = "validation-msg error";
-    valDiv.textContent = "Could not read file: " + err.message;
-  }
-}
-
-// Read column headers from an uploaded .xlsx / .xls / .csv file
-async function readFileColumns(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("File read error"));
-    const ext = file.name.split(".").pop().toLowerCase();
-
-    if (ext === "csv") {
-      reader.onload = (e) => {
-        const text = e.target.result;
-        const firstLine = text.split(/\r?\n/)[0] || "";
-        resolve(splitCSVLine(firstLine));
-      };
-      reader.readAsText(file);
-    } else {
-      // xlsx / xls — use SheetJS via CDN (loaded dynamically)
-      reader.onload = async (e) => {
-        try {
-          if (!window.XLSX) {
-            await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
-          }
-          const data = new Uint8Array(e.target.result);
-          const wb   = XLSX.read(data, { type: "array" });
-          const ws   = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-          resolve(rows[0] || []);
-        } catch(err) { reject(err); }
-      };
-      reader.readAsArrayBuffer(file);
-    }
-  });
-}
-
-function loadScript(src) {
-  return new Promise((res, rej) => {
-    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
-    const s = document.createElement("script");
-    s.src = src; s.onload = res; s.onerror = rej;
-    document.head.appendChild(s);
-  });
-}
-
-// ── Download template ─────────────────────────────────────────────────────
-function handleDownload(sheetName) {
-  // Export the specific sheet as xlsx from the template Google Sheets file
-  const gid = { "BD_PLANTA": 0, "BD_Catedra": 1, "Faculty_Questionnaire": 2 };
-  // Use the export URL — gid is unknown so we use sheet name export
-  const url = `https://docs.google.com/spreadsheets/d/${TEMPLATE_FILE_ID}/export?format=xlsx&sheet=${encodeURIComponent(sheetName)}`;
-  const a = document.createElement("a");
-  a.href = url; a.target = "_blank"; a.rel = "noopener";
-  a.download = `Template_${sheetName}.xlsx`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-}
-
-// ── Upload (disabled for now) ─────────────────────────────────────────────
-// Upload button is disabled until backend is ready.
-
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeUpdateModal(); });
-
-</script>
-</body>
-</html>
+    """, unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("#### Timeframe")
+    tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
+
+    if tmode == "Semestral":
+        vis = [p.replace("-", "") for p in sem_periods]
+        idx = len(vis) - 1 if vis else 0
+        sel_vis = st.selectbox("Periodo", vis, index=idx if vis else None)
+        sel_period_internal = sem_periods[vis.index(sel_vis)] if vis else None
+        sel_period_label    = sel_vis
+    elif tmode == "Anual":
+        idx = len(years) - 1 if years else 0
+        sel_period_internal = st.selectbox("Periodo", years, index=idx if years else None)
+        sel_period_label    = sel_period_internal
+    else:
+        idx = len(inter_periods) - 1 if inter_periods else 0
+        sel_period_internal = st.selectbox("Periodo", inter_periods, index=idx if inter_periods else None)
+        sel_period_label    = sel_period_internal
+
+    xlsx_data = _xlsx_bytes(df)
+    b64 = _b64.b64encode(xlsx_data).decode()
+    
+    st.markdown(
+        f"""
+        <a class="modern-btn"
+           download="FT_Base_Completa.xlsx"
+           href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}">
+           ⭳ Descargar Base Completa
+        </a>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    if st.button(
+        "↻ Actualizar Data",
+        use_container_width=True
+    ):
+        st.cache_data.clear()
+        st.rerun()
+
+# =============================
+# RANKING ORDER & COLOR MAP
+# =============================
+base_order = [
+    "Full Professor", "Associate Professor", "Assistant Professor", "Instructor",
+    "Adjunct Faculty", "Distinguished Practitioner", "Emeritus Professor"
+]
+uniq_ranks    = df["Faculty Ranking"].dropna().astype(str).unique().tolist()
+ranking_order = [x for x in base_order if x in uniq_ranks] + [x for x in uniq_ranks if x not in base_order]
+
+if "Faculty Ranking" in df.columns:
+    df["Faculty Ranking"] = pd.Categorical(df["Faculty Ranking"], categories=ranking_order, ordered=True)
+
+palette = [
+    "#037C70","#27BDAE","#4FFF98","#FFD166",
+    "#F4A261","#E76F51","#9D4EDD","#6D597A",
+    "#118AB2","#073B4C","#8AC926","#FF70A6"
+]
+color_map_rk = {rk: palette[i % len(palette)] for i, rk in enumerate(ranking_order)}
+
+# =============================
+# HELPERS
+# =============================
+def periods_for_tables():
+    if tmode == "Semestral":       return sem_periods
+    if tmode == "Intersemestral":  return inter_periods
+    return years
+
+def df_active_for_selection():
+    if sel_period_internal is None:
+        return df.iloc[0:0].copy()
+    if tmode in ("Semestral", "Intersemestral"):
+        return df[df["Periodo"].astype(str).eq(sel_period_internal)].copy()
+    y   = str(sel_period_internal)
+    dfa = df[df["Periodo"].astype(str).str.startswith(y)].copy()
+    return dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+
+def pivot_counts_by_ranking():
+    cols = periods_for_tables()
+    if tmode in ("Semestral", "Intersemestral"):
+        return (
+            pd.pivot_table(
+                df[df["Periodo"].isin(cols)],
+                index="Faculty Ranking", columns="Periodo",
+                values="ID", aggfunc="count", fill_value=0
+            ).reindex(ranking_order)
+        )
+    out = {rk: {y: 0 for y in cols} for rk in ranking_order}
+    for y in cols:
+        dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
+        if dfa.empty: continue
+        dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+        for rk, v in dfa.groupby("Faculty Ranking")["ID"].count().items():
+            out.setdefault(rk, {})[y] = int(v)
+    return pd.DataFrame(out).T.reindex(ranking_order).reindex(columns=cols, fill_value=0)
+
+def line_source_all():
+    cols = periods_for_tables()
+    if tmode in ("Semestral", "Intersemestral"):
+        dat = (
+            df[df["Periodo"].isin(cols)]
+            .groupby(["Periodo","Faculty Ranking"])["ID"]
+            .count().reset_index(name="Count")
+        )
+        dat["Periodo"] = pd.Categorical(dat["Periodo"], categories=cols, ordered=True)
+        return dat, cols
+    rows = []
+    for y in cols:
+        dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
+        dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+        cts = (
+            dfa.groupby("Faculty Ranking")["ID"].count()
+               .reindex(ranking_order, fill_value=0).reset_index()
+               .rename(columns={"ID":"Count"})
+        )
+        cts["Periodo"] = str(y)
+        rows.append(cts)
+    out = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(columns=["Faculty Ranking","Count","Periodo"])
+    out["Periodo"] = pd.Categorical(out["Periodo"], categories=cols, ordered=True)
+    return out, cols
+
+def line_source_single(rank):
+    cols = periods_for_tables()
+    if tmode in ("Semestral", "Intersemestral"):
+        dat = (
+            df[df["Periodo"].isin(cols) & (df["Faculty Ranking"] == rank)]
+            .groupby("Periodo")["ID"].count()
+            .reindex(cols, fill_value=0).reset_index(name="Count")
+        )
+        return dat, cols
+    vals = []
+    for y in cols:
+        dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
+        dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+        vals.append({"Periodo": str(y), "Count": int(dfa[dfa["Faculty Ranking"] == rank]["ID"].count())})
+    return pd.DataFrame(vals), cols
+
+def highlight_current_period(fig, current_period, xcats):
+    if not current_period or current_period not in xcats: return
+    pos = xcats.index(current_period)
+    fig.add_shape(
+        type="rect", xref="x", yref="paper",
+        x0=pos-0.4, x1=pos+0.4, y0=0, y1=1,
+        fillcolor="#D0E5F5", opacity=0.35, line_width=0
+    )
+
+# =============================
+# PIVOT TABLE
+# =============================
+pivot = pivot_counts_by_ranking().reindex(ranking_order)
+pivot.loc["Total"] = pivot.sum(numeric_only=True)
+
+st.subheader("Number of Full-time Faculty by Ranking")
+
+def _bold_total(df_):
+    s = pd.DataFrame("", index=df_.index, columns=df_.columns)
+    if "Total" in df_.index: s.loc["Total", :] = "font-weight:700;"
+    return s
+
+def _highlight_last(df_):
+    s = pd.DataFrame("", index=df_.index, columns=df_.columns)
+    if len(df_.columns) > 0 and "Total" in df_.index:
+        s.loc["Total", df_.columns[-1]] = "background-color:#dff7f2;color:#004d47;font-weight:700;"
+    return s
+
+st.dataframe(
+    pivot.style.apply(_bold_total, axis=None).apply(_highlight_last, axis=None).format(precision=0),
+    use_container_width=True
+)
+_download_link(
+    "Descargar tabla (Excel)",
+    pivot.reset_index().rename(columns={"index":"Faculty Ranking"}),
+    f"FT_Composition_{tmode}.xlsx"
+)
+
+# =============================
+# CHARTS
+# =============================
+periods_sorted = periods_for_tables()
+st.session_state.setdefault("show_all", True)
+st.session_state.setdefault("single_ranking", "Select...")
+
+def on_select_ranking():
+    if st.session_state.single_ranking != "Select...":
+        st.session_state.show_all = False
+
+def on_toggle_show_all():
+    if st.session_state.show_all:
+        st.session_state.single_ranking = "Select..."
+
+st.header("Evolution & composition")
+col_left, col_right = st.columns(2)
+
+with col_right:
+    st.subheader("Composition by period")
+    st.markdown(
+        f"<div style='text-align:center;font-weight:800;font-size:2rem;padding-top:4px;'>{sel_period_label}</div>",
+        unsafe_allow_html=True
+    )
+    if tmode in ("Semestral", "Intersemestral"):
+        dfbar = df[df["Periodo"].astype(str).eq(sel_period_internal)]
+    else:
+        y    = str(sel_period_internal)
+        dfa  = df[df["Periodo"].astype(str).str.startswith(y)].copy()
+        dfbar = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+
+    bar_counts = (
+        dfbar.groupby("Faculty Ranking")["ID"].count()
+             .reindex(ranking_order).fillna(0).reset_index()
+    )
+    bar_counts.columns = ["Faculty Ranking", "Count"]
+    st.metric("Total Faculty:", int(bar_counts["Count"].sum()))
+
+    fig_bar = px.bar(
+        bar_counts, x="Count", y="Faculty Ranking", orientation="h",
+        text="Count", color="Faculty Ranking", color_discrete_map=color_map_rk,
+        category_orders={"Faculty Ranking": ranking_order[::-1]}
+    )
+    fig_bar.update_xaxes(range=[0, max(1, int(bar_counts["Count"].max() or 0)) + 5], title=None)
+    fig_bar.update_yaxes(title=None)
+    fig_bar.update_traces(textposition="outside")
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+with col_left:
+    st.subheader("Evolution of rankings")
+    st.checkbox("Show all lines", key="show_all", on_change=on_toggle_show_all)
+    st.selectbox("Select a ranking:", ["Select..."] + ranking_order,
+                 key="single_ranking", on_change=on_select_ranking)
+
+    fig_line = None
+    xcats    = periods_sorted
+
+    if st.session_state.show_all:
+        data_long, xcats = line_source_all()
+        y_max = max(1, int(data_long["Count"].max()) if not data_long.empty else 0)
+        fig_line = px.line(
+            data_long, x="Periodo", y="Count", color="Faculty Ranking",
+            markers=True, title="Evolution — all rankings",
+            color_discrete_map=color_map_rk,
+            category_orders={"Periodo": xcats, "Faculty Ranking": ranking_order}
+        )
+        fig_line.update_yaxes(range=[0, y_max + 1], title=None)
+        fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title=None)
+        fig_line.update_layout(height=550, showlegend=False)
+    else:
+        rk = st.session_state.single_ranking
+        if rk != "Select...":
+            data_single, xcats = line_source_single(rk)
+            y_max = max(1, int(data_single["Count"].max()) if not data_single.empty else 0)
+            fig_line = px.line(
+                data_single, x="Periodo", y="Count", markers=True,
+                title=f"Evolution — {rk}",
+                color_discrete_sequence=[color_map_rk.get(rk, "#00A896")],
+                category_orders={"Periodo": xcats}
+            )
+            fig_line.update_yaxes(range=[0, y_max + 1], title=None)
+            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title=None)
+            fig_line.update_layout(height=480)
+        else:
+            st.info("Select a ranking to visualize its evolution.")
+
+    if fig_line is not None:
+        _highlight_band(fig_line, sel_period_internal, list(xcats))
+        st.plotly_chart(fig_line, use_container_width=True)
+
+# =============================
+# DETAIL TABLE
+# =============================
+st.subheader("Faculty Detail")
+active = df_active_for_selection()
+selected_ranking = (
+    None if st.session_state.show_all or st.session_state.single_ranking == "Select..."
+    else st.session_state.single_ranking
+)
+
+if selected_ranking:
+    detail_df = active[active["Faculty Ranking"] == selected_ranking].copy()
+    title_txt = f"### **{len(detail_df)}** **{selected_ranking}** in period **{sel_period_label}**"
+else:
+    detail_df = active.copy()
+    title_txt = f"### **{len(detail_df)}** Full-time Faculty in period **{sel_period_label}**"
+
+st.markdown(title_txt)
+detail_cols = [
+    "Periodo","ID","ID Nr.","Full Name","Academic Area",
+    "Faculty Ranking","Subcategorization","Faculty Qualific.","P/S",
+    "Highest Earned Degree","Year","University","Normal professional Resp."
+]
+show_cols = [c for c in detail_cols if c in detail_df.columns]
+st.dataframe(detail_df[show_cols], use_container_width=True)
+_download_link(
+    "Descargar detalle (Excel)",
+    detail_df[show_cols],
+    f"FT_Composition_Detail_{sel_period_label}.xlsx"
+)
