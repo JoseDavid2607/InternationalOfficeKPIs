@@ -354,13 +354,7 @@ PALETTE = [
 ]
 df = df_full.copy() if st.session_state.modo_faculty == "Full-time" else df_part.copy()
 
-# ========= HEADER (solo título grande) =========
-header_title = (
-    "Full-time Faculty Distribution by Academic Area"
-    if st.session_state.get("modo_faculty", "Full-time") == "Full-time"
-    else "Part-time Faculty Distribution by Academic Area"
-)
-st.markdown(f'<div class="header-title">{header_title}</div>', unsafe_allow_html=True)
+
 
 # ========= TOP PIVOT TABLE (depende del timeframe) =========
 tmode_now   = st.session_state.get("sel_tf_mode", "Semestral")
