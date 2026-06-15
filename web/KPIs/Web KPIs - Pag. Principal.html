@@ -364,6 +364,34 @@ header.hero h1 {
 .validation-msg ul { margin: 4px 0 0 16px; }
 .validation-msg li { margin-bottom: 2px; }
 
+/* ── PERIOD SELECTOR ── */
+.period-selector-wrap {
+  margin: 0 0 20px; padding: 16px 18px; background: #f8fafc;
+  border: 1.5px solid #d1d9e6; border-radius: 12px;
+}
+.period-selector-wrap label {
+  display: block; font-size: .72rem; font-weight: 800; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px;
+}
+.period-selector-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.period-select {
+  flex: 1; min-width: 160px; padding: 8px 32px 8px 12px;
+  border: 1.5px solid #d1d9e6; border-radius: 8px; background: #fff;
+  font-size: .88rem; font-weight: 700; color: var(--slate-dark);
+  appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; cursor: pointer;
+}
+.period-select:focus { outline: none; border-color: var(--teal-brand); box-shadow: 0 0 0 3px rgba(13,148,136,.10); }
+.period-hint {
+  font-size: .76rem; color: var(--muted); margin-top: 6px; font-style: italic;
+}
+.period-overwrite-warn {
+  display: none; margin-top: 8px; padding: 7px 12px; border-radius: 7px;
+  background: #fff7ed; color: #c2410c; border: 1px solid #fdba74;
+  font-size: .78rem; font-weight: 600;
+}
+.period-overwrite-warn.show { display: block; }
+
 .toast { display: none; position: fixed; bottom: 28px; right: 28px; z-index: 3000; background: #1f2937; color: #fff; padding: 13px 20px; border-radius: 14px; font-size: .88rem; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
 
 footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-size: 14px; }
@@ -507,7 +535,19 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       <div class="modal-body">
         <div class="modal-section-title">Source Files</div>
 
-        <!-- BD_PLANTA card -->
+        <!-- Period Selector -->
+        <div class="period-selector-wrap" id="periodSelectorWrap">
+          <label for="periodSelect">Period to Update</label>
+          <div class="period-selector-row">
+            <select class="period-select" id="periodSelect" onchange="handlePeriodChange()">
+              <option value="">— Select a period —</option>
+            </select>
+          </div>
+          <div class="period-hint" id="periodHint">Select the semester you are loading data for.</div>
+          <div class="period-overwrite-warn" id="periodOverwriteWarn">
+            ⚠ This period already exists in the database. Existing records will be replaced with the new data.
+          </div>
+        </div>
         <div class="file-card" id="card-bd-planta">
           <div class="file-card-head">
             <div class="file-icon">
@@ -673,7 +713,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
     <script>
 // ── AUTH (shared session with BaseRoom via sessionStorage) ───────────────
 const GOOGLE_CLIENT_ID_KPI = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
-const SCOPES_KPI   = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets";
+const SCOPES_KPI   = "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets";
 const ALLOWED_KPI  = "uniandes.edu.co";
 const SESSION_MS_KPI = 10 * 60 * 1000;
 
@@ -1156,12 +1196,15 @@ async function xlsxToMatrix(arrayBuffer, sheetName) {
 // (row `headerRow`, 1-indexed, starting at column `startCol`), trimmed of empty trailing cells
 async function fetchXlsxHeaderRow(fileId, sheetName, headerRow, startCol) {
   if (!isLoggedIn()) throw new Error("Sign in required to read template columns.");
-  const buf = await fetchDriveFileArrayBuffer(fileId, kpiToken);
+  // Google Sheets must be exported via the export endpoint (alt=media doesn't work for Sheets)
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
+  const resp = await fetch(exportUrl, { headers: { Authorization: "Bearer " + kpiToken } });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} exporting template sheet`);
+  const buf = await resp.arrayBuffer();
   const matrix = await xlsxToMatrix(buf, sheetName);
   const startIdx = colLetterToIndex(startCol);
   const row = matrix[headerRow - 1] || [];
   const headers = row.slice(startIdx);
-  // Trim trailing empty headers
   while (headers.length && (headers[headers.length - 1] === "" || headers[headers.length - 1] === undefined)) {
     headers.pop();
   }
@@ -1222,6 +1265,7 @@ async function loadModalData() {
         // Find the period column (case-insensitive, trim whitespace)
         const periodHeader = headers.find(h => h.trim().toLowerCase() === cfg.periodCol.toLowerCase());
         let lastPeriod = "—";
+        let allRawPeriods = [];
         if (periodHeader && rows.length > 0) {
           const periods = rows
             .map(r => r[periodHeader])
@@ -1234,9 +1278,11 @@ async function loadModalData() {
               return isNaN(na) || isNaN(nb) ? String(a).localeCompare(String(b)) : na - nb;
             });
             lastPeriod = periods[periods.length - 1];
+            // Keep unique flat values for the period selector
+            allRawPeriods = [...new Set(periods.map(p => String(p).trim().replace(/[^0-9]/g, "")))];
           }
         }
-        sheetPeriods[sheetName] = { raw: lastPeriod, col: cfg.periodCol, headers };
+        sheetPeriods[sheetName] = { raw: lastPeriod, rawAll: allRawPeriods, col: cfg.periodCol, headers };
       } catch(e) {
         console.warn("Could not fetch sheet", sheetName, e);
         sheetPeriods[sheetName] = { raw: "—", col: cfg.periodCol, headers: [] };
@@ -1294,6 +1340,8 @@ async function loadModalData() {
 
     loading.style.display = "none";
     content.style.display = "block";
+    buildPeriodOptions();
+    updateUploadBtnState();
 
   } catch (err) {
     loading.style.display = "none";
@@ -1354,12 +1402,10 @@ async function handleFileSelect(input, cardKey, sheetName, periodCol) {
 
     const expected = templateColumns[sheetName] || [];
     if (expected.length === 0) {
-      // Template not loaded — skip validation
+      // Template columns not loaded yet — accept the file, validation skipped
       card.classList.add("file-selected");
-      valDiv.className = "validation-msg success";
-      valDiv.textContent = isLoggedIn()
-        ? "✓ File selected. Column template not available for comparison."
-        : "✓ File selected. Sign in to enable column validation against the template.";
+      valDiv.style.display = "none";
+      valDiv.className = "validation-msg";
       selectedFiles[cardKey] = { file, headers: fileColumns, rows, sheetName };
       updateUploadBtnState();
       return;
@@ -1423,8 +1469,13 @@ async function handleDownload(sheetKey) {
   }
 
   try {
-    const buf = await fetchDriveFileArrayBuffer(tpl.fileId, kpiToken);
-    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    // Google Sheets files must be exported via the export endpoint (not alt=media)
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${tpl.fileId}/export?format=xlsx`;
+    const resp = await fetch(exportUrl, {
+      headers: { Authorization: "Bearer " + kpiToken }
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = tpl.fileName;
@@ -1451,69 +1502,261 @@ function clearFile(key) {
   updateUploadBtnState();
 }
 
-// ── Upload / Save files to Drive (test) ───────────────────────────────────
-// Enables the Save button whenever at least one validated file is attached
+// ── Period selector ───────────────────────────────────────────────────────
+// existingPeriods: array of raw period values already in the BD (populated by loadModalData)
+let existingPeriods = [];
+let selectedPeriod  = "";
+
+function buildPeriodOptions() {
+  const sel = document.getElementById("periodSelect");
+  if (!sel) return;
+
+  // Gather all known periods from all sheets
+  const allPeriods = new Set();
+  for (const sn of Object.keys(SHEET_CONFIG)) {
+    const sp = sheetPeriods[sn];
+    if (sp && sp.rawAll) sp.rawAll.forEach(p => allPeriods.add(String(p).trim()));
+  }
+
+  // Determine the next period from the max existing one
+  // For BD_PLANTA use periodCol="Periodo" — format YYYYSS (202510 / 202520)
+  const plantaSP = sheetPeriods["BD_PLANTA"];
+  const lastRaw  = plantaSP ? plantaSP.raw : null;
+  const next     = lastRaw && lastRaw !== "—" ? nextPeriodFlat(lastRaw) : null;
+
+  // Build sorted list of existing periods + next
+  const sorted = Array.from(allPeriods)
+    .filter(p => /^\d{5,6}$/.test(p.replace(/[^0-9]/g, "")))
+    .sort((a, b) => {
+      const na = parseFloat(String(a).replace(/[^0-9]/g, ""));
+      const nb = parseFloat(String(b).replace(/[^0-9]/g, ""));
+      return na - nb;
+    });
+
+  existingPeriods = sorted;
+  const options = next ? [...sorted, next] : sorted;
+
+  sel.innerHTML = `<option value="">— Select a period —</option>`;
+  options.forEach(p => {
+    const flat   = toFlatPeriod(p);
+    const pretty = formatPeriod(flat, "Periodo");
+    const isExisting = sorted.includes(p) || sorted.map(toFlatPeriod).includes(flat);
+    const opt = document.createElement("option");
+    opt.value = flat;
+    opt.textContent = pretty + (isExisting ? " (already loaded)" : " ← next period");
+    sel.appendChild(opt);
+  });
+
+  selectedPeriod = "";
+  handlePeriodChange();
+}
+
+// Convert any period string to flat YYYYSS format (e.g. "2025-10" → "202510")
+function toFlatPeriod(raw) {
+  if (!raw) return "";
+  return String(raw).trim().replace(/[^0-9]/g, "");
+}
+
+// Return the next flat period after a given flat period (e.g. "202510" → "202520")
+function nextPeriodFlat(raw) {
+  const flat = toFlatPeriod(raw);
+  if (!flat) return null;
+  const m = flat.match(/^(\d{4})(10|20)$/);
+  if (!m) return null;
+  const [, yr, sem] = m;
+  return sem === "10" ? `${yr}20` : `${parseInt(yr)+1}10`;
+}
+
+function handlePeriodChange() {
+  const sel  = document.getElementById("periodSelect");
+  const warn = document.getElementById("periodOverwriteWarn");
+  const hint = document.getElementById("periodHint");
+  if (!sel) return;
+  selectedPeriod = sel.value;
+  const isExisting = existingPeriods.map(toFlatPeriod).includes(selectedPeriod);
+  if (warn) warn.classList.toggle("show", !!(selectedPeriod && isExisting));
+  if (hint) hint.textContent = selectedPeriod
+    ? (isExisting
+        ? `Period ${formatPeriod(selectedPeriod, "Periodo")} — existing rows will be overwritten.`
+        : `Period ${formatPeriod(selectedPeriod, "Periodo")} — new rows will be appended.`)
+    : "Select the semester you are loading data for.";
+  updateUploadBtnState();
+}
+
+// ── Upload / Save: write template data into BD maestra via Sheets API ──────
 function updateUploadBtnState() {
   const btn   = document.getElementById("uploadBtn");
   const label = document.getElementById("uploadBtnLabel");
   if (!btn) return;
-  const count = Object.keys(selectedFiles).length;
-  btn.disabled = count === 0;
-  if (label) label.textContent = count > 0 ? `Save ${count} File${count>1?"s":""}` : "Save Files";
+  const count    = Object.keys(selectedFiles).length;
+  const hasPeriod = !!selectedPeriod;
+  btn.disabled = !(count > 0 && hasPeriod);
+  if (label) {
+    if (!hasPeriod && count > 0) label.textContent = "Select a period first";
+    else if (count > 0) label.textContent = `Save ${count} File${count>1?"s":""}`;
+    else label.textContent = "Save Files";
+  }
 }
 
-// Upload a File object to Drive via multipart upload (creates a new file in SAVE_FOLDER_ID)
-async function uploadFileToDrive(file, folderId, token) {
-  const metadata = {
-    name: file.name,
-    parents: [folderId]
+// ── BD_PLANTA column mapping ───────────────────────────────────────────────
+// Template columns are 0-based relative to column B (index 0 = B, 1 = C, …)
+// BD columns are 0-based (0 = A, 1 = B, …)
+// Template col letters: B=0, C=1, D=2, E=3, F=4, G=5, H=6, I=7, J=8, K=9, L=10, M=11, N=12,
+//                       O=13, P=14, Q=15, R=16, S=17, T=18, U=19, V=20, W=21
+//
+// BD_PLANTA mapping (BD col → template col idx relative to B):
+//   A  = Periodo (from modal)
+//   B  = template B (idx 0)  Nº
+//   C  = template C (idx 1)  ID Nr.
+//   D  = template D (idx 2)  First Name
+//   E  = template E (idx 3)  Last Name
+//   F  = FORMULA (keep existing) — Full Name
+//   G  = template J (idx 8)  Date of First Appointment
+//   H  = template K (idx 9)  Academic Area
+//   I  = template O (idx 13) Highest Earned Degree
+//   J  = template P (idx 14) Year (Degree)
+//   K  = template Q (idx 15) University
+//   L  = template R (idx 16) Region
+//   M  = template S (idx 17) Highest Degree Label
+//   N  = template T (idx 18) International Degree
+//   O  = template M (idx 11) % Devoted to Mission
+//   P  = template L (idx 10) Faculty Ranking
+//   Q  = empty
+//   R  = template U (idx 19) Field
+//   S  = template H (idx 6)  Country of Birth
+//   T  = template I (idx 7)  Double Nationality
+//   U  = template F (idx 4)  Date of Birth
+//   V  = FORMULA (keep existing) — Age
+//   W  = template G (idx 5)  Gender
+//   X  = template N (idx 12) Faculty Qualifications
+//   Y  = "P" (fixed)
+//   Z  = template V (idx 20) Normal Professional Resp.
+//   AA = template W (idx 21) Notes
+//   AB = "PLANTA" (fixed)
+
+// Returns a BD row array (28 values, columns A–AB) for one template data row.
+// `tplRow` is a 0-based array starting at template column B.
+// `formulaRowNum` is the 1-based row number in the sheet (needed to replicate formulas).
+function buildBDRow(tplRow, periodo, formulaRowNum) {
+  const t = (idx) => {
+    const v = tplRow[idx];
+    if (v === undefined || v === null) return "";
+    return v;
   };
-  const boundary = "-------kpiupload" + Date.now();
-  const delimiter = `\r\n--${boundary}\r\n`;
-  const closeDelim = `\r\n--${boundary}--`;
 
-  const fileContent = await file.arrayBuffer();
+  // Dates: SheetJS returns numeric serial dates for Excel dates.
+  // We pass them through — the Sheets API accepts numeric values if we set numberFormat.
+  // For simplicity, convert to ISO string if it's a JS Date, else pass raw.
+  const dateVal = (idx) => {
+    const v = t(idx);
+    if (v instanceof Date) return v.toISOString().slice(0, 10); // YYYY-MM-DD
+    return v;
+  };
 
-  const metadataPart =
-    delimiter +
-    "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
-    JSON.stringify(metadata);
+  const row = new Array(28).fill("");
 
-  const mediaHeader =
-    delimiter +
-    `Content-Type: ${file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}\r\n` +
-    "Content-Transfer-Encoding: binary\r\n\r\n";
+  row[0]  = periodo;                // A — Periodo
+  row[1]  = t(0);                   // B — Nº
+  row[2]  = t(1);                   // C — ID Nr.
+  row[3]  = t(2);                   // D — First Name
+  row[4]  = t(3);                   // E — Last Name
+  row[5]  = `=D${formulaRowNum}&" "&E${formulaRowNum}`; // F — Full Name (formula)
+  row[6]  = dateVal(8);             // G — Date of First Appointment (template J)
+  row[7]  = t(9);                   // H — Academic Area (template K)
+  row[8]  = t(13);                  // I — Highest Earned Degree (template O)
+  row[9]  = t(14);                  // J — Year Degree (template P)
+  row[10] = t(15);                  // K — University (template Q)
+  row[11] = t(16);                  // L — Region (template R)
+  row[12] = t(17);                  // M — Highest Degree Label (template S)
+  row[13] = t(18);                  // N — International Degree (template T)
+  row[14] = t(11);                  // O — % Devoted to Mission (template M)
+  row[15] = t(10);                  // P — Faculty Ranking (template L)
+  row[16] = "";                     // Q — empty
+  row[17] = t(19);                  // R — Field (template U)
+  row[18] = t(6);                   // S — Country of Birth (template H)
+  row[19] = t(7);                   // T — Double Nationality (template I)
+  row[20] = dateVal(4);             // U — Date of Birth (template F)
+  row[21] = `=IF(U${formulaRowNum}="","",DATEDIF(U${formulaRowNum},TODAY(),"Y"))`; // V — Age (formula)
+  row[22] = t(5);                   // W — Gender (template G)
+  row[23] = t(12);                  // X — Faculty Qualifications (template N)
+  row[24] = "P";                    // Y — fixed "P"
+  row[25] = t(20);                  // Z — Normal Professional Resp. (template V)
+  row[26] = t(21);                  // AA — Notes (template W)
+  row[27] = "PLANTA";              // AB — fixed "PLANTA"
 
-  const metadataBytes = new TextEncoder().encode(metadataPart);
-  const mediaHeaderBytes = new TextEncoder().encode(mediaHeader);
-  const closeBytes = new TextEncoder().encode(closeDelim);
+  return row;
+}
 
-  const body = new Blob([metadataBytes, mediaHeaderBytes, fileContent, closeBytes]);
+// ── Sheets API helpers ────────────────────────────────────────────────────
 
-  const resp = await fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
-    {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + token,
-        "Content-Type": `multipart/related; boundary=${boundary}`
-      },
-      body
-    }
-  );
+// Fetch all values from a sheet range via Sheets API v4
+async function sheetsGetValues(spreadsheetId, range, token) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+  const resp = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+  if (!resp.ok) throw new Error(`Sheets GET ${range}: HTTP ${resp.status}`);
+  const data = await resp.json();
+  return data.values || [];
+}
 
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`HTTP ${resp.status}: ${errText}`);
-  }
+// Append rows to a sheet after the last row with data
+async function sheetsAppendRows(spreadsheetId, range, rows, token) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ values: rows })
+  });
+  if (!resp.ok) throw new Error(`Sheets APPEND: HTTP ${resp.status} — ${await resp.text()}`);
   return await resp.json();
 }
 
-// Triggered by the "Save Files" button — uploads each attached, validated file
-// as-is to the SAVE_FOLDER_ID (test step before integrating with the real BD)
+// Batch update (overwrite) a specific range
+async function sheetsBatchUpdate(spreadsheetId, updates, token) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ valueInputOption: "USER_ENTERED", data: updates })
+  });
+  if (!resp.ok) throw new Error(`Sheets batchUpdate: HTTP ${resp.status} — ${await resp.text()}`);
+  return await resp.json();
+}
+
+// Delete rows by row indices (0-based) using batchUpdate on the spreadsheet
+async function sheetsDeleteRows(spreadsheetId, sheetId, rowIndices, token) {
+  if (!rowIndices.length) return;
+  // Sort descending so deleting higher rows first doesn't shift lower indices
+  const sorted = [...rowIndices].sort((a, b) => b - a);
+  const requests = sorted.map(idx => ({
+    deleteDimension: {
+      range: { sheetId, dimension: "ROWS", startIndex: idx, endIndex: idx + 1 }
+    }
+  }));
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ requests })
+  });
+  if (!resp.ok) throw new Error(`Sheets deleteRows: HTTP ${resp.status} — ${await resp.text()}`);
+  return await resp.json();
+}
+
+// Get the numeric sheetId for a given sheet name
+async function getSheetId(spreadsheetId, sheetName, token) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`;
+  const resp = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+  if (!resp.ok) throw new Error(`Could not get sheet metadata: HTTP ${resp.status}`);
+  const data = await resp.json();
+  const sheet = data.sheets.find(s => s.properties.title === sheetName);
+  if (!sheet) throw new Error(`Sheet "${sheetName}" not found in spreadsheet.`);
+  return sheet.properties.sheetId;
+}
+
+// ── Main save handler ─────────────────────────────────────────────────────
 async function handleSaveFiles() {
   const keys = Object.keys(selectedFiles);
-  if (keys.length === 0) return;
+  if (!keys.length || !selectedPeriod) return;
 
   if (!isLoggedIn()) {
     requireKpiLogin(() => handleSaveFiles());
@@ -1521,38 +1764,67 @@ async function handleSaveFiles() {
     return;
   }
 
-  const btn = document.getElementById("uploadBtn");
+  const btn   = document.getElementById("uploadBtn");
   const label = document.getElementById("uploadBtnLabel");
   btn.disabled = true;
-  const originalLabel = label.textContent;
+  const origLabel = label.textContent;
   label.textContent = "Saving…";
 
-  const results = [];
-  for (const key of keys) {
-    const { file, sheetName, headers, rows } = selectedFiles[key];
-    try {
-      const uploaded = await uploadFileToDrive(file, SAVE_FOLDER_ID, kpiToken);
-      console.log(`Saved "${file.name}" (sheet: ${sheetName}) →`, uploaded);
-      console.log(`Parsed ${rows.length} data row(s) with columns:`, headers);
-      results.push({ key, ok: true, name: file.name });
-    } catch (err) {
-      console.error(`Could not save "${file.name}":`, err);
-      results.push({ key, ok: false, name: file.name, error: err.message });
+  try {
+    for (const key of keys) {
+      const { sheetName, rows } = selectedFiles[key];
+
+      if (sheetName !== "BD_PLANTA") {
+        // Only BD_PLANTA mapping implemented — others TBD
+        showToast(`Mapping for ${sheetName} not yet implemented.`);
+        continue;
+      }
+
+      label.textContent = "Reading BD…";
+
+      // 1. Read existing data from BD_PLANTA (column A = Periodo)
+      const sheetId = await getSheetId(BD_FILE_ID, "BD_PLANTA", kpiToken);
+      const existing = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
+      // existing[0] is header row (row 1), data starts at index 1
+      const headerOffset = 1; // row 0 in existing = sheet row 1 (header)
+
+      // Find rows that match the selected period (0-based in `existing` array)
+      const flatPeriod = String(selectedPeriod).trim();
+      const matchingSheetRows = []; // 0-based indices in `existing`
+      for (let i = headerOffset; i < existing.length; i++) {
+        const cellVal = existing[i] && existing[i][0] ? String(existing[i][0]).trim().replace(/[^0-9]/g, "") : "";
+        if (cellVal === flatPeriod) matchingSheetRows.push(i);
+      }
+
+      // 2. If existing period rows found — delete them first
+      if (matchingSheetRows.length > 0) {
+        label.textContent = `Removing ${matchingSheetRows.length} old rows…`;
+        await sheetsDeleteRows(BD_FILE_ID, sheetId, matchingSheetRows, kpiToken);
+      }
+
+      // 3. Re-read to get the new last row after deletion
+      const afterDelete = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
+      const lastDataRow = afterDelete.length; // sheet row number of last row with data (1-based)
+      const appendStartRow = lastDataRow + 1;  // next empty sheet row (1-based)
+
+      // 4. Build new rows from template data
+      label.textContent = `Writing ${rows.length} new rows…`;
+      const newRows = rows.map((tplRow, idx) => buildBDRow(tplRow, flatPeriod, appendStartRow + idx));
+
+      // 5. Append to BD_PLANTA
+      await sheetsAppendRows(BD_FILE_ID, "BD_PLANTA!A:AB", newRows, kpiToken);
     }
-  }
 
-  const okCount = results.filter(r => r.ok).length;
-  const failCount = results.length - okCount;
-
-  if (failCount === 0) {
-    showToast(`✓ Saved ${okCount} file${okCount>1?"s":""} to Drive (test).`);
+    showToast(`✓ BD_PLANTA updated successfully for period ${formatPeriod(selectedPeriod, "Periodo")}.`);
     closeUpdateModal();
-  } else {
-    showToast(`Saved ${okCount}, failed ${failCount}. Check console for details.`);
-  }
 
-  label.textContent = originalLabel;
-  updateUploadBtnState();
+  } catch (err) {
+    console.error("Save error:", err);
+    showToast("Error saving: " + err.message);
+  } finally {
+    label.textContent = origLabel;
+    updateUploadBtnState();
+  }
 }
 
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeUpdateModal(); });
