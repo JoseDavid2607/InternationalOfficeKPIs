@@ -657,9 +657,9 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       <!-- Footer -->
       <div class="modal-footer">
         <button class="btn-cancel" onclick="closeUpdateModal()">Cancel</button>
-        <button class="btn-upload" id="uploadBtn" disabled title="Upload functionality coming soon">
+        <button class="btn-upload" id="uploadBtn" disabled onclick="handleSaveFiles()">
           <svg viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 10 12 4 17 10"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
-          Upload &amp; Update Data
+          <span id="uploadBtnLabel">Save Files</span>
         </button>
       </div>
 
@@ -953,6 +953,20 @@ resetPreview();
 const BD_FILE_ID       = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-";
 const TEMPLATE_FILE_ID = "1qhwyKzANWG_qt0cF-94UyZ_1itTPYOyYumd92HwfHiM";
 
+// Standalone template .xlsx files in "BASEROOM ORI UASM/Bases de datos tabulares/*Templates*/"
+// Drive file IDs (used for the "Download Template" buttons and for column validation)
+const TEMPLATE_DRIVE_FILES = {
+  "BD_PLANTA":  { fileId: "1bE5cNo1UUUjN34-L799U7KJQarefQl1h", sheetName: "BD_PLANTA",   fileName: "Template_BD_PLANTA.xlsx"   },
+  "BD_Catedra": { fileId: "1O5DV0ABy_-G1_t4pjfeZHUi-f9OFJprl", sheetName: "BD_Cartelera", fileName: "Template_BD_Cartelera.xlsx" }
+};
+
+// Destination folder for the "Save" test upload (same *Templates* folder for now)
+const SAVE_FOLDER_ID = "1_3JHkSL-fbmW7g8hQPKync3nz0y2chjB";
+
+// Templates use a fixed layout: headers in row 4 (starting at column B),
+// optional instructions row in row 5, and data starting at row 6 (starting at column B)
+const TEMPLATE_LAYOUT = { headerRow: 4, dataStartRow: 6, startCol: "B" };
+
 // Sheets config: sheetName → { periodCol, metaIdSuffix }
 const SHEET_CONFIG = {
   "BD_PLANTA":             { periodCol: "Periodo", metaId: "planta",  cardId: "bd-planta"  },
@@ -960,7 +974,7 @@ const SHEET_CONFIG = {
   "Faculty_Questionnaire": { periodCol: "Year",    metaId: "fq",      cardId: "faculty-q"  }
 };
 
-// Template sheet names — exact names in Template_BDFaculty for column validation
+// Template sheet names — exact names used for column validation
 const TEMPLATE_SHEET_MAP = {
   "BD_PLANTA":             "BD_PLANTA",
   "BD_Catedra":            "BD_Cartelera",
@@ -971,6 +985,8 @@ const TEMPLATE_SHEET_MAP = {
 const templateColumns = {};
 // Holds last period per sheet once loaded
 const sheetPeriods = {};
+// Holds the currently-selected File objects per card key, keyed by cardKey
+const selectedFiles = {};
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -1105,6 +1121,82 @@ async function getDriveFileModifiedDate(fileId, token) {
   return new Date(data.modifiedTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+// ── XLSX helpers (SheetJS) ─────────────────────────────────────────────────
+// Convert a column letter ("B") to a 0-based index (1)
+function colLetterToIndex(letter) {
+  let idx = 0;
+  for (let i = 0; i < letter.length; i++) {
+    idx = idx * 26 + (letter.toUpperCase().charCodeAt(i) - 64);
+  }
+  return idx - 1;
+}
+
+// Download a file from Google Drive (binary) — requires the user to be signed in
+async function fetchDriveFileArrayBuffer(fileId, token) {
+  const resp = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+    { headers: { Authorization: "Bearer " + token } }
+  );
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching Drive file "${fileId}"`);
+  return await resp.arrayBuffer();
+}
+
+// Parse an .xlsx ArrayBuffer into a sheet_to_json "header:1" matrix (array of arrays)
+async function xlsxToMatrix(arrayBuffer, sheetName) {
+  if (!window.XLSX) {
+    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+  }
+  const wb = XLSX.read(arrayBuffer, { type: "array" });
+  const wsName = sheetName && wb.Sheets[sheetName] ? sheetName : wb.SheetNames[0];
+  const ws = wb.Sheets[wsName];
+  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+}
+
+// Fetch a standalone xlsx template from Drive and return its header row
+// (row `headerRow`, 1-indexed, starting at column `startCol`), trimmed of empty trailing cells
+async function fetchXlsxHeaderRow(fileId, sheetName, headerRow, startCol) {
+  if (!isLoggedIn()) throw new Error("Sign in required to read template columns.");
+  const buf = await fetchDriveFileArrayBuffer(fileId, kpiToken);
+  const matrix = await xlsxToMatrix(buf, sheetName);
+  const startIdx = colLetterToIndex(startCol);
+  const row = matrix[headerRow - 1] || [];
+  const headers = row.slice(startIdx);
+  // Trim trailing empty headers
+  while (headers.length && (headers[headers.length - 1] === "" || headers[headers.length - 1] === undefined)) {
+    headers.pop();
+  }
+  return headers;
+}
+
+// Read header row + data rows from an uploaded file, respecting the template layout
+// (headers at row `headerRow` starting at `startCol`, data starting at row `dataStartRow`)
+async function readUploadedFile(file, layout) {
+  const ext = file.name.split(".").pop().toLowerCase();
+
+  if (ext === "csv") {
+    // CSV files: assume headers on the first row, data from the second row
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
+    const headers = splitCSVLine(lines[0] || "");
+    const rows = lines.slice(1).map(splitCSVLine);
+    return { headers, rows };
+  }
+
+  // xlsx / xls
+  const buf = await file.arrayBuffer();
+  const matrix = await xlsxToMatrix(buf);
+  const startIdx = colLetterToIndex(layout.startCol);
+  const headerRowArr = matrix[layout.headerRow - 1] || [];
+  let headers = headerRowArr.slice(startIdx);
+  while (headers.length && (headers[headers.length - 1] === "" || headers[headers.length - 1] === undefined)) {
+    headers.pop();
+  }
+  const rows = matrix.slice(layout.dataStartRow - 1)
+    .map(r => (r || []).slice(startIdx, startIdx + headers.length))
+    .filter(r => r.some(v => v !== "" && v !== undefined && v !== null));
+  return { headers, rows };
+}
+
 // ── Load modal data ───────────────────────────────────────────────────────
 async function loadModalData() {
   const loading = document.getElementById("modalLoadingState");
@@ -1152,9 +1244,22 @@ async function loadModalData() {
 
       // Template — get column list
       try {
-        const { headers: tplHeaders } = await fetchSheetCSV(TEMPLATE_FILE_ID, TEMPLATE_SHEET_MAP[sheetName]);
-        templateColumns[sheetName] = tplHeaders.map(h => h.trim().toLowerCase()).filter(h => h);
+        if (TEMPLATE_DRIVE_FILES[sheetName]) {
+          // Standalone .xlsx template file — headers live in row 4, starting at column B
+          const tplHeaders = await fetchXlsxHeaderRow(
+            TEMPLATE_DRIVE_FILES[sheetName].fileId,
+            TEMPLATE_DRIVE_FILES[sheetName].sheetName,
+            TEMPLATE_LAYOUT.headerRow,
+            TEMPLATE_LAYOUT.startCol
+          );
+          templateColumns[sheetName] = tplHeaders.map(h => String(h).trim().toLowerCase()).filter(h => h);
+        } else {
+          // Fallback: Google Sheet export (e.g. Faculty_Questionnaire)
+          const { headers: tplHeaders } = await fetchSheetCSV(TEMPLATE_FILE_ID, TEMPLATE_SHEET_MAP[sheetName]);
+          templateColumns[sheetName] = tplHeaders.map(h => h.trim().toLowerCase()).filter(h => h);
+        }
       } catch(e) {
+        console.warn("Could not load template columns for", sheetName, e);
         templateColumns[sheetName] = [];
       }
     }
@@ -1201,6 +1306,8 @@ async function loadModalData() {
 function openUpdateModal() {
   document.getElementById("updateModal").classList.add("show");
   document.body.style.overflow = "hidden";
+  for (const k of Object.keys(selectedFiles)) delete selectedFiles[k];
+  updateUploadBtnState();
   loadModalData();
 }
 function closeUpdateModal() {
@@ -1224,6 +1331,8 @@ async function handleFileSelect(input, cardKey, sheetName, periodCol) {
     if (trash) trash.classList.remove("visible");
     valDiv.style.display = "none";
     valDiv.className = "validation-msg";
+    delete selectedFiles[cardKey];
+    updateUploadBtnState();
     return;
   }
 
@@ -1235,70 +1344,52 @@ async function handleFileSelect(input, cardKey, sheetName, periodCol) {
   valDiv.textContent = "Validating columns…";
 
   try {
-    const fileColumns = await readFileColumns(file);
+    // CSV files don't follow the row 4 / row 6 layout, but xlsx/xls templates do
+    const ext = file.name.split(".").pop().toLowerCase();
+    const layout = ext === "csv"
+      ? { headerRow: 1, dataStartRow: 2, startCol: "A" }
+      : TEMPLATE_LAYOUT;
+
+    const { headers: fileColumns, rows } = await readUploadedFile(file, layout);
 
     const expected = templateColumns[sheetName] || [];
     if (expected.length === 0) {
       // Template not loaded — skip validation
       card.classList.add("file-selected");
       valDiv.className = "validation-msg success";
-      valDiv.textContent = "✓ File selected. Column template not available for comparison.";
+      valDiv.textContent = isLoggedIn()
+        ? "✓ File selected. Column template not available for comparison."
+        : "✓ File selected. Sign in to enable column validation against the template.";
+      selectedFiles[cardKey] = { file, headers: fileColumns, rows, sheetName };
+      updateUploadBtnState();
       return;
     }
 
-    const fileCols = fileColumns.map(h => h.trim().toLowerCase()).filter(h => h);
+    const fileCols = fileColumns.map(h => String(h).trim().toLowerCase()).filter(h => h);
     const missing  = expected.filter(e => !fileCols.includes(e));
     const extra    = fileCols.filter(f => !expected.includes(f));
 
     if (missing.length === 0) {
       card.classList.add("file-selected");
       valDiv.className = "validation-msg success";
-      valDiv.innerHTML = `✓ All ${expected.length} required columns present.` +
+      valDiv.innerHTML = `✓ All ${expected.length} required columns present. (${rows.length} data row${rows.length===1?"":"s"} detected)` +
         (extra.length > 0 ? ` <span style="font-weight:400;opacity:.75;">(${extra.length} extra column${extra.length>1?"s":""} ignored)</span>` : "");
+      selectedFiles[cardKey] = { file, headers: fileColumns, rows, sheetName };
     } else {
       card.classList.remove("file-selected");
       valDiv.className = "validation-msg error";
       valDiv.innerHTML = `⚠ Missing ${missing.length} required column${missing.length>1?"s":""}:<ul>` +
         missing.map(m => `<li>${m}</li>`).join("") + `</ul>`;
+      delete selectedFiles[cardKey];
     }
   } catch (err) {
     card.classList.remove("file-selected");
     valDiv.className = "validation-msg error";
     valDiv.textContent = "Could not read file: " + err.message;
+    delete selectedFiles[cardKey];
   }
-}
 
-// Read column headers from an uploaded .xlsx / .xls / .csv file
-async function readFileColumns(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("File read error"));
-    const ext = file.name.split(".").pop().toLowerCase();
-
-    if (ext === "csv") {
-      reader.onload = (e) => {
-        const text = e.target.result;
-        const firstLine = text.split(/\r?\n/)[0] || "";
-        resolve(splitCSVLine(firstLine));
-      };
-      reader.readAsText(file);
-    } else {
-      // xlsx / xls — use SheetJS via CDN (loaded dynamically)
-      reader.onload = async (e) => {
-        try {
-          if (!window.XLSX) {
-            await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
-          }
-          const data = new Uint8Array(e.target.result);
-          const wb   = XLSX.read(data, { type: "array" });
-          const ws   = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-          resolve(rows[0] || []);
-        } catch(err) { reject(err); }
-      };
-      reader.readAsArrayBuffer(file);
-    }
-  });
+  updateUploadBtnState();
 }
 
 function loadScript(src) {
@@ -1311,20 +1402,37 @@ function loadScript(src) {
 }
 
 // ── Download template ─────────────────────────────────────────────────────
-// Maps dashboard key → exact sheet name in Template_BDFaculty
-const DOWNLOAD_SHEET_MAP = {
-  "BD_PLANTA":             "BD_PLANTA",
-  "BD_Catedra":            "BD_Cartelera",
-  "Faculty_Questionnaire": "Faculty_questionnaire"
-};
+async function handleDownload(sheetKey) {
+  const tpl = TEMPLATE_DRIVE_FILES[sheetKey];
 
-function handleDownload(sheetKey) {
-  const sheetName = DOWNLOAD_SHEET_MAP[sheetKey] || sheetKey;
-  const url = `https://docs.google.com/spreadsheets/d/${TEMPLATE_FILE_ID}/export?format=xlsx&sheet=${encodeURIComponent(sheetName)}`;
-  const a = document.createElement("a");
-  a.href = url; a.target = "_blank"; a.rel = "noopener";
-  a.download = `Template_${sheetName}.xlsx`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  if (!tpl) {
+    // Fallback for sheets without a standalone template file (e.g. Faculty_Questionnaire)
+    const sheetName = TEMPLATE_SHEET_MAP[sheetKey] || sheetKey;
+    const url = `https://docs.google.com/spreadsheets/d/${TEMPLATE_FILE_ID}/export?format=xlsx&sheet=${encodeURIComponent(sheetName)}`;
+    const a = document.createElement("a");
+    a.href = url; a.target = "_blank"; a.rel = "noopener";
+    a.download = `Template_${sheetName}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    return;
+  }
+
+  if (!isLoggedIn()) {
+    requireKpiLogin(() => handleDownload(sheetKey));
+    closeUpdateModal();
+    return;
+  }
+
+  try {
+    const buf = await fetchDriveFileArrayBuffer(tpl.fileId, kpiToken);
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = tpl.fileName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast("Could not download template: " + err.message);
+  }
 }
 
 // ── Clear attached file ───────────────────────────────────────────────────
@@ -1339,10 +1447,113 @@ function clearFile(key) {
   lbl.textContent = "Attach new file…";
   if (trash) trash.classList.remove("visible");
   if (val) { val.style.display = "none"; val.className = "validation-msg"; }
+  delete selectedFiles[key];
+  updateUploadBtnState();
 }
 
-// ── Upload (disabled for now) ─────────────────────────────────────────────
-// Upload button is disabled until backend is ready.
+// ── Upload / Save files to Drive (test) ───────────────────────────────────
+// Enables the Save button whenever at least one validated file is attached
+function updateUploadBtnState() {
+  const btn   = document.getElementById("uploadBtn");
+  const label = document.getElementById("uploadBtnLabel");
+  if (!btn) return;
+  const count = Object.keys(selectedFiles).length;
+  btn.disabled = count === 0;
+  if (label) label.textContent = count > 0 ? `Save ${count} File${count>1?"s":""}` : "Save Files";
+}
+
+// Upload a File object to Drive via multipart upload (creates a new file in SAVE_FOLDER_ID)
+async function uploadFileToDrive(file, folderId, token) {
+  const metadata = {
+    name: file.name,
+    parents: [folderId]
+  };
+  const boundary = "-------kpiupload" + Date.now();
+  const delimiter = `\r\n--${boundary}\r\n`;
+  const closeDelim = `\r\n--${boundary}--`;
+
+  const fileContent = await file.arrayBuffer();
+
+  const metadataPart =
+    delimiter +
+    "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+    JSON.stringify(metadata);
+
+  const mediaHeader =
+    delimiter +
+    `Content-Type: ${file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}\r\n` +
+    "Content-Transfer-Encoding: binary\r\n\r\n";
+
+  const metadataBytes = new TextEncoder().encode(metadataPart);
+  const mediaHeaderBytes = new TextEncoder().encode(mediaHeader);
+  const closeBytes = new TextEncoder().encode(closeDelim);
+
+  const body = new Blob([metadataBytes, mediaHeaderBytes, fileContent, closeBytes]);
+
+  const resp = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": `multipart/related; boundary=${boundary}`
+      },
+      body
+    }
+  );
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`HTTP ${resp.status}: ${errText}`);
+  }
+  return await resp.json();
+}
+
+// Triggered by the "Save Files" button — uploads each attached, validated file
+// as-is to the SAVE_FOLDER_ID (test step before integrating with the real BD)
+async function handleSaveFiles() {
+  const keys = Object.keys(selectedFiles);
+  if (keys.length === 0) return;
+
+  if (!isLoggedIn()) {
+    requireKpiLogin(() => handleSaveFiles());
+    closeUpdateModal();
+    return;
+  }
+
+  const btn = document.getElementById("uploadBtn");
+  const label = document.getElementById("uploadBtnLabel");
+  btn.disabled = true;
+  const originalLabel = label.textContent;
+  label.textContent = "Saving…";
+
+  const results = [];
+  for (const key of keys) {
+    const { file, sheetName, headers, rows } = selectedFiles[key];
+    try {
+      const uploaded = await uploadFileToDrive(file, SAVE_FOLDER_ID, kpiToken);
+      console.log(`Saved "${file.name}" (sheet: ${sheetName}) →`, uploaded);
+      console.log(`Parsed ${rows.length} data row(s) with columns:`, headers);
+      results.push({ key, ok: true, name: file.name });
+    } catch (err) {
+      console.error(`Could not save "${file.name}":`, err);
+      results.push({ key, ok: false, name: file.name, error: err.message });
+    }
+  }
+
+  const okCount = results.filter(r => r.ok).length;
+  const failCount = results.length - okCount;
+
+  if (failCount === 0) {
+    showToast(`✓ Saved ${okCount} file${okCount>1?"s":""} to Drive (test).`);
+    closeUpdateModal();
+  } else {
+    showToast(`Saved ${okCount}, failed ${failCount}. Check console for details.`);
+  }
+
+  label.textContent = originalLabel;
+  updateUploadBtnState();
+}
 
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeUpdateModal(); });
 
