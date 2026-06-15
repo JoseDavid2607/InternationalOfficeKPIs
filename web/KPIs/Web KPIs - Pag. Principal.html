@@ -364,33 +364,28 @@ header.hero h1 {
 .validation-msg ul { margin: 4px 0 0 16px; }
 .validation-msg li { margin-bottom: 2px; }
 
-/* ── PERIOD SELECTOR ── */
-.period-selector-wrap {
-  margin: 0 0 20px; padding: 16px 18px; background: #f8fafc;
-  border: 1.5px solid #d1d9e6; border-radius: 12px;
+/* ── PER-CARD PERIOD ROW (subtle) ── */
+.card-period-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 18px; background: #f8fafc;
+  border-top: 1px solid #e9ecf2; border-bottom: 1px solid #e9ecf2;
 }
-.period-selector-wrap label {
-  display: block; font-size: .72rem; font-weight: 800; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px;
+.card-period-label {
+  font-size: .72rem; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
 }
-.period-selector-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.period-select {
-  flex: 1; min-width: 160px; padding: 8px 32px 8px 12px;
-  border: 1.5px solid #d1d9e6; border-radius: 8px; background: #fff;
-  font-size: .88rem; font-weight: 700; color: var(--slate-dark);
-  appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 10px center; cursor: pointer;
+.card-period-select {
+  padding: 4px 24px 4px 8px; border: 1.5px solid #d1d9e6; border-radius: 6px;
+  background: #fff; font-size: .8rem; font-weight: 700; color: var(--slate-dark);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 7px center; cursor: pointer;
 }
-.period-select:focus { outline: none; border-color: var(--teal-brand); box-shadow: 0 0 0 3px rgba(13,148,136,.10); }
-.period-hint {
-  font-size: .76rem; color: var(--muted); margin-top: 6px; font-style: italic;
+.card-period-select:focus { outline: none; border-color: var(--teal-brand); }
+.card-period-hint {
+  font-size: .74rem; color: var(--muted); font-style: italic;
 }
-.period-overwrite-warn {
-  display: none; margin-top: 8px; padding: 7px 12px; border-radius: 7px;
-  background: #fff7ed; color: #c2410c; border: 1px solid #fdba74;
-  font-size: .78rem; font-weight: 600;
-}
-.period-overwrite-warn.show { display: block; }
+.card-period-hint.warn { color: #c2410c; font-style: normal; font-weight: 600; }
 
 .toast { display: none; position: fixed; bottom: 28px; right: 28px; z-index: 3000; background: #1f2937; color: #fff; padding: 13px 20px; border-radius: 14px; font-size: .88rem; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
 
@@ -535,19 +530,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       <div class="modal-body">
         <div class="modal-section-title">Source Files</div>
 
-        <!-- Period Selector -->
-        <div class="period-selector-wrap" id="periodSelectorWrap">
-          <label for="periodSelect">Period to Update</label>
-          <div class="period-selector-row">
-            <select class="period-select" id="periodSelect" onchange="handlePeriodChange()">
-              <option value="">— Select a period —</option>
-            </select>
-          </div>
-          <div class="period-hint" id="periodHint">Select the semester you are loading data for.</div>
-          <div class="period-overwrite-warn" id="periodOverwriteWarn">
-            ⚠ This period already exists in the database. Existing records will be replaced with the new data.
-          </div>
-        </div>
+        <!-- BD_PLANTA card -->
         <div class="file-card" id="card-bd-planta">
           <div class="file-card-head">
             <div class="file-icon">
@@ -575,6 +558,14 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
                 <span class="update-alert" id="alert-planta" style="display:none;"></span>
               </div>
             </div>
+          </div>
+          <!-- Period selector (subtle, inline) -->
+          <div class="card-period-row" id="period-row-bd-planta">
+            <label class="card-period-label" for="period-bd-planta">Period:</label>
+            <select class="card-period-select" id="period-bd-planta" onchange="handleCardPeriodChange('bd-planta','BD_PLANTA')">
+              <option value="">— select —</option>
+            </select>
+            <span class="card-period-hint" id="period-hint-bd-planta"></span>
           </div>
           <!-- Validation feedback -->
           <div id="validation-bd-planta" class="validation-msg" style="display:none;"></div>
@@ -625,6 +616,14 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
               </div>
             </div>
           </div>
+          <!-- Period selector (subtle, inline) -->
+          <div class="card-period-row" id="period-row-bd-catedra">
+            <label class="card-period-label" for="period-bd-catedra">Period:</label>
+            <select class="card-period-select" id="period-bd-catedra" onchange="handleCardPeriodChange('bd-catedra','BD_Catedra')">
+              <option value="">— select —</option>
+            </select>
+            <span class="card-period-hint" id="period-hint-bd-catedra"></span>
+          </div>
           <div id="validation-bd-catedra" class="validation-msg" style="display:none;"></div>
           <div class="file-actions">
             <button class="btn-download" onclick="handleDownload('BD_Catedra')">
@@ -672,6 +671,14 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
                 <span class="update-alert" id="alert-fq" style="display:none;"></span>
               </div>
             </div>
+          </div>
+          <!-- Period selector (subtle, inline) -->
+          <div class="card-period-row" id="period-row-faculty-q">
+            <label class="card-period-label" for="period-faculty-q">Period:</label>
+            <select class="card-period-select" id="period-faculty-q" onchange="handleCardPeriodChange('faculty-q','Faculty_Questionnaire')">
+              <option value="">— select —</option>
+            </select>
+            <span class="card-period-hint" id="period-hint-faculty-q"></span>
           </div>
           <div id="validation-faculty-q" class="validation-msg" style="display:none;"></div>
           <div class="file-actions">
@@ -1298,11 +1305,11 @@ async function loadModalData() {
             TEMPLATE_LAYOUT.headerRow,
             TEMPLATE_LAYOUT.startCol
           );
-          templateColumns[sheetName] = tplHeaders.map(h => String(h).trim().toLowerCase()).filter(h => h);
+          templateColumns[sheetName] = tplHeaders.map(h => String(h).replace(/\n/g, ' ').trim().toLowerCase()).filter(h => h);
         } else {
           // Fallback: Google Sheet export (e.g. Faculty_Questionnaire)
           const { headers: tplHeaders } = await fetchSheetCSV(TEMPLATE_FILE_ID, TEMPLATE_SHEET_MAP[sheetName]);
-          templateColumns[sheetName] = tplHeaders.map(h => h.trim().toLowerCase()).filter(h => h);
+          templateColumns[sheetName] = tplHeaders.map(h => h.replace(/\n/g, ' ').trim().toLowerCase()).filter(h => h);
         }
       } catch(e) {
         console.warn("Could not load template columns for", sheetName, e);
@@ -1355,6 +1362,7 @@ function openUpdateModal() {
   document.getElementById("updateModal").classList.add("show");
   document.body.style.overflow = "hidden";
   for (const k of Object.keys(selectedFiles)) delete selectedFiles[k];
+  for (const k of Object.keys(cardPeriods)) delete cardPeriods[k];
   updateUploadBtnState();
   loadModalData();
 }
@@ -1411,7 +1419,7 @@ async function handleFileSelect(input, cardKey, sheetName, periodCol) {
       return;
     }
 
-    const fileCols = fileColumns.map(h => String(h).trim().toLowerCase()).filter(h => h);
+    const fileCols = fileColumns.map(h => String(h).replace(/\n/g, ' ').trim().toLowerCase()).filter(h => h);
     const missing  = expected.filter(e => !fileCols.includes(e));
     const extra    = fileCols.filter(f => !expected.includes(f));
 
@@ -1502,85 +1510,92 @@ function clearFile(key) {
   updateUploadBtnState();
 }
 
-// ── Period selector ───────────────────────────────────────────────────────
-// existingPeriods: array of raw period values already in the BD (populated by loadModalData)
-let existingPeriods = [];
-let selectedPeriod  = "";
+// ── Per-card period selector ───────────────────────────────────────────────
+// cardPeriods[cardKey] = selected flat period string for that card
+const cardPeriods = {};
 
-function buildPeriodOptions() {
-  const sel = document.getElementById("periodSelect");
-  if (!sel) return;
-
-  // Gather all known periods from all sheets
-  const allPeriods = new Set();
-  for (const sn of Object.keys(SHEET_CONFIG)) {
-    const sp = sheetPeriods[sn];
-    if (sp && sp.rawAll) sp.rawAll.forEach(p => allPeriods.add(String(p).trim()));
-  }
-
-  // Determine the next period from the max existing one
-  // For BD_PLANTA use periodCol="Periodo" — format YYYYSS (202510 / 202520)
-  const plantaSP = sheetPeriods["BD_PLANTA"];
-  const lastRaw  = plantaSP ? plantaSP.raw : null;
-  const next     = lastRaw && lastRaw !== "—" ? nextPeriodFlat(lastRaw) : null;
-
-  // Build sorted list of existing periods + next
-  const sorted = Array.from(allPeriods)
-    .filter(p => /^\d{5,6}$/.test(p.replace(/[^0-9]/g, "")))
-    .sort((a, b) => {
-      const na = parseFloat(String(a).replace(/[^0-9]/g, ""));
-      const nb = parseFloat(String(b).replace(/[^0-9]/g, ""));
-      return na - nb;
-    });
-
-  existingPeriods = sorted;
-  const options = next ? [...sorted, next] : sorted;
-
-  sel.innerHTML = `<option value="">— Select a period —</option>`;
-  options.forEach(p => {
-    const flat   = toFlatPeriod(p);
-    const pretty = formatPeriod(flat, "Periodo");
-    const isExisting = sorted.includes(p) || sorted.map(toFlatPeriod).includes(flat);
-    const opt = document.createElement("option");
-    opt.value = flat;
-    opt.textContent = pretty + (isExisting ? " (already loaded)" : " ← next period");
-    sel.appendChild(opt);
-  });
-
-  selectedPeriod = "";
-  handlePeriodChange();
-}
-
-// Convert any period string to flat YYYYSS format (e.g. "2025-10" → "202510")
+// Convert any period string to flat YYYYSS digits (e.g. "2025-10" → "202510")
 function toFlatPeriod(raw) {
   if (!raw) return "";
   return String(raw).trim().replace(/[^0-9]/g, "");
 }
 
-// Return the next flat period after a given flat period (e.g. "202510" → "202520")
+// Return the next flat period after a given flat period ("202510" → "202520")
 function nextPeriodFlat(raw) {
   const flat = toFlatPeriod(raw);
   if (!flat) return null;
   const m = flat.match(/^(\d{4})(10|20)$/);
   if (!m) return null;
   const [, yr, sem] = m;
-  return sem === "10" ? `${yr}20` : `${parseInt(yr)+1}10`;
+  return sem === "10" ? `${yr}20` : `${parseInt(yr) + 1}10`;
 }
 
-function handlePeriodChange() {
-  const sel  = document.getElementById("periodSelect");
-  const warn = document.getElementById("periodOverwriteWarn");
-  const hint = document.getElementById("periodHint");
+// Maps cardKey → sheetName for period data lookup
+const CARD_SHEET_MAP = {
+  "bd-planta":  "BD_PLANTA",
+  "bd-catedra": "BD_Catedra",
+  "faculty-q":  "Faculty_Questionnaire"
+};
+
+function buildCardPeriodOptions(cardKey) {
+  const sheetName = CARD_SHEET_MAP[cardKey];
+  const sel = document.getElementById("period-" + cardKey);
+  if (!sel || !sheetName) return;
+
+  const sp = sheetPeriods[sheetName];
+  const lastRaw = sp ? sp.raw : null;
+  const allRaw  = sp ? (sp.rawAll || []) : [];
+
+  // Unique sorted existing periods (flat digits only)
+  const existingFlat = [...new Set(allRaw.map(toFlatPeriod).filter(Boolean))].sort();
+
+  // Next period after the last one
+  const nextFlat = lastRaw && lastRaw !== "—" ? nextPeriodFlat(lastRaw) : null;
+  const options  = nextFlat ? [...existingFlat, nextFlat] : existingFlat;
+
+  sel.innerHTML = `<option value="">— select —</option>`;
+  options.forEach(flat => {
+    const pretty     = formatPeriod(flat, sp ? sp.col : "Periodo");
+    const isExisting = existingFlat.includes(flat);
+    const opt        = document.createElement("option");
+    opt.value        = flat;
+    opt.textContent  = isExisting ? pretty + " ↺" : pretty + " ✦";
+    sel.appendChild(opt);
+  });
+
+  cardPeriods[cardKey] = "";
+  updateCardPeriodHint(cardKey, "", existingFlat);
+}
+
+function handleCardPeriodChange(cardKey, sheetName) {
+  const sel = document.getElementById("period-" + cardKey);
   if (!sel) return;
-  selectedPeriod = sel.value;
-  const isExisting = existingPeriods.map(toFlatPeriod).includes(selectedPeriod);
-  if (warn) warn.classList.toggle("show", !!(selectedPeriod && isExisting));
-  if (hint) hint.textContent = selectedPeriod
-    ? (isExisting
-        ? `Period ${formatPeriod(selectedPeriod, "Periodo")} — existing rows will be overwritten.`
-        : `Period ${formatPeriod(selectedPeriod, "Periodo")} — new rows will be appended.`)
-    : "Select the semester you are loading data for.";
+  const flat = sel.value;
+  cardPeriods[cardKey] = flat;
+  const sp = sheetPeriods[sheetName] || {};
+  const allRaw = sp.rawAll || [];
+  const existingFlat = allRaw.map(toFlatPeriod).filter(Boolean);
+  updateCardPeriodHint(cardKey, flat, existingFlat);
   updateUploadBtnState();
+}
+
+function updateCardPeriodHint(cardKey, flat, existingFlat) {
+  const hint = document.getElementById("period-hint-" + cardKey);
+  if (!hint) return;
+  if (!flat) { hint.textContent = ""; hint.className = "card-period-hint"; return; }
+  const isExisting = existingFlat.includes(flat);
+  if (isExisting) {
+    hint.textContent = "⚠ Existing — records will be overwritten";
+    hint.className   = "card-period-hint warn";
+  } else {
+    hint.textContent = "New period — rows will be appended";
+    hint.className   = "card-period-hint";
+  }
+}
+
+function buildPeriodOptions() {
+  // Build per-card selectors for all three cards
+  ["bd-planta", "bd-catedra", "faculty-q"].forEach(buildCardPeriodOptions);
 }
 
 // ── Upload / Save: write template data into BD maestra via Sheets API ──────
@@ -1588,13 +1603,20 @@ function updateUploadBtnState() {
   const btn   = document.getElementById("uploadBtn");
   const label = document.getElementById("uploadBtnLabel");
   if (!btn) return;
-  const count    = Object.keys(selectedFiles).length;
-  const hasPeriod = !!selectedPeriod;
-  btn.disabled = !(count > 0 && hasPeriod);
+
+  // A card is "ready" if it has a validated file AND a period selected
+  const readyKeys = Object.keys(selectedFiles).filter(k => !!cardPeriods[k]);
+  const pendingPeriod = Object.keys(selectedFiles).filter(k => !cardPeriods[k]);
+
+  btn.disabled = readyKeys.length === 0;
   if (label) {
-    if (!hasPeriod && count > 0) label.textContent = "Select a period first";
-    else if (count > 0) label.textContent = `Save ${count} File${count>1?"s":""}`;
-    else label.textContent = "Save Files";
+    if (pendingPeriod.length > 0 && readyKeys.length === 0) {
+      label.textContent = "Select a period first";
+    } else if (readyKeys.length > 0) {
+      label.textContent = `Save ${readyKeys.length} File${readyKeys.length > 1 ? "s" : ""}`;
+    } else {
+      label.textContent = "Save Files";
+    }
   }
 }
 
@@ -1755,8 +1777,9 @@ async function getSheetId(spreadsheetId, sheetName, token) {
 
 // ── Main save handler ─────────────────────────────────────────────────────
 async function handleSaveFiles() {
-  const keys = Object.keys(selectedFiles);
-  if (!keys.length || !selectedPeriod) return;
+  // Only process cards that have both a file and a period selected
+  const keys = Object.keys(selectedFiles).filter(k => !!cardPeriods[k]);
+  if (!keys.length) return;
 
   if (!isLoggedIn()) {
     requireKpiLogin(() => handleSaveFiles());
@@ -1773,49 +1796,49 @@ async function handleSaveFiles() {
   try {
     for (const key of keys) {
       const { sheetName, rows } = selectedFiles[key];
+      const flatPeriod = cardPeriods[key];
 
       if (sheetName !== "BD_PLANTA") {
-        // Only BD_PLANTA mapping implemented — others TBD
         showToast(`Mapping for ${sheetName} not yet implemented.`);
         continue;
       }
 
       label.textContent = "Reading BD…";
 
-      // 1. Read existing data from BD_PLANTA (column A = Periodo)
+      // 1. Get numeric sheetId and read existing Periodo column (A)
       const sheetId = await getSheetId(BD_FILE_ID, "BD_PLANTA", kpiToken);
       const existing = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
-      // existing[0] is header row (row 1), data starts at index 1
-      const headerOffset = 1; // row 0 in existing = sheet row 1 (header)
+      const headerOffset = 1; // row index 0 = sheet row 1 (header)
 
-      // Find rows that match the selected period (0-based in `existing` array)
-      const flatPeriod = String(selectedPeriod).trim();
-      const matchingSheetRows = []; // 0-based indices in `existing`
+      // Find rows whose Periodo matches (compare flat digits)
+      const matchingSheetRows = [];
       for (let i = headerOffset; i < existing.length; i++) {
-        const cellVal = existing[i] && existing[i][0] ? String(existing[i][0]).trim().replace(/[^0-9]/g, "") : "";
+        const cellVal = existing[i] && existing[i][0]
+          ? String(existing[i][0]).trim().replace(/[^0-9]/g, "") : "";
         if (cellVal === flatPeriod) matchingSheetRows.push(i);
       }
 
-      // 2. If existing period rows found — delete them first
+      // 2. Delete existing rows for this period (descending order)
       if (matchingSheetRows.length > 0) {
         label.textContent = `Removing ${matchingSheetRows.length} old rows…`;
         await sheetsDeleteRows(BD_FILE_ID, sheetId, matchingSheetRows, kpiToken);
       }
 
-      // 3. Re-read to get the new last row after deletion
-      const afterDelete = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
-      const lastDataRow = afterDelete.length; // sheet row number of last row with data (1-based)
-      const appendStartRow = lastDataRow + 1;  // next empty sheet row (1-based)
+      // 3. Re-read to find the new last row
+      const afterDelete  = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
+      const lastDataRow  = afterDelete.length;          // 1-based last row with data
+      const appendStart  = lastDataRow + 1;             // 1-based first empty row
 
-      // 4. Build new rows from template data
+      // 4. Build and append new rows
       label.textContent = `Writing ${rows.length} new rows…`;
-      const newRows = rows.map((tplRow, idx) => buildBDRow(tplRow, flatPeriod, appendStartRow + idx));
-
-      // 5. Append to BD_PLANTA
+      const newRows = rows.map((tplRow, idx) =>
+        buildBDRow(tplRow, flatPeriod, appendStart + idx)
+      );
       await sheetsAppendRows(BD_FILE_ID, "BD_PLANTA!A:AB", newRows, kpiToken);
     }
 
-    showToast(`✓ BD_PLANTA updated successfully for period ${formatPeriod(selectedPeriod, "Periodo")}.`);
+    const periodLabel = keys.map(k => formatPeriod(cardPeriods[k], "Periodo")).join(", ");
+    showToast(`✓ BD updated successfully for period${keys.length > 1 ? "s" : ""}: ${periodLabel}`);
     closeUpdateModal();
 
   } catch (err) {
