@@ -1030,9 +1030,24 @@ const TEMPLATE_SHEET_MAP = {
 
 // Holds template columns per sheet once loaded
 const templateColumns = {};
+
+// Hardcoded fallback column lists (normalized: \n→space, lowercased)
+// Used when Drive template can't be fetched (user not logged in, network error, etc.)
+const FALLBACK_COLUMNS = {
+  "BD_PLANTA": [
+    "nº", "id nr.", "first name", "last name", "date of birth", "gender",
+    "country of birth", "double nationality",
+    "date of first appointment to the school",
+    "academic area", "faculty ranking", "% devoted to mission",
+    "faculty qualifications new definitions",
+    "highest earned degree", "year (degree)", "university",
+    "region where degree was obtained", "highest degree label",
+    "international degree", "field", "normal professional resp.", "notes"
+  ]
+};
 // Holds last period per sheet once loaded
 const sheetPeriods = {};
-// Holds the currently-selected File objects per card key, keyed by cardKey
+// Holds the currently-selected File objects per card key
 const selectedFiles = {};
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -1193,17 +1208,17 @@ async function xlsxToMatrix(arrayBuffer, sheetName) {
   if (!window.XLSX) {
     await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
   }
-  const wb = XLSX.read(arrayBuffer, { type: "array" });
+  const wb = XLSX.read(arrayBuffer, { type: "array", cellText: true, cellDates: false });
   const wsName = sheetName && wb.Sheets[sheetName] ? sheetName : wb.SheetNames[0];
   const ws = wb.Sheets[wsName];
-  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+  // header:1 = raw array-of-arrays; defval:"" fills empty cells; raw:true keeps original values
+  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
 }
 
 // Fetch a standalone xlsx template from Drive and return its header row
 // (row `headerRow`, 1-indexed, starting at column `startCol`), trimmed of empty trailing cells
 async function fetchXlsxHeaderRow(fileId, sheetName, headerRow, startCol) {
   if (!isLoggedIn()) throw new Error("Sign in required to read template columns.");
-  // Google Sheets must be exported via the export endpoint (alt=media doesn't work for Sheets)
   const exportUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
   const resp = await fetch(exportUrl, { headers: { Authorization: "Bearer " + kpiToken } });
   if (!resp.ok) throw new Error(`HTTP ${resp.status} exporting template sheet`);
@@ -1211,10 +1226,9 @@ async function fetchXlsxHeaderRow(fileId, sheetName, headerRow, startCol) {
   const matrix = await xlsxToMatrix(buf, sheetName);
   const startIdx = colLetterToIndex(startCol);
   const row = matrix[headerRow - 1] || [];
-  const headers = row.slice(startIdx);
-  while (headers.length && (headers[headers.length - 1] === "" || headers[headers.length - 1] === undefined)) {
-    headers.pop();
-  }
+  const normHeader = v => (v === undefined || v === null) ? "" : String(v).replace(/\n/g, ' ').replace(/\r/g, '').trim();
+  const headers = row.slice(startIdx).map(normHeader);
+  while (headers.length && headers[headers.length - 1] === "") headers.pop();
   return headers;
 }
 
@@ -1223,24 +1237,26 @@ async function fetchXlsxHeaderRow(fileId, sheetName, headerRow, startCol) {
 async function readUploadedFile(file, layout) {
   const ext = file.name.split(".").pop().toLowerCase();
 
+  // Helper: normalize a header value (collapse \n, trim, handle non-strings)
+  const normHeader = v => (v === undefined || v === null) ? "" : String(v).replace(/\n/g, ' ').replace(/\r/g, '').trim();
+
   if (ext === "csv") {
-    // CSV files: assume headers on the first row, data from the second row
     const text = await file.text();
     const lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
-    const headers = splitCSVLine(lines[0] || "");
+    const headers = splitCSVLine(lines[0] || "").map(normHeader);
     const rows = lines.slice(1).map(splitCSVLine);
     return { headers, rows };
   }
 
-  // xlsx / xls
+  // xlsx / xls — use SheetJS
   const buf = await file.arrayBuffer();
   const matrix = await xlsxToMatrix(buf);
   const startIdx = colLetterToIndex(layout.startCol);
   const headerRowArr = matrix[layout.headerRow - 1] || [];
-  let headers = headerRowArr.slice(startIdx);
-  while (headers.length && (headers[headers.length - 1] === "" || headers[headers.length - 1] === undefined)) {
-    headers.pop();
-  }
+  let headers = headerRowArr.slice(startIdx).map(normHeader);
+  // Trim trailing empty headers
+  while (headers.length && headers[headers.length - 1] === "") headers.pop();
+
   const rows = matrix.slice(layout.dataStartRow - 1)
     .map(r => (r || []).slice(startIdx, startIdx + headers.length))
     .filter(r => r.some(v => v !== "" && v !== undefined && v !== null));
@@ -1408,7 +1424,9 @@ async function handleFileSelect(input, cardKey, sheetName, periodCol) {
 
     const { headers: fileColumns, rows } = await readUploadedFile(file, layout);
 
-    const expected = templateColumns[sheetName] || [];
+    const expected = templateColumns[sheetName] && templateColumns[sheetName].length > 0
+      ? templateColumns[sheetName]
+      : (FALLBACK_COLUMNS[sheetName] || []);
     if (expected.length === 0) {
       // Template columns not loaded yet — accept the file, validation skipped
       card.classList.add("file-selected");
