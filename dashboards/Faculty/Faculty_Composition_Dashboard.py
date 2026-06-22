@@ -285,30 +285,34 @@ def _highlight_band(fig, label, all_labels):
 # ── Header ─────────────────────────────────────────────────────────────────────
 _render_header("Full-time Faculty Composition", "Evolution and distribution of full-time faculty by ranking")
 
-DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
+# ── ID del Google Sheet (mismo archivo, ahora nativo) ──────────────────────────
+SHEET_ID  = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
+SHEET_TAB = "BD_PLANTA"   # nombre exacto de la pestaña
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=300)   # se refresca automáticamente cada 5 minutos
 def load_data():
-    url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
-    output_path = "/tmp/BD_Faculty.xlsx"
+    # Exporta el Google Sheet nativo directamente como xlsx en memoria
+    url = (
+        f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
+        f"/export?format=xlsx&sheet={SHEET_TAB.replace(' ', '%20')}"
+    )
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
 
-    import requests as _req
-    response = _req.get(url, stream=True)
-    with open(output_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=32768):
-            if chunk:
-                f.write(chunk)
+    raw = io.BytesIO(resp.content)
 
-    # ── Robust sheet detection: never breaks when the sheet is renamed ──
-    xls = pd.ExcelFile(output_path)
-    possible = ["BD_PLANTA", "BD PLANTA", "BD_PLANTA 2020-2025",
-                "BD PLANTA 2020-2025", "BD PLANTA 2020-2026",
-                "BD_PLANTA 2020-2025", "BD_PLANTA 2020-2026"]
-    sheet_found = next((s for s in possible if s in xls.sheet_names), None)
-    if sheet_found is None:
-        # Fall back to first sheet as last resort
-        sheet_found = xls.sheet_names[0]
-    df_ = pd.read_excel(output_path, sheet_name=sheet_found)
+    # Detección robusta de pestaña por si cambia el nombre
+    xls = pd.ExcelFile(raw)
+    possible = [
+        SHEET_TAB,
+        "BD_PLANTA", "BD PLANTA",
+        "BD_PLANTA 2020-2025", "BD PLANTA 2020-2025",
+        "BD_PLANTA 2020-2026", "BD PLANTA 2020-2026",
+    ]
+    sheet_found = next((s for s in possible if s in xls.sheet_names), xls.sheet_names[0])
+
+    raw.seek(0)
+    df_ = pd.read_excel(raw, sheet_name=sheet_found)
 
     def _norm_per(val):
         s = str(val).strip()
@@ -320,8 +324,11 @@ def load_data():
             return f"{m.group(1)}-{m.group(2)}"
         return None
 
-    first_col = df_.columns[0]
-    df_["Periodo"] = df_[first_col].map(_norm_per)
+    # Si el Sheet ya tiene columna "Periodo" la usamos; si no, la derivamos de la primera
+    if "Periodo" in df_.columns:
+        df_["Periodo"] = df_["Periodo"].map(_norm_per)
+    else:
+        df_["Periodo"] = df_[df_.columns[0]].map(_norm_per)
 
     valid = df_["Periodo"].astype(str).str.match(
         r'^(?:19|20)\d{2}-(10|20)$|^(?:19|20)\d{2}\sIntersemestral$'
@@ -333,10 +340,10 @@ def load_data():
 
     def _key(p):
         s = str(p)
-        y = int(s[:4])
+        y   = int(s[:4])
         suf = 30 if "Intersemestral" in s else int(s[-2:])
         return (y, suf)
-    df_ = df_.sort_values(by="Periodo", key=lambda s: s.map(_key))
+    df_ = df_.sort_values(by="Periodo", key=lambda col: col.map(_key))
     return df_
 
 df = load_data()
@@ -415,6 +422,12 @@ with st.sidebar:
         )
         sel_period_label = sel_period_internal
     
+    st.markdown("---")
+    if st.button("🔄 Actualizar datos", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+    st.caption("Auto-refresco cada 5 min · pulsa para forzar.")
+
     xlsx_data = _xlsx_bytes(df)
     b64 = _b64.b64encode(xlsx_data).decode()
     
