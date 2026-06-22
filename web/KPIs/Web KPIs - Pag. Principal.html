@@ -135,6 +135,14 @@ header.hero h1 {
 .dash-desc { font-size: .76rem; color: var(--muted); line-height: 1.4; margin-top: 2px; }
 .dash-item.active .dash-desc { color: rgba(255,255,255,.65); }
 .empty-state { padding: 32px 20px; text-align: center; color: var(--muted); font-size: .86rem; line-height: 1.7; }
+.dash-alert-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fef2f2; border: 1.5px solid #fca5a5;
+  font-size: .7rem; font-weight: 900; color: #b91c1c;
+  flex-shrink: 0; margin-left: auto;
+}
+.dash-item.active .dash-alert-dot { background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.4); color: #fca5a5; }
 
 /* ── PREVIEW PANEL ── */
 .preview-panel { display: flex; flex-direction: column; flex: 1; height: 100%; }
@@ -720,7 +728,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
     <script>
 // ── AUTH (shared session with BaseRoom via sessionStorage) ───────────────
 const GOOGLE_CLIENT_ID_KPI = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
-const SCOPES_KPI   = "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets";
+const SCOPES_KPI   = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly";
 const ALLOWED_KPI  = "uniandes.edu.co";
 const SESSION_MS_KPI = 10 * 60 * 1000;
 
@@ -774,8 +782,8 @@ const UNITS = [
       { title: "Full-time Faculty Staffing Levels", desc: "Staffing levels, number of professors, teaching load, and detailed information on faculty allocation.",                          url: "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/" },
       { title: "Distribution by Academic Area",    desc: "Distribution of full-time and part-time faculty by academic area, with evolution and comparative detail.",                       url: "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/" },
       { title: "Faculty Demographics",             desc: "Demographic indicators of full-time and part-time faculty, including gender, nationality, and age patterns.",                    url: "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/" },
-      { title: "Full-time Faculty Questionnaire",  desc: "Survey results related to faculty activities, participation patterns, and relevant institutional insights.",                     url: "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/" },
-      { title: "Faculty Qualifications",           desc: "Faculty sufficiency and qualification indicators aligned with international accreditation standards.",                            url: "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/" },
+      { title: "Faculty Qualifications",           desc: "Faculty sufficiency and qualification indicators aligned with international accreditation standards.",                            url: "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",  bdType: "faculty" },
+      { title: "Full-time Faculty Questionnaire",  desc: "Survey results related to faculty activities, participation patterns, and relevant institutional insights.",                     url: "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/", bdType: "fq" },
       { title: "Triennial Evaluation",             desc: "Consolidated results from triennial evaluation processes and strategic review indicators.",                                       url: "#", soon: true }
     ]
   },
@@ -859,14 +867,30 @@ function renderDashboards() {
     const btn = document.createElement("button");
     const isActive = selectedDash === i;
     btn.className = "dash-item" + (isActive ? " active" : "");
+
+    // Check if this dashboard's underlying BD is overdue
+    let alertDot = "";
+    if (!d.soon) {
+      // faculty dashboards use BD_PLANTA data; fq uses Faculty_Questionnaire
+      const checkSheet = d.bdType === "fq" ? "Faculty_Questionnaire" : "BD_PLANTA";
+      const sp = sheetPeriods[checkSheet];
+      if (sp && sp.raw && sp.raw !== "—") {
+        const info = updateAlert(sp.raw, sp.col || "Periodo");
+        if (info && info.cls === "overdue") {
+          alertDot = `<span class="dash-alert-dot" title="Data is overdue for update">!</span>`;
+        }
+      }
+    }
+
     const label = d.soon ? "Not updated" : "Streamlit Dashboard";
-    btn.innerHTML = `<span class="dash-title">${d.title}</span>${d.desc ? `<span class="dash-desc">${d.desc}</span>` : ""}<span class="dash-type${d.soon ? " soon" : ""}">${label}</span>`;
+    const titleRow = `<span class="dash-title">${d.title}</span>${alertDot}`;
+    btn.innerHTML = `<div style="display:flex;align-items:center;gap:6px;width:100%;">${titleRow}</div>${d.desc ? `<span class="dash-desc">${d.desc}</span>` : ""}<span class="dash-type${d.soon ? " soon" : ""}">${label}</span>`;
     btn.addEventListener("click", () => {
       if (d.soon || d.url === "#") { showToast("This dashboard has not been updated yet."); return; }
       requireKpiLogin(() => {
         selectedDash = i;
         renderDashboards();
-        openPreview(d.title, d.url);
+        openPreview(d.title, d.url, d.bdType);
       });
     });
     el.appendChild(btn);
@@ -874,9 +898,12 @@ function renderDashboards() {
 }
 
 // ── PREVIEW ───────────────────────────────────────────────────────────────
-function openPreview(title, url) {
+let currentBdType = "faculty"; // "faculty" | "fq"
+
+function openPreview(title, url, bdType) {
   clearTimeout(previewTimer);
   clearInterval(countdownInterval);
+  currentBdType = bdType || "faculty";
 
   const iframe   = document.getElementById("previewIframe");
   const loading  = document.getElementById("previewLoading");
@@ -886,54 +913,30 @@ function openPreview(title, url) {
   const toBtn    = document.getElementById("timeoutBtn");
   const bar      = document.getElementById("countdownBar");
 
-  const dashObj = UNITS.find(u=>u.id===selectedUnit)?.dashboards.find(d=>d.title===title);
   document.getElementById("previewTitle").textContent = title;
-
   const embedUrl = url.includes("?") ? url + "&embed=true" : url + "?embed=true";
+  extBtn.href = url; extBtn.style.display = "inline-flex";
+  toBtn.href  = url;
+  document.getElementById("updateBtn").style.display = "inline-flex";
 
-  extBtn.href  = url; extBtn.style.display = "inline-flex";
-  toBtn.href   = url;
-  const updBtn = document.getElementById("updateBtn");
-  updBtn.style.display = "inline-flex";
-
-  ph.style.display      = "none";
+  ph.style.display = "none";
   timeout.classList.remove("show");
-  iframe.style.display  = "none";
-  iframe.src            = "";
+  iframe.style.display = "none";
+  iframe.src = "";
   loading.classList.add("show");
 
-  // Countdown bar
-  bar.style.transition  = "none";
-  bar.style.width       = "100%";
-  requestAnimationFrame(() => {
-    bar.style.transition = `width ${TIMEOUT_MS}ms linear`;
-    bar.style.width      = "0%";
-  });
+  bar.style.transition = "none"; bar.style.width = "100%";
+  requestAnimationFrame(() => { bar.style.transition = `width ${TIMEOUT_MS}ms linear`; bar.style.width = "0%"; });
 
   let s = Math.floor(TIMEOUT_MS / 1000);
   document.getElementById("countdownText").textContent = `Waiting up to ${s} seconds`;
   countdownInterval = setInterval(() => {
     s--;
-    document.getElementById("countdownText").textContent =
-      s > 0 ? `Waiting up to ${s} seconds` : "Almost there…";
+    document.getElementById("countdownText").textContent = s > 0 ? `Waiting up to ${s} seconds` : "Almost there…";
   }, 1000);
 
-  iframe.onload = () => {
-    clearTimeout(previewTimer);
-    clearInterval(countdownInterval);
-    loading.classList.remove("show");
-    iframe.style.display = "block";
-
-  };
-
-  previewTimer = setTimeout(() => {
-    clearInterval(countdownInterval);
-    loading.classList.remove("show");
-    iframe.style.display = "none";
-    timeout.classList.add("show");
-
-  }, TIMEOUT_MS);
-
+  iframe.onload = () => { clearTimeout(previewTimer); clearInterval(countdownInterval); loading.classList.remove("show"); iframe.style.display = "block"; };
+  previewTimer = setTimeout(() => { clearInterval(countdownInterval); loading.classList.remove("show"); iframe.style.display = "none"; timeout.classList.add("show"); }, TIMEOUT_MS);
   iframe.src = embedUrl;
 }
 
@@ -1379,6 +1382,19 @@ function openUpdateModal() {
   document.body.style.overflow = "hidden";
   for (const k of Object.keys(selectedFiles)) delete selectedFiles[k];
   for (const k of Object.keys(cardPeriods)) delete cardPeriods[k];
+
+  // Show/hide cards based on which dashboard was opened
+  const isFQ = currentBdType === "fq";
+  document.getElementById("card-bd-planta").style.display  = isFQ ? "none" : "";
+  document.getElementById("card-bd-catedra").style.display = isFQ ? "none" : "";
+  document.getElementById("card-faculty-q").style.display  = isFQ ? "" : "none";
+
+  // Update modal subtitle
+  const sub = document.querySelector(".modal-head-text p");
+  if (sub) sub.textContent = isFQ
+    ? "Upload the Faculty Questionnaire file to refresh this dashboard."
+    : "Upload BD_PLANTA and/or BD_Cartelera to refresh the Faculty dashboards.";
+
   updateUploadBtnState();
   loadModalData();
 }
@@ -1733,24 +1749,30 @@ function buildBDRow(tplRow, periodo, formulaRowNum) {
 async function sheetsGetValues(spreadsheetId, range, token) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
   const resp = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-  if (!resp.ok) throw new Error(`Sheets GET ${range}: HTTP ${resp.status}`);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Sheets GET ${range}: HTTP ${resp.status} — ${errText}`);
+  }
   const data = await resp.json();
   return data.values || [];
 }
 
-// Append rows to a sheet after the last row with data
 async function sheetsAppendRows(spreadsheetId, range, rows, token) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  // Use OVERWRITE (default) — appends after the last row with data in the range
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`;
+  const body = JSON.stringify({ values: rows });
   const resp = await fetch(url, {
     method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify({ values: rows })
+    body
   });
-  if (!resp.ok) throw new Error(`Sheets APPEND: HTTP ${resp.status} — ${await resp.text()}`);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Sheets APPEND: HTTP ${resp.status} — ${errText}`);
+  }
   return await resp.json();
 }
 
-// Batch update (overwrite) a specific range
 async function sheetsBatchUpdate(spreadsheetId, updates, token) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
   const resp = await fetch(url, {
@@ -1758,19 +1780,18 @@ async function sheetsBatchUpdate(spreadsheetId, updates, token) {
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
     body: JSON.stringify({ valueInputOption: "USER_ENTERED", data: updates })
   });
-  if (!resp.ok) throw new Error(`Sheets batchUpdate: HTTP ${resp.status} — ${await resp.text()}`);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Sheets batchUpdate: HTTP ${resp.status} — ${errText}`);
+  }
   return await resp.json();
 }
 
-// Delete rows by row indices (0-based) using batchUpdate on the spreadsheet
 async function sheetsDeleteRows(spreadsheetId, sheetId, rowIndices, token) {
   if (!rowIndices.length) return;
-  // Sort descending so deleting higher rows first doesn't shift lower indices
   const sorted = [...rowIndices].sort((a, b) => b - a);
   const requests = sorted.map(idx => ({
-    deleteDimension: {
-      range: { sheetId, dimension: "ROWS", startIndex: idx, endIndex: idx + 1 }
-    }
+    deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: idx, endIndex: idx + 1 } }
   }));
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
   const resp = await fetch(url, {
@@ -1778,15 +1799,20 @@ async function sheetsDeleteRows(spreadsheetId, sheetId, rowIndices, token) {
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
     body: JSON.stringify({ requests })
   });
-  if (!resp.ok) throw new Error(`Sheets deleteRows: HTTP ${resp.status} — ${await resp.text()}`);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Sheets deleteRows: HTTP ${resp.status} — ${errText}`);
+  }
   return await resp.json();
 }
 
-// Get the numeric sheetId for a given sheet name
 async function getSheetId(spreadsheetId, sheetName, token) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`;
   const resp = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-  if (!resp.ok) throw new Error(`Could not get sheet metadata: HTTP ${resp.status}`);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Could not get sheet metadata: HTTP ${resp.status} — ${errText}`);
+  }
   const data = await resp.json();
   const sheet = data.sheets.find(s => s.properties.title === sheetName);
   if (!sheet) throw new Error(`Sheet "${sheetName}" not found in spreadsheet.`);
