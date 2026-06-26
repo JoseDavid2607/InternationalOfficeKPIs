@@ -82,12 +82,11 @@ def _highlight_band(fig, label, all_labels):
                       fillcolor=_P["highlight"], opacity=0.35, line_width=0)
 
 # ── Auto-refresh silencioso cada 5 s ─────────────────────────────────────────
-if "last_refresh" not in st.session_state:
-    st.session_state.last_refresh = time.time()
+@st.fragment(run_every=5)
+def _auto_refresh():
+    load_data.clear()   # limpia solo el caché de load_data
 
-if time.time() - st.session_state.last_refresh >= 5:
-    st.session_state.last_refresh = time.time()
-    st.rerun()
+_auto_refresh()
 
 # ── Data ───────────────────────────────────────────────────────────────────────
 SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
