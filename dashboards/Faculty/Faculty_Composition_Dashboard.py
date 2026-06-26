@@ -290,7 +290,7 @@ def _highlight_band(fig, label, all_labels):
 _render_header("Full-time Faculty Composition", "Evolution and distribution of full-time faculty by ranking")
 
 # ── ID del Google Sheet (mismo archivo, ahora nativo) ──────────────────────────
-SHEET_ID  = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
+SHEET_ID  = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
 SHEET_TAB = "BD_PLANTA"   # nombre exacto de la pestaña
 
 @st.cache_data(ttl=300)   # se refresca automáticamente cada 5 minutos
@@ -344,35 +344,27 @@ def load_data():
     df_ = pd.read_excel(raw, sheet_name=sheet_found)
 
     def _norm_per(val):
-        # Manejar floats: 202610.0 → "202610", NaN → None
         if pd.isna(val):
             return None
-        # Convertir a entero primero si es número, para eliminar el ".0"
+        # int/float (202610 o 202610.0) -> "202610"
         try:
-            val = str(int(float(str(val).strip())))
+            s = str(int(float(str(val).strip())))
         except (ValueError, OverflowError):
-            val = str(val).strip()
-        s = val.strip()
-        # Intersemestral
+            s = str(val).strip()
         m_inter = re.search(r'((?:19|20)\d{2}).{0,6}inter', s, flags=re.IGNORECASE)
         if m_inter:
             return f"{m_inter.group(1)} Intersemestral"
-        # Formato compacto: 202610 → 2026-10
         m_compact = re.fullmatch(r'((?:19|20)\d{2})(10|20)', s)
         if m_compact:
             return f"{m_compact.group(1)}-{m_compact.group(2)}"
-        # Formato con separador: 2026-10, 2026/10, 2026 10
         m_sep = re.search(r'((?:19|20)\d{2})[^0-9]+(10|20)', s)
         if m_sep:
             return f"{m_sep.group(1)}-{m_sep.group(2)}"
         return None
 
-    # Siempre derivar Periodo desde la columna fuente para no depender del formato guardado
     source_col = "Periodo" if "Periodo" in df_.columns else df_.columns[0]
     df_["Periodo"] = df_[source_col].map(_norm_per)
 
-    # Filtro dinamico: acepta cualquier YYYY-10 o YYYY-20 o YYYY Intersemestral
-    # sin limitar a anios especificos — nuevos periodos aparecen automaticamente
     valid = df_["Periodo"].astype(str).str.match(
         r'^(?:19|20)\d{2}-(10|20)$|^(?:19|20)\d{2}\s+Intersemestral$'
     )
