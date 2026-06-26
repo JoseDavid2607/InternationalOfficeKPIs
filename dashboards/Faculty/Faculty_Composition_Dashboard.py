@@ -84,7 +84,7 @@ def _highlight_band(fig, label, all_labels):
 # ── Data ───────────────────────────────────────────────────────────────────────
 SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
 
-@st.cache_data(ttl=5)   # invalida caché cada 5 s
+@st.cache_data(ttl=5)
 def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
     try:
@@ -138,14 +138,25 @@ def load_data():
 
     return df_.sort_values("Periodo", key=lambda c: c.map(_key))
 
-df = load_data()
-
-# ── Auto-refresh silencioso cada 5 s ─────────────────────────────────────────
+# ── Auto-refresh: cada 5 s comprueba si el Sheet cambió y reruns el script ────
 @st.fragment(run_every=5)
-def _auto_refresh():
-    load_data.clear()
+def _poller():
+    # Pide solo los metadatos del Sheet (rápido, sin descargar el xlsx)
+    meta_url = (f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
+                f"/export?format=csv&range=A1")
+    try:
+        sig = requests.get(meta_url, timeout=5).content[:512]
+    except Exception:
+        return
+    prev = st.session_state.get("_sheet_sig")
+    st.session_state["_sheet_sig"] = sig
+    if prev is not None and sig != prev:
+        load_data.clear()
+        st.rerun()
 
-_auto_refresh()
+_poller()
+
+df = load_data()
 
 # ── Periods ────────────────────────────────────────────────────────────────────
 all_periods   = df["Periodo"].astype(str).unique().tolist()
