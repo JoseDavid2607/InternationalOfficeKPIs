@@ -1,1926 +1,412 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KPIs for International Accreditations</title>
+# ===========================================================================
+#  Full-time Faculty Composition · UASM
+# ===========================================================================
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import re
+import io, base64 as _b64
+import requests
+import time
+
+st.set_page_config(
+    page_title="Full-time Faculty Composition · UASM",
+    page_icon="🎓",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# ── Design tokens ──────────────────────────────────────────────────────────────
+_P = {
+    "primary":       "#21877D",
+    "primary_dark":  "#004d47",
+    "primary_light": "#dff7f2",
+    "highlight":     "#D0E5F5",
+    "text_muted":    "#6B7280",
+    "border":        "#D1E8E4",
+}
+
+st.markdown("""
 <style>
-:root {
-  --bg-page: #f5f6f8;
-  --bg-glass: rgba(255,255,255,.93);
-  --bg-white: #ffffff;
-  --slate: #4b5563;
-  --slate-dark: #1f2937;
-  --slate-mid: #374151;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --teal: #0f6e56;
-  --teal-light: #e1f5ee;
-  --teal-brand: #56d6c9;
-  --teal-brand-dark: #2fa89c;
-  --shadow-panel: 0 20px 50px rgba(0,0,0,.16);
-  --shadow-soft: 0 10px 24px rgba(0,0,0,.10);
-  --radius-panel: 24px;
-}
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, Helvetica, sans-serif; background: var(--bg-page); color: var(--slate-dark); -webkit-font-smoothing: antialiased; }
-
-/* ── HERO ── */
-header.hero {
-  color: #fff; position: relative; min-height: 300px;
-  padding: 48px 24px 140px;
-  display: flex; align-items: center; justify-content: center;
-  overflow: hidden; text-align: center;
-  background:
-    linear-gradient(to bottom, rgba(8,12,20,.08), rgba(8,12,20,.12), rgba(8,12,20,.20)),
-    url("../imagenes/Santodomingo.jpg") center center / cover no-repeat;
-}
-header.hero::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(to bottom, rgba(255,255,255,0) 65%, var(--bg-page) 100%);
-  pointer-events: none;
-}
-.hero-inner { max-width: 1100px; width: 100%; margin: 0 auto; position: relative; z-index: 2; }
-.hero-eyebrow {
-  display: inline-block; margin-bottom: 14px; padding: 8px 16px;
-  border-radius: 999px; background: rgba(255,255,255,.16);
-  border: 1px solid rgba(255,255,255,.18); font-size: 13px; font-weight: 700;
-  letter-spacing: .02em;
-}
-header.hero h1 {
-  margin: 0; font-weight: 800; line-height: 1.02;
-  font-size: clamp(2.2rem, 4vw + .5rem, 3.8rem);
-  letter-spacing: -.03em; text-shadow: 0 10px 30px rgba(0,0,0,.28);
-}
-.back-button { position: absolute; top: 24px; left: 24px; z-index: 20; }
-.back-button a {
-  width: 52px; height: 52px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.22);
-  text-decoration: none; box-shadow: 0 8px 20px rgba(0,0,0,.18);
-  transition: transform .2s, background .2s; backdrop-filter: blur(4px);
-}
-.back-button a:hover { transform: translateY(-2px); background: rgba(255,255,255,0.26); }
-.back-button svg { width: 24px; height: 24px; stroke: #fff; }
-
-/* ── INTRO ── */
-.intro-wrap {
-  position: relative; max-width: 900px; margin: -135px auto 12px;
-  z-index: 10; padding: 0 16px; display: flex; align-items: flex-end; gap: 0;
-}
-.intro-seneca { position: relative; flex-shrink: 0; width: 100px; margin-right: -16px; z-index: 13; }
-.intro-seneca img { max-width: 100px; height: auto; display: block; filter: drop-shadow(0 10px 18px rgba(0,0,0,.16)); }
-.intro-panel {
-  flex: 1; z-index: 12; padding: 20px 22px 20px 32px;
-  background: var(--bg-glass); border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-panel); text-align: left;
-  border: 1px solid rgba(255,255,255,.28);
-  font-size: .93rem; line-height: 1.7;
-}
-
-/* ── MAIN ── */
-.main { max-width: 1600px; margin: 4px auto 56px; padding: 0 20px; }
-.section-heading { margin: 0 0 14px; }
-.section-heading h2 { font-size: 1.1rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 4px; }
-.section-heading p { color: var(--muted); font-size: .88rem; }
-
-/* ── WORKSPACE 3 COLS ── */
-.workspace { display: grid; grid-template-columns: 280px 300px 1fr; gap: 18px; align-items: stretch; }
-.col-panel { background: var(--bg-white); border-radius: var(--radius-panel); box-shadow: var(--shadow-soft); overflow: hidden; display: flex; flex-direction: column; height: 700px; }
-.col-header { padding: 18px 20px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.col-header h3 { font-size: .95rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
-.col-header p { color: var(--muted); font-size: .81rem; line-height: 1.5; }
-
-/* ── UNITS LIST ── */
-.units-scroll { overflow-y: auto; flex: 1; }
-.units-scroll::-webkit-scrollbar { width: 4px; }
-.units-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-
-.unit-item {
-  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
-  cursor: pointer; border: none; background: transparent; text-align: left;
-  border-bottom: 1px solid var(--border); width: 100%; transition: background .15s;
-}
-.unit-item:last-child { border-bottom: none; }
-.unit-item:hover { background: #f9fafb; }
-.unit-item.active { background: #1f2937; }
-.unit-item.active .unit-name { color: #fff; }
-.unit-item.active .unit-icon { background: rgba(255,255,255,.1); }
-.unit-item.active .unit-icon svg { stroke: #fff; }
-.unit-icon { width: 36px; height: 36px; border-radius: 10px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.unit-icon svg { width: 17px; height: 17px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
-.unit-name { font-size: .88rem; font-weight: 800; color: var(--slate-dark); flex: 1; line-height: 1.3; }
-.unit-desc { font-size: .76rem; color: var(--muted); line-height: 1.4; margin-top: 2px; font-weight: 400; }
-.unit-item.active .unit-desc { color: rgba(255,255,255,.65); }
-.unit-item.active .unit-name { color: #fff; }
-
-/* ── DASHBOARDS LIST ── */
-.dash-scroll { overflow-y: auto; flex: 1; }
-.dash-scroll::-webkit-scrollbar { width: 4px; }
-.dash-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-
-.dash-item {
-  display: flex; flex-direction: column; gap: 3px; padding: 14px 18px;
-  cursor: pointer; border: none; background: transparent; text-align: left;
-  border-bottom: 1px solid var(--border); width: 100%; transition: background .15s;
-}
-.dash-item:last-child { border-bottom: none; }
-.dash-item:hover { background: #f9fafb; }
-.dash-item.active { background: #1f2937; border-left: 3px solid var(--teal-brand); }
-.dash-item.active .dash-title { color: #fff; }
-.dash-item.active .dash-type { background: rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
-.dash-title { font-size: .87rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; }
-.dash-type { display: inline-block; padding: 2px 7px; border-radius: 999px; background: #f0fdf4; color: #166534; font-size: .72rem; font-weight: 700; margin-top: 2px; }
-.dash-type.soon { background: #f3f4f6; color: var(--muted); }
-.dash-desc { font-size: .76rem; color: var(--muted); line-height: 1.4; margin-top: 2px; }
-.dash-item.active .dash-desc { color: rgba(255,255,255,.65); }
-.empty-state { padding: 32px 20px; text-align: center; color: var(--muted); font-size: .86rem; line-height: 1.7; }
-.dash-alert-dot {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; border-radius: 50%;
-  background: #fef2f2; border: 1.5px solid #fca5a5;
-  font-size: .7rem; font-weight: 900; color: #b91c1c;
-  flex-shrink: 0; margin-left: auto;
-}
-.dash-item.active .dash-alert-dot { background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.4); color: #fca5a5; }
-
-/* ── PREVIEW PANEL ── */
-.preview-panel { display: flex; flex-direction: column; flex: 1; height: 100%; }
-.preview-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.preview-header-info { flex: 1; }
-.preview-title { font-size: .95rem; font-weight: 800; color: var(--slate-dark); }
-.preview-meta { font-size: .79rem; color: var(--muted); margin-top: 2px; }
-.action-btn {
-  display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
-  border-radius: 999px; border: none; font-size: .82rem; font-weight: 800;
-  cursor: pointer; text-decoration: none; transition: transform .15s, background .15s;
-}
-.action-btn:hover { transform: translateY(-1px); }
-.action-btn--primary { background: #1f2937; color: #fff; }
-.action-btn--teal { background: var(--teal-light); color: var(--teal); }
-.preview-body { flex: 1; position: relative; overflow: hidden; }
-.preview-iframe { width: 100%; height: 100%; border: none; display: none; position: absolute; inset: 0; }
-
-.preview-placeholder {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 12px;
-  color: var(--muted); font-size: .9rem; text-align: center; padding: 40px;
-}
-.preview-placeholder svg { width: 48px; height: 48px; stroke: #d1d5db; fill: none; stroke-width: 1.4; }
-
-.preview-loading {
-  position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center; gap: 14px;
-  background: #f8fafc; color: var(--muted); font-size: .88rem;
-}
-.preview-loading.show { display: flex; }
-.spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: var(--teal-brand); border-radius: 50%; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.countdown-wrap { width: 220px; height: 4px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
-.countdown-bar { height: 100%; background: var(--teal-brand); border-radius: 999px; width: 100%; }
-
-.preview-timeout {
-  position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center; gap: 16px;
-  background: #f8fafc; padding: 40px; text-align: center;
-}
-.preview-timeout.show { display: flex; }
-.preview-login {
-  position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center;
-  background: #f8fafc; padding: 40px; text-align: center;
-}
-.preview-login.show { display: flex; }
-.timeout-title { font-size: 1rem; font-weight: 800; color: var(--slate-dark); }
-.timeout-desc { color: var(--muted); font-size: .87rem; line-height: 1.6; max-width: 360px; }
-
-/* ── UPDATE MODAL ── */
-.modal-overlay {
-  display: none; position: fixed; inset: 0; z-index: 5000;
-  background: rgba(15,20,30,.55); backdrop-filter: blur(4px);
-  align-items: center; justify-content: center; padding: 20px;
-}
-.modal-overlay.show { display: flex; }
-.modal-box {
-  background: #fff; border-radius: 20px; width: 100%; max-width: 760px;
-  max-height: 90vh; overflow-y: auto; box-shadow: 0 32px 80px rgba(0,0,0,.28);
-  display: flex; flex-direction: column;
-}
-.modal-box::-webkit-scrollbar { width: 5px; }
-.modal-box::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-.modal-head {
-  padding: 24px 28px 18px; border-bottom: 1px solid var(--border);
-  display: flex; align-items: flex-start; gap: 14px; flex-shrink: 0;
-  position: sticky; top: 0; background: #fff; z-index: 2; border-radius: 20px 20px 0 0;
-}
-.modal-head-icon {
-  width: 44px; height: 44px; border-radius: 12px; background: var(--teal-light);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.modal-head-icon svg { width: 22px; height: 22px; stroke: var(--teal); fill: none; stroke-width: 1.8; }
-.modal-head-text { flex: 1; }
-.modal-head-text h2 { font-size: 1.05rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
-.modal-head-text p { font-size: .82rem; color: var(--muted); }
-.modal-close {
-  width: 32px; height: 32px; border-radius: 50%; border: none; background: #f3f4f6;
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  transition: background .15s; flex-shrink: 0; margin-top: 2px;
-}
-.modal-close:hover { background: #e5e7eb; }
-.modal-close svg { width: 16px; height: 16px; stroke: var(--slate); fill: none; stroke-width: 2.2; }
-
-.modal-status-bar {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
-  background: var(--border); border-bottom: 1px solid var(--border);
-}
-.status-cell {
-  background: #fafafa; padding: 14px 18px;
-}
-.status-cell:first-child { border-radius: 0; }
-.status-label { font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
-.status-value { font-size: .88rem; font-weight: 800; color: var(--slate-dark); }
-.status-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700;
-}
-.status-badge.ok { background: #dcfce7; color: #166534; }
-.status-badge.warn { background: #fef9c3; color: #854d0e; }
-.status-badge.dot::before {
-  content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor;
-  display: inline-block;
-}
-
-.modal-body { padding: 22px 28px 10px; flex: 1; }
-.modal-section-title {
-  font-size: .72rem; font-weight: 800; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 14px;
-}
-
-.file-card {
-  border: 1.5px solid #d1d9e6; border-radius: 14px;
-  margin-bottom: 20px; overflow: hidden; transition: border-color .2s;
-  box-shadow: 0 1px 4px rgba(0,0,0,.05);
-}
-.file-card:last-of-type { margin-bottom: 0; }
-.file-card.file-selected { border-color: var(--teal-brand); box-shadow: 0 0 0 3px rgba(13,148,136,.08); }
-.file-card-head {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 18px; background: #f4f6fa; border-bottom: 2px solid #d1d9e6;
-}
-.file-card.file-selected .file-card-head { background: #f0fdf9; border-color: #a7f3d0; }
-.file-icon {
-  width: 36px; height: 36px; border-radius: 9px; background: #f3f4f6;
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.file-card.file-selected .file-icon { background: var(--teal-light); }
-.file-icon svg { width: 17px; height: 17px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
-.file-card.file-selected .file-icon svg { stroke: var(--teal); }
-.file-name { font-size: .9rem; font-weight: 800; color: var(--slate-dark); flex: 1; }
-.file-selected-badge {
-  display: none; align-items: center; gap: 5px;
-  padding: 3px 10px; border-radius: 999px;
-  background: #dcfce7; color: #15803d; font-size: .75rem; font-weight: 700;
-}
-.file-selected-badge svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.5; }
-.file-card.file-selected .file-selected-badge { display: inline-flex; }
-
-.file-meta-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
-  border-bottom: 2px solid #d1d9e6; background: #fff;
-}
-.file-meta-cell { padding: 11px 18px; border-right: 1px solid #d1d9e6; }
-.file-meta-cell:last-child { border-right: none; }
-.file-meta-label { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
-.file-meta-val { font-size: .84rem; font-weight: 700; color: var(--slate-dark); }
-.meta-next-wrap { display: flex; flex-direction: column; gap: 5px; }
-.update-alert {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px; border-radius: 999px; font-size: .7rem; font-weight: 700;
-  white-space: nowrap;
-}
-.update-alert.overdue  { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; }
-.update-alert.due-soon { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
-.update-alert.ok       { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
-.update-alert svg      { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2.5; }
-
-.file-actions { display: flex; align-items: center; gap: 10px; padding: 12px 18px; }
-.btn-download {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 14px; border-radius: 999px;
-  border: 1.5px solid #b6d8f2;
-  background: #e8f4fd; color: #1565a8; font-size: .8rem; font-weight: 700;
-  cursor: pointer; transition: background .15s, border-color .15s; white-space: nowrap;
-}
-.btn-download:hover { background: #d0eaf9; border-color: #7dbde8; }
-.btn-download svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2.2; }
-
-.file-attach-wrapper { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
-.btn-trash {
-  width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%;
-  border: 1.5px solid #fca5a5; background: #fef2f2; color: #dc2626;
-  display: none; align-items: center; justify-content: center;
-  cursor: pointer; transition: background .15s;
-}
-.btn-trash:hover { background: #fee2e2; }
-.btn-trash svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2.2; }
-.btn-trash.visible { display: flex; }
-
-.file-attach-label {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px;
-  padding: 7px 14px; border-radius: 999px; border: 1.5px dashed #d1d5db;
-  background: #fafafa; color: var(--muted); font-size: .8rem; font-weight: 600;
-  cursor: pointer; transition: background .15s, border-color .15s; user-select: none;
-  overflow: hidden;
-}
-.file-attach-label span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.file-attach-label:hover { background: #f0fdf9; border-color: var(--teal-brand); color: var(--teal); }
-.file-attach-label svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; flex-shrink: 0; }
-.file-attach-input { display: none; }
-
-.modal-footer {
-  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
-  padding: 18px 28px 24px; border-top: 1px solid var(--border);
-  position: sticky; bottom: 0; background: #fff; z-index: 2;
-  border-radius: 0 0 20px 20px; flex-shrink: 0;
-}
-.btn-cancel {
-  padding: 9px 22px; border-radius: 999px; border: 1.5px solid var(--border);
-  background: #fff; color: var(--slate); font-size: .87rem; font-weight: 700;
-  cursor: pointer; transition: background .15s;
-}
-.btn-cancel:hover { background: #f3f4f6; }
-.btn-upload {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 22px; border-radius: 999px; border: none;
-  background: #1f2937; color: #fff; font-size: .87rem; font-weight: 800;
-  cursor: pointer; transition: background .15s, transform .15s;
-}
-.btn-upload:hover { background: #111827; transform: translateY(-1px); }
-.btn-upload svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.2; }
-.btn-upload:disabled {
-  background: #d1d5db; color: #9ca3af; cursor: not-allowed; transform: none !important;
-}
-.btn-upload:disabled:hover { background: #d1d5db; transform: none; }
-
-.validation-msg {
-  margin: 0 18px 8px; padding: 9px 14px; border-radius: 8px;
-  font-size: .8rem; font-weight: 600; line-height: 1.5;
-  border-left: 3px solid transparent;
-}
-.validation-msg.error { background: #fef2f2; color: #991b1b; border-color: #f87171; }
-.validation-msg.success { background: #f0fdf4; color: #166534; border-color: #4ade80; }
-.validation-msg ul { margin: 4px 0 0 16px; }
-.validation-msg li { margin-bottom: 2px; }
-
-/* ── PER-CARD PERIOD ROW (subtle) ── */
-.card-period-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 18px; background: #f8fafc;
-  border-top: 1px solid #e9ecf2; border-bottom: 1px solid #e9ecf2;
-}
-.card-period-label {
-  font-size: .72rem; font-weight: 700; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
-}
-.card-period-select {
-  padding: 4px 24px 4px 8px; border: 1.5px solid #d1d9e6; border-radius: 6px;
-  background: #fff; font-size: .8rem; font-weight: 700; color: var(--slate-dark);
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 7px center; cursor: pointer;
-}
-.card-period-select:focus { outline: none; border-color: var(--teal-brand); }
-.card-period-hint {
-  font-size: .74rem; color: var(--muted); font-style: italic;
-}
-.card-period-hint.warn { color: #c2410c; font-style: normal; font-weight: 600; }
-
-.toast { display: none; position: fixed; bottom: 28px; right: 28px; z-index: 3000; background: #1f2937; color: #fff; padding: 13px 20px; border-radius: 14px; font-size: .88rem; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
-
-footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-size: 14px; }
-
-@media (max-width: 1100px) { .workspace { grid-template-columns: 240px 260px 1fr; } .col-panel { height: 700px; } }
-@media (max-width: 860px) { .workspace { grid-template-columns: 1fr 1fr; } .col-panel { height: 400px; } .preview-col { grid-column: span 2; height: 600px; } }
-@media (max-width: 580px) { .workspace { grid-template-columns: 1fr; } .col-panel { height: 380px; } .preview-col { grid-column: auto; height: 520px; } .intro-seneca { display: none; } header.hero { min-height: 260px; padding: 64px 18px 110px; } }
+.suite-header{display:flex;flex-direction:column;align-items:center;padding:16px 24px 12px;
+ margin-top:-35px;background:linear-gradient(135deg,#004d47 0%,#21877D 60%,#2EC4B6 100%);
+ border-radius:12px;box-shadow:0 2px 8px rgba(0,77,71,.18);margin-bottom:14px;}
+.sh-super{font-size:11px;font-weight:700;letter-spacing:2px;color:#56D6C9;text-transform:uppercase;margin-bottom:2px;}
+.sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}
+.sh-sub{font-size:13px;color:rgba(255,255,255,.75);margin-top:4px;text-align:center;}
+.kpi-row{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+.kpi-card{flex:1;min-width:120px;background:#F8FFFE;border:1px solid #D1E8E4;border-radius:10px;
+ padding:12px 14px;text-align:center;box-shadow:0 1px 4px rgba(0,77,71,.07);}
+.kv{font-size:28px;font-weight:800;color:#21877D;line-height:1.1;}
+.kl{font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}
+.sec-sep{border:none;border-top:1px solid #D1E8E4;margin:16px 0;opacity:.6;}
+a.dl-min,a.dl-min:link,a.dl-min:visited{color:#00A896!important;text-decoration:underline!important;
+ font-size:13px;display:inline-block;margin-top:6px;}
+a.dl-min:hover{opacity:.85;}
+thead th{background:#dff7f2!important;color:#004d47!important;font-weight:700!important;}
+section[data-testid="stSidebar"]{background:#F0F7F6!important;}
+.modern-btn{background:#FFFFFF;border:1px solid #D1E8E4;border-radius:10px;padding:12px 14px;
+ color:#374151!important;font-size:14px;font-weight:600;text-decoration:none!important;
+ display:block;text-align:center;margin-bottom:10px;transition:all .2s ease;
+ box-shadow:0 1px 3px rgba(0,0,0,.04);}
+.modern-btn:hover{background:#F8FFFE;border-color:#B7DCD6;}
 </style>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-</head>
-<body>
-
-<header class="hero">
-  <div class="back-button">
-    <a href="../../index.html" aria-label="Go back">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/>
-      </svg>
-    </a>
-  </div>
-  <div class="hero-inner">
-    <div class="hero-eyebrow">International Office UASM · Information System & Data Center</div>
-    <h1>KPIs for International Accreditations</h1>
-  </div>
-</header>
-
-<div class="intro-wrap">
-  <div class="intro-seneca" aria-hidden="true">
-    <img src="../imagenes/seneca.png" alt="Seneca">
-  </div>
-  <div class="intro-panel">
-    Dynamic BaseRoom with key information from the different areas of the School of Management, to report in international rankings and accreditations.
-    <strong> Select a unit, then a dashboard to preview it.</strong>
-  </div>
-</div>
-
-<section class="main">
-  <div class="workspace">
-
-    <!-- UNITS -->
-    <div class="col-panel">
-      <div class="col-header">
-        <h3>Units</h3>
-        <p>Select a unit to see its dashboards</p>
-      </div>
-      <div class="units-scroll" id="unitList"></div>
-    </div>
-
-    <!-- DASHBOARDS -->
-    <div class="col-panel">
-      <div class="col-header">
-        <h3>Dashboards</h3>
-        <p id="dashColDesc">Select a unit first</p>
-      </div>
-      <div class="dash-scroll" id="dashList"></div>
-    </div>
-
-    <!-- PREVIEW -->
-    <div class="col-panel preview-col">
-      <div class="preview-panel">
-        <div class="preview-header" style="padding:12px 16px;">
-          <div class="preview-header-info" style="flex:1;">
-            <div class="preview-title" id="previewTitle" style="font-size:.9rem;font-weight:800;color:#1f2937;"></div>
-          </div>
-          <button class="action-btn action-btn--teal" id="updateBtn" style="display:none;" onclick="openUpdateModal()">Update data ↗</button>
-          <a href="#" class="action-btn action-btn--primary" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open Dashboard ↗</a>
-        </div>
-        <div class="preview-body" id="previewBody">
-          <div class="preview-placeholder" id="previewPlaceholder">
-            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
-            <div>Select a dashboard to preview it here</div>
-          </div>
-          <div class="preview-loading" id="previewLoading">
-            <div class="spinner"></div>
-            <div>Loading dashboard…</div>
-            <div class="countdown-wrap"><div class="countdown-bar" id="countdownBar"></div></div>
-            <div id="countdownText" style="font-size:.78rem;color:#9ca3af;">Waiting up to 30 seconds</div>
-          </div>
-          <iframe class="preview-iframe" id="previewIframe" allow="fullscreen; scripts; same-origin; popups" allowfullscreen></iframe>
-          <div class="preview-timeout" id="previewTimeout">
-            <div style="font-size:2.5rem;opacity:.25;">⚡</div>
-            <div class="timeout-title">Dashboard taking too long</div>
-            <div class="timeout-desc">The preview could not load in time. Open the dashboard directly in a new tab.</div>
-            <a href="#" class="action-btn action-btn--primary" id="timeoutBtn" target="_blank" rel="noopener">Open dashboard ↗</a>
-          </div>
-          <div class="preview-login" id="previewLogin">
-            <div style="font-size:2.2rem;margin-bottom:14px;">🔐</div>
-            <div style="font-size:1rem;font-weight:800;color:#1f2937;margin-bottom:8px;">Sign in to view dashboards</div>
-            <div style="color:#6b7280;font-size:.87rem;line-height:1.6;margin-bottom:22px;max-width:320px;">Sign in with your <strong>@uniandes.edu.co</strong> account to access the KPI dashboards.</div>
-            <button id="kpiLoginGoogleBtn" style="display:inline-flex;align-items:center;gap:10px;padding:12px 24px;border-radius:999px;border:1.5px solid #e5e7eb;background:#fff;color:#1f2937;font-size:.9rem;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.08);transition:box-shadow .18s,transform .18s;">
-              <svg width="20" height="20" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-              Continue with Google
-            </button>
-            <div style="font-size:.75rem;color:#9ca3af;margin-top:12px;">Only @uniandes.edu.co accounts are authorized.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-<footer>International Office · School of Management · Internal use only</footer>
-<div class="toast" id="toast"></div>
-<!-- ── UPDATE MODAL ─────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="updateModal" onclick="handleModalOverlayClick(event)">
-  <div class="modal-box" id="updateModalBox">
-
-    <!-- Header -->
-    <div class="modal-head">
-      <div class="modal-head-icon">
-        <svg viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 10 12 4 17 10"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
-      </div>
-      <div class="modal-head-text">
-        <h2>Update Dashboard Data Sources</h2>
-        <p>Upload new source files to refresh the dashboards with the latest data.</p>
-      </div>
-      <button class="modal-close" onclick="closeUpdateModal()" aria-label="Close">
-        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-
-    <!-- Modal loading skeleton -->
-    <div id="modalLoadingState" style="padding:48px 28px;display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--muted);font-size:.88rem;">
-      <div class="spinner"></div>
-      <div>Loading current data status…</div>
-    </div>
-
-    <!-- Modal error state -->
-    <div id="modalErrorState" style="display:none;padding:40px 28px;text-align:center;">
-      <div style="font-size:2rem;margin-bottom:10px;">⚠️</div>
-      <div style="font-size:.9rem;font-weight:700;color:#1f2937;margin-bottom:6px;">Could not load data</div>
-      <div id="modalErrorMsg" style="font-size:.82rem;color:var(--muted);margin-bottom:18px;"></div>
-      <button class="btn-download" onclick="loadModalData()">Retry</button>
-    </div>
-
-    <!-- Main modal content (hidden until data loads) -->
-    <div id="modalContent" style="display:none;">
-
-      <!-- File cards -->
-      <div class="modal-body">
-        <div class="modal-section-title">Source Files</div>
-
-        <!-- BD_PLANTA card -->
-        <div class="file-card" id="card-bd-planta">
-          <div class="file-card-head">
-            <div class="file-icon">
-              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-            </div>
-            <span class="file-name">BD_PLANTA</span>
-            <span class="file-selected-badge" id="badge-bd-planta">
-              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-              File ready
-            </span>
-          </div>
-          <div class="file-meta-grid">
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Update</div>
-              <div class="file-meta-val" id="meta-planta-date">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Period Loaded</div>
-              <div class="file-meta-val" id="meta-planta-period">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Next Expected Period</div>
-              <div class="meta-next-wrap">
-                <div class="file-meta-val" id="meta-planta-next">—</div>
-                <span class="update-alert" id="alert-planta" style="display:none;"></span>
-              </div>
-            </div>
-          </div>
-          <!-- Period selector (subtle, inline) -->
-          <div class="card-period-row" id="period-row-bd-planta">
-            <label class="card-period-label" for="period-bd-planta">Period:</label>
-            <select class="card-period-select" id="period-bd-planta" onchange="handleCardPeriodChange('bd-planta','BD_PLANTA')">
-              <option value="">— select —</option>
-            </select>
-            <span class="card-period-hint" id="period-hint-bd-planta"></span>
-          </div>
-          <!-- Validation feedback -->
-          <div id="validation-bd-planta" class="validation-msg" style="display:none;"></div>
-          <div class="file-actions">
-            <button class="btn-download" onclick="handleDownload('BD_PLANTA')">
-              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download Template
-            </button>
-            <div class="file-attach-wrapper">
-              <label class="file-attach-label" for="file-bd-planta">
-                <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                <span id="label-bd-planta">Attach new file…</span>
-              </label>
-              <button class="btn-trash" id="trash-bd-planta" title="Remove file" onclick="clearFile('bd-planta')">
-                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-              </button>
-            </div>
-            <input type="file" id="file-bd-planta" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'bd-planta','BD_PLANTA','Periodo')">
-          </div>
-        </div>
-
-        <!-- BD_Catedra card -->
-        <div class="file-card" id="card-bd-catedra">
-          <div class="file-card-head">
-            <div class="file-icon">
-              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-            </div>
-            <span class="file-name">BD_Catedra</span>
-            <span class="file-selected-badge" id="badge-bd-catedra">
-              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-              File ready
-            </span>
-          </div>
-          <div class="file-meta-grid">
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Update</div>
-              <div class="file-meta-val" id="meta-catedra-date">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Period Loaded</div>
-              <div class="file-meta-val" id="meta-catedra-period">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Next Expected Period</div>
-              <div class="meta-next-wrap">
-                <div class="file-meta-val" id="meta-catedra-next">—</div>
-                <span class="update-alert" id="alert-catedra" style="display:none;"></span>
-              </div>
-            </div>
-          </div>
-          <!-- Period selector (subtle, inline) -->
-          <div class="card-period-row" id="period-row-bd-catedra">
-            <label class="card-period-label" for="period-bd-catedra">Period:</label>
-            <select class="card-period-select" id="period-bd-catedra" onchange="handleCardPeriodChange('bd-catedra','BD_Catedra')">
-              <option value="">— select —</option>
-            </select>
-            <span class="card-period-hint" id="period-hint-bd-catedra"></span>
-          </div>
-          <div id="validation-bd-catedra" class="validation-msg" style="display:none;"></div>
-          <div class="file-actions">
-            <button class="btn-download" onclick="handleDownload('BD_Catedra')">
-              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download Template
-            </button>
-            <div class="file-attach-wrapper">
-              <label class="file-attach-label" for="file-bd-catedra">
-                <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                <span id="label-bd-catedra">Attach new file…</span>
-              </label>
-              <button class="btn-trash" id="trash-bd-catedra" title="Remove file" onclick="clearFile('bd-catedra')">
-                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-              </button>
-            </div>
-            <input type="file" id="file-bd-catedra" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'bd-catedra','BD_Catedra','Periodo')">
-          </div>
-        </div>
-
-        <!-- Faculty_Questionnaire card -->
-        <div class="file-card" id="card-faculty-q">
-          <div class="file-card-head">
-            <div class="file-icon">
-              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-            </div>
-            <span class="file-name">Faculty_Questionnaire</span>
-            <span class="file-selected-badge" id="badge-faculty-q">
-              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-              File ready
-            </span>
-          </div>
-          <div class="file-meta-grid">
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Update</div>
-              <div class="file-meta-val" id="meta-fq-date">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Last Period Loaded</div>
-              <div class="file-meta-val" id="meta-fq-period">—</div>
-            </div>
-            <div class="file-meta-cell">
-              <div class="file-meta-label">Next Expected Period</div>
-              <div class="meta-next-wrap">
-                <div class="file-meta-val" id="meta-fq-next">—</div>
-                <span class="update-alert" id="alert-fq" style="display:none;"></span>
-              </div>
-            </div>
-          </div>
-          <!-- Period selector (subtle, inline) -->
-          <div class="card-period-row" id="period-row-faculty-q">
-            <label class="card-period-label" for="period-faculty-q">Period:</label>
-            <select class="card-period-select" id="period-faculty-q" onchange="handleCardPeriodChange('faculty-q','Faculty_Questionnaire')">
-              <option value="">— select —</option>
-            </select>
-            <span class="card-period-hint" id="period-hint-faculty-q"></span>
-          </div>
-          <div id="validation-faculty-q" class="validation-msg" style="display:none;"></div>
-          <div class="file-actions">
-            <button class="btn-download" onclick="handleDownload('Faculty_Questionnaire')">
-              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download Template
-            </button>
-            <div class="file-attach-wrapper">
-              <label class="file-attach-label" for="file-faculty-q">
-                <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                <span id="label-faculty-q">Attach new file…</span>
-              </label>
-              <button class="btn-trash" id="trash-faculty-q" title="Remove file" onclick="clearFile('faculty-q')">
-                <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-              </button>
-            </div>
-            <input type="file" id="file-faculty-q" class="file-attach-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this,'faculty-q','Faculty_Questionnaire','Year')">
-          </div>
-        </div>
-
-      </div><!-- /modal-body -->
-
-      <!-- Footer -->
-      <div class="modal-footer">
-        <button class="btn-cancel" onclick="closeUpdateModal()">Cancel</button>
-        <button class="btn-upload" id="uploadBtn" disabled onclick="handleSaveFiles()">
-          <svg viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="7 10 12 4 17 10"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
-          <span id="uploadBtnLabel">Save Files</span>
-        </button>
-      </div>
-
-    </div><!-- /modalContent -->
-
-  </div>
-</div>
-<!-- ── /UPDATE MODAL ─────────────────────────────────────────────────── -->
-
-
-    <script>
-// ── AUTH (shared session with BaseRoom via sessionStorage) ───────────────
-const GOOGLE_CLIENT_ID_KPI = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
-const SCOPES_KPI   = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly";
-const ALLOWED_KPI  = "uniandes.edu.co";
-const SESSION_MS_KPI = 10 * 60 * 1000;
-
-let kpiToken    = sessionStorage.getItem("br_token") || null;
-let kpiEmail    = sessionStorage.getItem("br_email") || null;
-let kpiExpiry   = parseInt(sessionStorage.getItem("br_expiry") || "0") || null;
-let pendingDash = null;
-
-function isLoggedIn() {
-  return kpiToken && kpiEmail && kpiEmail.endsWith("@" + ALLOWED_KPI) &&
-         kpiExpiry && Date.now() < kpiExpiry;
-}
-function touchKpiSession() {
-  kpiExpiry = Date.now() + SESSION_MS_KPI;
-  sessionStorage.setItem("br_expiry", String(kpiExpiry));
-}
-["click","keydown","mousemove","touchstart"].forEach(ev =>
-  document.addEventListener(ev, () => { if(isLoggedIn()) touchKpiSession(); }, {passive:true})
-);
-setInterval(() => {
-  if (kpiToken && kpiExpiry && Date.now() > kpiExpiry) {
-    kpiToken = kpiEmail = kpiExpiry = null;
-    sessionStorage.removeItem("br_token");
-    sessionStorage.removeItem("br_email");
-    sessionStorage.removeItem("br_expiry");
-    showToast("Session expired. Please sign in again.");
-    resetPreview();
-  }
-}, 15000);
-
-function requireKpiLogin(action) {
-  if (isLoggedIn()) { action(); return; }
-  pendingDash = action;
-  // Show inline login panel in the preview area
-  document.getElementById("previewPlaceholder").style.display = "none";
-  document.getElementById("previewLoading").classList.remove("show");
-  document.getElementById("previewTimeout").classList.remove("show");
-  document.getElementById("previewIframe").style.display = "none";
-  document.getElementById("previewLogin").classList.add("show");
-}
-
-// ── DATA ──────────────────────────────────────────────────────────────────
-const UNITS = [
-  {
-    id: "faculty",
-    name: "Faculty",
-    desc: "Faculty deployment, qualifications, demographics, workload, and accreditation-relevant academic profiles.",
-    icon: `<circle cx="12" cy="7" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>`,
-    dashboards: [
-      { title: "Full-time Faculty Composition",    desc: "Composition by type of full-time faculty ranking, historical evolution, and detailed academic distribution.",                     url: "https://facultycompositiondashboardpy-dtacyzfa3otmpbewqc5axu.streamlit.app/" },
-      { title: "Full-time Faculty Staffing Levels", desc: "Staffing levels, number of professors, teaching load, and detailed information on faculty allocation.",                          url: "https://facultystaffinglevelsdashboardpy-phv4t8jzbyyz5rrepqttuf.streamlit.app/" },
-      { title: "Distribution by Academic Area",    desc: "Distribution of full-time and part-time faculty by academic area, with evolution and comparative detail.",                       url: "https://facultydistributionareadashboardpy-yzwpiqdlukfdp6qcygxjhj.streamlit.app/" },
-      { title: "Faculty Demographics",             desc: "Demographic indicators of full-time and part-time faculty, including gender, nationality, and age patterns.",                    url: "https://facultydemographicsdashboardpy-kmsnpswxs35psbqtdtvb6y.streamlit.app/" },
-      { title: "Faculty Qualifications",           desc: "Faculty sufficiency and qualification indicators aligned with international accreditation standards.",                            url: "https://facultyqualificationspy-drvj3wpyrxvm2lrnafdwx5.streamlit.app/",  bdType: "faculty" },
-      { title: "Full-time Faculty Questionnaire",  desc: "Survey results related to faculty activities, participation patterns, and relevant institutional insights.",                     url: "https://full-timefacultyactivitiespy-bbe7fmmyrxvssadnygm4fx.streamlit.app/", bdType: "fq" },
-      { title: "Triennial Evaluation",             desc: "Consolidated results from triennial evaluation processes and strategic review indicators.",                                       url: "#", soon: true }
-    ]
-  },
-  {
-    id: "internationalization",
-    name: "Internationalization",
-    desc: "Mobility, agreements, visiting faculty, international activities, and global engagement indicators.",
-    icon: `<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 4 3 14 0 18M12 3c-3 4-3 14 0 18" stroke-width="1.3"/>`,
-    dashboards: [
-      { title: "International Faculty & Visiting Professors", desc: "International faculty and visiting professors metrics, origin countries, and engagement history.",        url: "#", soon: true },
-      { title: "International Publications & Conferences",    desc: "Publications, conference participation, and academic output with international reach.",                   url: "#", soon: true },
-      { title: "Faculty Academic Activities",                 desc: "International teaching activities, lectures, workshops, and academic engagements abroad.",               url: "#", soon: true },
-      { title: "International Research Seminars",             desc: "International research seminars hosted, speaker profiles, and academic contribution data.",              url: "#", soon: true },
-      { title: "Internationalization of the Campus",          desc: "Campus internationalization indicators, graduation requirements, and cross-cultural programmes.",        url: "#", soon: true },
-      { title: "International Weeks & Activities",            desc: "International weeks, global activities, partnerships events, and student participation rates.",          url: "#", soon: true },
-      { title: "UASM Seminars",                               desc: "Seminar series data, invited speakers, attendance figures, and contribution to academic positioning.",   url: "#", soon: true },
-      { title: "Student & PhD Mobility",                      desc: "Outgoing and incoming student mobility, PhD exchange programmes, and partner institution breakdown.",    url: "#", soon: true },
-      { title: "Signed Agreements",                           desc: "Active international agreements, MoUs, partnership tiers, and geographic distribution of alliances.",   url: "#", soon: true }
-    ]
-  },
-  { id: "alumni",     name: "Alumni & Career Services",  desc: "Employment distribution, salary trends, career outcomes, and placement indicators for graduates.",                         icon: `<path d="M9 7V6a3 3 0 0 1 6 0v1"/><rect x="3" y="7" width="18" height="12" rx="2"/>`,  dashboards: [], soon: true },
-  { id: "executive",  name: "Executive Education",       desc: "Consolidated KPIs related to executive programs, participation, reach, and operational performance.",                      icon: `<rect x="4" y="3" width="10" height="18" rx="2"/><path d="M8 7h6M8 11h6M8 15h4"/>`,    dashboards: [], soon: true },
-  { id: "programs",   name: "Academic Programs",         desc: "Admissions, student demographics, academic deployment, GPA behavior, and financial indicators.",                           icon: `<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 4v3M16 4v3M3 10h18"/>`,   dashboards: [], soon: true },
-  { id: "research",   name: "Research & Development",    desc: "Publications, research activity, academic production, projects, and broader scholarly impact.",                            icon: `<path d="M9 3v5l-4.5 8A3 3 0 0 0 7.3 20h9.4a3 3 0 0 0 2.8-4L15 8V3"/>`,              dashboards: [], soon: true },
-  { id: "resources",  name: "Resources & Admin",         desc: "Budget, funding, staffing, administrative support, and core operational resources of the School.",                         icon: `<path d="M12 2a7 7 0 1 0 0 14A7 7 0 0 0 12 2z"/><path d="M12 16v6M8 20h8"/>`,          dashboards: [], soon: true },
-];
-
-// ── STATE ────────────────────────────────────────────────────────────────
-let selectedUnit = null;
-let selectedDash = null;
-let previewTimer = null;
-let countdownInterval = null;
-const TIMEOUT_MS = 30000;
-
-// ── RENDER UNITS ─────────────────────────────────────────────────────────
-function renderUnits() {
-  const el = document.getElementById("unitList");
-  el.innerHTML = "";
-  UNITS.forEach(unit => {
-    const btn = document.createElement("button");
-    const isActive = selectedUnit === unit.id;
-    btn.className = "unit-item" + (isActive ? " active" : "");
-    btn.innerHTML = `
-      <div class="unit-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${unit.icon}</svg></div>
-      <div style="flex:1;min-width:0;">
-        <div class="unit-name">${unit.name}</div>
-        ${unit.desc ? `<div class="unit-desc">${unit.desc}</div>` : ""}
-      </div>
-`;
-    btn.addEventListener("click", () => {
-      selectedUnit = unit.id;
-      selectedDash = null;
-      renderUnits();
-      renderDashboards();
-      resetPreview();
-    });
-    el.appendChild(btn);
-  });
-}
-
-// ── RENDER DASHBOARDS ─────────────────────────────────────────────────────
-function renderDashboards() {
-  const el = document.getElementById("dashList");
-  const desc = document.getElementById("dashColDesc");
-  if (!selectedUnit) {
-    desc.textContent = "Select a unit first";
-    el.innerHTML =
-      `<div class="empty-state">
-          Click a unit to see its dashboards.
-       </div>`;
-    return;
-  }
-  const unit = UNITS.find(u => u.id === selectedUnit);
-  desc.textContent = unit.name;
-  el.innerHTML = "";
-  if (!unit.dashboards.length) {
-    el.innerHTML = `<div class="empty-state">No dashboards updated yet for this unit.</div>`;
-    return;
-  }
-  unit.dashboards.forEach((d, i) => {
-    const btn = document.createElement("button");
-    const isActive = selectedDash === i;
-    btn.className = "dash-item" + (isActive ? " active" : "");
-
-    // Check if this dashboard's underlying BD is overdue
-    let alertDot = "";
-    if (!d.soon) {
-      // faculty dashboards use BD_PLANTA data; fq uses Faculty_Questionnaire
-      const checkSheet = d.bdType === "fq" ? "Faculty_Questionnaire" : "BD_PLANTA";
-      const sp = sheetPeriods[checkSheet];
-      if (sp && sp.raw && sp.raw !== "—") {
-        const info = updateAlert(sp.raw, sp.col || "Periodo");
-        if (info && info.cls === "overdue") {
-          alertDot = `<span class="dash-alert-dot" title="Data is overdue for update">!</span>`;
-        }
-      }
-    }
-
-    const label = d.soon ? "Not updated" : "Streamlit Dashboard";
-    const titleRow = `<span class="dash-title">${d.title}</span>${alertDot}`;
-    btn.innerHTML = `<div style="display:flex;align-items:center;gap:6px;width:100%;">${titleRow}</div>${d.desc ? `<span class="dash-desc">${d.desc}</span>` : ""}<span class="dash-type${d.soon ? " soon" : ""}">${label}</span>`;
-    btn.addEventListener("click", () => {
-      if (d.soon || d.url === "#") { showToast("This dashboard has not been updated yet."); return; }
-      requireKpiLogin(() => {
-        selectedDash = i;
-        renderDashboards();
-        openPreview(d.title, d.url, d.bdType);
-      });
-    });
-    el.appendChild(btn);
-  });
-}
-
-// ── PREVIEW ───────────────────────────────────────────────────────────────
-let currentBdType = "faculty"; // "faculty" | "fq"
-
-function openPreview(title, url, bdType) {
-  clearTimeout(previewTimer);
-  clearInterval(countdownInterval);
-  currentBdType = bdType || "faculty";
-
-  const iframe   = document.getElementById("previewIframe");
-  const loading  = document.getElementById("previewLoading");
-  const timeout  = document.getElementById("previewTimeout");
-  const ph       = document.getElementById("previewPlaceholder");
-  const extBtn   = document.getElementById("openExtBtn");
-  const toBtn    = document.getElementById("timeoutBtn");
-  const bar      = document.getElementById("countdownBar");
-
-  document.getElementById("previewTitle").textContent = title;
-  const embedUrl = url.includes("?") ? url + "&embed=true" : url + "?embed=true";
-  extBtn.href = url; extBtn.style.display = "inline-flex";
-  toBtn.href  = url;
-  document.getElementById("updateBtn").style.display = "inline-flex";
-
-  ph.style.display = "none";
-  timeout.classList.remove("show");
-  iframe.style.display = "none";
-  iframe.src = "";
-  loading.classList.add("show");
-
-  bar.style.transition = "none"; bar.style.width = "100%";
-  requestAnimationFrame(() => { bar.style.transition = `width ${TIMEOUT_MS}ms linear`; bar.style.width = "0%"; });
-
-  let s = Math.floor(TIMEOUT_MS / 1000);
-  document.getElementById("countdownText").textContent = `Waiting up to ${s} seconds`;
-  countdownInterval = setInterval(() => {
-    s--;
-    document.getElementById("countdownText").textContent = s > 0 ? `Waiting up to ${s} seconds` : "Almost there…";
-  }, 1000);
-
-  iframe.onload = () => { clearTimeout(previewTimer); clearInterval(countdownInterval); loading.classList.remove("show"); iframe.style.display = "block"; };
-  previewTimer = setTimeout(() => { clearInterval(countdownInterval); loading.classList.remove("show"); iframe.style.display = "none"; timeout.classList.add("show"); }, TIMEOUT_MS);
-  iframe.src = embedUrl;
-}
-
-function resetPreview() {
-  clearTimeout(previewTimer);
-  clearInterval(countdownInterval);
-  const iframe = document.getElementById("previewIframe");
-  iframe.src = "";
-  iframe.style.display = "none";
-  document.getElementById("previewLoading").classList.remove("show");
-  document.getElementById("previewTimeout").classList.remove("show");
-  document.getElementById("previewPlaceholder").style.display = "flex";
-  document.getElementById("previewTitle").textContent = "";
-  document.getElementById("previewLogin").classList.remove("show");
-  document.getElementById("openExtBtn").style.display = "none";
-  document.getElementById("updateBtn").style.display = "none";
-}
-
-function showToast(msg) {
-  const t = document.getElementById("toast");
-  t.textContent = msg; t.style.display = "block";
-  setTimeout(() => { t.style.display = "none"; }, 3000);
-}
-
-// ── LOGIN BUTTON ─────────────────────────────────────────────────────────
-document.getElementById("kpiLoginGoogleBtn").addEventListener("click", () => {
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID_KPI,
-    scope: SCOPES_KPI + " https://www.googleapis.com/auth/userinfo.email",
-    callback: (resp) => {
-      if (resp.error) { showToast("Authentication error: " + resp.error); return; }
-      kpiToken = resp.access_token;
-      fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: "Bearer " + kpiToken }
-      }).then(r => r.json()).then(info => {
-        kpiEmail = info.email || "";
-        if (!kpiEmail.endsWith("@" + ALLOWED_KPI)) {
-          kpiToken = kpiEmail = null;
-          showToast("Access denied. Only @uniandes.edu.co accounts are allowed.");
-          return;
-        }
-        touchKpiSession();
-        sessionStorage.setItem("br_token", kpiToken);
-        sessionStorage.setItem("br_email", kpiEmail);
-        
-        showToast("Signed in as " + kpiEmail);
-        document.getElementById("previewLogin").classList.remove("show");
-        if (pendingDash) { const a = pendingDash; pendingDash = null; a(); }
-      }).catch(() => showToast("Could not verify account."));
-    }
-  });
-  client.requestAccessToken();
-});
-
-// ── INIT ─────────────────────────────────────────────────────────────────
-selectedUnit = null;
-selectedDash = null;
-
-renderUnits();
-renderDashboards();
-resetPreview();
-
-// ── UPDATE MODAL ──────────────────────────────────────────────────────────
-const BD_FILE_ID       = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8";
-const TEMPLATE_FILE_ID = "1qhwyKzANWG_qt0cF-94UyZ_1itTPYOyYumd92HwfHiM";
-
-// Standalone template .xlsx files in "BASEROOM ORI UASM/Bases de datos tabulares/*Templates*/"
-// Drive file IDs (used for the "Download Template" buttons and for column validation)
-const TEMPLATE_DRIVE_FILES = {
-  "BD_PLANTA":  { fileId: "1bE5cNo1UUUjN34-L799U7KJQarefQl1h", sheetName: "BD_PLANTA",   fileName: "Template_BD_PLANTA.xlsx"   },
-  "BD_Catedra": { fileId: "1O5DV0ABy_-G1_t4pjfeZHUi-f9OFJprl", sheetName: "BD_Cartelera", fileName: "Template_BD_Cartelera.xlsx" }
-};
-
-// Destination folder for the "Save" test upload (same *Templates* folder for now)
-const SAVE_FOLDER_ID = "1_3JHkSL-fbmW7g8hQPKync3nz0y2chjB";
-
-// Templates use a fixed layout: headers in row 4 (starting at column B),
-// optional instructions row in row 5, and data starting at row 6 (starting at column B)
-const TEMPLATE_LAYOUT = { headerRow: 4, dataStartRow: 6, startCol: "B" };
-
-// Sheets config: sheetName → { periodCol, metaIdSuffix }
-const SHEET_CONFIG = {
-  "BD_PLANTA":             { periodCol: "Periodo", metaId: "planta",  cardId: "bd-planta"  },
-  "Faculty_Questionnaire": { periodCol: "Year",    metaId: "fq",      cardId: "faculty-q"  }
-};
-
-// Template sheet names — exact names used for column validation
-const TEMPLATE_SHEET_MAP = {
-  "BD_PLANTA":             "BD_PLANTA",
-  "BD_Catedra":            "BD_Cartelera",
-  "Faculty_Questionnaire": "Faculty_questionnaire"
-};
-
-// Holds template columns per sheet once loaded
-const templateColumns = {};
-
-// Hardcoded fallback column lists (normalized: \n→space, lowercased)
-// Used when Drive template can't be fetched (user not logged in, network error, etc.)
-const FALLBACK_COLUMNS = {
-  "BD_PLANTA": [
-    "nº", "id nr.", "first name", "last name", "date of birth", "gender",
-    "country of birth", "double nationality",
-    "date of first appointment to the school",
-    "academic area", "faculty ranking", "% devoted to mission",
-    "faculty qualifications new definitions",
-    "highest earned degree", "year (degree)", "university",
-    "region where degree was obtained", "highest degree label",
-    "international degree", "field", "normal professional resp.", "notes"
-  ]
-};
-// Holds last period per sheet once loaded
-const sheetPeriods = {};
-// Holds the currently-selected File objects per card key
-const selectedFiles = {};
-
-// ── Helpers ──────────────────────────────────────────────────────────────
-
-// Normalize raw period to { year, sem } where sem = "10" | "20" | null
-function parsePeriod(raw, colName) {
-  if (!raw || String(raw).trim() === "" || String(raw).trim() === "—") return null;
-  if (colName === "Year") {
-    const y = parseInt(raw);
-    return isNaN(y) ? null : { year: y, sem: null };
-  }
-  const str = String(raw).trim().replace(/[\s\-–]/g, "");
-  // YYYYSS format: 202510, 202520
-  const m = str.match(/^(\d{4})(10|20)$/);
-  if (m) return { year: parseInt(m[1]), sem: m[2] };
-  // Old format: 20251 or 20252
-  const m2 = str.match(/^(\d{4})([12])$/);
-  if (m2) return { year: parseInt(m2[1]), sem: m2[2] === "1" ? "10" : "20" };
-  // With dash still present: 2025-10 or 2025-20
-  const m3 = String(raw).trim().match(/^(\d{4})[-–](10|20)$/);
-  if (m3) return { year: parseInt(m3[1]), sem: m3[2] };
-  return null;
-}
-
-function formatPeriod(raw, colName) {
-  if (raw === null || raw === undefined || raw === "" || String(raw).trim() === "—") return "—";
-  if (colName === "Year") return String(raw).trim();
-  const p = parsePeriod(raw, colName);
-  if (p && p.sem) return `${p.year}-${p.sem}`;
-  return String(raw).trim();
-}
-
-function nextPeriod(raw, colName) {
-  if (!raw || String(raw).trim() === "" || String(raw).trim() === "—") return "—";
-  if (colName === "Year") {
-    const y = parseInt(raw);
-    return isNaN(y) ? "—" : String(y + 1);
-  }
-  const p = parsePeriod(raw, colName);
-  if (!p || !p.sem) return "—";
-  if (p.sem === "10") return `${p.year}-20`;
-  if (p.sem === "20") return `${p.year + 1}-10`;
-  return "—";
-}
-
-// Returns { cls, label } for the update alert badge
-// -10 periods: deadline = July 31 of that year
-// -20 periods: deadline = Feb 28 of next year
-// Year-based (Faculty_Questionnaire): deadline = July 31 of that year
-function updateAlert(raw, colName) {
-  const today = new Date();
-  let deadline = null;
-
-  if (colName === "Year") {
-    // next expected = year + 1, deadline = July 31 of the NEXT expected year
-    const y = parseInt(raw);
-    if (isNaN(y)) return null;
-    // The next period is year+1, its data should be ready by Jul 31 of year+1
-    deadline = new Date(y + 1, 6, 31); // month 6 = July (0-indexed)
-  } else {
-    const p = parsePeriod(raw, colName);
-    if (!p || !p.sem) return null;
-    if (p.sem === "10") {
-      // next is YYYY-20, deadline = Jul 31 of same year
-      deadline = new Date(p.year, 6, 31);
-    } else {
-      // next is (YYYY+1)-10, deadline = Feb 28 of next year
-      deadline = new Date(p.year + 1, 1, 28);
-    }
-  }
-
-  const msLeft = deadline - today;
-  const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
-
-  if (daysLeft < 0) {
-    return { cls: "overdue",  label: "⚠ Update overdue" };
-  } else if (daysLeft <= 45) {
-    return { cls: "due-soon", label: `⏰ Due in ${daysLeft}d` };
-  } else {
-    return { cls: "ok",       label: "✓ Up to date" };
-  }
-}
-
-// Parse a Google Sheets CSV export for a given sheet
-async function fetchSheetCSV(fileId, sheetName) {
-  // Use Google Sheets export URL with gid not needed — use sheet name via export
-  const url = `https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching sheet "${sheetName}"`);
-  const text = await resp.text();
-  return parseCSV(text);
-}
-
-// Minimal CSV parser (handles quoted fields)
-function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (!lines.length) return { headers: [], rows: [] };
-  const headers = splitCSVLine(lines[0]);
-  const rows = lines.slice(1).map(l => {
-    const vals = splitCSVLine(l);
-    const obj = {};
-    headers.forEach((h, i) => { obj[h] = vals[i] !== undefined ? vals[i] : ""; });
-    return obj;
-  });
-  return { headers, rows };
-}
-
-function splitCSVLine(line) {
-  const result = [];
-  let cur = "", inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (c === '"') {
-      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
-      else inQ = !inQ;
-    } else if (c === ',' && !inQ) {
-      result.push(cur.trim()); cur = "";
-    } else cur += c;
-  }
-  result.push(cur.trim());
-  return result;
-}
-
-// Get last modified date of a Google Drive file (requires OAuth token)
-async function getDriveFileModifiedDate(fileId, token) {
-  const resp = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=modifiedTime`,
-    { headers: { Authorization: "Bearer " + token } }
-  );
-  if (!resp.ok) return null;
-  const data = await resp.json();
-  if (!data.modifiedTime) return null;
-  return new Date(data.modifiedTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-// ── XLSX helpers (SheetJS) ─────────────────────────────────────────────────
-// Convert a column letter ("B") to a 0-based index (1)
-function colLetterToIndex(letter) {
-  let idx = 0;
-  for (let i = 0; i < letter.length; i++) {
-    idx = idx * 26 + (letter.toUpperCase().charCodeAt(i) - 64);
-  }
-  return idx - 1;
-}
-
-// Download a file from Google Drive (binary) — requires the user to be signed in
-async function fetchDriveFileArrayBuffer(fileId, token) {
-  const resp = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-    { headers: { Authorization: "Bearer " + token } }
-  );
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching Drive file "${fileId}"`);
-  return await resp.arrayBuffer();
-}
-
-// Parse an .xlsx ArrayBuffer into a sheet_to_json "header:1" matrix (array of arrays)
-async function xlsxToMatrix(arrayBuffer, sheetName) {
-  if (!window.XLSX) {
-    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
-  }
-  const wb = XLSX.read(arrayBuffer, { type: "array", cellText: true, cellDates: false });
-  const wsName = sheetName && wb.Sheets[sheetName] ? sheetName : wb.SheetNames[0];
-  const ws = wb.Sheets[wsName];
-  // header:1 = raw array-of-arrays; defval:"" fills empty cells; raw:true keeps original values
-  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
-}
-
-// Fetch a standalone xlsx template from Drive and return its header row
-// (row `headerRow`, 1-indexed, starting at column `startCol`), trimmed of empty trailing cells
-async function fetchXlsxHeaderRow(fileId, sheetName, headerRow, startCol) {
-  if (!isLoggedIn()) throw new Error("Sign in required to read template columns.");
-  const exportUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
-  const resp = await fetch(exportUrl, { headers: { Authorization: "Bearer " + kpiToken } });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} exporting template sheet`);
-  const buf = await resp.arrayBuffer();
-  const matrix = await xlsxToMatrix(buf, sheetName);
-  const startIdx = colLetterToIndex(startCol);
-  const row = matrix[headerRow - 1] || [];
-  const normHeader = v => (v === undefined || v === null) ? "" : String(v).replace(/\n/g, ' ').replace(/\r/g, '').trim();
-  const headers = row.slice(startIdx).map(normHeader);
-  while (headers.length && headers[headers.length - 1] === "") headers.pop();
-  return headers;
-}
-
-// Read header row + data rows from an uploaded file, respecting the template layout
-// (headers at row `headerRow` starting at `startCol`, data starting at row `dataStartRow`)
-async function readUploadedFile(file, layout) {
-  const ext = file.name.split(".").pop().toLowerCase();
-
-  // Helper: normalize a header value (collapse \n, trim, handle non-strings)
-  const normHeader = v => (v === undefined || v === null) ? "" : String(v).replace(/\n/g, ' ').replace(/\r/g, '').trim();
-
-  if (ext === "csv") {
-    const text = await file.text();
-    const lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
-    const headers = splitCSVLine(lines[0] || "").map(normHeader);
-    const rows = lines.slice(1).map(splitCSVLine);
-    return { headers, rows };
-  }
-
-  // xlsx / xls — use SheetJS
-  const buf = await file.arrayBuffer();
-  const matrix = await xlsxToMatrix(buf);
-  const startIdx = colLetterToIndex(layout.startCol);
-  const headerRowArr = matrix[layout.headerRow - 1] || [];
-  let headers = headerRowArr.slice(startIdx).map(normHeader);
-  // Trim trailing empty headers
-  while (headers.length && headers[headers.length - 1] === "") headers.pop();
-
-  const rows = matrix.slice(layout.dataStartRow - 1)
-    .map(r => (r || []).slice(startIdx, startIdx + headers.length))
-    .filter(r => r.some(v => v !== "" && v !== undefined && v !== null));
-  return { headers, rows };
-}
-
-// ── Load modal data ───────────────────────────────────────────────────────
-async function loadModalData() {
-  const loading = document.getElementById("modalLoadingState");
-  const error   = document.getElementById("modalErrorState");
-  const content = document.getElementById("modalContent");
-
-  loading.style.display = "flex";
-  error.style.display   = "none";
-  content.style.display = "none";
-
-  try {
-    // Fetch modified date if logged in
-    let modDate = null;
-    if (isLoggedIn()) {
-      modDate = await getDriveFileModifiedDate(BD_FILE_ID, kpiToken);
-    }
-
-    // Fetch each sheet to get last period and template columns
-    for (const [sheetName, cfg] of Object.entries(SHEET_CONFIG)) {
-      // BD data — get last period
-      try {
-        const { headers, rows } = await fetchSheetCSV(BD_FILE_ID, sheetName);
-        // Find the period column (case-insensitive, trim whitespace)
-        const periodHeader = headers.find(h => h.trim().toLowerCase() === cfg.periodCol.toLowerCase());
-        let lastPeriod = "—";
-        let allRawPeriods = [];
-        if (periodHeader && rows.length > 0) {
-          const periods = rows
-            .map(r => r[periodHeader])
-            .filter(v => v !== undefined && v !== null && String(v).trim() !== "" && String(v).trim() !== "—");
-          if (periods.length > 0) {
-            periods.sort((a, b) => {
-              // Normalize both to pure digits for numeric sort
-              const na = parseFloat(String(a).replace(/[^0-9]/g, ""));
-              const nb = parseFloat(String(b).replace(/[^0-9]/g, ""));
-              return isNaN(na) || isNaN(nb) ? String(a).localeCompare(String(b)) : na - nb;
-            });
-            lastPeriod = periods[periods.length - 1];
-            // Keep unique flat values for the period selector
-            allRawPeriods = [...new Set(periods.map(p => String(p).trim().replace(/[^0-9]/g, "")))];
-          }
-        }
-        sheetPeriods[sheetName] = { raw: lastPeriod, rawAll: allRawPeriods, col: cfg.periodCol, headers };
-      } catch(e) {
-        console.warn("Could not fetch sheet", sheetName, e);
-        sheetPeriods[sheetName] = { raw: "—", col: cfg.periodCol, headers: [] };
-      }
-
-      // Template — get column list
-      try {
-        if (TEMPLATE_DRIVE_FILES[sheetName]) {
-          // Standalone .xlsx template file — headers live in row 4, starting at column B
-          const tplHeaders = await fetchXlsxHeaderRow(
-            TEMPLATE_DRIVE_FILES[sheetName].fileId,
-            TEMPLATE_DRIVE_FILES[sheetName].sheetName,
-            TEMPLATE_LAYOUT.headerRow,
-            TEMPLATE_LAYOUT.startCol
-          );
-          templateColumns[sheetName] = tplHeaders.map(h => String(h).replace(/\n/g, ' ').trim().toLowerCase()).filter(h => h);
-        } else {
-          // Fallback: Google Sheet export (e.g. Faculty_Questionnaire)
-          const { headers: tplHeaders } = await fetchSheetCSV(TEMPLATE_FILE_ID, TEMPLATE_SHEET_MAP[sheetName]);
-          templateColumns[sheetName] = tplHeaders.map(h => h.replace(/\n/g, ' ').trim().toLowerCase()).filter(h => h);
-        }
-      } catch(e) {
-        console.warn("Could not load template columns for", sheetName, e);
-        templateColumns[sheetName] = [];
-      }
-    }
-
-    // Populate UI
-    const entries = [
-      { sheetName: "BD_PLANTA",             metaDate: "meta-planta-date", metaPeriod: "meta-planta-period", metaNext: "meta-planta-next", alertId: "alert-planta"  },
-      { sheetName: "Faculty_Questionnaire", metaDate: "meta-fq-date",     metaPeriod: "meta-fq-period",     metaNext: "meta-fq-next",     alertId: "alert-fq"      }
-    ];
-
-    entries.forEach(({ sheetName, metaDate, metaPeriod, metaNext, alertId }) => {
-      const sp = sheetPeriods[sheetName] || { raw: "—", col: "Periodo" };
-      const formatted = formatPeriod(sp.raw, sp.col);
-      const nxt       = nextPeriod(sp.raw, sp.col);
-
-      document.getElementById(metaDate).textContent   = modDate || (isLoggedIn() ? "—" : "Sign in to view");
-      document.getElementById(metaPeriod).textContent = formatted;
-      document.getElementById(metaNext).textContent   = nxt;
-
-      // Alert badge
-      const alertEl = document.getElementById(alertId);
-      if (alertEl && sp.raw && sp.raw !== "—") {
-        const info = updateAlert(sp.raw, sp.col);
-        if (info) {
-          alertEl.textContent = info.label;
-          alertEl.className   = `update-alert ${info.cls}`;
-          alertEl.style.display = "inline-flex";
-        }
-      }
-    });
-
-    loading.style.display = "none";
-    content.style.display = "block";
-    buildPeriodOptions();
-    updateUploadBtnState();
-
-  } catch (err) {
-    loading.style.display = "none";
-    document.getElementById("modalErrorMsg").textContent = err.message || "Unknown error.";
-    error.style.display = "block";
-  }
-}
-
-// ── Modal open/close ──────────────────────────────────────────────────────
-function openUpdateModal() {
-  document.getElementById("updateModal").classList.add("show");
-  document.body.style.overflow = "hidden";
-  for (const k of Object.keys(selectedFiles)) delete selectedFiles[k];
-  for (const k of Object.keys(cardPeriods)) delete cardPeriods[k];
-
-  // Show/hide cards based on which dashboard was opened
-  const isFQ = currentBdType === "fq";
-  document.getElementById("card-bd-planta").style.display  = isFQ ? "none" : "";
-  document.getElementById("card-bd-catedra").style.display = "none"; // not used in modal
-  document.getElementById("card-faculty-q").style.display  = isFQ ? "" : "none";
-
-  // Update modal subtitle
-  const sub = document.querySelector(".modal-head-text p");
-  if (sub) sub.textContent = isFQ
-    ? "Upload the Faculty Questionnaire file to refresh this dashboard."
-    : "Upload BD_PLANTA and/or BD_Cartelera to refresh the Faculty dashboards.";
-
-  updateUploadBtnState();
-  loadModalData();
-}
-function closeUpdateModal() {
-  document.getElementById("updateModal").classList.remove("show");
-  document.body.style.overflow = "";
-}
-function handleModalOverlayClick(e) {
-  if (e.target === document.getElementById("updateModal")) closeUpdateModal();
-}
-
-// ── File selection + validation ───────────────────────────────────────────
-async function handleFileSelect(input, cardKey, sheetName, periodCol) {
-  const card     = document.getElementById("card-" + cardKey);
-  const lbl      = document.getElementById("label-" + cardKey);
-  const valDiv   = document.getElementById("validation-" + cardKey);
-  const trash    = document.getElementById("trash-" + cardKey);
-
-  if (!input.files || input.files.length === 0) {
-    card.classList.remove("file-selected");
-    lbl.textContent = "Attach new file…";
-    if (trash) trash.classList.remove("visible");
-    valDiv.style.display = "none";
-    valDiv.className = "validation-msg";
-    delete selectedFiles[cardKey];
-    updateUploadBtnState();
-    return;
-  }
-
-  const file = input.files[0];
-  lbl.textContent = file.name;
-  if (trash) trash.classList.add("visible");
-  valDiv.style.display = "block";
-  valDiv.className = "validation-msg";
-  valDiv.textContent = "Validating columns…";
-
-  try {
-    // CSV files don't follow the row 4 / row 6 layout, but xlsx/xls templates do
-    const ext = file.name.split(".").pop().toLowerCase();
-    const layout = ext === "csv"
-      ? { headerRow: 1, dataStartRow: 2, startCol: "A" }
-      : TEMPLATE_LAYOUT;
-
-    const { headers: fileColumns, rows } = await readUploadedFile(file, layout);
-
-    const expected = templateColumns[sheetName] && templateColumns[sheetName].length > 0
-      ? templateColumns[sheetName]
-      : (FALLBACK_COLUMNS[sheetName] || []);
-    if (expected.length === 0) {
-      // Template columns not loaded yet — accept the file, validation skipped
-      card.classList.add("file-selected");
-      valDiv.style.display = "none";
-      valDiv.className = "validation-msg";
-      selectedFiles[cardKey] = { file, headers: fileColumns, rows, sheetName };
-      updateUploadBtnState();
-      return;
-    }
-
-    const fileCols = fileColumns.map(h => String(h).replace(/\n/g, ' ').trim().toLowerCase()).filter(h => h);
-    const missing  = expected.filter(e => !fileCols.includes(e));
-    const extra    = fileCols.filter(f => !expected.includes(f));
-
-    if (missing.length === 0) {
-      card.classList.add("file-selected");
-      valDiv.className = "validation-msg success";
-      valDiv.innerHTML = `✓ All ${expected.length} required columns present. (${rows.length} data row${rows.length===1?"":"s"} detected)` +
-        (extra.length > 0 ? ` <span style="font-weight:400;opacity:.75;">(${extra.length} extra column${extra.length>1?"s":""} ignored)</span>` : "");
-      selectedFiles[cardKey] = { file, headers: fileColumns, rows, sheetName };
-    } else {
-      card.classList.remove("file-selected");
-      valDiv.className = "validation-msg error";
-      valDiv.innerHTML = `⚠ Missing ${missing.length} required column${missing.length>1?"s":""}:<ul>` +
-        missing.map(m => `<li>${m}</li>`).join("") + `</ul>`;
-      delete selectedFiles[cardKey];
-    }
-  } catch (err) {
-    card.classList.remove("file-selected");
-    valDiv.className = "validation-msg error";
-    valDiv.textContent = "Could not read file: " + err.message;
-    delete selectedFiles[cardKey];
-  }
-
-  updateUploadBtnState();
-}
-
-function loadScript(src) {
-  return new Promise((res, rej) => {
-    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
-    const s = document.createElement("script");
-    s.src = src; s.onload = res; s.onerror = rej;
-    document.head.appendChild(s);
-  });
-}
-
-// ── Download template ─────────────────────────────────────────────────────
-async function handleDownload(sheetKey) {
-  const tpl = TEMPLATE_DRIVE_FILES[sheetKey];
-
-  if (!tpl) {
-    // Fallback for sheets without a standalone template file (e.g. Faculty_Questionnaire)
-    const sheetName = TEMPLATE_SHEET_MAP[sheetKey] || sheetKey;
-    const url = `https://docs.google.com/spreadsheets/d/${TEMPLATE_FILE_ID}/export?format=xlsx&sheet=${encodeURIComponent(sheetName)}`;
-    const a = document.createElement("a");
-    a.href = url; a.target = "_blank"; a.rel = "noopener";
-    a.download = `Template_${sheetName}.xlsx`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    return;
-  }
-
-  if (!isLoggedIn()) {
-    requireKpiLogin(() => handleDownload(sheetKey));
-    closeUpdateModal();
-    return;
-  }
-
-  try {
-    // Google Sheets files must be exported via the export endpoint (not alt=media)
-    const exportUrl = `https://docs.google.com/spreadsheets/d/${tpl.fileId}/export?format=xlsx`;
-    const resp = await fetch(exportUrl, {
-      headers: { Authorization: "Bearer " + kpiToken }
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = tpl.fileName;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    showToast("Could not download template: " + err.message);
-  }
-}
-
-// ── Clear attached file ───────────────────────────────────────────────────
-function clearFile(key) {
-  const input = document.getElementById("file-" + key);
-  const card  = document.getElementById("card-" + key);
-  const lbl   = document.getElementById("label-" + key);
-  const trash = document.getElementById("trash-" + key);
-  const val   = document.getElementById("validation-" + key);
-  if (input) input.value = "";
-  card.classList.remove("file-selected");
-  lbl.textContent = "Attach new file…";
-  if (trash) trash.classList.remove("visible");
-  if (val) { val.style.display = "none"; val.className = "validation-msg"; }
-  delete selectedFiles[key];
-  updateUploadBtnState();
-}
-
-// ── Per-card period selector ───────────────────────────────────────────────
-// cardPeriods[cardKey] = selected flat period string for that card
-const cardPeriods = {};
-
-// Convert any period string to flat YYYYSS digits (e.g. "2025-10" → "202510")
-function toFlatPeriod(raw) {
-  if (!raw) return "";
-  return String(raw).trim().replace(/[^0-9]/g, "");
-}
-
-// Return the next flat period after a given flat period ("202510" → "202520")
-function nextPeriodFlat(raw) {
-  const flat = toFlatPeriod(raw);
-  if (!flat) return null;
-  const m = flat.match(/^(\d{4})(10|20)$/);
-  if (!m) return null;
-  const [, yr, sem] = m;
-  return sem === "10" ? `${yr}20` : `${parseInt(yr) + 1}10`;
-}
-
-// Maps cardKey → sheetName for period data lookup
-const CARD_SHEET_MAP = {
-  "bd-planta":  "BD_PLANTA",
-  "bd-catedra": "BD_Catedra",
-  "faculty-q":  "Faculty_Questionnaire"
-};
-
-function buildCardPeriodOptions(cardKey) {
-  const sheetName = CARD_SHEET_MAP[cardKey];
-  const sel = document.getElementById("period-" + cardKey);
-  if (!sel || !sheetName) return;
-
-  const sp = sheetPeriods[sheetName];
-  const lastRaw = sp ? sp.raw : null;
-  const allRaw  = sp ? (sp.rawAll || []) : [];
-
-  // Unique sorted existing periods (flat digits only)
-  const existingFlat = [...new Set(allRaw.map(toFlatPeriod).filter(Boolean))].sort();
-
-  // Next period after the last one
-  const nextFlat = lastRaw && lastRaw !== "—" ? nextPeriodFlat(lastRaw) : null;
-  const options  = nextFlat ? [...existingFlat, nextFlat] : existingFlat;
-
-  sel.innerHTML = `<option value="">— select —</option>`;
-  options.forEach(flat => {
-    const pretty     = formatPeriod(flat, sp ? sp.col : "Periodo");
-    const isExisting = existingFlat.includes(flat);
-    const opt        = document.createElement("option");
-    opt.value        = flat;
-    opt.textContent  = isExisting ? pretty + " ↺" : pretty + " ✦";
-    sel.appendChild(opt);
-  });
-
-  cardPeriods[cardKey] = "";
-  updateCardPeriodHint(cardKey, "", existingFlat);
-}
-
-function handleCardPeriodChange(cardKey, sheetName) {
-  const sel = document.getElementById("period-" + cardKey);
-  if (!sel) return;
-  const flat = sel.value;
-  cardPeriods[cardKey] = flat;
-  const sp = sheetPeriods[sheetName] || {};
-  const allRaw = sp.rawAll || [];
-  const existingFlat = allRaw.map(toFlatPeriod).filter(Boolean);
-  updateCardPeriodHint(cardKey, flat, existingFlat);
-  updateUploadBtnState();
-}
-
-function updateCardPeriodHint(cardKey, flat, existingFlat) {
-  const hint = document.getElementById("period-hint-" + cardKey);
-  if (!hint) return;
-  if (!flat) { hint.textContent = ""; hint.className = "card-period-hint"; return; }
-  const isExisting = existingFlat.includes(flat);
-  if (isExisting) {
-    hint.textContent = "⚠ Existing — records will be overwritten";
-    hint.className   = "card-period-hint warn";
-  } else {
-    hint.textContent = "New period — rows will be appended";
-    hint.className   = "card-period-hint";
-  }
-}
-
-function buildPeriodOptions() {
-  // Build per-card selectors for all three cards
-  ["bd-planta", "bd-catedra", "faculty-q"].forEach(buildCardPeriodOptions);
-}
-
-// ── Upload / Save: write template data into BD maestra via Sheets API ──────
-function updateUploadBtnState() {
-  const btn   = document.getElementById("uploadBtn");
-  const label = document.getElementById("uploadBtnLabel");
-  if (!btn) return;
-
-  // A card is "ready" if it has a validated file AND a period selected
-  const readyKeys = Object.keys(selectedFiles).filter(k => !!cardPeriods[k]);
-  const pendingPeriod = Object.keys(selectedFiles).filter(k => !cardPeriods[k]);
-
-  btn.disabled = readyKeys.length === 0;
-  if (label) {
-    if (pendingPeriod.length > 0 && readyKeys.length === 0) {
-      label.textContent = "Select a period first";
-    } else if (readyKeys.length > 0) {
-      label.textContent = `Save ${readyKeys.length} File${readyKeys.length > 1 ? "s" : ""}`;
-    } else {
-      label.textContent = "Save Files";
-    }
-  }
-}
-
-// ── BD_PLANTA column mapping ───────────────────────────────────────────────
-// Template columns are 0-based relative to column B (index 0 = B, 1 = C, …)
-// BD columns are 0-based (0 = A, 1 = B, …)
-// Template col letters: B=0, C=1, D=2, E=3, F=4, G=5, H=6, I=7, J=8, K=9, L=10, M=11, N=12,
-//                       O=13, P=14, Q=15, R=16, S=17, T=18, U=19, V=20, W=21
-//
-// BD_PLANTA mapping (BD col → template col idx relative to B):
-//   A  = Periodo (from modal)
-//   B  = template B (idx 0)  Nº
-//   C  = template C (idx 1)  ID Nr.
-//   D  = template D (idx 2)  First Name
-//   E  = template E (idx 3)  Last Name
-//   F  = FORMULA (keep existing) — Full Name
-//   G  = template J (idx 8)  Date of First Appointment
-//   H  = template K (idx 9)  Academic Area
-//   I  = template O (idx 13) Highest Earned Degree
-//   J  = template P (idx 14) Year (Degree)
-//   K  = template Q (idx 15) University
-//   L  = template R (idx 16) Region
-//   M  = template S (idx 17) Highest Degree Label
-//   N  = template T (idx 18) International Degree
-//   O  = template M (idx 11) % Devoted to Mission
-//   P  = template L (idx 10) Faculty Ranking
-//   Q  = empty
-//   R  = template U (idx 19) Field
-//   S  = template H (idx 6)  Country of Birth
-//   T  = template I (idx 7)  Double Nationality
-//   U  = template F (idx 4)  Date of Birth
-//   V  = FORMULA (keep existing) — Age
-//   W  = template G (idx 5)  Gender
-//   X  = template N (idx 12) Faculty Qualifications
-//   Y  = "P" (fixed)
-//   Z  = template V (idx 20) Normal Professional Resp.
-//   AA = template W (idx 21) Notes
-//   AB = "PLANTA" (fixed)
-
-// Returns a BD row array (28 values, columns A–AB) for one template data row.
-// `tplRow` is a 0-based array starting at template column B.
-// `formulaRowNum` is the 1-based row number in the sheet (needed to replicate formulas).
-function buildBDRow(tplRow, periodo, formulaRowNum) {
-  const t = (idx) => {
-    const v = tplRow[idx];
-    if (v === undefined || v === null) return "";
-    return v;
-  };
-
-  // Dates: SheetJS reads Excel date cells as numeric serials (e.g. 45123) or JS Dates.
-  // Sheets USER_ENTERED accepts "DD/MM/YYYY" as a date string it can use in DATEDIF.
-  const dateVal = (idx) => {
-    const v = t(idx);
-    if (!v && v !== 0) return "";
-    // Already a JS Date object
-    if (v instanceof Date) {
-      const d = String(v.getDate()).padStart(2,"0");
-      const m = String(v.getMonth()+1).padStart(2,"0");
-      return `${d}/${m}/${v.getFullYear()}`;
-    }
-    // Excel serial number (days since 1899-12-30)
-    if (typeof v === "number" && v > 1) {
-      const ms = (v - 25569) * 86400 * 1000; // convert to Unix ms
-      const dt = new Date(ms);
-      const d = String(dt.getUTCDate()).padStart(2,"0");
-      const m = String(dt.getUTCMonth()+1).padStart(2,"0");
-      return `${d}/${m}/${dt.getUTCFullYear()}`;
-    }
-    // Already a string (e.g. "15/03/1980") — pass through
-    return v;
-  };
-
-  const row = new Array(28).fill("");
-
-  row[0]  = periodo;                // A — Periodo
-  row[1]  = t(0);                   // B — Nº
-  row[2]  = t(1);                   // C — ID Nr.
-  row[3]  = t(2);                   // D — First Name
-  row[4]  = t(3);                   // E — Last Name
-  row[5]  = `=D${formulaRowNum}&" "&E${formulaRowNum}`; // F — Full Name (formula)
-  row[6]  = dateVal(8);             // G — Date of First Appointment (template J)
-  row[7]  = t(9);                   // H — Academic Area (template K)
-  row[8]  = t(13);                  // I — Highest Earned Degree (template O)
-  row[9]  = t(14);                  // J — Year Degree (template P)
-  row[10] = t(15);                  // K — University (template Q)
-  row[11] = t(16);                  // L — Region (template R)
-  row[12] = t(17);                  // M — Highest Degree Label (template S)
-  row[13] = t(18);                  // N — International Degree (template T)
-  row[14] = t(11);                  // O — % Devoted to Mission (template M)
-  row[15] = t(10);                  // P — Faculty Ranking (template L)
-  row[16] = "";                     // Q — empty
-  row[17] = t(19);                  // R — Field (template U)
-  row[18] = t(6);                   // S — Country of Birth (template H)
-  row[19] = t(7);                   // T — Double Nationality (template I)
-  row[20] = dateVal(4);             // U — Date of Birth (template F)
-  row[21] = `=IF(U${formulaRowNum}="","",DATEDIF(U${formulaRowNum},TODAY(),"Y"))`; // V — Age (formula)
-  row[22] = t(5);                   // W — Gender (template G)
-  row[23] = t(12);                  // X — Faculty Qualifications (template N)
-  row[24] = "P";                    // Y — fixed "P"
-  row[25] = t(20);                  // Z — Normal Professional Resp. (template V)
-  row[26] = t(21);                  // AA — Notes (template W)
-  row[27] = "PLANTA";              // AB — fixed "PLANTA"
-
-  return row;
-}
-
-// ── Sheets API helpers ────────────────────────────────────────────────────
-
-// Fetch all values from a sheet range via Sheets API v4
-async function sheetsGetValues(spreadsheetId, range, token) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-  const resp = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`Sheets GET ${range}: HTTP ${resp.status} — ${errText}`);
-  }
-  const data = await resp.json();
-  return data.values || [];
-}
-
-async function sheetsAppendRows(spreadsheetId, range, rows, token) {
-  // Use OVERWRITE (default) — appends after the last row with data in the range
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`;
-  const body = JSON.stringify({ values: rows });
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    body
-  });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`Sheets APPEND: HTTP ${resp.status} — ${errText}`);
-  }
-  return await resp.json();
-}
-
-async function sheetsBatchUpdate(spreadsheetId, updates, token) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify({ valueInputOption: "USER_ENTERED", data: updates })
-  });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`Sheets batchUpdate: HTTP ${resp.status} — ${errText}`);
-  }
-  return await resp.json();
-}
-
-async function sheetsDeleteRows(spreadsheetId, sheetId, rowIndices, token) {
-  if (!rowIndices.length) return;
-  const sorted = [...rowIndices].sort((a, b) => b - a);
-  const requests = sorted.map(idx => ({
-    deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: idx, endIndex: idx + 1 } }
-  }));
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify({ requests })
-  });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`Sheets deleteRows: HTTP ${resp.status} — ${errText}`);
-  }
-  return await resp.json();
-}
-
-async function getSheetId(spreadsheetId, sheetName, token) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`;
-  const resp = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`Could not get sheet metadata: HTTP ${resp.status} — ${errText}`);
-  }
-  const data = await resp.json();
-  const sheet = data.sheets.find(s => s.properties.title === sheetName);
-  if (!sheet) throw new Error(`Sheet "${sheetName}" not found in spreadsheet.`);
-  return sheet.properties.sheetId;
-}
-
-// ── Main save handler ─────────────────────────────────────────────────────
-async function handleSaveFiles() {
-  // Only process cards that have both a file and a period selected
-  const keys = Object.keys(selectedFiles).filter(k => !!cardPeriods[k]);
-  if (!keys.length) return;
-
-  if (!isLoggedIn()) {
-    requireKpiLogin(() => handleSaveFiles());
-    closeUpdateModal();
-    return;
-  }
-
-  const btn   = document.getElementById("uploadBtn");
-  const label = document.getElementById("uploadBtnLabel");
-  btn.disabled = true;
-  const origLabel = label.textContent;
-  label.textContent = "Saving…";
-
-  try {
-    for (const key of keys) {
-      const { sheetName, rows } = selectedFiles[key];
-      const flatPeriod = cardPeriods[key];
-
-      if (sheetName !== "BD_PLANTA") {
-        showToast(`Mapping for ${sheetName} not yet implemented.`);
-        continue;
-      }
-
-      label.textContent = "Reading BD…";
-
-      // 1. Get numeric sheetId and read existing Periodo column (A)
-      const sheetId = await getSheetId(BD_FILE_ID, "BD_PLANTA", kpiToken);
-      const existing = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
-      const headerOffset = 1; // row index 0 = sheet row 1 (header)
-
-      // Find rows whose Periodo matches (compare flat digits)
-      const matchingSheetRows = [];
-      for (let i = headerOffset; i < existing.length; i++) {
-        const cellVal = existing[i] && existing[i][0]
-          ? String(existing[i][0]).trim().replace(/[^0-9]/g, "") : "";
-        if (cellVal === flatPeriod) matchingSheetRows.push(i);
-      }
-
-      // 2. Delete existing rows for this period (descending order)
-      if (matchingSheetRows.length > 0) {
-        label.textContent = `Removing ${matchingSheetRows.length} old rows…`;
-        await sheetsDeleteRows(BD_FILE_ID, sheetId, matchingSheetRows, kpiToken);
-      }
-
-      // 3. Re-read to find the new last row
-      const afterDelete  = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
-      const lastDataRow  = afterDelete.length;          // 1-based last row with data
-      const appendStart  = lastDataRow + 1;             // 1-based first empty row
-
-      // 4. Build and append new rows
-      label.textContent = `Writing ${rows.length} new rows…`;
-      const newRows = rows.map((tplRow, idx) =>
-        buildBDRow(tplRow, flatPeriod, appendStart + idx)
-      );
-      await sheetsAppendRows(BD_FILE_ID, "BD_PLANTA!A:AB", newRows, kpiToken);
-    }
-
-    const periodLabel = keys.map(k => formatPeriod(cardPeriods[k], "Periodo")).join(", ");
-    showToast(`✓ BD updated for period${keys.length > 1 ? "s" : ""}: ${periodLabel} — refreshing dashboard…`);
-    closeUpdateModal();
-
-    // Reload the preview iframe so the Streamlit dashboard picks up the new data
-    const iframe = document.getElementById("previewIframe");
-    if (iframe && iframe.src && iframe.style.display !== "none") {
-      const currentSrc = iframe.src;
-      iframe.style.display = "none";
-      document.getElementById("previewLoading").classList.add("show");
-      // Small delay to let Google Sheets propagate the write before Streamlit reads it
-      setTimeout(() => {
-        iframe.src = "";
-        setTimeout(() => { iframe.src = currentSrc; }, 300);
-      }, 2500);
-    }
-
-  } catch (err) {
-    console.error("Save error:", err);
-    showToast("Error saving: " + err.message);
-  } finally {
-    label.textContent = origLabel;
-    updateUploadBtnState();
-  }
-}
-
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeUpdateModal(); });
-
-</script>
-</body>
-</html>
+""", unsafe_allow_html=True)
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+def _xlsx_bytes(df, sheet_name="Data"):
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf) as w:
+        df.to_excel(w, index=False, sheet_name=sheet_name[:31])
+    buf.seek(0)
+    return buf.getvalue()
+
+def _download_link(label, df, filename):
+    b64 = _b64.b64encode(_xlsx_bytes(df)).decode()
+    href = "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64," + b64
+    st.markdown(f'<a class="dl-min" download="{filename}" href="{href}">{label}</a>',
+                unsafe_allow_html=True)
+
+def _render_header(title, subtitle=""):
+    sub = f'<div class="sh-sub">{subtitle}</div>' if subtitle else ""
+    st.markdown(
+        f'<div class="suite-header"><div class="sh-super">UASM · Faculty Analytics</div>'
+        f'<div class="sh-title">{title}</div>{sub}</div>',
+        unsafe_allow_html=True)
+
+def _highlight_band(fig, label, all_labels):
+    if label in all_labels:
+        pos = all_labels.index(label)
+        fig.add_shape(type="rect", xref="x", yref="paper",
+                      x0=pos-0.4, x1=pos+0.4, y0=0, y1=1,
+                      fillcolor=_P["highlight"], opacity=0.35, line_width=0)
+
+# ── Data ───────────────────────────────────────────────────────────────────────
+SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
+
+@st.cache_data(ttl=0)
+def load_data():
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
+    try:
+        resp = requests.get(url, timeout=30)
+    except Exception as e:
+        st.error(f"🌐 No se pudo conectar con Google Sheets: {e}")
+        st.stop()
+
+    if resp.status_code != 200 or "text/html" in resp.headers.get("Content-Type", ""):
+        st.error("🔒 El Google Sheet no está compartido públicamente. "
+                 "Ve a Compartir → Cualquiera con el enlace → Lector.")
+        st.stop()
+
+    raw = io.BytesIO(resp.content)
+    try:
+        xls = pd.ExcelFile(raw)
+    except Exception:
+        st.error("❌ El archivo descargado no es un Excel válido.")
+        st.stop()
+
+    tab = next((s for s in xls.sheet_names if "planta" in s.lower()), xls.sheet_names[0])
+    raw.seek(0)
+    df_ = pd.read_excel(raw, sheet_name=tab)
+
+    def _norm_per(val):
+        if pd.isna(val):
+            return None
+        try:
+            s = str(int(float(str(val).strip())))
+        except (ValueError, OverflowError):
+            s = str(val).strip()
+        if re.search(r'inter', s, re.IGNORECASE):
+            y = re.search(r'((?:19|20)\d{2})', s)
+            return f"{y.group(1)} Intersemestral" if y else None
+        m = re.fullmatch(r'((?:19|20)\d{2})(10|20)', s) or \
+            re.search(r'((?:19|20)\d{2})[^0-9]+(10|20)', s)
+        return f"{m.group(1)}-{m.group(2)}" if m else None
+
+    src = "Periodo" if "Periodo" in df_.columns else df_.columns[0]
+    df_["Periodo"] = df_[src].map(_norm_per)
+    df_ = df_[df_["Periodo"].astype(str).str.match(
+        r'^(?:19|20)\d{2}-(10|20)$|^(?:19|20)\d{2}\s+Intersemestral$'
+    )].copy()
+
+    if "ID Nr." in df_.columns and "ID" not in df_.columns:
+        df_ = df_.rename(columns={"ID Nr.": "ID"})
+
+    def _key(p):
+        s = str(p)
+        return (int(s[:4]), 30 if "Intersemestral" in s else int(s[-2:]))
+
+    return df_.sort_values("Periodo", key=lambda c: c.map(_key))
+
+df = load_data()
+
+# Timestamp de última carga (hora Colombia = UTC-5)
+if "last_loaded" not in st.session_state:
+    st.session_state.last_loaded = time.time()
+
+
+# ── Periods ────────────────────────────────────────────────────────────────────
+all_periods   = df["Periodo"].astype(str).unique().tolist()
+sem_periods   = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
+inter_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sIntersemestral', p)]
+years         = sorted(pd.Series(all_periods).str[:4].unique().tolist())
+
+# ── Sidebar ────────────────────────────────────────────────────────────────────
+with st.sidebar:
+    col_logo, col_title = st.columns([1, 3])
+    with col_logo:
+        st.image("web/imagenes/logo.png", width=65)
+    with col_title:
+        st.markdown('<div style="padding-top:10px;color:#004d47;font-size:24px;'
+                    'font-weight:800;line-height:1.1;">UASM Faculty KPIs</div>',
+                    unsafe_allow_html=True)
+        st.caption("Analytics Dashboard")
+
+    st.markdown("---")
+
+    # ── Refresh sutil (una sola línea compacta) ───────────────────────────────
+    colombia_offset = -5 * 3600
+    ts = time.strftime("%-I:%M %p", time.gmtime(st.session_state.last_loaded + colombia_offset))
+    c1, c2 = st.columns([5, 1])
+    c1.markdown(f'<p style="margin:0;padding:4px 0 0;font-size:11px;color:#9ca3af;">Updated {ts} (COL)</p>', unsafe_allow_html=True)
+    if c2.button("↻", help="Refresh"):
+        load_data.clear()
+        st.session_state.last_loaded = time.time()
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("#### Timeframe")
+    tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
+
+    if tmode == "Semestral":
+        vis = [p.replace("-", "") for p in sem_periods]
+        sel_vis = st.selectbox("Periodo", vis, index=len(vis)-1 if vis else 0)
+        sel_period_internal = sem_periods[vis.index(sel_vis)] if vis else None
+        sel_period_label    = sel_vis
+    elif tmode == "Anual":
+        sel_period_internal = st.selectbox("Periodo", years, index=len(years)-1 if years else 0)
+        sel_period_label    = sel_period_internal
+    else:
+        sel_period_internal = st.selectbox("Periodo", inter_periods,
+                                           index=len(inter_periods)-1 if inter_periods else 0)
+        sel_period_label    = sel_period_internal
+
+    st.markdown("---")
+    xlsx_data = _xlsx_bytes(df)
+    b64 = _b64.b64encode(xlsx_data).decode()
+    st.markdown(
+        f'<a class="modern-btn" download="FT_Base_Completa.xlsx" '
+        f'href="data:application/vnd.openxmlformats-officedocument.'
+        f'spreadsheetml.sheet;base64,{b64}">⭳ Descargar Base Completa</a>',
+        unsafe_allow_html=True)
+
+# ── Ranking order & color map ──────────────────────────────────────────────────
+_render_header("Full-time Faculty Composition",
+               "Evolution and distribution of full-time faculty by ranking")
+
+base_order = ["Full Professor","Associate Professor","Assistant Professor",
+              "Instructor","Adjunct Faculty","Distinguished Practitioner","Emeritus Professor"]
+uniq_ranks    = df["Faculty Ranking"].dropna().astype(str).unique().tolist()
+ranking_order = [x for x in base_order if x in uniq_ranks] + \
+                [x for x in uniq_ranks if x not in base_order]
+if "Faculty Ranking" in df.columns:
+    df["Faculty Ranking"] = pd.Categorical(df["Faculty Ranking"],
+                                           categories=ranking_order, ordered=True)
+
+palette = ["#037C70","#27BDAE","#4FFF98","#FFD166",
+           "#F4A261","#E76F51","#9D4EDD","#6D597A",
+           "#118AB2","#073B4C","#8AC926","#FF70A6"]
+color_map_rk = {rk: palette[i % len(palette)] for i, rk in enumerate(ranking_order)}
+
+# ── Helpers for period filtering ───────────────────────────────────────────────
+def periods_for_tables():
+    if tmode == "Semestral":      return sem_periods
+    if tmode == "Intersemestral": return inter_periods
+    return years
+
+def df_active():
+    if sel_period_internal is None:
+        return df.iloc[0:0].copy()
+    if tmode in ("Semestral", "Intersemestral"):
+        return df[df["Periodo"].astype(str).eq(sel_period_internal)].copy()
+    dfa = df[df["Periodo"].astype(str).str.startswith(str(sel_period_internal))].copy()
+    return dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+
+def pivot_counts():
+    cols = periods_for_tables()
+    if tmode in ("Semestral", "Intersemestral"):
+        return pd.pivot_table(
+            df[df["Periodo"].isin(cols)],
+            index="Faculty Ranking", columns="Periodo",
+            values="ID", aggfunc="count", fill_value=0
+        ).reindex(ranking_order)
+    out = {rk: {y: 0 for y in cols} for rk in ranking_order}
+    for y in cols:
+        dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
+        if dfa.empty: continue
+        dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+        for rk, v in dfa.groupby("Faculty Ranking")["ID"].count().items():
+            out.setdefault(rk, {})[y] = int(v)
+    return pd.DataFrame(out).T.reindex(ranking_order).reindex(columns=cols, fill_value=0)
+
+def line_source_all():
+    cols = periods_for_tables()
+    if tmode in ("Semestral", "Intersemestral"):
+        dat = (df[df["Periodo"].isin(cols)]
+               .groupby(["Periodo","Faculty Ranking"])["ID"]
+               .count().reset_index(name="Count"))
+        dat["Periodo"] = pd.Categorical(dat["Periodo"], categories=cols, ordered=True)
+        return dat, cols
+    rows = []
+    for y in cols:
+        dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
+        dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+        cts = (dfa.groupby("Faculty Ranking")["ID"].count()
+                  .reindex(ranking_order, fill_value=0).reset_index()
+                  .rename(columns={"ID":"Count"}))
+        cts["Periodo"] = str(y)
+        rows.append(cts)
+    out = pd.concat(rows, ignore_index=True) if rows else \
+          pd.DataFrame(columns=["Faculty Ranking","Count","Periodo"])
+    out["Periodo"] = pd.Categorical(out["Periodo"], categories=cols, ordered=True)
+    return out, cols
+
+def line_source_single(rank):
+    cols = periods_for_tables()
+    if tmode in ("Semestral", "Intersemestral"):
+        dat = (df[df["Periodo"].isin(cols) & (df["Faculty Ranking"] == rank)]
+               .groupby("Periodo")["ID"].count()
+               .reindex(cols, fill_value=0).reset_index(name="Count"))
+        return dat, cols
+    vals = []
+    for y in cols:
+        dfa = df[df["Periodo"].astype(str).str.startswith(str(y))].copy()
+        dfa = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+        vals.append({"Periodo": str(y),
+                     "Count": int(dfa[dfa["Faculty Ranking"] == rank]["ID"].count())})
+    return pd.DataFrame(vals), cols
+
+# ── Pivot table ────────────────────────────────────────────────────────────────
+pivot = pivot_counts().reindex(ranking_order)
+pivot.loc["Total"] = pivot.sum(numeric_only=True)
+
+st.subheader("Number of Full-time Faculty by Ranking")
+
+def _bold_total(df_):
+    s = pd.DataFrame("", index=df_.index, columns=df_.columns)
+    if "Total" in df_.index: s.loc["Total", :] = "font-weight:700;"
+    return s
+
+def _highlight_last(df_):
+    s = pd.DataFrame("", index=df_.index, columns=df_.columns)
+    if len(df_.columns) > 0 and "Total" in df_.index:
+        s.loc["Total", df_.columns[-1]] = "background-color:#dff7f2;color:#004d47;font-weight:700;"
+    return s
+
+st.dataframe(
+    pivot.style.apply(_bold_total, axis=None).apply(_highlight_last, axis=None).format(precision=0),
+    use_container_width=True)
+_download_link("Descargar tabla (Excel)",
+               pivot.reset_index().rename(columns={"index":"Faculty Ranking"}),
+               f"FT_Composition_{tmode}.xlsx")
+
+# ── Charts ─────────────────────────────────────────────────────────────────────
+periods_sorted = periods_for_tables()
+st.session_state.setdefault("show_all", True)
+st.session_state.setdefault("single_ranking", "Select...")
+
+def on_select_ranking():
+    if st.session_state.single_ranking != "Select...":
+        st.session_state.show_all = False
+
+def on_toggle_show_all():
+    if st.session_state.show_all:
+        st.session_state.single_ranking = "Select..."
+
+st.header("Evolution & composition")
+col_left, col_right = st.columns(2)
+
+with col_right:
+    st.subheader("Composition by period")
+    st.markdown(f"<div style='text-align:center;font-weight:800;font-size:2rem;"
+                f"padding-top:4px;'>{sel_period_label}</div>", unsafe_allow_html=True)
+
+    if tmode in ("Semestral", "Intersemestral"):
+        dfbar = df[df["Periodo"].astype(str).eq(sel_period_internal)]
+    else:
+        dfa   = df[df["Periodo"].astype(str).str.startswith(str(sel_period_internal))].copy()
+        dfbar = dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
+
+    bar_counts = (dfbar.groupby("Faculty Ranking")["ID"].count()
+                       .reindex(ranking_order).fillna(0).reset_index())
+    bar_counts.columns = ["Faculty Ranking", "Count"]
+    st.metric("Total Faculty:", int(bar_counts["Count"].sum()))
+
+    fig_bar = px.bar(bar_counts, x="Count", y="Faculty Ranking", orientation="h",
+                     text="Count", color="Faculty Ranking", color_discrete_map=color_map_rk,
+                     category_orders={"Faculty Ranking": ranking_order[::-1]})
+    fig_bar.update_xaxes(range=[0, max(1, int(bar_counts["Count"].max() or 0)) + 5], title=None)
+    fig_bar.update_yaxes(title=None)
+    fig_bar.update_traces(textposition="outside")
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+with col_left:
+    st.subheader("Evolution of rankings")
+    st.checkbox("Show all lines", key="show_all", on_change=on_toggle_show_all)
+    st.selectbox("Select a ranking:", ["Select..."] + ranking_order,
+                 key="single_ranking", on_change=on_select_ranking)
+
+    fig_line = None
+    xcats    = periods_sorted
+
+    if st.session_state.show_all:
+        data_long, xcats = line_source_all()
+        y_max = max(1, int(data_long["Count"].max()) if not data_long.empty else 0)
+        fig_line = px.line(data_long, x="Periodo", y="Count", color="Faculty Ranking",
+                           markers=True, title="Evolution — all rankings",
+                           color_discrete_map=color_map_rk,
+                           category_orders={"Periodo": xcats, "Faculty Ranking": ranking_order})
+        fig_line.update_yaxes(range=[0, y_max+1], title=None)
+        fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title=None)
+        fig_line.update_layout(height=550, showlegend=False)
+    else:
+        rk = st.session_state.single_ranking
+        if rk != "Select...":
+            data_single, xcats = line_source_single(rk)
+            y_max = max(1, int(data_single["Count"].max()) if not data_single.empty else 0)
+            fig_line = px.line(data_single, x="Periodo", y="Count", markers=True,
+                               title=f"Evolution — {rk}",
+                               color_discrete_sequence=[color_map_rk.get(rk, "#00A896")],
+                               category_orders={"Periodo": xcats})
+            fig_line.update_yaxes(range=[0, y_max+1], title=None)
+            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title=None)
+            fig_line.update_layout(height=480)
+        else:
+            st.info("Select a ranking to visualize its evolution.")
+
+    if fig_line is not None:
+        _highlight_band(fig_line, sel_period_internal, list(xcats))
+        st.plotly_chart(fig_line, use_container_width=True)
+
+# ── Detail table ───────────────────────────────────────────────────────────────
+st.subheader("Faculty Detail")
+active = df_active()
+selected_ranking = (None if st.session_state.show_all or
+                    st.session_state.single_ranking == "Select..."
+                    else st.session_state.single_ranking)
+
+if selected_ranking:
+    detail_df = active[active["Faculty Ranking"] == selected_ranking].copy()
+    title_txt = f"### **{len(detail_df)}** **{selected_ranking}** in period **{sel_period_label}**"
+else:
+    detail_df = active.copy()
+    title_txt = f"### **{len(detail_df)}** Full-time Faculty in period **{sel_period_label}**"
+
+st.markdown(title_txt)
+detail_cols = ["Periodo","ID","ID Nr.","Full Name","Academic Area",
+               "Faculty Ranking","Subcategorization","Faculty Qualific.","P/S",
+               "Highest Earned Degree","Year","University","Normal professional Resp."]
+show_cols = [c for c in detail_cols if c in detail_df.columns]
+st.dataframe(detail_df[show_cols], use_container_width=True)
+_download_link("Descargar detalle (Excel)", detail_df[show_cols],
+               f"FT_Composition_Detail_{sel_period_label}.xlsx")
