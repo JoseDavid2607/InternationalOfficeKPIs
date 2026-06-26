@@ -291,18 +291,43 @@ SHEET_TAB = "BD_PLANTA"   # nombre exacto de la pestaña
 
 @st.cache_data(ttl=300)   # se refresca automáticamente cada 5 minutos
 def load_data():
-    # Exporta el Google Sheet nativo directamente como xlsx en memoria
-    url = (
-        f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
-        f"/export?format=xlsx&sheet={SHEET_TAB.replace(' ', '%20')}"
-    )
-    resp = requests.get(url, timeout=30)
-    resp.raise_for_status()
+    # Google Sheets exporta como xlsx cuando el archivo está compartido públicamente.
+    # URL de exportación directa (sin parámetro &sheet= para evitar errores de nombre)
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
+
+    try:
+        resp = requests.get(url, timeout=30)
+    except requests.exceptions.Timeout:
+        st.error("⏱️ Tiempo de espera agotado al conectar con Google Sheets. Verifica tu conexión.")
+        st.stop()
+    except requests.exceptions.ConnectionError:
+        st.error("🌐 No se pudo conectar con Google Sheets. Verifica tu conexión a internet.")
+        st.stop()
+
+    # Si Google devuelve HTML (ej. página de login) en lugar de xlsx, el archivo no está público
+    content_type = resp.headers.get("Content-Type", "")
+    if resp.status_code != 200 or "text/html" in content_type:
+        st.error(
+            "🔒 **El Google Sheet no está compartido públicamente.**\n\n"
+            "Para solucionarlo:\n"
+            "1. Abre el Sheet en Google Drive\n"
+            "2. Clic en **Compartir** (botón arriba a la derecha)\n"
+            "3. En 'Acceso general' selecciona **Cualquiera con el enlace**\n"
+            "4. Rol: **Lector**\n"
+            "5. Vuelve aquí y pulsa **🔄 Actualizar datos**"
+        )
+        st.info(f"URL que se intentó: `{url}`")
+        st.stop()
 
     raw = io.BytesIO(resp.content)
 
     # Detección robusta de pestaña por si cambia el nombre
-    xls = pd.ExcelFile(raw)
+    try:
+        xls = pd.ExcelFile(raw)
+    except Exception:
+        st.error("❌ El archivo descargado no es un Excel válido. Asegúrate de que el Sheet esté compartido correctamente.")
+        st.stop()
+
     possible = [
         SHEET_TAB,
         "BD_PLANTA", "BD PLANTA",
