@@ -83,7 +83,7 @@ def _highlight_band(fig, label, all_labels):
 # ── Data ───────────────────────────────────────────────────────────────────────
 SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
 
-@st.cache_data(ttl=0)   # sin caché: siempre lee el Sheet más reciente
+@st.cache_data(ttl=1)   # sin caché: siempre lee el Sheet más reciente
 def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
     try:
