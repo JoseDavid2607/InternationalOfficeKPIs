@@ -81,13 +81,6 @@ def _highlight_band(fig, label, all_labels):
                       x0=pos-0.4, x1=pos+0.4, y0=0, y1=1,
                       fillcolor=_P["highlight"], opacity=0.35, line_width=0)
 
-# ── Auto-refresh silencioso cada 5 s ─────────────────────────────────────────
-@st.fragment(run_every=5)
-def _auto_refresh():
-    load_data.clear()   # limpia solo el caché de load_data
-
-_auto_refresh()
-
 # ── Data ───────────────────────────────────────────────────────────────────────
 SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
 
@@ -146,6 +139,13 @@ def load_data():
     return df_.sort_values("Periodo", key=lambda c: c.map(_key))
 
 df = load_data()
+
+# ── Auto-refresh silencioso cada 5 s ─────────────────────────────────────────
+@st.fragment(run_every=5)
+def _auto_refresh():
+    load_data.clear()
+
+_auto_refresh()
 
 # ── Periods ────────────────────────────────────────────────────────────────────
 all_periods   = df["Periodo"].astype(str).unique().tolist()
