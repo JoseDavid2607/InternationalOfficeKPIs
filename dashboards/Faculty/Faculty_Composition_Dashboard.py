@@ -8,8 +8,6 @@ import re
 import io, base64
 import requests
 
-import requests, st
-
 try:
     r = requests.get(
         "https://docs.google.com/spreadsheets/d/1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-/export?format=xlsx",
