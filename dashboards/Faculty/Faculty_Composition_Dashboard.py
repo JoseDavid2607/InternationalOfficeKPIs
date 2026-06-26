@@ -344,23 +344,37 @@ def load_data():
     df_ = pd.read_excel(raw, sheet_name=sheet_found)
 
     def _norm_per(val):
-        s = str(val).strip()
+        # Manejar floats: 202610.0 → "202610", NaN → None
+        if pd.isna(val):
+            return None
+        # Convertir a entero primero si es número, para eliminar el ".0"
+        try:
+            val = str(int(float(str(val).strip())))
+        except (ValueError, OverflowError):
+            val = str(val).strip()
+        s = val.strip()
+        # Intersemestral
         m_inter = re.search(r'((?:19|20)\d{2}).{0,6}inter', s, flags=re.IGNORECASE)
         if m_inter:
             return f"{m_inter.group(1)} Intersemestral"
-        m = re.search(r'((?:19|20)\d{2})\D?(\d{2})', s)
-        if m:
-            return f"{m.group(1)}-{m.group(2)}"
+        # Formato compacto: 202610 → 2026-10
+        m_compact = re.fullmatch(r'((?:19|20)\d{2})(10|20)', s)
+        if m_compact:
+            return f"{m_compact.group(1)}-{m_compact.group(2)}"
+        # Formato con separador: 2026-10, 2026/10, 2026 10
+        m_sep = re.search(r'((?:19|20)\d{2})[^0-9]+(10|20)', s)
+        if m_sep:
+            return f"{m_sep.group(1)}-{m_sep.group(2)}"
         return None
 
-    # Si el Sheet ya tiene columna "Periodo" la usamos; si no, la derivamos de la primera
-    if "Periodo" in df_.columns:
-        df_["Periodo"] = df_["Periodo"].map(_norm_per)
-    else:
-        df_["Periodo"] = df_[df_.columns[0]].map(_norm_per)
+    # Siempre derivar Periodo desde la columna fuente para no depender del formato guardado
+    source_col = "Periodo" if "Periodo" in df_.columns else df_.columns[0]
+    df_["Periodo"] = df_[source_col].map(_norm_per)
 
+    # Filtro dinamico: acepta cualquier YYYY-10 o YYYY-20 o YYYY Intersemestral
+    # sin limitar a anios especificos — nuevos periodos aparecen automaticamente
     valid = df_["Periodo"].astype(str).str.match(
-        r'^(?:19|20)\d{2}-(10|20)$|^(?:19|20)\d{2}\sIntersemestral$'
+        r'^(?:19|20)\d{2}-(10|20)$|^(?:19|20)\d{2}\s+Intersemestral$'
     )
     df_ = df_.loc[valid].copy()
 
