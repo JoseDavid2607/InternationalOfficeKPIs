@@ -1882,8 +1882,21 @@ async function handleSaveFiles() {
     }
 
     const periodLabel = keys.map(k => formatPeriod(cardPeriods[k], "Periodo")).join(", ");
-    showToast(`✓ BD updated successfully for period${keys.length > 1 ? "s" : ""}: ${periodLabel}`);
+    showToast(`✓ BD updated for period${keys.length > 1 ? "s" : ""}: ${periodLabel} — refreshing dashboard…`);
     closeUpdateModal();
+
+    // Reload the preview iframe so the Streamlit dashboard picks up the new data
+    const iframe = document.getElementById("previewIframe");
+    if (iframe && iframe.src && iframe.style.display !== "none") {
+      const currentSrc = iframe.src;
+      iframe.style.display = "none";
+      document.getElementById("previewLoading").classList.add("show");
+      // Small delay to let Google Sheets propagate the write before Streamlit reads it
+      setTimeout(() => {
+        iframe.src = "";
+        setTimeout(() => { iframe.src = currentSrc; }, 300);
+      }, 2500);
+    }
 
   } catch (err) {
     console.error("Save error:", err);
