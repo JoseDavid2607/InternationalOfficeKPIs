@@ -1020,6 +1020,7 @@ const TEMPLATE_LAYOUT = { headerRow: 4, dataStartRow: 6, startCol: "B" };
 // Sheets config: sheetName → { periodCol, metaIdSuffix }
 const SHEET_CONFIG = {
   "BD_PLANTA":             { periodCol: "Periodo", metaId: "planta",  cardId: "bd-planta"  },
+  "BD_Catedra":            { periodCol: "Periodo", metaId: "catedra", cardId: "bd-catedra" },
   "Faculty_Questionnaire": { periodCol: "Year",    metaId: "fq",      cardId: "faculty-q"  }
 };
 
@@ -1045,6 +1046,10 @@ const FALLBACK_COLUMNS = {
     "highest earned degree", "year (degree)", "university",
     "region where degree was obtained", "highest degree label",
     "international degree", "field", "normal professional resp.", "notes"
+  ],
+  "BD_Catedra": [
+    "periodo", "campus", "materia", "secc", "nivel materia",
+    "créditos", "nombre largo curso", "profesor"
   ]
 };
 // Holds last period per sheet once loaded
@@ -1337,8 +1342,9 @@ async function loadModalData() {
 
     // Populate UI
     const entries = [
-      { sheetName: "BD_PLANTA",             metaDate: "meta-planta-date", metaPeriod: "meta-planta-period", metaNext: "meta-planta-next", alertId: "alert-planta"  },
-      { sheetName: "Faculty_Questionnaire", metaDate: "meta-fq-date",     metaPeriod: "meta-fq-period",     metaNext: "meta-fq-next",     alertId: "alert-fq"      }
+      { sheetName: "BD_PLANTA",             metaDate: "meta-planta-date",  metaPeriod: "meta-planta-period",  metaNext: "meta-planta-next",  alertId: "alert-planta"  },
+      { sheetName: "BD_Catedra",            metaDate: "meta-catedra-date", metaPeriod: "meta-catedra-period", metaNext: "meta-catedra-next", alertId: "alert-catedra" },
+      { sheetName: "Faculty_Questionnaire", metaDate: "meta-fq-date",      metaPeriod: "meta-fq-period",      metaNext: "meta-fq-next",      alertId: "alert-fq"      }
     ];
 
     entries.forEach(({ sheetName, metaDate, metaPeriod, metaNext, alertId }) => {
@@ -1384,7 +1390,7 @@ function openUpdateModal() {
   // Show/hide cards based on which dashboard was opened
   const isFQ = currentBdType === "fq";
   document.getElementById("card-bd-planta").style.display  = isFQ ? "none" : "";
-  document.getElementById("card-bd-catedra").style.display = "none"; // not used in modal
+  document.getElementById("card-bd-catedra").style.display = isFQ ? "none" : "";
   document.getElementById("card-faculty-q").style.display  = isFQ ? "" : "none";
 
   // Update modal subtitle
@@ -1652,6 +1658,97 @@ function updateUploadBtnState() {
   }
 }
 
+// ── BD_Cartelera column mapping ────────────────────────────────────────────
+// Template layout (relative to col B = idx 0):
+//   idx 0 = B = Periodo   idx 1 = C = Campus    idx 2 = D = Materia
+//   idx 3 = E = Secc      idx 4 = F = Nivel mat  idx 5 = G = Créditos
+//   idx 6 = H = Nombre largo curso               idx 7 = I = Profesor
+
+// Maps raw periodo suffix to semestre flat code or "Intersemestral"
+function periodoToSemestre(rawPeriodo) {
+  const s = String(rawPeriodo).trim().replace(/[^0-9]/g, "");
+  if (s.length < 6) return s;
+  const year = s.slice(0, 4);
+  const suf  = s.slice(4);          // e.g. "01","12","13","20"
+  const sem10 = ["01","02","03","10","11","12"];
+  const inter = ["13","18","19"];
+  const sem20 = ["04","05","06","14","15","20"];
+  if (sem10.includes(suf)) return `${year}10`;
+  if (inter.includes(suf)) return `${year} Intersemestral`;
+  if (sem20.includes(suf)) return `${year}20`;
+  return s; // fallback
+}
+
+// In-memory lookup tables loaded once per save session
+let _infoCursos   = null;  // array of {codigo, nombre, area, field, program}
+let _infoProfes   = null;  // array of {nombre, id, area_prof, tipo, ps}
+
+async function loadInfoCursos(token) {
+  if (_infoCursos) return _infoCursos;
+  // Columns: A=Codigo materia, B=Nombre largo, C=Area del curso, D=Field, E=Program
+  const vals = await sheetsGetValues(BD_FILE_ID, "Info. Cursos!A:E", token);
+  _infoCursos = vals.slice(1).map(r => ({
+    codigo:  String(r[0] || "").trim().toUpperCase().replace(/-/g, ""),
+    nombre:  String(r[1] || "").trim().toUpperCase(),
+    area:    r[2] != null ? String(r[2]).trim() : "",
+    field:   r[3] != null ? String(r[3]).trim() : "",
+    program: r[4] != null ? String(r[4]).trim() : "",
+  })).filter(r => r.codigo || r.nombre);
+  return _infoCursos;
+}
+
+async function loadInfoProfes(token) {
+  if (_infoProfes) return _infoProfes;
+  // Columns: A=Nombre, B=ID, C=AREA_PROFESOR, D=TIPO, E=P/S
+  const vals = await sheetsGetValues(BD_FILE_ID, "Info. Profesores!A:E", token);
+  _infoProfes = vals.slice(1).map(r => ({
+    nombre: String(r[0] || "").trim().toUpperCase(),
+    id:     r[1] != null ? String(r[1]).trim() : "",
+    area:   r[2] != null ? String(r[2]).trim() : "",
+    tipo:   r[3] != null ? String(r[3]).trim() : "",
+    ps:     r[4] != null ? String(r[4]).trim() : "",
+  })).filter(r => r.nombre);
+  return _infoProfes;
+}
+
+// Build one BD_Cartelera row array (23 cols A–W)
+// Q-W are formulas that reference the same row — we replicate the pattern
+// from existing rows: Q=Total hrs, R=..., etc. — kept as Sheets formulas.
+function buildCartelRow(tplRow, formulaRowNum, cursoInfo, profeInfo) {
+  const t    = idx => (tplRow[idx] === undefined || tplRow[idx] === null) ? "" : tplRow[idx];
+  const raw  = String(t(0)).trim();           // B = Periodo raw (e.g. "202612")
+  const mat  = String(t(2)).trim();           // D = Materia (e.g. "AFIN-5005")
+  const matNoGuion = mat.replace(/-/g, "");   // "AFIN5005"
+  const mat4 = mat.split("-")[0] || mat.slice(0, 4); // "AFIN"
+
+  const row = new Array(23).fill("");
+  row[0]  = raw;                              // A — Periodo raw
+  row[1]  = periodoToSemestre(raw);           // B — Semestre calculado
+  row[2]  = t(1);                             // C — Campus
+  row[3]  = mat4;                             // D — Primeros 4 (código área)
+  row[4]  = matNoGuion;                       // E — Materia sin guión
+  row[5]  = t(3);                             // F — Secc
+  row[6]  = t(5);                             // G — Créditos
+  row[7]  = t(6);                             // H — Nombre largo curso
+  row[8]  = cursoInfo ? cursoInfo.area    : ""; // I — Area del curso
+  row[9]  = cursoInfo ? cursoInfo.field   : ""; // J — Field
+  row[10] = cursoInfo ? cursoInfo.program : ""; // K — Program
+  row[11] = t(7);                             // L — Profesor
+  row[12] = profeInfo ? profeInfo.id   : "";  // M — ID profesor
+  row[13] = profeInfo ? profeInfo.area : "";  // N — AREA_PROFESOR
+  row[14] = profeInfo ? profeInfo.tipo : "";  // O — TIPO
+  row[15] = profeInfo ? profeInfo.ps   : "";  // P — P/S
+  // Q–W: fórmulas (se replican adaptando el número de fila)
+  row[16] = `=IF(G${formulaRowNum}="","",G${formulaRowNum}*1)`;           // Q
+  row[17] = `=IF(L${formulaRowNum}="","",IF(P${formulaRowNum}="P","Planta","Catedra"))`; // R
+  row[18] = `=IF(M${formulaRowNum}="","",M${formulaRowNum})`;             // S
+  row[19] = `=IF(N${formulaRowNum}="","",N${formulaRowNum})`;             // T
+  row[20] = `=IF(O${formulaRowNum}="","",O${formulaRowNum})`;             // U
+  row[21] = `=IF(I${formulaRowNum}="","",I${formulaRowNum})`;             // V
+  row[22] = `=IF(J${formulaRowNum}="","",J${formulaRowNum})`;             // W
+  return row;
+}
+
 // ── BD_PLANTA column mapping ───────────────────────────────────────────────
 // Template columns are 0-based relative to column B (index 0 = B, 1 = C, …)
 // BD columns are 0-based (0 = A, 1 = B, …)
@@ -1833,7 +1930,6 @@ async function getSheetId(spreadsheetId, sheetName, token) {
 
 // ── Main save handler ─────────────────────────────────────────────────────
 async function handleSaveFiles() {
-  // Only process cards that have both a file and a period selected
   const keys = Object.keys(selectedFiles).filter(k => !!cardPeriods[k]);
   if (!keys.length) return;
 
@@ -1847,63 +1943,119 @@ async function handleSaveFiles() {
   const label = document.getElementById("uploadBtnLabel");
   btn.disabled = true;
   const origLabel = label.textContent;
-  label.textContent = "Saving…";
+
+  // Reset in-memory lookup caches for this save session
+  _infoCursos = null;
+  _infoProfes = null;
 
   try {
     for (const key of keys) {
       const { sheetName, rows } = selectedFiles[key];
       const flatPeriod = cardPeriods[key];
 
-      if (sheetName !== "BD_PLANTA") {
+      // ── BD_PLANTA ──────────────────────────────────────────────────────────
+      if (sheetName === "BD_PLANTA") {
+        label.textContent = "Reading BD_PLANTA…";
+        const sheetId  = await getSheetId(BD_FILE_ID, "BD_PLANTA", kpiToken);
+        const existing = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
+        const matching = [];
+        for (let i = 1; i < existing.length; i++) {
+          const v = existing[i] && existing[i][0] ? String(existing[i][0]).trim().replace(/[^0-9]/g, "") : "";
+          if (v === flatPeriod) matching.push(i);
+        }
+        if (matching.length) {
+          label.textContent = `Removing ${matching.length} old BD_PLANTA rows…`;
+          await sheetsDeleteRows(BD_FILE_ID, sheetId, matching, kpiToken);
+        }
+        const after       = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
+        const appendStart = after.length + 1;
+        label.textContent = `Writing ${rows.length} BD_PLANTA rows…`;
+        const newRows = rows.map((r, i) => buildBDRow(r, flatPeriod, appendStart + i));
+        await sheetsAppendRows(BD_FILE_ID, "BD_PLANTA!A:AB", newRows, kpiToken);
+      }
+
+      // ── BD_Catedra ─────────────────────────────────────────────────────────
+      else if (sheetName === "BD_Catedra") {
+        label.textContent = "Loading lookup tables…";
+        const cursos = await loadInfoCursos(kpiToken);
+        const profes = await loadInfoProfes(kpiToken);
+
+        // Build lookup maps
+        const cursoByCod  = new Map(cursos.map(c => [c.codigo, c]));
+        const cursoByName = new Map(cursos.map(c => [c.nombre, c]));
+        const profeByName = new Map(profes.map(p => [p.nombre, p]));
+
+        // Collect missing items for warning
+        const missingCursos = new Set();
+        const missingProfes = new Set();
+
+        label.textContent = "Reading BD_Cartelera…";
+        const sheetId  = await getSheetId(BD_FILE_ID, "BD_Cartelera", kpiToken);
+        const existing = await sheetsGetValues(BD_FILE_ID, "BD_Cartelera!A:A", kpiToken);
+
+        // Match by raw Periodo in col A (compare digits)
+        const matching = [];
+        for (let i = 1; i < existing.length; i++) {
+          const v = existing[i] && existing[i][0]
+            ? String(existing[i][0]).trim().replace(/[^0-9]/g, "") : "";
+          if (v === flatPeriod) matching.push(i);
+        }
+        if (matching.length) {
+          label.textContent = `Removing ${matching.length} old BD_Cartelera rows…`;
+          await sheetsDeleteRows(BD_FILE_ID, sheetId, matching, kpiToken);
+        }
+
+        const after       = await sheetsGetValues(BD_FILE_ID, "BD_Cartelera!A:A", kpiToken);
+        const appendStart = after.length + 1;
+
+        label.textContent = `Building ${rows.length} BD_Cartelera rows…`;
+        const newRows = rows.map((tplRow, idx) => {
+          const t      = i => (tplRow[i] === undefined || tplRow[i] === null) ? "" : tplRow[i];
+          const matRaw = String(t(2)).trim();
+          const matKey = matRaw.replace(/-/g, "").toUpperCase();
+          const nomCur = String(t(6)).trim().toUpperCase();
+          const nomPro = String(t(7)).trim().toUpperCase();
+
+          // Lookup curso: first by code, then by name
+          let cursoInfo = cursoByCod.get(matKey) || cursoByName.get(nomCur) || null;
+          if (!cursoInfo && (matKey || nomCur)) missingCursos.add(matRaw || nomCur);
+
+          // Lookup profesor by name
+          let profeInfo = profeByName.get(nomPro) || null;
+          if (!profeInfo && nomPro) missingProfes.add(nomPro);
+
+          return buildCartelRow(tplRow, appendStart + idx, cursoInfo, profeInfo);
+        });
+
+        await sheetsAppendRows(BD_FILE_ID, "BD_Cartelera!A:W", newRows, kpiToken);
+
+        // Show warnings for missing items
+        if (missingCursos.size > 0) {
+          const list = [...missingCursos].slice(0, 10).join(", ");
+          showToast(`⚠ ${missingCursos.size} course(s) not found in Info. Cursos: ${list}`);
+          await new Promise(r => setTimeout(r, 4000));
+        }
+        if (missingProfes.size > 0) {
+          const list = [...missingProfes].slice(0, 8).join(", ");
+          showToast(`⚠ ${missingProfes.size} professor(s) not found in Info. Profesores: ${list}`);
+          await new Promise(r => setTimeout(r, 4000));
+        }
+      }
+
+      else {
         showToast(`Mapping for ${sheetName} not yet implemented.`);
-        continue;
       }
-
-      label.textContent = "Reading BD…";
-
-      // 1. Get numeric sheetId and read existing Periodo column (A)
-      const sheetId = await getSheetId(BD_FILE_ID, "BD_PLANTA", kpiToken);
-      const existing = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
-      const headerOffset = 1; // row index 0 = sheet row 1 (header)
-
-      // Find rows whose Periodo matches (compare flat digits)
-      const matchingSheetRows = [];
-      for (let i = headerOffset; i < existing.length; i++) {
-        const cellVal = existing[i] && existing[i][0]
-          ? String(existing[i][0]).trim().replace(/[^0-9]/g, "") : "";
-        if (cellVal === flatPeriod) matchingSheetRows.push(i);
-      }
-
-      // 2. Delete existing rows for this period (descending order)
-      if (matchingSheetRows.length > 0) {
-        label.textContent = `Removing ${matchingSheetRows.length} old rows…`;
-        await sheetsDeleteRows(BD_FILE_ID, sheetId, matchingSheetRows, kpiToken);
-      }
-
-      // 3. Re-read to find the new last row
-      const afterDelete  = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
-      const lastDataRow  = afterDelete.length;          // 1-based last row with data
-      const appendStart  = lastDataRow + 1;             // 1-based first empty row
-
-      // 4. Build and append new rows
-      label.textContent = `Writing ${rows.length} new rows…`;
-      const newRows = rows.map((tplRow, idx) =>
-        buildBDRow(tplRow, flatPeriod, appendStart + idx)
-      );
-      await sheetsAppendRows(BD_FILE_ID, "BD_PLANTA!A:AB", newRows, kpiToken);
     }
 
     const periodLabel = keys.map(k => formatPeriod(cardPeriods[k], "Periodo")).join(", ");
     showToast(`✓ BD updated for period${keys.length > 1 ? "s" : ""}: ${periodLabel} — refreshing dashboard…`);
     closeUpdateModal();
 
-    // Reload the preview iframe so the Streamlit dashboard picks up the new data
     const iframe = document.getElementById("previewIframe");
     if (iframe && iframe.src && iframe.style.display !== "none") {
       const currentSrc = iframe.src;
       iframe.style.display = "none";
       document.getElementById("previewLoading").classList.add("show");
-      // Small delay to let Google Sheets propagate the write before Streamlit reads it
       setTimeout(() => {
         iframe.src = "";
         setTimeout(() => { iframe.src = currentSrc; }, 300);
