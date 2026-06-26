@@ -8,18 +8,10 @@ import re
 import io, base64
 import requests
 
-r = requests.get(
-    "https://docs.google.com/spreadsheets/d/1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-/export?format=xlsx",
-    timeout=15
-)
-xls = pd.ExcelFile(io.BytesIO(r.content))
-st.write("Pestañas encontradas:", xls.sheet_names)
-
-# Ver primeras filas de cada pestaña
-for name in xls.sheet_names:
-    df_test = pd.read_excel(io.BytesIO(r.content), sheet_name=name, nrows=3)
-    st.write(f"**{name}** — {len(df_test)} filas de muestra, columnas: {list(df_test.columns)}")
-
+if st.button("🔄 Limpiar caché y reconectar"):
+    st.cache_data.clear()
+    st.rerun()
+    
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Full-time Faculty Composition · UASM",
