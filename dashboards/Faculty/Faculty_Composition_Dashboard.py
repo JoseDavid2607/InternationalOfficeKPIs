@@ -81,25 +81,18 @@ def _highlight_band(fig, label, all_labels):
                       x0=pos-0.4, x1=pos+0.4, y0=0, y1=1,
                       fillcolor=_P["highlight"], opacity=0.35, line_width=0)
 
-# ── Auto-refresh ──────────────────────────────────────────────────────────────
-# Initialise refresh timestamp on first run
+# ── Auto-refresh silencioso cada 5 s ─────────────────────────────────────────
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
 
-REFRESH_INTERVAL = 30  # seconds — must match cache ttl above
-
-# If auto-refresh is on and interval has passed, clear cache and rerun
-if st.session_state.get("auto_refresh", True):
-    elapsed = time.time() - st.session_state.last_refresh
-    if elapsed >= REFRESH_INTERVAL:
-        st.cache_data.clear()
-        st.session_state.last_refresh = time.time()
-        st.rerun()
+if time.time() - st.session_state.last_refresh >= 5:
+    st.session_state.last_refresh = time.time()
+    st.rerun()
 
 # ── Data ───────────────────────────────────────────────────────────────────────
 SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
 
-@st.cache_data(ttl=30)   # invalida el caché cada 30 s → detecta cambios en el Sheet
+@st.cache_data(ttl=5)   # invalida caché cada 5 s
 def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
     try:
@@ -173,25 +166,6 @@ with st.sidebar:
         st.caption("Analytics Dashboard")
 
     st.markdown("---")
-
-    # ── Live data controls ────────────────────────────────────────────────────
-    st.markdown("#### 🔄 Live Data")
-    auto = st.toggle("Auto-refresh (30 s)", value=True, key="auto_refresh")
-
-    # Show countdown to next refresh
-    if auto:
-        elapsed  = time.time() - st.session_state.get("last_refresh", time.time())
-        secs_left = max(0, int(REFRESH_INTERVAL - elapsed))
-        st.caption(f"Next refresh in **{secs_left}s**")
-    else:
-        st.caption("Auto-refresh is off.")
-
-    if st.button("⚡ Refresh now", use_container_width=True):
-        st.cache_data.clear()
-        st.session_state.last_refresh = time.time()
-        st.rerun()
-
-    st.markdown("---")
     st.markdown("#### Timeframe")
     tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
 
@@ -220,10 +194,6 @@ with st.sidebar:
 # ── Ranking order & color map ──────────────────────────────────────────────────
 _render_header("Full-time Faculty Composition",
                "Evolution and distribution of full-time faculty by ranking")
-
-# Subtle last-updated indicator
-_ts = time.strftime("%b %d, %Y — %H:%M:%S", time.localtime(st.session_state.last_refresh))
-st.caption(f"Data loaded: **{_ts}**  ·  Auto-refresh: {'✅ on' if st.session_state.get('auto_refresh', True) else '⏸ off'}")
 
 base_order = ["Full Professor","Associate Professor","Assistant Professor",
               "Instructor","Adjunct Faculty","Distinguished Practitioner","Emeritus Professor"]
