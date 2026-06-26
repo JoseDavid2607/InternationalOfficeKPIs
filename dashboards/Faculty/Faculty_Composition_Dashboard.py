@@ -162,8 +162,6 @@ with st.sidebar:
                     unsafe_allow_html=True)
         st.caption("Analytics Dashboard")
 
-    st.markdown("---")
-
     # ── Refresh sutil (una sola línea compacta) ───────────────────────────────
     colombia_offset = -5 * 3600
     ts = time.strftime("%-I:%M %p", time.gmtime(st.session_state.last_loaded + colombia_offset))
@@ -174,7 +172,6 @@ with st.sidebar:
         st.session_state.last_loaded = time.time()
         st.rerun()
 
-    st.markdown("---")
     st.markdown("#### Timeframe")
     tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
 
