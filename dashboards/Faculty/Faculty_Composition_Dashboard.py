@@ -164,14 +164,12 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # ── Refresh sutil ─────────────────────────────────────────────────────────
-    col_ts = st.columns(1)[0]
+    # ── Refresh sutil (una sola línea compacta) ───────────────────────────────
     colombia_offset = -5 * 3600
     ts = time.strftime("%-I:%M %p", time.gmtime(st.session_state.last_loaded + colombia_offset))
-    col_ts.markdown(
-        f'<span style="font-size:11px;color:#9ca3af;">Updated {ts} (COL)</span>',
-        unsafe_allow_html=True)
-    if st.button("↻", help="Refresh data", use_container_width=False):
+    c1, c2 = st.columns([5, 1])
+    c1.markdown(f'<p style="margin:0;padding:4px 0 0;font-size:11px;color:#9ca3af;">Updated {ts} (COL)</p>', unsafe_allow_html=True)
+    if c2.button("↻", help="Refresh"):
         load_data.clear()
         st.session_state.last_loaded = time.time()
         st.rerun()
