@@ -8,6 +8,19 @@ import re
 import io, base64
 import requests
 
+import requests, st
+
+try:
+    r = requests.get(
+        "https://docs.google.com/spreadsheets/d/1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-/export?format=xlsx",
+        timeout=15
+    )
+    st.write(f"Status: {r.status_code}")
+    st.write(f"Content-Type: {r.headers.get('Content-Type')}")
+    st.write(f"Primeros bytes: {r.content[:50]}")
+except Exception as e:
+    st.error(str(e))
+
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Full-time Faculty Composition · UASM",
