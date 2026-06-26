@@ -1038,7 +1038,7 @@ const templateColumns = {};
 // Used when Drive template can't be fetched (user not logged in, network error, etc.)
 const FALLBACK_COLUMNS = {
   "BD_PLANTA": [
-    "nº", "id nr.", "first name", "last name", "date of birth", "gender",
+    "nº", "first name", "last name", "date of birth", "gender",
     "country of birth", "double nationality",
     "date of first appointment to the school",
     "academic area", "faculty ranking", "% devoted to mission",
@@ -1752,42 +1752,63 @@ function buildCartelRow(tplRow, formulaRowNum, cursoInfo, profeInfo) {
 // ── BD_PLANTA column mapping ───────────────────────────────────────────────
 // Template columns are 0-based relative to column B (index 0 = B, 1 = C, …)
 // BD columns are 0-based (0 = A, 1 = B, …)
-// Template col letters: B=0, C=1, D=2, E=3, F=4, G=5, H=6, I=7, J=8, K=9, L=10, M=11, N=12,
-//                       O=13, P=14, Q=15, R=16, S=17, T=18, U=19, V=20, W=21
+// Template col letters (after removing ID Nr. col C):
+//   B=0, C=1(FirstName), D=2(LastName), E=3(DOB), F=4(Gender), G=5(Country),
+//   H=6(DoubleNat), I=7(DateAppt), J=8(AcadArea wait — see below)
 //
-// BD_PLANTA mapping (BD col → template col idx relative to B):
+// New template col indices relative to B (col C = ID Nr. REMOVED):
+//   idx 0 = B = Nº
+//   idx 1 = C = First Name
+//   idx 2 = D = Last Name
+//   idx 3 = E = Date of Birth
+//   idx 4 = F = Gender
+//   idx 5 = G = Country of Birth
+//   idx 6 = H = Double Nationality
+//   idx 7 = I = Date of First Appointment to the School
+//   idx 8 = J = Academic Area
+//   idx 9 = K = Faculty Ranking
+//   idx 10 = L = % Devoted to Mission
+//   idx 11 = M = Faculty Qualifications New Definitions
+//   idx 12 = N = Highest Earned Degree
+//   idx 13 = O = Year (Degree)
+//   idx 14 = P = University
+//   idx 15 = Q = Region where Degree was Obtained
+//   idx 16 = R = Highest Degree Label
+//   idx 17 = S = International Degree
+//   idx 18 = T = Field
+//   idx 19 = U = Normal Professional Resp.
+//   idx 20 = V = Notes
+//
+// BD_PLANTA mapping (BD col → new template idx):
 //   A  = Periodo (from modal)
-//   B  = template B (idx 0)  Nº
-//   C  = template C (idx 1)  ID Nr.
-//   D  = template D (idx 2)  First Name
-//   E  = template E (idx 3)  Last Name
-//   F  = FORMULA (keep existing) — Full Name
-//   G  = template J (idx 8)  Date of First Appointment
-//   H  = template K (idx 9)  Academic Area
-//   I  = template O (idx 13) Highest Earned Degree
-//   J  = template P (idx 14) Year (Degree)
-//   K  = template Q (idx 15) University
-//   L  = template R (idx 16) Region
-//   M  = template S (idx 17) Highest Degree Label
-//   N  = template T (idx 18) International Degree
-//   O  = template M (idx 11) % Devoted to Mission
-//   P  = template L (idx 10) Faculty Ranking
+//   B  = idx 0   Nº
+//   C  = empty   (ID Nr. removed from template)
+//   D  = idx 1   First Name
+//   E  = idx 2   Last Name
+//   F  = FORMULA Full Name
+//   G  = idx 7   Date of First Appointment
+//   H  = idx 8   Academic Area
+//   I  = idx 12  Highest Earned Degree
+//   J  = idx 13  Year (Degree)
+//   K  = idx 14  University
+//   L  = idx 15  Region
+//   M  = idx 16  Highest Degree Label
+//   N  = idx 17  International Degree
+//   O  = idx 10  % Devoted to Mission
+//   P  = idx 9   Faculty Ranking
 //   Q  = empty
-//   R  = template U (idx 19) Field
-//   S  = template H (idx 6)  Country of Birth
-//   T  = template I (idx 7)  Double Nationality
-//   U  = template F (idx 4)  Date of Birth
-//   V  = FORMULA (keep existing) — Age
-//   W  = template G (idx 5)  Gender
-//   X  = template N (idx 12) Faculty Qualifications
-//   Y  = "P" (fixed)
-//   Z  = template V (idx 20) Normal Professional Resp.
-//   AA = template W (idx 21) Notes
-//   AB = "PLANTA" (fixed)
+//   R  = idx 18  Field
+//   S  = idx 5   Country of Birth
+//   T  = idx 6   Double Nationality
+//   U  = idx 3   Date of Birth
+//   V  = FORMULA Age
+//   W  = idx 4   Gender
+//   X  = idx 11  Faculty Qualifications
+//   Y  = "P"
+//   Z  = idx 19  Normal Professional Resp.
+//   AA = idx 20  Notes
+//   AB = "PLANTA"
 
-// Returns a BD row array (28 values, columns A–AB) for one template data row.
-// `tplRow` is a 0-based array starting at template column B.
-// `formulaRowNum` is the 1-based row number in the sheet (needed to replicate formulas).
 function buildBDRow(tplRow, periodo, formulaRowNum) {
   const t = (idx) => {
     const v = tplRow[idx];
@@ -1795,26 +1816,21 @@ function buildBDRow(tplRow, periodo, formulaRowNum) {
     return v;
   };
 
-  // Dates: SheetJS reads Excel date cells as numeric serials (e.g. 45123) or JS Dates.
-  // Sheets USER_ENTERED accepts "DD/MM/YYYY" as a date string it can use in DATEDIF.
   const dateVal = (idx) => {
     const v = t(idx);
     if (!v && v !== 0) return "";
-    // Already a JS Date object
     if (v instanceof Date) {
       const d = String(v.getDate()).padStart(2,"0");
       const m = String(v.getMonth()+1).padStart(2,"0");
       return `${d}/${m}/${v.getFullYear()}`;
     }
-    // Excel serial number (days since 1899-12-30)
     if (typeof v === "number" && v > 1) {
-      const ms = (v - 25569) * 86400 * 1000; // convert to Unix ms
+      const ms = (v - 25569) * 86400 * 1000;
       const dt = new Date(ms);
       const d = String(dt.getUTCDate()).padStart(2,"0");
       const m = String(dt.getUTCMonth()+1).padStart(2,"0");
       return `${d}/${m}/${dt.getUTCFullYear()}`;
     }
-    // Already a string (e.g. "15/03/1980") — pass through
     return v;
   };
 
@@ -1822,32 +1838,32 @@ function buildBDRow(tplRow, periodo, formulaRowNum) {
 
   row[0]  = periodo;                // A — Periodo
   row[1]  = t(0);                   // B — Nº
-  row[2]  = t(1);                   // C — ID Nr.
-  row[3]  = t(2);                   // D — First Name
-  row[4]  = t(3);                   // E — Last Name
-  row[5]  = `=D${formulaRowNum}&" "&E${formulaRowNum}`; // F — Full Name (formula)
-  row[6]  = dateVal(8);             // G — Date of First Appointment (template J)
-  row[7]  = t(9);                   // H — Academic Area (template K)
-  row[8]  = t(13);                  // I — Highest Earned Degree (template O)
-  row[9]  = t(14);                  // J — Year Degree (template P)
-  row[10] = t(15);                  // K — University (template Q)
-  row[11] = t(16);                  // L — Region (template R)
-  row[12] = t(17);                  // M — Highest Degree Label (template S)
-  row[13] = t(18);                  // N — International Degree (template T)
-  row[14] = t(11);                  // O — % Devoted to Mission (template M)
-  row[15] = t(10);                  // P — Faculty Ranking (template L)
+  row[2]  = "";                     // C — ID Nr. (removed from template)
+  row[3]  = t(1);                   // D — First Name
+  row[4]  = t(2);                   // E — Last Name
+  row[5]  = `=D${formulaRowNum}&" "&E${formulaRowNum}`; // F — Full Name
+  row[6]  = dateVal(7);             // G — Date of First Appointment (idx 7)
+  row[7]  = t(8);                   // H — Academic Area (idx 8)
+  row[8]  = t(12);                  // I — Highest Earned Degree (idx 12)
+  row[9]  = t(13);                  // J — Year Degree (idx 13)
+  row[10] = t(14);                  // K — University (idx 14)
+  row[11] = t(15);                  // L — Region (idx 15)
+  row[12] = t(16);                  // M — Highest Degree Label (idx 16)
+  row[13] = t(17);                  // N — International Degree (idx 17)
+  row[14] = t(10);                  // O — % Devoted to Mission (idx 10)
+  row[15] = t(9);                   // P — Faculty Ranking (idx 9)
   row[16] = "";                     // Q — empty
-  row[17] = t(19);                  // R — Field (template U)
-  row[18] = t(6);                   // S — Country of Birth (template H)
-  row[19] = t(7);                   // T — Double Nationality (template I)
-  row[20] = dateVal(4);             // U — Date of Birth (template F)
-  row[21] = `=IF(U${formulaRowNum}="","",DATEDIF(U${formulaRowNum},TODAY(),"Y"))`; // V — Age (formula)
-  row[22] = t(5);                   // W — Gender (template G)
-  row[23] = t(12);                  // X — Faculty Qualifications (template N)
-  row[24] = "P";                    // Y — fixed "P"
-  row[25] = t(20);                  // Z — Normal Professional Resp. (template V)
-  row[26] = t(21);                  // AA — Notes (template W)
-  row[27] = "PLANTA";              // AB — fixed "PLANTA"
+  row[17] = t(18);                  // R — Field (idx 18)
+  row[18] = t(5);                   // S — Country of Birth (idx 5)
+  row[19] = t(6);                   // T — Double Nationality (idx 6)
+  row[20] = dateVal(3);             // U — Date of Birth (idx 3)
+  row[21] = `=IF(U${formulaRowNum}="","",DATEDIF(U${formulaRowNum},TODAY(),"Y"))`; // V — Age
+  row[22] = t(4);                   // W — Gender (idx 4)
+  row[23] = t(11);                  // X — Faculty Qualifications (idx 11)
+  row[24] = "P";                    // Y — fixed
+  row[25] = t(19);                  // Z — Normal Professional Resp. (idx 19)
+  row[26] = t(20);                  // AA — Notes (idx 20)
+  row[27] = "PLANTA";               // AB — fixed
 
   return row;
 }
