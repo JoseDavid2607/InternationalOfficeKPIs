@@ -162,16 +162,7 @@ with st.sidebar:
                     unsafe_allow_html=True)
         st.caption("Analytics Dashboard")
 
-    # ── Refresh sutil (una sola línea compacta) ───────────────────────────────
-    colombia_offset = -5 * 3600
-    ts = time.strftime("%-I:%M %p", time.gmtime(st.session_state.last_loaded + colombia_offset))
-    c1, c2 = st.columns([5, 1])
-    c1.markdown(f'<p style="margin:0;padding:4px 0 0;font-size:11px;color:#9ca3af;">Updated {ts} (COL)</p>', unsafe_allow_html=True)
-    if c2.button("↻", help="Refresh"):
-        load_data.clear()
-        st.session_state.last_loaded = time.time()
-        st.rerun()
-
+    # ── TimeFrame ───────────────────────────────
     st.markdown("#### Timeframe")
     tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
 
