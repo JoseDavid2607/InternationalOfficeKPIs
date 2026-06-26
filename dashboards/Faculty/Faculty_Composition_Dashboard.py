@@ -84,7 +84,7 @@ def _highlight_band(fig, label, all_labels):
 # ── Data ───────────────────────────────────────────────────────────────────────
 SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=0)
 def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
     try:
@@ -138,25 +138,12 @@ def load_data():
 
     return df_.sort_values("Periodo", key=lambda c: c.map(_key))
 
-# ── Auto-refresh: cada 5 s comprueba si el Sheet cambió y reruns el script ────
-@st.fragment(run_every=5)
-def _poller():
-    # Pide solo los metadatos del Sheet (rápido, sin descargar el xlsx)
-    meta_url = (f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
-                f"/export?format=csv&range=A1")
-    try:
-        sig = requests.get(meta_url, timeout=5).content[:512]
-    except Exception:
-        return
-    prev = st.session_state.get("_sheet_sig")
-    st.session_state["_sheet_sig"] = sig
-    if prev is not None and sig != prev:
-        load_data.clear()
-        st.rerun()
-
-_poller()
-
 df = load_data()
+
+# Timestamp de última carga (hora Colombia = UTC-5)
+if "last_loaded" not in st.session_state:
+    st.session_state.last_loaded = time.time()
+
 
 # ── Periods ────────────────────────────────────────────────────────────────────
 all_periods   = df["Periodo"].astype(str).unique().tolist()
@@ -174,6 +161,20 @@ with st.sidebar:
                     'font-weight:800;line-height:1.1;">UASM Faculty KPIs</div>',
                     unsafe_allow_html=True)
         st.caption("Analytics Dashboard")
+
+    st.markdown("---")
+
+    # ── Refresh sutil ─────────────────────────────────────────────────────────
+    col_ts = st.columns(1)[0]
+    colombia_offset = -5 * 3600
+    ts = time.strftime("%-I:%M %p", time.gmtime(st.session_state.last_loaded + colombia_offset))
+    col_ts.markdown(
+        f'<span style="font-size:11px;color:#9ca3af;">Updated {ts} (COL)</span>',
+        unsafe_allow_html=True)
+    if st.button("↻", help="Refresh data", use_container_width=False):
+        load_data.clear()
+        st.session_state.last_loaded = time.time()
+        st.rerun()
 
     st.markdown("---")
     st.markdown("#### Timeframe")
