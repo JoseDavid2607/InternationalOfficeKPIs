@@ -1757,7 +1757,6 @@ function buildBDRow(tplRow, periodo, formulaRowNum) {
 
 // ── BD_Cartelera: periodo → semestre (col B of BD) ───────────────────────
 function catedraSemestre(raw) {
-  // raw is the period value from the template (e.g. "202612", "202513", "202605")
   const s = String(raw).trim().replace(/[^0-9]/g, "");
   const m = s.match(/^(\d{4})(\d{2})$/);
   if (!m) return raw;
@@ -1765,182 +1764,93 @@ function catedraSemestre(raw) {
   const n = parseInt(ss, 10);
   if ([13, 18, 19].includes(n)) return `${yr} Intersemestral`;
   if ([4,5,6,14,15,20].includes(n)) return `${yr}20`;
-  return `${yr}10`; // 01,02,03,10,11,12
+  return `${yr}10`;
 }
 
 // ── BD_Cartelera save ─────────────────────────────────────────────────────
-async function saveCatedraRows(tplRows, flatPeriod, cardKey) {
-  const label   = document.getElementById("uploadBtnLabel");
+async function saveCatedraRows(tplRows, flatPeriod) {
+  const label = document.getElementById("uploadBtnLabel");
 
-  // 1. Load lookup tables from the same BD sheet
-  label.textContent = "Loading Info. Cursos…";
-  const cursosData   = await sheetsGetValues(BD_FILE_ID, "'Info. Cursos'!A:Z",     kpiToken);
-  label.textContent = "Loading Info. Profesores…";
-  const profsData    = await sheetsGetValues(BD_FILE_ID, "'Info. Profesores'!A:Z", kpiToken);
-
-  // Parse Info. Cursos — row 0 is header
-  const cursosHeaders = (cursosData[0] || []).map(h => String(h).trim());
-  const colArea    = cursosHeaders.indexOf("Area del curso");
-  const colField   = cursosHeaders.indexOf("Field");
-  const colProgram = cursosHeaders.indexOf("Program");
-  const colCodigoC = 0;  // col A = codigo materia
-  const colNombreC = 1;  // col B = nombre largo
-
-  // Build lookup maps  code→row, name→row
-  const cursosByCode = new Map();
-  const cursosByName = new Map();
-  for (let i = 1; i < cursosData.length; i++) {
-    const r = cursosData[i] || [];
-    const code = String(r[colCodigoC] || "").trim().toUpperCase();
-    const name = String(r[colNombreC] || "").trim().toUpperCase();
-    if (code) cursosByCode.set(code, r);
-    if (name) cursosByName.set(name, r);
-  }
-
-  // Parse Info. Profesores — row 0 is header
-  const profsHeaders = (profsData[0] || []).map(h => String(h).trim());
-  const colProfName = 0;   // col A = nombre
-  const colProfId   = profsHeaders.indexOf("ID");
-  const colProfArea = profsHeaders.indexOf("AREA_PROFESOR");
-  const colProfTipo = profsHeaders.indexOf("TIPO");
-  const colProfPS   = profsHeaders.indexOf("P/S");
-
-  const profsByName = new Map();
-  for (let i = 1; i < profsData.length; i++) {
-    const r = profsData[i] || [];
-    const name = String(r[colProfName] || "").trim().toUpperCase();
-    if (name) profsByName.set(name, r);
-  }
-
-  // 2. Read existing BD_Cartelera to find Q-W formulas from last data row
+  // 1. Delete existing rows for this period
   label.textContent = "Reading BD_Cartelera…";
-  const existingFull = await sheetsGetValues(BD_FILE_ID, "BD_Cartelera!A:W", kpiToken);
-
-  // Find a row with formulas in Q-W to use as template (last non-empty row)
-  let formulaTemplateRow = null;
-  for (let i = existingFull.length - 1; i >= 1; i--) {
-    const r = existingFull[i] || [];
-    if (r[16] || r[17] || r[18]) { // Q, R, S (0-indexed)
-      formulaTemplateRow = r;
-      break;
-    }
-  }
-
-  // 3. Delete existing rows for this period
   const sheetId  = await getSheetId(BD_FILE_ID, "BD_Cartelera", kpiToken);
   const colAVals = await sheetsGetValues(BD_FILE_ID, "BD_Cartelera!A:A", kpiToken);
   const matching = [];
   for (let i = 1; i < colAVals.length; i++) {
-    const cell = String((colAVals[i] || [])[0] || "").trim();
-    if (cell === flatPeriod) matching.push(i);
+    if (String((colAVals[i] || [])[0] || "").trim() === flatPeriod) matching.push(i);
   }
   if (matching.length) {
     label.textContent = `Removing ${matching.length} old rows…`;
     await sheetsDeleteRows(BD_FILE_ID, sheetId, matching, kpiToken);
   }
 
-  // 4. Find append start row
-  const afterDel   = await sheetsGetValues(BD_FILE_ID, "BD_Cartelera!A:A", kpiToken);
+  // 2. Find append start row
+  const afterDel    = await sheetsGetValues(BD_FILE_ID, "BD_Cartelera!A:A", kpiToken);
   const appendStart = afterDel.length + 1; // 1-based first empty row
 
-  // 5. Collect warnings
-  const missingCursos = new Set();
-  const missingProfs  = new Set();
-
-  // 6. Build rows
-  // Template col indices (0-based from col B, i.e. tplRow[0]=B, [1]=C, [2]=D, [3]=E, [4]=F, [5]=G, [6]=H, [7]=I)
-  // B=Periodo, C=Campus, D=Materia, E=Secc, F=Nivel materia, G=Créditos, H=Nombre largo curso, I=Profesor
+  // 3. Build rows
+  // Template cols (0-based from B): [0]=Periodo [1]=Campus [2]=Materia [3]=Secc [4]=Nivel [5]=Créditos [6]=NombreLargo [7]=Profesor
   label.textContent = `Building ${tplRows.length} rows…`;
   const newRows = tplRows.map((tplRow, idx) => {
     const rowNum   = appendStart + idx;
-    const periodo  = String(tplRow[0] || flatPeriod).trim();  // B
-    const campus   = tplRow[1] || "";                          // C
-    const materia  = String(tplRow[2] || "").trim();           // D — e.g. "AFIN-5005"
-    const secc     = tplRow[3] || "";                          // E
-    // F = Nivel materia (tplRow[4]) — not mapped to BD per spec
-    const creditos = tplRow[5] || "";                          // G
-    const nomCurso = String(tplRow[6] || "").trim().toUpperCase(); // H
-    const profesor = String(tplRow[7] || "").trim().toUpperCase(); // I
+    const periodo  = String(tplRow[0] || flatPeriod).trim();
+    const campus   = tplRow[1] || "";
+    const materia  = String(tplRow[2] || "").trim();           // e.g. "AFIN-5005"
+    const secc     = tplRow[3] || "";
+    const creditos = tplRow[5] || "";
+    const nomCurso = String(tplRow[6] || "").trim().toUpperCase();
+    const profesor = String(tplRow[7] || "").trim().toUpperCase();
 
-    // Col D BD = first 4 chars of materia (e.g. "AFIN")
-    const materiaPrefix = materia.substring(0, 4);
-    // Col E BD = materia without dash (e.g. "AFIN5005")
-    const materiaSinGuion = materia.replace(/-/g, "");
-    // Col B BD = semestre
-    const semestre = catedraSemestre(periodo);
+    const semestre       = catedraSemestre(periodo);
+    const materiaPrefix  = materia.substring(0, 4);            // "AFIN"
+    const materiaSinGuion = materia.replace(/-/g, "");         // "AFIN5005"
 
-    // Lookup curso by code first, then by name
-    const codigoKey = materiaSinGuion.toUpperCase();
-    const nameKey   = nomCurso;
-    let cursoRow = cursosByCode.get(codigoKey) || cursosByCode.get(materia.toUpperCase());
-    if (!cursoRow) cursoRow = cursosByName.get(nameKey);
-    if (!cursoRow && nomCurso) missingCursos.add(`${materia} — ${nomCurso}`);
-
-    const area    = cursoRow && colArea    >= 0 ? (cursoRow[colArea]    || "") : "";
-    const field   = cursoRow && colField   >= 0 ? (cursoRow[colField]   || "") : "";
-    const program = cursoRow && colProgram >= 0 ? (cursoRow[colProgram] || "") : "";
-
-    // Lookup profesor
-    const profRow = profsByName.get(profesor);
-    if (!profRow && profesor) missingProfs.add(profesor);
-
-    const profId   = profRow && colProfId   >= 0 ? (profRow[colProfId]   || "") : "";
-    const profArea = profRow && colProfArea >= 0 ? (profRow[colProfArea] || "") : "";
-    const profTipo = profRow && colProfTipo >= 0 ? (profRow[colProfTipo] || "") : "";
-    const profPS   = profRow && colProfPS   >= 0 ? (profRow[colProfPS]   || "") : "";
-
-    // Q-W: replicate formulas from template row, adjusting row number
-    const qw = Array(7).fill("");
-    if (formulaTemplateRow) {
-      const tplRowNum = existingFull.length; // approx original row number for replacement
-      for (let c = 16; c <= 22; c++) {
-        const fml = String(formulaTemplateRow[c] || "");
-        // Replace all row references in formulas (e.g. A123 → A{rowNum})
-        qw[c - 16] = fml.replace(/([A-Z]+)(\d+)/g, (_, col, num) => {
-          const n = parseInt(num, 10);
-          // Only replace if the number looks like a real row reference (not a year like 2025)
-          if (n > 4 && n < 100000) return `${col}${rowNum}`;
-          return `${col}${num}`;
-        });
-      }
-    }
+    // Exact formulas — row number injected at ${rowNum}
+    const fArea    = `=BUSCARX(BD_Cartelera!$E${rowNum};'Info. Cursos'!A:A;'Info. Cursos'!D:D)`;
+    const fField   = `=BUSCARX(BD_Cartelera!$E${rowNum};'Info. Cursos'!A:A;'Info. Cursos'!E:E)`;
+    const fProgram = `=BUSCARX(BD_Cartelera!$E${rowNum};'Info. Cursos'!A:A;'Info. Cursos'!F:F)`;
+    const fID      = `=BUSCARX(L${rowNum};'Info. Profesores'!A:A;'Info. Profesores'!B:B)`;
+    const fAreaProf= `=BUSCARX(L${rowNum};'Info. Profesores'!A:A;'Info. Profesores'!C:C)`;
+    const fTipo    = `=ARRAY_CONSTRAIN(ARRAYFORMULA(BUSCARX(BD_Cartelera!$M${rowNum}&BD_Cartelera!$B${rowNum};'Faculty Distribution'!$C:$C&'Faculty Distribution'!$A:$A;'Faculty Distribution'!$F:$F));1;1)`;
+    const fPS      = `=ARRAY_CONSTRAIN(ARRAYFORMULA(BUSCARX(BD_Cartelera!$M${rowNum}&BD_Cartelera!$B${rowNum};'Faculty Distribution'!$C:$C&'Faculty Distribution'!$A:$A;'Faculty Distribution'!$G:$G));1;1)`;
+    const fP       = `=SI(BD_Cartelera!$P${rowNum}=Q$1;BD_Cartelera!$G${rowNum};0)`;
+    const fS       = `=SI(BD_Cartelera!$P${rowNum}=R$1;BD_Cartelera!$G${rowNum};0)`;
+    const fOther   = `=SI(BD_Cartelera!$O${rowNum}=S$1;BD_Cartelera!$G${rowNum};0)`;
+    const fSA      = `=SI(BD_Cartelera!$O${rowNum}=T$1;BD_Cartelera!$G${rowNum};0)`;
+    const fPA      = `=SI(BD_Cartelera!$O${rowNum}=U$1;BD_Cartelera!$G${rowNum};0)`;
+    const fIP      = `=SI(BD_Cartelera!$O${rowNum}=V$1;BD_Cartelera!$G${rowNum};0)`;
+    const fSP      = `=SI(BD_Cartelera!$O${rowNum}=W$1;BD_Cartelera!$G${rowNum};0)`;
 
     return [
-      flatPeriod,    // A — periodo (flat, for matching on next update)
-      semestre,      // B — semestre calculado
-      campus,        // C
-      materiaPrefix, // D — first 4 chars
+      flatPeriod,      // A — periodo (for matching on next update)
+      semestre,        // B — semestre calculado
+      campus,          // C
+      materiaPrefix,   // D — first 4 chars
       materiaSinGuion, // E — sin guión
-      secc,          // F
-      creditos,      // G
-      nomCurso,      // H — nombre largo curso
-      area,          // I — Area del curso (from Info. Cursos)
-      field,         // J — Field
-      program,       // K — Program
-      profesor,      // L — nombre profesor
-      profId,        // M
-      profArea,      // N
-      profTipo,      // O
-      profPS,        // P
-      ...qw          // Q-W — fórmulas copiadas
+      secc,            // F
+      creditos,        // G
+      nomCurso,        // H — nombre largo curso
+      fArea,           // I
+      fField,          // J
+      fProgram,        // K
+      profesor,        // L — nombre profesor
+      fID,             // M
+      fAreaProf,       // N
+      fTipo,           // O
+      fPS,             // P
+      fP,              // Q
+      fS,              // R
+      fOther,          // S
+      fSA,             // T
+      fPA,             // U
+      fIP,             // V
+      fSP              // W
     ];
   });
 
-  // 7. Append
+  // 4. Append
   label.textContent = `Writing ${newRows.length} rows…`;
   await sheetsAppendRows(BD_FILE_ID, "BD_Cartelera!A:W", newRows, kpiToken);
-
-  // 8. Report missing items
-  const warnings = [];
-  if (missingCursos.size) warnings.push(`⚠ ${missingCursos.size} new course(s) not in Info. Cursos:\n${[...missingCursos].join("\n")}`);
-  if (missingProfs.size)  warnings.push(`⚠ ${missingProfs.size} new professor(s) not in Info. Profesores:\n${[...missingProfs].join("\n")}`);
-  if (warnings.length) {
-    console.warn("BD_Cartelera save warnings:\n" + warnings.join("\n\n"));
-    showToast(
-      `✓ Saved, but ${missingCursos.size + missingProfs.size} item(s) not found in lookup tables — check console for details.`,
-      6000
-    );
-  }
 }
 
 // Fetch all values from a sheet range via Sheets API v4
