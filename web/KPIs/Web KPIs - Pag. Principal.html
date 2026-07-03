@@ -1463,15 +1463,16 @@ async function handleFileSelect(input, cardKey, sheetName, periodCol) {
       return;
     }
 
-    const ignore  = (IGNORE_COLUMNS[sheetName] || []);
-    const fileCols = fileColumns.map(h => String(h).replace(/\n/g, ' ').trim().toLowerCase()).filter(h => h && !ignore.includes(h));
-    const missing  = expected.filter(e => !fileCols.includes(e));
-    const extra    = fileCols.filter(f => !expected.includes(f));
+    const ignore   = (IGNORE_COLUMNS[sheetName] || []);
+    const fileCols = fileColumns.map(h => String(h).replace(/\n/g, ' ').trim().toLowerCase()).filter(h => h);
+    const required = expected.filter(e => !ignore.includes(e));
+    const missing  = required.filter(e => !fileCols.includes(e));
+    const extra    = fileCols.filter(f => !required.includes(f) && !ignore.includes(f));
 
     if (missing.length === 0) {
       card.classList.add("file-selected");
       valDiv.className = "validation-msg success";
-      valDiv.innerHTML = `✓ All ${expected.length} required columns present. (${rows.length} data row${rows.length===1?"":"s"} detected)` +
+      valDiv.innerHTML = `✓ All ${required.length} required columns present. (${rows.length} data row${rows.length===1?"":"s"} detected)` +
         (extra.length > 0 ? ` <span style="font-weight:400;opacity:.75;">(${extra.length} extra column${extra.length>1?"s":""} ignored)</span>` : "");
       selectedFiles[cardKey] = { file, headers: fileColumns, rows, sheetName };
     } else {
