@@ -372,7 +372,59 @@ header.hero h1 {
 .validation-msg ul { margin: 4px 0 0 16px; }
 .validation-msg li { margin-bottom: 2px; }
 
-/* ── PER-CARD PERIOD ROW (subtle) ── */
+/* ── NEW ITEMS PANEL ─────────────────────────────────────────────────────── */
+.new-items-panel {
+  display: none; border-top: 1.5px solid #e9ecf2;
+  padding: 18px 28px 20px; background: #f8fafc;
+  animation: slideDown .25s ease;
+}
+.new-items-panel.show { display: block; }
+@keyframes slideDown { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+.new-items-title {
+  font-size: .72rem; font-weight: 800; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .07em; margin-bottom: 14px;
+}
+.new-items-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+.new-item-card {
+  flex: 1; min-width: 220px; background: #fff;
+  border: 1.5px solid #e2e8f0; border-radius: 10px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.new-item-card-title {
+  font-size: .78rem; font-weight: 700; color: var(--slate-dark);
+  display: flex; align-items: center; gap: 7px;
+}
+.new-item-count {
+  font-size: .68rem; background: #fef3c7; color: #92400e;
+  border-radius: 20px; padding: 2px 8px; font-weight: 700;
+}
+.new-item-count.ok { background: #dcfce7; color: #166534; }
+.new-item-actions { display: flex; gap: 7px; align-items: center; }
+.btn-ni-download {
+  padding: 6px 11px; border-radius: 7px; border: 1.5px solid #d1d9e6;
+  background: #fff; font-size: .75rem; font-weight: 700; color: var(--slate-dark);
+  cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.btn-ni-download:hover { border-color: var(--teal-brand); color: var(--teal-brand); }
+.btn-ni-upload-label {
+  flex: 1; padding: 6px 11px; border-radius: 7px;
+  border: 1.5px dashed #d1d9e6; background: #f8fafc;
+  font-size: .75rem; color: var(--muted); cursor: pointer;
+  display: flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.btn-ni-upload-label:hover { border-color: var(--teal-brand); color: var(--teal); }
+.btn-ni-upload-label.ready { border-color: #4ade80; color: #166534; background: #f0fdf4; }
+.ni-val-msg { font-size: .72rem; color: #166534; display: none; }
+.ni-val-msg.show { display: block; }
+.new-items-footer { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
+.btn-ni-save {
+  padding: 8px 20px; border-radius: 8px; border: none;
+  background: var(--teal-brand); color: #fff;
+  font-size: .82rem; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+}
+.btn-ni-save:disabled { opacity: .45; cursor: not-allowed; }
+.btn-ni-save:not(:disabled):hover { background: var(--teal); }
 .card-period-row {
   display: flex; align-items: center; gap: 8px;
   padding: 7px 18px; background: #f8fafc;
@@ -720,6 +772,62 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 
     </div><!-- /modalContent -->
 
+      <!-- New Items Panel (shown after BD_Cartelera save if unknowns found) -->
+      <div class="new-items-panel" id="newItemsPanel">
+        <div class="new-items-title">⚠ New items found — complete before finishing</div>
+        <div class="new-items-grid">
+
+          <!-- New Professors -->
+          <div class="new-item-card" id="niProfCard">
+            <div class="new-item-card-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              New Professors
+              <span class="new-item-count" id="niProfCount">0</span>
+            </div>
+            <div class="new-item-actions">
+              <button class="btn-ni-download" id="niProfDownload" onclick="downloadNewItemTemplate('prof')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download template
+              </button>
+              <label class="btn-ni-upload-label" id="niProfLabel" for="niProfFile">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                <span id="niProfLabelText">Attach filled template</span>
+              </label>
+              <input type="file" id="niProfFile" style="display:none" accept=".xlsx,.xls,.csv" onchange="handleNewItemFile(this,'prof')">
+            </div>
+            <div class="ni-val-msg" id="niProfVal"></div>
+          </div>
+
+          <!-- New Courses -->
+          <div class="new-item-card" id="niCourseCard">
+            <div class="new-item-card-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              New Courses
+              <span class="new-item-count" id="niCourseCount">0</span>
+            </div>
+            <div class="new-item-actions">
+              <button class="btn-ni-download" id="niCourseDownload" onclick="downloadNewItemTemplate('course')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download template
+              </button>
+              <label class="btn-ni-upload-label" id="niCourseLabel" for="niCourseFile">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                <span id="niCourseLabelText">Attach filled template</span>
+              </label>
+              <input type="file" id="niCourseFile" style="display:none" accept=".xlsx,.xls,.csv" onchange="handleNewItemFile(this,'course')">
+            </div>
+            <div class="ni-val-msg" id="niCourseVal"></div>
+          </div>
+
+        </div>
+        <div class="new-items-footer">
+          <button class="btn-ni-save" id="niSaveBtn" disabled onclick="saveNewItems()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <span id="niSaveBtnLabel">Save & Complete</span>
+          </button>
+        </div>
+      </div><!-- /newItemsPanel -->
+
   </div>
 </div>
 <!-- ── /UPDATE MODAL ─────────────────────────────────────────────────── -->
@@ -1008,6 +1116,11 @@ const TEMPLATE_FILE_ID = "1qhwyKzANWG_qt0cF-94UyZ_1itTPYOyYumd92HwfHiM";
 const TEMPLATE_DRIVE_FILES = {
   "BD_PLANTA":  { fileId: "1bE5cNo1UUUjN34-L799U7KJQarefQl1h", sheetName: "BD_PLANTA",   fileName: "Template_BD_PLANTA.xlsx"   },
   "BD_Catedra": { fileId: "1O5DV0ABy_-G1_t4pjfeZHUi-f9OFJprl", sheetName: "BD_Cartelera", fileName: "Template_BD_Cartelera.xlsx" }
+};
+// Templates for new professors and new courses
+const NEW_ITEM_TEMPLATES = {
+  prof:   { fileId: "1EEFfstkupiSD-2YyBPauO2WvzelZnYDl", fileName: "Template_Nuevos_Profesores.xlsx" },
+  course: { fileId: "1UGpwCGf3w3GByDm8Mj_1hJgNw0oYtqBb", fileName: "Template_Nuevos_Cursos.xlsx"    }
 };
 
 // Destination folder for the "Save" test upload (same *Templates* folder for now)
@@ -1771,86 +1884,89 @@ function catedraSemestre(raw) {
 async function saveCatedraRows(tplRows, flatPeriod) {
   const label = document.getElementById("uploadBtnLabel");
 
-  // 1. Delete existing rows for this period
+  // 1. Load lookup name sets for client-side detection of new items
+  label.textContent = "Loading lookup tables…";
+  const cursosData = await sheetsGetValues(BD_FILE_ID, "'Info. Cursos'!A:A",     kpiToken);
+  const profsData  = await sheetsGetValues(BD_FILE_ID, "'Info. Profesores'!A:A", kpiToken);
+  const knownCourses = new Set(cursosData.slice(1).map(r => String(r[0]||"").trim().toUpperCase()).filter(Boolean));
+  const knownProfs   = new Set(profsData.slice(1) .map(r => String(r[0]||"").trim().toUpperCase()).filter(Boolean));
+
+  // 2. Delete existing rows for this period
   label.textContent = "Reading BD_Cartelera…";
   const sheetId  = await getSheetId(BD_FILE_ID, "BD_Cartelera", kpiToken);
   const colAVals = await sheetsGetValues(BD_FILE_ID, "BD_Cartelera!A:A", kpiToken);
   const matching = [];
   for (let i = 1; i < colAVals.length; i++) {
-    if (String((colAVals[i] || [])[0] || "").trim() === flatPeriod) matching.push(i);
+    if (String((colAVals[i]||[])[0]||"").trim() === flatPeriod) matching.push(i);
   }
   if (matching.length) {
     label.textContent = `Removing ${matching.length} old rows…`;
     await sheetsDeleteRows(BD_FILE_ID, sheetId, matching, kpiToken);
   }
 
-  // 2. Find append start row
+  // 3. Find append start row
   const afterDel    = await sheetsGetValues(BD_FILE_ID, "BD_Cartelera!A:A", kpiToken);
-  const appendStart = afterDel.length + 1; // 1-based first empty row
+  const appendStart = afterDel.length + 1;
 
-  // 3. Build rows
-  // Template cols (0-based from B): [0]=Periodo [1]=Campus [2]=Materia [3]=Secc [4]=Nivel [5]=Créditos [6]=NombreLargo [7]=Profesor
+  // 4. Build rows + detect new items client-side
   label.textContent = `Building ${tplRows.length} rows…`;
+  const seenNewProfs = new Set(), seenNewCourses = new Set();
+  const newProfs = [], newCourses = [];
+
   const newRows = tplRows.map((tplRow, idx) => {
-    const rowNum   = appendStart + idx;
-    const periodo  = String(tplRow[0] || flatPeriod).trim();
-    const campus   = tplRow[1] || "";
-    const materia  = String(tplRow[2] || "").trim();           // e.g. "AFIN-5005"
-    const secc     = tplRow[3] || "";
-    const creditos = tplRow[5] || "";
-    const nomCurso = String(tplRow[6] || "").trim().toUpperCase();
-    const profesor = String(tplRow[7] || "").trim().toUpperCase();
+    const rowNum          = appendStart + idx;
+    const periodo         = String(tplRow[0] || flatPeriod).trim();
+    const campus          = tplRow[1] || "";
+    const materia         = String(tplRow[2] || "").trim();
+    const secc            = tplRow[3] || "";
+    const creditos        = tplRow[5] || "";
+    const nomCurso        = String(tplRow[6] || "").trim().toUpperCase();
+    const profesor        = String(tplRow[7] || "").trim().toUpperCase();
+    const semestre        = catedraSemestre(periodo);
+    const materiaPrefix   = materia.substring(0, 4);
+    const materiaSinGuion = materia.replace(/-/g, "");
 
-    const semestre       = catedraSemestre(periodo);
-    const materiaPrefix  = materia.substring(0, 4);            // "AFIN"
-    const materiaSinGuion = materia.replace(/-/g, "");         // "AFIN5005"
+    // Detect new items
+    const cKey = materiaSinGuion.toUpperCase();
+    if (cKey && !knownCourses.has(cKey) && !seenNewCourses.has(cKey)) {
+      seenNewCourses.add(cKey); newCourses.push({ code: materiaSinGuion, name: nomCurso });
+    }
+    if (profesor && !knownProfs.has(profesor) && !seenNewProfs.has(profesor)) {
+      seenNewProfs.add(profesor); newProfs.push({ name: profesor });
+    }
 
-    // Exact formulas — row number injected at ${rowNum}
     const fArea    = `=BUSCARX(BD_Cartelera!$E${rowNum};'Info. Cursos'!A:A;'Info. Cursos'!D:D)`;
     const fField   = `=BUSCARX(BD_Cartelera!$E${rowNum};'Info. Cursos'!A:A;'Info. Cursos'!E:E)`;
     const fProgram = `=BUSCARX(BD_Cartelera!$E${rowNum};'Info. Cursos'!A:A;'Info. Cursos'!F:F)`;
     const fID      = `=BUSCARX(L${rowNum};'Info. Profesores'!A:A;'Info. Profesores'!B:B)`;
-    const fAreaProf= `=BUSCARX(L${rowNum};'Info. Profesores'!A:A;'Info. Profesores'!C:C)`;
+    const fAreaP   = `=BUSCARX(L${rowNum};'Info. Profesores'!A:A;'Info. Profesores'!C:C)`;
     const fTipo    = `=ARRAY_CONSTRAIN(ARRAYFORMULA(BUSCARX(BD_Cartelera!$M${rowNum}&BD_Cartelera!$B${rowNum};'Faculty Distribution'!$C:$C&'Faculty Distribution'!$A:$A;'Faculty Distribution'!$F:$F));1;1)`;
     const fPS      = `=ARRAY_CONSTRAIN(ARRAYFORMULA(BUSCARX(BD_Cartelera!$M${rowNum}&BD_Cartelera!$B${rowNum};'Faculty Distribution'!$C:$C&'Faculty Distribution'!$A:$A;'Faculty Distribution'!$G:$G));1;1)`;
-    const fP       = `=SI(BD_Cartelera!$P${rowNum}=Q$1;BD_Cartelera!$G${rowNum};0)`;
-    const fS       = `=SI(BD_Cartelera!$P${rowNum}=R$1;BD_Cartelera!$G${rowNum};0)`;
-    const fOther   = `=SI(BD_Cartelera!$O${rowNum}=S$1;BD_Cartelera!$G${rowNum};0)`;
-    const fSA      = `=SI(BD_Cartelera!$O${rowNum}=T$1;BD_Cartelera!$G${rowNum};0)`;
-    const fPA      = `=SI(BD_Cartelera!$O${rowNum}=U$1;BD_Cartelera!$G${rowNum};0)`;
-    const fIP      = `=SI(BD_Cartelera!$O${rowNum}=V$1;BD_Cartelera!$G${rowNum};0)`;
-    const fSP      = `=SI(BD_Cartelera!$O${rowNum}=W$1;BD_Cartelera!$G${rowNum};0)`;
 
     return [
-      flatPeriod,      // A — periodo (for matching on next update)
-      semestre,        // B — semestre calculado
-      campus,          // C
-      materiaPrefix,   // D — first 4 chars
-      materiaSinGuion, // E — sin guión
-      secc,            // F
-      creditos,        // G
-      nomCurso,        // H — nombre largo curso
-      fArea,           // I
-      fField,          // J
-      fProgram,        // K
-      profesor,        // L — nombre profesor
-      fID,             // M
-      fAreaProf,       // N
-      fTipo,           // O
-      fPS,             // P
-      fP,              // Q
-      fS,              // R
-      fOther,          // S
-      fSA,             // T
-      fPA,             // U
-      fIP,             // V
-      fSP              // W
+      flatPeriod, semestre, campus, materiaPrefix, materiaSinGuion, secc, creditos, nomCurso,
+      fArea, fField, fProgram, profesor, fID, fAreaP, fTipo, fPS,
+      `=SI(BD_Cartelera!$P${rowNum}=Q$1;BD_Cartelera!$G${rowNum};0)`,
+      `=SI(BD_Cartelera!$P${rowNum}=R$1;BD_Cartelera!$G${rowNum};0)`,
+      `=SI(BD_Cartelera!$O${rowNum}=S$1;BD_Cartelera!$G${rowNum};0)`,
+      `=SI(BD_Cartelera!$O${rowNum}=T$1;BD_Cartelera!$G${rowNum};0)`,
+      `=SI(BD_Cartelera!$O${rowNum}=U$1;BD_Cartelera!$G${rowNum};0)`,
+      `=SI(BD_Cartelera!$O${rowNum}=V$1;BD_Cartelera!$G${rowNum};0)`,
+      `=SI(BD_Cartelera!$O${rowNum}=W$1;BD_Cartelera!$G${rowNum};0)`
     ];
   });
 
-  // 4. Append
+  // 5. Append
   label.textContent = `Writing ${newRows.length} rows…`;
   await sheetsAppendRows(BD_FILE_ID, "BD_Cartelera!A:W", newRows, kpiToken);
+
+  // 6. Show panel for new items, or go straight to Faculty Distribution
+  if (newProfs.length || newCourses.length) {
+    showNewItemsPanel(newProfs, newCourses, flatPeriod);
+  } else {
+    label.textContent = "Updating Faculty Distribution…";
+    await updateFacultyDistribution(flatPeriod);
+  }
 }
 
 // Fetch all values from a sheet range via Sheets API v4
@@ -1995,6 +2111,242 @@ async function handleSaveFiles() {
     label.textContent = origLabel;
     updateUploadBtnState();
   }
+}
+
+// ── New Items Flow ────────────────────────────────────────────────────────
+// State for new items detected after BD_Cartelera save
+const newItemsState = {
+  newProfs:    [],   // [{name}]
+  newCourses:  [],   // [{code, name}]
+  profRows:    null, // parsed rows from uploaded prof template
+  courseRows:  null, // parsed rows from uploaded course template
+  savedPeriod: ""    // flat period that was just saved
+};
+
+// Called from saveCatedraRows after detecting unknowns
+function showNewItemsPanel(newProfs, newCourses, flatPeriod) {
+  newItemsState.newProfs    = newProfs;
+  newItemsState.newCourses  = newCourses;
+  newItemsState.profRows    = null;
+  newItemsState.courseRows  = null;
+  newItemsState.savedPeriod = flatPeriod;
+
+  const panel = document.getElementById("newItemsPanel");
+  panel.classList.add("show");
+
+  // Update counts
+  const pc = document.getElementById("niProfCount");
+  const cc = document.getElementById("niCourseCount");
+  pc.textContent = newProfs.length;
+  cc.textContent = newCourses.length;
+  pc.className   = "new-item-count" + (newProfs.length   === 0 ? " ok" : "");
+  cc.className   = "new-item-count" + (newCourses.length === 0 ? " ok" : "");
+
+  // Hide cards with no new items
+  document.getElementById("niProfCard").style.display   = newProfs.length   ? "" : "none";
+  document.getElementById("niCourseCard").style.display = newCourses.length ? "" : "none";
+
+  // Reset labels
+  document.getElementById("niProfLabelText").textContent   = "Attach filled template";
+  document.getElementById("niCourseLabelText").textContent = "Attach filled template";
+  document.getElementById("niProfLabel").className   = "btn-ni-upload-label";
+  document.getElementById("niCourseLabel").className = "btn-ni-upload-label";
+  document.getElementById("niProfVal").className   = "ni-val-msg";
+  document.getElementById("niCourseVal").className = "ni-val-msg";
+
+  updateNiSaveBtn();
+
+  // Scroll panel into view
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function updateNiSaveBtn() {
+  const btn = document.getElementById("niSaveBtn");
+  const needProf   = newItemsState.newProfs.length   > 0 && !newItemsState.profRows;
+  const needCourse = newItemsState.newCourses.length > 0 && !newItemsState.courseRows;
+  btn.disabled = needProf || needCourse;
+}
+
+// Download the base template pre-filled with the new item names
+async function downloadNewItemTemplate(type) {
+  const tpl     = NEW_ITEM_TEMPLATES[type];
+  const newItems = type === "prof" ? newItemsState.newProfs : newItemsState.newCourses;
+
+  if (!isLoggedIn()) { requireKpiLogin(() => downloadNewItemTemplate(type)); return; }
+
+  try {
+    // Download base template
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${tpl.fileId}/export?format=xlsx`;
+    const resp = await fetch(exportUrl, { headers: { Authorization: "Bearer " + kpiToken } });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    if (!window.XLSX) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+
+    const buf = await resp.arrayBuffer();
+    const wb  = XLSX.read(buf, { type: "array" });
+    const ws  = wb.Sheets[wb.SheetNames[0]];
+
+    // Find the first data row (first row with content after headers)
+    // Headers are in row 1; pre-fill name starting from row 2
+    const startRow = 2;
+    if (type === "prof") {
+      // Column A = nombre del profesor
+      newItems.forEach((p, i) => {
+        const cell = `A${startRow + i}`;
+        ws[cell] = { t: "s", v: p.name };
+      });
+    } else {
+      // Column A = codigo, Column B = nombre largo
+      newItems.forEach((c, i) => {
+        ws[`A${startRow + i}`] = { t: "s", v: c.code };
+        ws[`B${startRow + i}`] = { t: "s", v: c.name };
+      });
+    }
+
+    // Update sheet range
+    const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+    range.e.r = Math.max(range.e.r, startRow + newItems.length - 2);
+    ws["!ref"] = XLSX.utils.encode_range(range);
+
+    const out  = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = tpl.fileName;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast("Download error: " + err.message);
+  }
+}
+
+// Handle uploaded filled template for new items
+async function handleNewItemFile(input, type) {
+  const labelEl  = document.getElementById(type === "prof" ? "niProfLabel"      : "niCourseLabel");
+  const labelTxt = document.getElementById(type === "prof" ? "niProfLabelText"  : "niCourseLabelText");
+  const valEl    = document.getElementById(type === "prof" ? "niProfVal"        : "niCourseVal");
+
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  labelTxt.textContent = file.name;
+
+  try {
+    const { headers, rows } = await readUploadedFile(file, { headerRow: 1, dataStartRow: 2, startCol: "A" });
+    const dataRows = rows.filter(r => r.some(v => v !== "" && v !== null && v !== undefined));
+    if (type === "prof") {
+      newItemsState.profRows = dataRows;
+    } else {
+      newItemsState.courseRows = dataRows;
+    }
+    labelEl.className   = "btn-ni-upload-label ready";
+    valEl.textContent   = `✓ ${dataRows.length} row${dataRows.length !== 1 ? "s" : ""} ready`;
+    valEl.className     = "ni-val-msg show";
+  } catch (err) {
+    showToast("Could not read file: " + err.message);
+    return;
+  }
+
+  updateNiSaveBtn();
+}
+
+// Save new professors → Info.Profesores, new courses → Info.Cursos, then Faculty Distribution
+async function saveNewItems() {
+  const btn   = document.getElementById("niSaveBtn");
+  const label = document.getElementById("niSaveBtnLabel");
+  btn.disabled = true;
+  const orig   = label.textContent;
+
+  try {
+    // ── 1. Append new professors to Info. Profesores ──────────────────────
+    if (newItemsState.profRows && newItemsState.profRows.length) {
+      label.textContent = "Saving professors…";
+      await sheetsAppendRows(BD_FILE_ID, "'Info. Profesores'!A:Z", newItemsState.profRows, kpiToken);
+    }
+
+    // ── 2. Append new courses to Info. Cursos ────────────────────────────
+    if (newItemsState.courseRows && newItemsState.courseRows.length) {
+      label.textContent = "Saving courses…";
+      await sheetsAppendRows(BD_FILE_ID, "'Info. Cursos'!A:Z", newItemsState.courseRows, kpiToken);
+    }
+
+    // ── 3. Write Faculty Distribution rows for this period ────────────────
+    label.textContent = "Updating Faculty Distribution…";
+    await updateFacultyDistribution(newItemsState.savedPeriod);
+
+    showToast("✓ All updates complete — dashboard will refresh shortly.");
+    document.getElementById("newItemsPanel").classList.remove("show");
+
+    // Reload iframe
+    const iframe = document.getElementById("previewIframe");
+    if (iframe && iframe.src && iframe.style.display !== "none") {
+      const src = iframe.src;
+      iframe.style.display = "none";
+      document.getElementById("previewLoading").classList.add("show");
+      setTimeout(() => { iframe.src = ""; setTimeout(() => { iframe.src = src; }, 300); }, 2500);
+    }
+
+  } catch (err) {
+    console.error("saveNewItems error:", err);
+    showToast("Error: " + err.message);
+  } finally {
+    label.textContent = orig;
+    updateNiSaveBtn();
+  }
+}
+
+// Build Faculty Distribution rows: one row per unique professor ID in the period
+async function updateFacultyDistribution(flatPeriod) {
+  // Read the BD_Cartelera rows for this period (cols A=periodo, M=profId)
+  const catedraAll = await sheetsGetValues(BD_FILE_ID, "BD_Cartelera!A:M", kpiToken);
+  const uniqueIds  = new Set();
+  for (let i = 1; i < catedraAll.length; i++) {
+    const r = catedraAll[i] || [];
+    const p = String(r[0] || "").trim();
+    const id = String(r[12] || "").trim(); // col M = index 12
+    if (p === flatPeriod && id && id !== "#N/A" && id !== "") {
+      uniqueIds.add(id);
+    }
+  }
+
+  if (!uniqueIds.size) {
+    console.warn("Faculty Distribution: no professor IDs found for period", flatPeriod);
+    return;
+  }
+
+  // Find Faculty Distribution append start
+  const fdColA = await sheetsGetValues(BD_FILE_ID, "'Faculty Distribution'!A:A", kpiToken);
+  const appendStart = fdColA.length + 1;
+
+  // Semestre for col A
+  const semestre = catedraSemestre(flatPeriod);
+
+  // Build rows — cols A-R (18 cols)
+  // A=semestre, B=formula, C=profId(value), D-R=formulas
+  const newRows = [...uniqueIds].map((profId, idx) => {
+    const rn = appendStart + idx;
+    return [
+      semestre,   // A
+      `=BUSCARX('Faculty Distribution'!$C${rn};BD_Cartelera!$M$2:$M$4517;BD_Cartelera!$L$2:$L$4517)`, // B
+      profId,     // C — hardcoded ID value
+      `=BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$C$2:$C$417)`, // D
+      `=BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$D$2:$D$417)`, // E
+      `=ARRAY_CONSTRAIN(ARRAYFORMULA(SI('Faculty Distribution'!$H${rn}="PLANTA";BUSCARX('Faculty Distribution'!$C${rn}&'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926&BD_PLANTA!$A$2:$A$926;BD_PLANTA!$X$2:$X$926);BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$E$2:$E$417)));1;1)`, // F
+      `=ARRAY_CONSTRAIN(ARRAYFORMULA(SI('Faculty Distribution'!$H${rn}="PLANTA";BUSCARX('Faculty Distribution'!$C${rn}&'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926&BD_PLANTA!$A$2:$A$926;BD_PLANTA!$Y$2:$Y$926);BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$F$2:$F$417)));1;1)`, // G
+      `=SI(CONTAR.SI.CONJUNTO(BD_PLANTA!$A$2:$A$926;'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926;'Faculty Distribution'!$C${rn})>0;"PLANTA";"CÁTEDRA")`, // H
+      `=ARRAY_CONSTRAIN(ARRAYFORMULA(SI('Faculty Distribution'!$H${rn}="PLANTA";BUSCARX('Faculty Distribution'!$C${rn}&'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926&BD_PLANTA!$A$2:$A$926;BD_PLANTA!$M$2:$M$926);BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$K$2:$K$417)));1;1)`, // I
+      `=ARRAY_CONSTRAIN(ARRAYFORMULA(SI('Faculty Distribution'!$H${rn}="PLANTA";BUSCARX('Faculty Distribution'!$C${rn}&'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926&BD_PLANTA!$A$2:$A$926;BD_PLANTA!$I$2:$I$926);BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$I$2:$I$417)));1;1)`, // J
+      `=ARRAY_CONSTRAIN(ARRAYFORMULA(SI('Faculty Distribution'!$H${rn}="PLANTA";BUSCARX('Faculty Distribution'!$C${rn}&'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926&BD_PLANTA!$A$2:$A$926;BD_PLANTA!$K$2:$K$926);BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$L$2:$L$417)));1;1)`, // K
+      `=ARRAY_CONSTRAIN(ARRAYFORMULA(SI('Faculty Distribution'!$H${rn}="PLANTA";BUSCARX('Faculty Distribution'!$C${rn}&'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926&BD_PLANTA!$A$2:$A$926;BD_PLANTA!$J$2:$J$926);BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$J$2:$J$417)));1;1)`, // L
+      `=ARRAY_CONSTRAIN(ARRAYFORMULA(SI('Faculty Distribution'!$H${rn}="PLANTA";BUSCARX('Faculty Distribution'!$C${rn}&'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926&BD_PLANTA!$A$2:$A$926;BD_PLANTA!$L$2:$L$926);BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$M$2:$M$417)));1;1)`, // M
+      `=ARRAY_CONSTRAIN(ARRAYFORMULA(SI('Faculty Distribution'!$H${rn}="PLANTA";BUSCARX('Faculty Distribution'!$C${rn}&'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926&BD_PLANTA!$A$2:$A$926;BD_PLANTA!$N$2:$N$926);BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$N$2:$N$417)));1;1)`, // N
+      `=ARRAY_CONSTRAIN(ARRAYFORMULA(SI('Faculty Distribution'!$H${rn}="PLANTA";BUSCARX('Faculty Distribution'!$C${rn}&'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926&BD_PLANTA!$A$2:$A$926;BD_PLANTA!$S$2:$S$926);BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$Q$2:$Q$417)));1;1)`, // O
+      `=ARRAY_CONSTRAIN(ARRAYFORMULA(SI('Faculty Distribution'!$H${rn}="PLANTA";BUSCARX('Faculty Distribution'!$C${rn}&'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926&BD_PLANTA!$A$2:$A$926;BD_PLANTA!$U$2:$U$926);BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$R$2:$R$417)));1;1)`, // P
+      `=ARRAY_CONSTRAIN(ARRAYFORMULA(SI('Faculty Distribution'!$H${rn}="PLANTA";BUSCARX('Faculty Distribution'!$C${rn}&'Faculty Distribution'!$A${rn};BD_PLANTA!$C$2:$C$926&BD_PLANTA!$A$2:$A$926;BD_PLANTA!$U$2:$U$926);BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$R$2:$R$417)));1;1)`, // Q
+      `=BUSCARX('Faculty Distribution'!$C${rn};'Info. Profesores'!$B$2:$B$417;'Info. Profesores'!$T$2:$T$417)`, // R
+    ];
+  });
+
+  await sheetsAppendRows(BD_FILE_ID, "'Faculty Distribution'!A:R", newRows, kpiToken);
 }
 
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeUpdateModal(); });
