@@ -1782,7 +1782,7 @@ function buildCartelRow(tplRow, formulaRowNum, cursoInfo, profeInfo) {
 // BD_PLANTA mapping (BD col → new template idx):
 //   A  = Periodo (from modal)
 //   B  = idx 0   Nº
-//   C  = empty   (ID Nr. removed from template)
+//   C  = LOOKUP in Info. Profesores by FirstName+" "+LastName → ID (col B)
 //   D  = idx 1   First Name
 //   E  = idx 2   Last Name
 //   F  = FORMULA Full Name
@@ -1809,7 +1809,7 @@ function buildCartelRow(tplRow, formulaRowNum, cursoInfo, profeInfo) {
 //   AA = idx 20  Notes
 //   AB = "PLANTA"
 
-function buildBDRow(tplRow, periodo, formulaRowNum) {
+function buildBDRow(tplRow, periodo, formulaRowNum, profeInfo) {
   const t = (idx) => {
     const v = tplRow[idx];
     if (v === undefined || v === null) return "";
@@ -1838,7 +1838,7 @@ function buildBDRow(tplRow, periodo, formulaRowNum) {
 
   row[0]  = periodo;                // A — Periodo
   row[1]  = t(0);                   // B — Nº
-  row[2]  = "";                     // C — ID Nr. (removed from template)
+  row[2]  = profeInfo ? profeInfo.id : ""; // C — ID Nr. (from Info. Profesores by name)
   row[3]  = t(1);                   // D — First Name
   row[4]  = t(2);                   // E — Last Name
   row[5]  = `=D${formulaRowNum}&" "&E${formulaRowNum}`; // F — Full Name
@@ -1971,6 +1971,11 @@ async function handleSaveFiles() {
 
       // ── BD_PLANTA ──────────────────────────────────────────────────────────
       if (sheetName === "BD_PLANTA") {
+        label.textContent = "Loading professor lookup…";
+        const profes      = await loadInfoProfes(kpiToken);
+        const profeByName = new Map(profes.map(p => [p.nombre, p]));
+        const missingProf = new Set();
+
         label.textContent = "Reading BD_PLANTA…";
         const sheetId  = await getSheetId(BD_FILE_ID, "BD_PLANTA", kpiToken);
         const existing = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
@@ -1986,8 +1991,22 @@ async function handleSaveFiles() {
         const after       = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
         const appendStart = after.length + 1;
         label.textContent = `Writing ${rows.length} BD_PLANTA rows…`;
-        const newRows = rows.map((r, i) => buildBDRow(r, flatPeriod, appendStart + i));
+        const newRows = rows.map((r, i) => {
+          // Build full name from First Name (idx 1) + Last Name (idx 2) to look up ID
+          const firstName = String(r[1] || "").trim();
+          const lastName  = String(r[2] || "").trim();
+          const fullName  = `${firstName} ${lastName}`.trim().toUpperCase();
+          const profeInfo = profeByName.get(fullName) || null;
+          if (!profeInfo && fullName) missingProf.add(`${firstName} ${lastName}`.trim());
+          return buildBDRow(r, flatPeriod, appendStart + i, profeInfo);
+        });
         await sheetsAppendRows(BD_FILE_ID, "BD_PLANTA!A:AB", newRows, kpiToken);
+
+        if (missingProf.size > 0) {
+          const list = [...missingProf].slice(0, 8).join(", ");
+          showToast(`⚠ ${missingProf.size} professor(s) not found in Info. Profesores: ${list}`);
+          await new Promise(res => setTimeout(res, 4000));
+        }
       }
 
       // ── BD_Catedra ─────────────────────────────────────────────────────────
