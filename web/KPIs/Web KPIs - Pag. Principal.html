@@ -1007,7 +1007,7 @@ const TEMPLATE_FILE_ID = "1qhwyKzANWG_qt0cF-94UyZ_1itTPYOyYumd92HwfHiM";
 // Drive file IDs (used for the "Download Template" buttons and for column validation)
 const TEMPLATE_DRIVE_FILES = {
   "BD_PLANTA":  { fileId: "1bE5cNo1UUUjN34-L799U7KJQarefQl1h", sheetName: "BD_PLANTA",   fileName: "Template_BD_PLANTA.xlsx"   },
-  "BD_Catedra": { fileId: "1O5DV0ABy_-G1_t4pjfeZHUi-f9OFJprl", sheetName: "BD_Cartelera", fileName: "Template_BD_Cartelera.xlsx" }
+  "BD_Catedra": { fileId: "1O5DV0ABy_-G1_t4pjfeZHUi-f9OFJprl", sheetName: "BD_Cartelera", fileName: "Template_BD_Cartelera.xlsx", stripLastCols: 1 }
 };
 
 // Destination folder for the "Save" test upload (same *Templates* folder for now)
@@ -1035,10 +1035,9 @@ const TEMPLATE_SHEET_MAP = {
 const templateColumns = {};
 
 // Hardcoded fallback column lists (normalized: \n→space, lowercased)
-// Used when Drive template can't be fetched (user not logged in, network error, etc.)
 const FALLBACK_COLUMNS = {
   "BD_PLANTA": [
-    "nº", "first name", "last name", "date of birth", "gender",
+    "nº", "id nr.", "first name", "last name", "date of birth", "gender",
     "country of birth", "double nationality",
     "date of first appointment to the school",
     "academic area", "faculty ranking", "% devoted to mission",
@@ -1052,8 +1051,6 @@ const FALLBACK_COLUMNS = {
     "créditos", "nombre largo curso", "profesor"
   ]
 };
-// Columns present in template files but ignored during validation (auto-filled from lookups)
-const IGNORE_COLUMNS = { "BD_PLANTA": ["id nr.", "id nr"] };
 // Holds last period per sheet once loaded
 const sheetPeriods = {};
 // Holds the currently-selected File objects per card key
@@ -1330,15 +1327,11 @@ async function loadModalData() {
             TEMPLATE_LAYOUT.headerRow,
             TEMPLATE_LAYOUT.startCol
           );
-          templateColumns[sheetName] = tplHeaders
-            .map(h => String(h).replace(/\n/g, ' ').trim().toLowerCase())
-            .filter(h => h && !(IGNORE_COLUMNS[sheetName] || []).includes(h));
+          templateColumns[sheetName] = tplHeaders.map(h => String(h).replace(/\n/g, ' ').trim().toLowerCase()).filter(h => h);
         } else {
           // Fallback: Google Sheet export (e.g. Faculty_Questionnaire)
           const { headers: tplHeaders } = await fetchSheetCSV(TEMPLATE_FILE_ID, TEMPLATE_SHEET_MAP[sheetName]);
-          templateColumns[sheetName] = tplHeaders
-            .map(h => h.replace(/\n/g, ' ').trim().toLowerCase())
-            .filter(h => h && !(IGNORE_COLUMNS[sheetName] || []).includes(h));
+          templateColumns[sheetName] = tplHeaders.map(h => h.replace(/\n/g, ' ').trim().toLowerCase()).filter(h => h);
         }
       } catch(e) {
         console.warn("Could not load template columns for", sheetName, e);
@@ -1348,9 +1341,9 @@ async function loadModalData() {
 
     // Populate UI
     const entries = [
-      { sheetName: "BD_PLANTA",             metaDate: "meta-planta-date",  metaPeriod: "meta-planta-period",  metaNext: "meta-planta-next",  alertId: "alert-planta"  },
+      { sheetName: "BD_PLANTA",             metaDate: "meta-planta-date", metaPeriod: "meta-planta-period", metaNext: "meta-planta-next", alertId: "alert-planta"  },
       { sheetName: "BD_Catedra",            metaDate: "meta-catedra-date", metaPeriod: "meta-catedra-period", metaNext: "meta-catedra-next", alertId: "alert-catedra" },
-      { sheetName: "Faculty_Questionnaire", metaDate: "meta-fq-date",      metaPeriod: "meta-fq-period",      metaNext: "meta-fq-next",      alertId: "alert-fq"      }
+      { sheetName: "Faculty_Questionnaire", metaDate: "meta-fq-date",     metaPeriod: "meta-fq-period",     metaNext: "meta-fq-next",     alertId: "alert-fq"      }
     ];
 
     entries.forEach(({ sheetName, metaDate, metaPeriod, metaNext, alertId }) => {
@@ -1463,16 +1456,14 @@ async function handleFileSelect(input, cardKey, sheetName, periodCol) {
       return;
     }
 
-    const ignore   = (IGNORE_COLUMNS[sheetName] || []);
     const fileCols = fileColumns.map(h => String(h).replace(/\n/g, ' ').trim().toLowerCase()).filter(h => h);
-    const required = expected.filter(e => !ignore.includes(e));
-    const missing  = required.filter(e => !fileCols.includes(e));
-    const extra    = fileCols.filter(f => !required.includes(f) && !ignore.includes(f));
+    const missing  = expected.filter(e => !fileCols.includes(e));
+    const extra    = fileCols.filter(f => !expected.includes(f));
 
     if (missing.length === 0) {
       card.classList.add("file-selected");
       valDiv.className = "validation-msg success";
-      valDiv.innerHTML = `✓ All ${required.length} required columns present. (${rows.length} data row${rows.length===1?"":"s"} detected)` +
+      valDiv.innerHTML = `✓ All ${expected.length} required columns present. (${rows.length} data row${rows.length===1?"":"s"} detected)` +
         (extra.length > 0 ? ` <span style="font-weight:400;opacity:.75;">(${extra.length} extra column${extra.length>1?"s":""} ignored)</span>` : "");
       selectedFiles[cardKey] = { file, headers: fileColumns, rows, sheetName };
     } else {
@@ -1523,13 +1514,38 @@ async function handleDownload(sheetKey) {
   }
 
   try {
-    // Google Sheets files must be exported via the export endpoint (not alt=media)
     const exportUrl = `https://docs.google.com/spreadsheets/d/${tpl.fileId}/export?format=xlsx`;
-    const resp = await fetch(exportUrl, {
-      headers: { Authorization: "Bearer " + kpiToken }
-    });
+    const resp = await fetch(exportUrl, { headers: { Authorization: "Bearer " + kpiToken } });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const blob = await resp.blob();
+
+    let blob;
+    if (tpl.stripLastCols) {
+      // Load with SheetJS, remove last N columns, re-export
+      if (!window.XLSX) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+      const buf  = await resp.arrayBuffer();
+      const wb   = XLSX.read(buf, { type: "array" });
+      const wsn  = tpl.sheetName && wb.Sheets[tpl.sheetName] ? tpl.sheetName : wb.SheetNames[0];
+      const ws   = wb.Sheets[wsn];
+      const ref  = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+      // Trim last N columns from every row
+      const strip = tpl.stripLastCols;
+      for (let r = ref.s.r; r <= ref.e.r; r++) {
+        for (let c = ref.e.c - strip + 1; c <= ref.e.c; c++) {
+          delete ws[XLSX.utils.encode_cell({ r, c })];
+        }
+      }
+      ref.e.c -= strip;
+      ws["!ref"] = XLSX.utils.encode_range(ref);
+      // Remove stripped cols from !cols if present
+      if (ws["!cols"]) ws["!cols"] = ws["!cols"].slice(0, ref.e.c + 1);
+      blob = new Blob(
+        [XLSX.write(wb, { bookType: "xlsx", type: "array" })],
+        { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+      );
+    } else {
+      blob = await resp.blob();
+    }
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = tpl.fileName;
@@ -1666,268 +1682,260 @@ function updateUploadBtnState() {
   }
 }
 
-// ── BD_Cartelera column mapping ────────────────────────────────────────────
-// Template layout (relative to col B = idx 0):
-//   idx 0 = B = Periodo   idx 1 = C = Campus    idx 2 = D = Materia
-//   idx 3 = E = Secc      idx 4 = F = Nivel mat  idx 5 = G = Créditos
-//   idx 6 = H = Nombre largo curso               idx 7 = I = Profesor
+// ── BD_PLANTA column mapping ───────────────────────────────────────────────
+// Template columns are 0-based relative to column B (index 0 = B, 1 = C, …)
+// BD columns are 0-based (0 = A, 1 = B, …)
+// Template col letters: B=0, C=1, D=2, E=3, F=4, G=5, H=6, I=7, J=8, K=9, L=10, M=11, N=12,
+//                       O=13, P=14, Q=15, R=16, S=17, T=18, U=19, V=20, W=21
+//
+// BD_PLANTA mapping (BD col → template col idx relative to B):
+//   A  = Periodo (from modal)
+//   B  = template B (idx 0)  Nº
+//   C  = template C (idx 1)  ID Nr.
+//   D  = template D (idx 2)  First Name
+//   E  = template E (idx 3)  Last Name
+//   F  = FORMULA (keep existing) — Full Name
+//   G  = template J (idx 8)  Date of First Appointment
+//   H  = template K (idx 9)  Academic Area
+//   I  = template O (idx 13) Highest Earned Degree
+//   J  = template P (idx 14) Year (Degree)
+//   K  = template Q (idx 15) University
+//   L  = template R (idx 16) Region
+//   M  = template S (idx 17) Highest Degree Label
+//   N  = template T (idx 18) International Degree
+//   O  = template M (idx 11) % Devoted to Mission
+//   P  = template L (idx 10) Faculty Ranking
+//   Q  = empty
+//   R  = template U (idx 19) Field
+//   S  = template H (idx 6)  Country of Birth
+//   T  = template I (idx 7)  Double Nationality
+//   U  = template F (idx 4)  Date of Birth
+//   V  = FORMULA (keep existing) — Age
+//   W  = template G (idx 5)  Gender
+//   X  = template N (idx 12) Faculty Qualifications
+//   Y  = "P" (fixed)
+//   Z  = template V (idx 20) Normal Professional Resp.
+//   AA = template W (idx 21) Notes
+//   AB = "PLANTA" (fixed)
 
-// Maps raw periodo suffix to semestre flat code or "Intersemestral"
-function periodoToSemestre(rawPeriodo) {
-  const s = String(rawPeriodo).trim().replace(/[^0-9]/g, "");
-  if (s.length < 6) return s;
-  const year = s.slice(0, 4);
-  const suf  = s.slice(4);          // e.g. "01","12","13","20"
-  const sem10 = ["01","02","03","10","11","12"];
-  const inter = ["13","18","19"];
-  const sem20 = ["04","05","06","14","15","20"];
-  if (sem10.includes(suf)) return `${year}10`;
-  if (inter.includes(suf)) return `${year} Intersemestral`;
-  if (sem20.includes(suf)) return `${year}20`;
-  return s; // fallback
+// Returns a BD row array (28 values, columns A–AB) for one template data row.
+// `tplRow` is a 0-based array starting at template column B.
+// `formulaRowNum` is the 1-based row number in the sheet (needed to replicate formulas).
+function buildBDRow(tplRow, periodo, formulaRowNum) {
+  const t = (idx) => {
+    const v = tplRow[idx];
+    if (v === undefined || v === null) return "";
+    return v;
+  };
+
+  // Dates: SheetJS returns numeric serial dates for Excel dates.
+  // We pass them through — the Sheets API accepts numeric values if we set numberFormat.
+  // For simplicity, convert to ISO string if it's a JS Date, else pass raw.
+  const dateVal = (idx) => {
+    const v = t(idx);
+    if (v instanceof Date) return v.toISOString().slice(0, 10); // YYYY-MM-DD
+    return v;
+  };
+
+  const row = new Array(28).fill("");
+
+  row[0]  = periodo;                // A — Periodo
+  row[1]  = t(0);                   // B — Nº
+  row[2]  = t(1);                   // C — ID Nr.
+  row[3]  = t(2);                   // D — First Name
+  row[4]  = t(3);                   // E — Last Name
+  row[5]  = `=D${formulaRowNum}&" "&E${formulaRowNum}`; // F — Full Name (formula)
+  row[6]  = dateVal(8);             // G — Date of First Appointment (template J)
+  row[7]  = t(9);                   // H — Academic Area (template K)
+  row[8]  = t(13);                  // I — Highest Earned Degree (template O)
+  row[9]  = t(14);                  // J — Year Degree (template P)
+  row[10] = t(15);                  // K — University (template Q)
+  row[11] = t(16);                  // L — Region (template R)
+  row[12] = t(17);                  // M — Highest Degree Label (template S)
+  row[13] = t(18);                  // N — International Degree (template T)
+  row[14] = t(11);                  // O — % Devoted to Mission (template M)
+  row[15] = t(10);                  // P — Faculty Ranking (template L)
+  row[16] = "";                     // Q — empty
+  row[17] = t(19);                  // R — Field (template U)
+  row[18] = t(6);                   // S — Country of Birth (template H)
+  row[19] = t(7);                   // T — Double Nationality (template I)
+  row[20] = dateVal(4);             // U — Date of Birth (template F)
+  row[21] = `=IF(U${formulaRowNum}="","",DATEDIF(U${formulaRowNum},TODAY(),"Y"))`; // V — Age (formula)
+  row[22] = t(5);                   // W — Gender (template G)
+  row[23] = t(12);                  // X — Faculty Qualifications (template N)
+  row[24] = "P";                    // Y — fixed "P"
+  row[25] = t(20);                  // Z — Normal Professional Resp. (template V)
+  row[26] = t(21);                  // AA — Notes (template W)
+  row[27] = "PLANTA";              // AB — fixed "PLANTA"
+
+  return row;
 }
 
+// ── BD_Cartelera period mapping ───────────────────────────────────────────
+// Template col B = Periodo raw (e.g. "202612")
+// Rules: SS=01,02,03,10,11,12 → YYYY10; SS=13,18,19 → YYYY Intersemestral; SS=04,05,06,14,15,20 → YYYY20
+function mapCatedraperiodo(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return { colA: "", colB: "" };
+  const m = s.match(/^(\d{4})(\d{2})$/);
+  if (!m) return { colA: s, colB: s };
+  const [, yr, ss] = m;
+  const n = parseInt(ss, 10);
+  let semestre;
+  if ([13, 18, 19].includes(n))           semestre = `${yr} Intersemestral`;
+  else if ([4,5,6,14,15,20].includes(n))  semestre = `${yr}20`;
+  else                                     semestre = `${yr}10`;
+  return { colA: s, colB: semestre };
+}
 
-// ════════════════════════════════════════════════════════════════════════════
-// COLUMN MAPPING  —  Template → Google Sheet (BD maestra)
-// ════════════════════════════════════════════════════════════════════════════
-//
-// ── BD_PLANTA (template col B = idx 0, "ID Nr." REMOVED from template) ──────
-//
-//   Template idx  BD col  Description
-//   ─────────────────────────────────────────────────────────────────────────
-//    0  (B)    →   B    Nº
-//   LOOKUP     →   C    ID Nr.  (Info. Profesores col A=nombre → col B=ID)
-//    1  (C)    →   D    First Name
-//    2  (D)    →   E    Last Name
-//   FORMULA    →   F    Full Name  =D&" "&E
-//    7  (I)    →   G    Date of First Appointment
-//    8  (J)    →   H    Academic Area
-//   12  (N)    →   I    Highest Earned Degree
-//   13  (O)    →   J    Year (Degree)
-//   14  (P)    →   K    University
-//   15  (Q)    →   L    Region where Degree was Obtained
-//   16  (R)    →   M    Highest Degree Label
-//   17  (S)    →   N    International Degree
-//   10  (L)    →   O    % Devoted to Mission
-//    9  (K)    →   P    Faculty Ranking
-//    —         →   Q    (empty)
-//   18  (T)    →   R    Field
-//    5  (G)    →   S    Country of Birth
-//    6  (H)    →   T    Double Nationality
-//    3  (E)    →   U    Date of Birth
-//   FORMULA    →   V    Age  =DATEDIF(U,TODAY(),"Y")
-//    4  (F)    →   W    Gender
-//   11  (M)    →   X    Faculty Qualifications New Definitions
-//   "P"        →   Y    (fixed)
-//   19  (U)    →   Z    Normal Professional Resp.
-//   20  (V)    →   AA   Notes
-//   "PLANTA"   →   AB   (fixed)
-//
-// ── BD_Cartelera (template col B = idx 0) ────────────────────────────────────
-//
-//   Template idx  BD col  Description
-//   ─────────────────────────────────────────────────────────────────────────
-//    0  (B)    →   A    Periodo raw (e.g. "202612")
-//   CALC       →   B    Semestre calculado ("202610","202620","2026 Intersemestral")
-//    1  (C)    →   C    Campus
-//    2  (D)    →   D    Código área (chars before "-", e.g. "AFIN")
-//    2  (D)    →   E    Materia sin guión (e.g. "AFIN5005")
-//    3  (E)    →   F    Secc
-//    5  (G)    →   G    Créditos
-//    6  (H)    →   H    Nombre largo curso
-//   LOOKUP     →   I    Área del curso  (Info. Cursos: código/nombre → Área)
-//   LOOKUP     →   J    Field           (Info. Cursos)
-//   LOOKUP     →   K    Program         (Info. Cursos)
-//    7  (I)    →   L    Nombre del profesor
-//   LOOKUP     →   M    ID profesor     (Info. Profesores: nombre → ID)
-//   LOOKUP     →   N    AREA_PROFESOR   (Info. Profesores)
-//   LOOKUP     →   O    TIPO            (Info. Profesores)
-//   LOOKUP     →   P    P/S             (Info. Profesores)
-//   FORMULAS   →  Q–W   Fórmulas existentes en la BD (replicadas por fila)
-//
-// ════════════════════════════════════════════════════════════════════════════
+// Build one BD_Cartelera row from a template row.
+// tplRow is 0-based from col B: idx0=Periodo, idx1=Campus, idx2=Materia, idx3=Secc,
+//   idx4=NivelMateria, idx5=Créditos, idx6=NombreLargoCurso, idx7=Profesor
+// BD columns A-W (indices 0-22)
+function buildCatedraBDRow(tplRow, formulaRowNum) {
+  const t = i => (tplRow[i] === undefined || tplRow[i] === null) ? "" : tplRow[i];
 
-// Convert Excel serial date → "DD/MM/YYYY" string (Sheets USER_ENTERED compatible)
-function excelDateToStr(v) {
-  if (!v && v !== 0) return "";
-  if (v instanceof Date) {
-    return `${String(v.getDate()).padStart(2,"0")}/${String(v.getMonth()+1).padStart(2,"0")}/${v.getFullYear()}`;
+  const rawPeriodo     = String(t(0)).trim();
+  const { colA, colB } = mapCatedraperiodo(rawPeriodo);
+  const campus         = t(1);
+  const materiaRaw     = String(t(2)).trim();                    // e.g. "AFIN-5005"
+  const codigoMateria  = materiaRaw.replace(/-/g, "");           // E: sin guión → "AFIN5005"
+  const codigoPrefijo  = materiaRaw.slice(0, 4);                 // D: primeros 4 dígitos → "AFIN"
+  const secc           = t(3);
+  const creditos       = t(5);
+  const nombreCurso    = t(6);
+  const profesor       = t(7);
+
+  const r = formulaRowNum;
+
+  // Info.Cursos lookup: search by codigoMateria (col E) in 'Info. Cursos'!A,
+  // fallback to nombreCurso in 'Info. Cursos'!B
+  // Returns Area (col I), Field (col J), Program (col K)
+  const cursoSheet = "'Info. Cursos'";
+  const profSheet  = "'Info. Profesores'";
+
+  // Helper: IFERROR(VLOOKUP(primary,range,col,0), IFERROR(VLOOKUP(fallback,range2,col,0),""))
+  const lookupCurso = (bdCol, infoCursoCol) =>
+    `=IFERROR(VLOOKUP(E${r},${cursoSheet}!$A:$${infoCursoCol},MATCH("${bdCol === "I" ? "Area del curso" : bdCol === "J" ? "Field" : "Program"}",${cursoSheet}!$1:$1,0),0),IFERROR(VLOOKUP(H${r},${cursoSheet}!$B:$${infoCursoCol},MATCH("${bdCol === "I" ? "Area del curso" : bdCol === "J" ? "Field" : "Program"}",${cursoSheet}!$1:$1,0),0),"NEW"))`;
+
+  const lookupProf = (infoCol) =>
+    `=IFERROR(VLOOKUP(L${r},${profSheet}!$A:$Z,MATCH("${infoCol}",${profSheet}!$1:$1,0),0),"NEW")`;
+
+  const row = new Array(23).fill("");
+  row[0]  = colA;          // A — Periodo raw
+  row[1]  = colB;          // B — Semestre mapeado
+  row[2]  = campus;        // C — Campus
+  row[3]  = codigoPrefijo; // D — Primeros 4 chars de Materia
+  row[4]  = codigoMateria; // E — Materia sin guión
+  row[5]  = secc;          // F — Secc
+  row[6]  = creditos;      // G — Créditos
+  row[7]  = nombreCurso;   // H — Nombre largo curso
+  row[8]  = lookupCurso("I", "Z");   // I — Area del curso
+  row[9]  = lookupCurso("J", "Z");   // J — Field
+  row[10] = lookupCurso("K", "Z");   // K — Program
+  row[11] = profesor;      // L — Nombre profesor
+  row[12] = lookupProf("ID");              // M — ID profesor
+  row[13] = lookupProf("AREA_PROFESOR");   // N — Area profesor
+  row[14] = lookupProf("TIPO");            // O — Tipo
+  row[15] = lookupProf("P/S");             // P — P/S
+  // Q-W: fórmulas replicadas de la fila de referencia — se copian desde las existentes
+  // (populated dynamically from the first data row of BD_Cartelera)
+  // Indices 16-22 are filled by handleSaveFiles after reading existing formulas
+  return row;
+}
+
+// Fetch all values from a sheet range via Sheets API v4
+async function sheetsGetValues(spreadsheetId, range, token) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+  const resp = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Sheets GET ${range}: HTTP ${resp.status} — ${errText}`);
   }
-  if (typeof v === "number" && v > 1) {
-    const dt = new Date((v - 25569) * 86400 * 1000);
-    return `${String(dt.getUTCDate()).padStart(2,"0")}/${String(dt.getUTCMonth()+1).padStart(2,"0")}/${dt.getUTCFullYear()}`;
+  const data = await resp.json();
+  return data.values || [];
+}
+
+async function sheetsAppendRows(spreadsheetId, range, rows, token) {
+  // Use OVERWRITE (default) — appends after the last row with data in the range
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`;
+  const body = JSON.stringify({ values: rows });
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Sheets APPEND: HTTP ${resp.status} — ${errText}`);
   }
-  return v;
+  return await resp.json();
 }
 
-// Build one BD_PLANTA row (28 values: cols A–AB)
-// profeId: ID from Info. Profesores lookup (or "" if not found)
-function buildBDRow(tplRow, periodo, rowNum, profeId) {
-  const t = i => (tplRow[i] == null ? "" : tplRow[i]);
-  const r = new Array(28).fill("");
-  r[0]  = periodo;                                              // A  Periodo
-  r[1]  = t(0);                                                // B  Nº
-  r[2]  = profeId;                                             // C  ID Nr. (lookup)
-  r[3]  = t(1);                                                // D  First Name
-  r[4]  = t(2);                                                // E  Last Name
-  r[5]  = `=D${rowNum}&" "&E${rowNum}`;                        // F  Full Name
-  r[6]  = excelDateToStr(t(7));                                // G  Date of First Appointment
-  r[7]  = t(8);                                                // H  Academic Area
-  r[8]  = t(12);                                               // I  Highest Earned Degree
-  r[9]  = t(13);                                               // J  Year (Degree)
-  r[10] = t(14);                                               // K  University
-  r[11] = t(15);                                               // L  Region
-  r[12] = t(16);                                               // M  Highest Degree Label
-  r[13] = t(17);                                               // N  International Degree
-  r[14] = t(10);                                               // O  % Devoted to Mission
-  r[15] = t(9);                                                // P  Faculty Ranking
-  r[16] = "";                                                  // Q  (empty)
-  r[17] = t(18);                                               // R  Field
-  r[18] = t(5);                                                // S  Country of Birth
-  r[19] = t(6);                                                // T  Double Nationality
-  r[20] = excelDateToStr(t(3));                                // U  Date of Birth
-  r[21] = `=IF(U${rowNum}="","",DATEDIF(U${rowNum},TODAY(),"Y"))`; // V Age
-  r[22] = t(4);                                                // W  Gender
-  r[23] = t(11);                                               // X  Faculty Qualifications
-  r[24] = "P";                                                 // Y  (fixed)
-  r[25] = t(19);                                               // Z  Normal Professional Resp.
-  r[26] = t(20);                                               // AA Notes
-  r[27] = "PLANTA";                                            // AB (fixed)
-  return r;
+async function sheetsBatchUpdate(spreadsheetId, updates, token) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ valueInputOption: "USER_ENTERED", data: updates })
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Sheets batchUpdate: HTTP ${resp.status} — ${errText}`);
+  }
+  return await resp.json();
 }
 
-// Maps raw periodo suffix → flat semestre code
-function periodoToSemestre(raw) {
-  const s    = String(raw).trim().replace(/[^0-9]/g, "");
-  const year = s.slice(0, 4), suf = s.slice(4);
-  if (["01","02","03","10","11","12"].includes(suf)) return `${year}10`;
-  if (["13","18","19"].includes(suf))                return `${year} Intersemestral`;
-  if (["04","05","06","14","15","20"].includes(suf)) return `${year}20`;
-  return s;
-}
-
-// Build one BD_Cartelera row (23 values: cols A–W)
-function buildCartelRow(tplRow, rowNum, cursoInfo, profeInfo) {
-  const t   = i => (tplRow[i] == null ? "" : tplRow[i]);
-  const mat = String(t(2)).trim();
-  const r   = new Array(23).fill("");
-  r[0]  = t(0);                                               // A  Periodo raw
-  r[1]  = periodoToSemestre(t(0));                            // B  Semestre calculado
-  r[2]  = t(1);                                               // C  Campus
-  r[3]  = mat.split("-")[0] || mat.slice(0,4);                // D  Código área
-  r[4]  = mat.replace(/-/g, "");                              // E  Materia sin guión
-  r[5]  = t(3);                                               // F  Secc
-  r[6]  = t(5);                                               // G  Créditos
-  r[7]  = t(6);                                               // H  Nombre largo curso
-  r[8]  = cursoInfo ? cursoInfo.area    : "";                  // I  Área del curso
-  r[9]  = cursoInfo ? cursoInfo.field   : "";                  // J  Field
-  r[10] = cursoInfo ? cursoInfo.program : "";                  // K  Program
-  r[11] = t(7);                                               // L  Profesor
-  r[12] = profeInfo ? profeInfo.id   : "";                    // M  ID
-  r[13] = profeInfo ? profeInfo.area : "";                    // N  AREA_PROFESOR
-  r[14] = profeInfo ? profeInfo.tipo : "";                    // O  TIPO
-  r[15] = profeInfo ? profeInfo.ps   : "";                    // P  P/S
-  r[16] = `=IF(G${rowNum}="","",G${rowNum}*1)`;               // Q
-  r[17] = `=IF(L${rowNum}="","",IF(P${rowNum}="P","Planta","Catedra"))`; // R
-  r[18] = `=IF(M${rowNum}="","",M${rowNum})`;                 // S
-  r[19] = `=IF(N${rowNum}="","",N${rowNum})`;                 // T
-  r[20] = `=IF(O${rowNum}="","",O${rowNum})`;                 // U
-  r[21] = `=IF(I${rowNum}="","",I${rowNum})`;                 // V
-  r[22] = `=IF(J${rowNum}="","",J${rowNum})`;                 // W
-  return r;
-}
-
-// ── Sheets API helpers ────────────────────────────────────────────────────────
-async function sheetsGetValues(id, range, token) {
-  const r = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}`,
-    { headers: { Authorization: "Bearer " + token } });
-  if (!r.ok) throw new Error(`Sheets GET ${range}: HTTP ${r.status} — ${await r.text()}`);
-  return (await r.json()).values || [];
-}
-async function sheetsAppendRows(id, range, rows, token) {
-  const r = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`,
-    { method:"POST", headers:{ Authorization:"Bearer "+token, "Content-Type":"application/json" },
-      body: JSON.stringify({ values: rows }) });
-  if (!r.ok) throw new Error(`Sheets APPEND: HTTP ${r.status} — ${await r.text()}`);
-  return r.json();
-}
-async function sheetsDeleteRows(id, sheetId, indices, token) {
-  if (!indices.length) return;
-  const requests = [...indices].sort((a,b)=>b-a).map(i => ({
-    deleteDimension: { range:{ sheetId, dimension:"ROWS", startIndex:i, endIndex:i+1 } }
+async function sheetsDeleteRows(spreadsheetId, sheetId, rowIndices, token) {
+  if (!rowIndices.length) return;
+  const sorted = [...rowIndices].sort((a, b) => b - a);
+  const requests = sorted.map(idx => ({
+    deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: idx, endIndex: idx + 1 } }
   }));
-  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}:batchUpdate`,
-    { method:"POST", headers:{ Authorization:"Bearer "+token, "Content-Type":"application/json" },
-      body: JSON.stringify({ requests }) });
-  if (!r.ok) throw new Error(`Sheets deleteRows: HTTP ${r.status} — ${await r.text()}`);
-  return r.json();
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ requests })
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Sheets deleteRows: HTTP ${resp.status} — ${errText}`);
+  }
+  return await resp.json();
 }
-async function getSheetId(id, sheetName, token) {
-  const r = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties`,
-    { headers: { Authorization: "Bearer " + token } });
-  if (!r.ok) throw new Error(`Sheet metadata: HTTP ${r.status} — ${await r.text()}`);
-  const sheet = (await r.json()).sheets.find(s => s.properties.title === sheetName);
-  if (!sheet) throw new Error(`Sheet "${sheetName}" not found.`);
+
+async function getSheetId(spreadsheetId, sheetName, token) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`;
+  const resp = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Could not get sheet metadata: HTTP ${resp.status} — ${errText}`);
+  }
+  const data = await resp.json();
+  const sheet = data.sheets.find(s => s.properties.title === sheetName);
+  if (!sheet) throw new Error(`Sheet "${sheetName}" not found in spreadsheet.`);
   return sheet.properties.sheetId;
 }
 
-// ── Lookup table loaders (cached per save session) ────────────────────────────
-let _infoProfes = null; // { nombre, id, area, tipo, ps }
-let _infoCursos = null; // { codigo, nombre, area, field, program }
-
-async function loadInfoProfes(token) {
-  if (_infoProfes) return _infoProfes;
-  const vals = await sheetsGetValues(BD_FILE_ID, "Info. Profesores!A:E", token);
-  _infoProfes = vals.slice(1)
-    .map(r => ({ nombre: String(r[0]||"").trim().toUpperCase(),
-                 id:   String(r[1]||"").trim(), area: String(r[2]||"").trim(),
-                 tipo: String(r[3]||"").trim(), ps:   String(r[4]||"").trim() }))
-    .filter(r => r.nombre);
-  return _infoProfes;
-}
-async function loadInfoCursos(token) {
-  if (_infoCursos) return _infoCursos;
-  const vals = await sheetsGetValues(BD_FILE_ID, "Info. Cursos!A:E", token);
-  _infoCursos = vals.slice(1)
-    .map(r => ({ codigo:  String(r[0]||"").trim().toUpperCase().replace(/-/g,""),
-                 nombre:  String(r[1]||"").trim().toUpperCase(),
-                 area:    String(r[2]||"").trim(),
-                 field:   String(r[3]||"").trim(),
-                 program: String(r[4]||"").trim() }))
-    .filter(r => r.codigo || r.nombre);
-  return _infoCursos;
-}
-
-// ── Save handler ──────────────────────────────────────────────────────────────
+// ── Main save handler ─────────────────────────────────────────────────────
 async function handleSaveFiles() {
   const keys = Object.keys(selectedFiles).filter(k => !!cardPeriods[k]);
   if (!keys.length) return;
-  if (!isLoggedIn()) { requireKpiLogin(() => handleSaveFiles()); closeUpdateModal(); return; }
 
-  const btn = document.getElementById("uploadBtn");
+  if (!isLoggedIn()) {
+    requireKpiLogin(() => handleSaveFiles());
+    closeUpdateModal();
+    return;
+  }
+
+  const btn   = document.getElementById("uploadBtn");
   const label = document.getElementById("uploadBtnLabel");
   btn.disabled = true;
   const origLabel = label.textContent;
-  _infoProfes = null; _infoCursos = null; // reset caches
+  label.textContent = "Saving…";
 
-  // Delete existing rows for flatPeriod, return 1-based first empty row
-  async function clearPeriod(bdSheet, colA) {
-    const sheetId  = await getSheetId(BD_FILE_ID, bdSheet, kpiToken);
-    const existing = await sheetsGetValues(BD_FILE_ID, `${bdSheet}!${colA}:${colA}`, kpiToken);
-    const toDelete = existing.slice(1)
-      .map((row, i) => ({ i: i+1, v: String(row[0]||"").trim().replace(/[^0-9]/g,"") }))
-      .filter(x => x.v === flatPeriod).map(x => x.i);
-    if (toDelete.length) {
-      label.textContent = `Removing ${toDelete.length} old rows…`;
-      await sheetsDeleteRows(BD_FILE_ID, sheetId, toDelete, kpiToken);
-    }
-    const after = await sheetsGetValues(BD_FILE_ID, `${bdSheet}!${colA}:${colA}`, kpiToken);
-    return after.length + 1;
-  }
+  const newItemsReport = [];
 
   try {
     for (const key of keys) {
@@ -1936,70 +1944,106 @@ async function handleSaveFiles() {
 
       // ── BD_PLANTA ────────────────────────────────────────────────────────
       if (sheetName === "BD_PLANTA") {
-        label.textContent = "Loading professor lookup…";
-        const profes      = await loadInfoProfes(kpiToken);
-        const byName      = new Map(profes.map(p => [p.nombre, p]));
-        const missing     = new Set();
-
         label.textContent = "Reading BD_PLANTA…";
-        const start = await clearPeriod("BD_PLANTA", "A");
-
-        label.textContent = `Writing ${rows.length} BD_PLANTA rows…`;
-        const newRows = rows.map((tplRow, i) => {
-          const nombre = `${String(tplRow[1]||"").trim()} ${String(tplRow[2]||"").trim()}`.trim().toUpperCase();
-          const info   = byName.get(nombre);
-          if (!info && nombre) missing.add(nombre);
-          return buildBDRow(tplRow, flatPeriod, start + i, info ? info.id : "");
-        });
-        await sheetsAppendRows(BD_FILE_ID, "BD_PLANTA!A:AB", newRows, kpiToken);
-
-        if (missing.size) {
-          showToast(`⚠ ${missing.size} professor(s) not found in Info. Profesores: ${[...missing].slice(0,8).join(", ")}`);
-          await new Promise(r => setTimeout(r, 4000));
+        const sheetId  = await getSheetId(BD_FILE_ID, "BD_PLANTA", kpiToken);
+        const existing = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
+        const matching = [];
+        for (let i = 1; i < existing.length; i++) {
+          const v = existing[i]?.[0] ? String(existing[i][0]).trim().replace(/[^0-9]/g,"") : "";
+          if (v === flatPeriod) matching.push(i);
         }
+        if (matching.length) {
+          label.textContent = `Removing ${matching.length} old PLANTA rows…`;
+          await sheetsDeleteRows(BD_FILE_ID, sheetId, matching, kpiToken);
+        }
+        const after       = await sheetsGetValues(BD_FILE_ID, "BD_PLANTA!A:A", kpiToken);
+        const appendStart = after.length + 1;
+        label.textContent = `Writing ${rows.length} PLANTA rows…`;
+        const newRows = rows.map((r, i) => buildBDRow(r, flatPeriod, appendStart + i));
+        await sheetsAppendRows(BD_FILE_ID, "BD_PLANTA!A:AB", newRows, kpiToken);
       }
 
       // ── BD_Catedra ───────────────────────────────────────────────────────
       else if (sheetName === "BD_Catedra") {
-        label.textContent = "Loading lookup tables…";
-        const [cursos, profes] = await Promise.all([loadInfoCursos(kpiToken), loadInfoProfes(kpiToken)]);
-        const byCod   = new Map(cursos.map(c => [c.codigo, c]));
-        const byNomC  = new Map(cursos.map(c => [c.nombre, c]));
-        const byNomP  = new Map(profes.map(p => [p.nombre, p]));
-        const missingC = new Set(), missingP = new Set();
-
         label.textContent = "Reading BD_Cartelera…";
-        const start = await clearPeriod("BD_Cartelera", "A");
+        const sheetId  = await getSheetId(BD_FILE_ID, "BD_Cartelera", kpiToken);
 
-        label.textContent = `Writing ${rows.length} BD_Cartelera rows…`;
-        const newRows = rows.map((tplRow, i) => {
-          const matRaw  = String(tplRow[2]||"").trim();
-          const curso   = byCod.get(matRaw.replace(/-/g,"").toUpperCase()) || byNomC.get(String(tplRow[6]||"").trim().toUpperCase()) || null;
-          const profe   = byNomP.get(String(tplRow[7]||"").trim().toUpperCase()) || null;
-          if (!curso)  missingC.add(matRaw || String(tplRow[6]||"").trim());
-          if (!profe && tplRow[7]) missingP.add(String(tplRow[7]).trim());
-          return buildCartelRow(tplRow, start + i, curso, profe);
+        // Find rows matching this period in col A
+        const existing = await sheetsGetValues(BD_FILE_ID, "BD_Cartelera!A:A", kpiToken);
+        const matching = [];
+        for (let i = 1; i < existing.length; i++) {
+          const v = existing[i]?.[0] ? String(existing[i][0]).trim().replace(/[^0-9]/g,"") : "";
+          if (v === flatPeriod) matching.push(i);
+        }
+        if (matching.length) {
+          label.textContent = `Removing ${matching.length} old Cartelera rows…`;
+          await sheetsDeleteRows(BD_FILE_ID, sheetId, matching, kpiToken);
+        }
+
+        // Read full A:W to get reference formulas (Q-W) from any existing data row
+        const afterDel    = await sheetsGetValues(BD_FILE_ID, "BD_Cartelera!A:W", kpiToken);
+        const appendStart = afterDel.length + 1;
+
+        // Extract Q-W formula templates from first data row that has them
+        let qwTemplates = ["","","","","","",""]; // Q R S T U V W
+        for (let i = 1; i < afterDel.length; i++) {
+          const ref = afterDel[i] || [];
+          if (ref[16]) { // col Q exists
+            qwTemplates = ref.slice(16, 23).map(v => v || "");
+            // Store the source row number so we can transpose row refs
+            qwTemplates._srcRow = i + 1; // 1-based sheet row
+            break;
+          }
+        }
+
+        // Build and adjust Q-W formulas per target row
+        const adjustFormulas = (targetRow) =>
+          qwTemplates.map(f => {
+            if (!f || !qwTemplates._srcRow) return f;
+            const src = qwTemplates._srcRow;
+            // Replace all row numbers in the formula that equal the source row
+            return String(f).replace(new RegExp(`(?<![A-Z])${src}(?!\\d)`, "g"), String(targetRow));
+          });
+
+        label.textContent = `Writing ${rows.length} Cartelera rows…`;
+        const newRows = rows.map((tplRow, idx) => {
+          const rowNum = appendStart + idx;
+          const bdRow  = buildCatedraBDRow(tplRow, rowNum);
+          const qw     = adjustFormulas(rowNum);
+          qw.forEach((f, ci) => { bdRow[16 + ci] = f; });
+          return bdRow;
         });
         await sheetsAppendRows(BD_FILE_ID, "BD_Cartelera!A:W", newRows, kpiToken);
 
-        if (missingC.size) {
-          showToast(`⚠ ${missingC.size} course(s) not found in Info. Cursos: ${[...missingC].slice(0,10).join(", ")}`);
-          await new Promise(r => setTimeout(r, 4000));
-        }
-        if (missingP.size) {
-          showToast(`⚠ ${missingP.size} professor(s) not found in Info. Profesores: ${[...missingP].slice(0,8).join(", ")}`);
-          await new Promise(r => setTimeout(r, 4000));
-        }
+        // Wait for Sheets to compute VLOOKUPs then read back to detect NEW items
+        label.textContent = "Checking for new courses & professors…";
+        await new Promise(res => setTimeout(res, 2000));
+        const check = await sheetsGetValues(
+          BD_FILE_ID,
+          `BD_Cartelera!H${appendStart}:M${appendStart + rows.length - 1}`,
+          kpiToken
+        );
+        const newCourses = new Set(), newProfs = new Set();
+        check.forEach(r => {
+          if (String(r[1] || "").toUpperCase() === "NEW") newCourses.add(r[0] || "?"); // I vs H
+          if (String(r[5] || "").toUpperCase() === "NEW") newProfs.add(r[4] || "?");   // M vs L
+        });
+        if (newCourses.size) newItemsReport.push(`📚 New courses (not in Info.Cursos): ${[...newCourses].join(" | ")}`);
+        if (newProfs.size)   newItemsReport.push(`👤 New professors (not in Info.Profesores): ${[...newProfs].join(" | ")}`);
       }
 
-      else { showToast(`Mapping for "${sheetName}" not yet implemented.`); }
+      else {
+        showToast(`Mapping for ${sheetName} not yet implemented.`);
+      }
     }
 
-    const label2 = keys.map(k => formatPeriod(cardPeriods[k], "Periodo")).join(", ");
-    showToast(`✓ BD updated for period${keys.length>1?"s":""}: ${label2} — refreshing dashboard…`);
+    const periodLabel = keys.map(k => formatPeriod(cardPeriods[k], "Periodo")).join(", ");
+    let msg = `✓ BD updated for period${keys.length > 1 ? "s" : ""}: ${periodLabel}`;
+    if (newItemsReport.length) msg += "\n\n⚠ " + newItemsReport.join("\n");
+    showToast(msg);
     closeUpdateModal();
 
-    // Reload Streamlit iframe to pick up new data
+    // Reload iframe so Streamlit picks up new data
     const iframe = document.getElementById("previewIframe");
     if (iframe && iframe.src && iframe.style.display !== "none") {
       const src = iframe.src;
@@ -2012,7 +2056,8 @@ async function handleSaveFiles() {
     console.error("Save error:", err);
     showToast("Error saving: " + err.message);
   } finally {
-    btn.disabled = false; label.textContent = origLabel; updateUploadBtnState();
+    label.textContent = origLabel;
+    updateUploadBtnState();
   }
 }
 
