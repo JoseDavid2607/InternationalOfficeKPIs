@@ -123,28 +123,6 @@ def _render_header(title, subtitle=""):
         unsafe_allow_html=True,
     )
 
-def _kpi_row(cards):
-    html = '<div class="kpi-row">'
-    for c in cards:
-        html += ('<div class="kpi-card"><div class="kv">' + str(c.get("v", "\u2014")) +
-                 '</div><div class="kl">' + str(c.get("l", "")) + '</div></div>')
-    html += "</div>"
-    st.markdown(html, unsafe_allow_html=True)
-
-def _sec_div():
-    st.markdown('<hr class="sec-sep">', unsafe_allow_html=True)
-
-
-def _highlight_band(fig, label, all_labels):
-    if label in all_labels:
-        pos = all_labels.index(label)
-        fig.add_shape(
-            type="rect", xref="x", yref="paper",
-            x0=pos - 0.4, x1=pos + 0.4, y0=0, y1=1,
-            fillcolor=_P["highlight"], opacity=0.35, line_width=0,
-        )
-    return fig
-
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 _render_header("Full-time Faculty Staffing Levels", "New entrants, leavers, and headcount evolution")
@@ -152,18 +130,16 @@ _render_header("Full-time Faculty Staffing Levels", "New entrants, leavers, and 
 # ── Sidebar navigation ─────────────────────────────────────────────────────────
 import requests as _requests
 
-DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
+SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
+SHEET_EXPORT_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
 
 @st.cache_data(ttl=300)
 def _download_excel() -> str:
-    """Download BD_Faculty.xlsx from Google Drive to /tmp and return local path."""
-    url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+    """Export the Google Sheet as .xlsx to /tmp and return the local path."""
     path = "/tmp/BD_Faculty.xlsx"
-    response = _requests.get(url, stream=True)
+    content = _requests.get(SHEET_EXPORT_URL).content
     with open(path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=32768):
-            if chunk:
-                f.write(chunk)
+        f.write(content)
     return path
 
 @st.cache_data
