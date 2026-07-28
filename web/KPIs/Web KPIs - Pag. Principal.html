@@ -1169,10 +1169,24 @@ const TEMPLATE_DRIVE_FILES = {
   "BD_PLANTA":  { fileId: "1bE5cNo1UUUjN34-L799U7KJQarefQl1h", sheetName: "BD_PLANTA",   fileName: "Template_BD_PLANTA.xlsx"   },
   "BD_Catedra": { fileId: "1O5DV0ABy_-G1_t4pjfeZHUi-f9OFJprl", sheetName: "BD_Cartelera", fileName: "Template_BD_Cartelera.xlsx" }
 };
-// Templates for new professors and new courses
+// Templates for new professors and new courses — generated client-side (see downloadNewItemTemplate)
+// with the exact column set required to complete missing lookup data.
 const NEW_ITEM_TEMPLATES = {
-  prof:   { fileId: "1EEFfstkupiSD-2YyBPauO2WvzelZnYDl", fileName: "Template_Nuevos_Profesores.xlsx" },
-  course: { fileId: "1UGpwCGf3w3GByDm8Mj_1hJgNw0oYtqBb", fileName: "Template_Nuevos_Cursos.xlsx"    }
+  prof: {
+    fileName: "Template_Nuevos_Profesores.xlsx",
+    headers: [
+      "Profesor", "ID", "AREA_PROFESOR", "GÉNERO", "TIPO", "P/S", "PLANTA_CATEDRA",
+      "Date of First Appointment to the School", "Highest Earned Degree",
+      "Highest Degree, Year Earned", "Highest Degree", "University2",
+      "Region Where it was obtained", "International Degree?",
+      "Normal Professional Responsibilities", "Basis for qualification",
+      "Nationality", "Date of birth", "Age", "Years Industry experience"
+    ]
+  },
+  course: {
+    fileName: "Template_Nuevos_Cursos.xlsx",
+    headers: ["Código Materia", "Créditos", "Nombre largo curso", "Area del curso", "Field", "Program"]
+  }
 };
 
 // Destination folder for the "Save" test upload (same *Templates* folder for now)
@@ -1916,7 +1930,7 @@ function buildBDRow(tplRow, periodo, formulaRowNum) {
   row[18] = t(6);                   // S — Country of Birth (template H)
   row[19] = t(7);                   // T — Double Nationality (template I)
   row[20] = dateVal(4);             // U — Date of Birth (template F)
-  row[21] = `=IF(U${formulaRowNum}="","",DATEDIF(U${formulaRowNum},TODAY(),"Y"))`; // V — Age (formula)
+  row[21] = `=SIFECHA(U${formulaRowNum};FECHA(IZQUIERDA(BD_PLANTA!$A${formulaRowNum};4);SI(DERECHA(BD_PLANTA!$A${formulaRowNum};2)="10";2;SI(DERECHA(BD_PLANTA!$A${formulaRowNum};2)="20";8;6));1);"Y")`; // V — Age (formula)
   row[22] = t(5);                   // W — Gender (template G)
   row[23] = t(12);                  // X — Faculty Qualifications (template N)
   row[24] = "P";                    // Y — fixed "P"
@@ -2235,52 +2249,37 @@ function updateNiSaveBtn() {
   btn.disabled = needProf || needCourse;
 }
 
-// Download the base template pre-filled with the new item names
+// Download a template built client-side with the exact required columns,
+// pre-filled with the data we already know (professor name, or course code + name).
+// The rest of the fields are left blank for the user to complete.
 async function downloadNewItemTemplate(type) {
-  const tpl     = NEW_ITEM_TEMPLATES[type];
+  const cfg      = NEW_ITEM_TEMPLATES[type];
   const newItems = type === "prof" ? newItemsState.newProfs : newItemsState.newCourses;
 
-  if (!isLoggedIn()) { requireKpiLogin(() => downloadNewItemTemplate(type)); return; }
-
   try {
-    // Download base template
-    const exportUrl = `https://docs.google.com/spreadsheets/d/${tpl.fileId}/export?format=xlsx`;
-    const resp = await fetch(exportUrl, { headers: { Authorization: "Bearer " + kpiToken } });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
     if (!window.XLSX) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
 
-    const buf = await resp.arrayBuffer();
-    const wb  = XLSX.read(buf, { type: "array" });
-    const ws  = wb.Sheets[wb.SheetNames[0]];
+    const aoa = [cfg.headers];
+    newItems.forEach(item => {
+      const row = new Array(cfg.headers.length).fill("");
+      if (type === "prof") {
+        row[0] = item.name; // Profesor
+      } else {
+        row[0] = item.code; // Código Materia
+        row[2] = item.name; // Nombre largo curso
+      }
+      aoa.push(row);
+    });
 
-    // Find the first data row (first row with content after headers)
-    // Headers are in row 1; pre-fill name starting from row 2
-    const startRow = 2;
-    if (type === "prof") {
-      // Column A = nombre del profesor
-      newItems.forEach((p, i) => {
-        const cell = `A${startRow + i}`;
-        ws[cell] = { t: "s", v: p.name };
-      });
-    } else {
-      // Column A = codigo, Column B = nombre largo
-      newItems.forEach((c, i) => {
-        ws[`A${startRow + i}`] = { t: "s", v: c.code };
-        ws[`B${startRow + i}`] = { t: "s", v: c.name };
-      });
-    }
-
-    // Update sheet range
-    const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
-    range.e.r = Math.max(range.e.r, startRow + newItems.length - 2);
-    ws["!ref"] = XLSX.utils.encode_range(range);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
 
     const out  = XLSX.write(wb, { type: "array", bookType: "xlsx" });
     const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
-    a.href = url; a.download = tpl.fileName;
+    a.href = url; a.download = cfg.fileName;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
   } catch (err) {
