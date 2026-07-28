@@ -642,6 +642,15 @@ def apply_sensitivity_to_history(
 
     return ps, tq, tps, ttq
 
+# === extracción segura de valores únicos (evita TypeError por columnas duplicadas o NaN mezclado con str) ===
+def _safe_unique_labels(df: pd.DataFrame, col: str) -> list[str]:
+    if col not in df.columns:
+        return []
+    ser = df[col]
+    if isinstance(ser, pd.DataFrame):  # columna duplicada -> pandas devuelve un DataFrame
+        ser = ser.iloc[:, 0]
+    return ser.dropna().astype(str).unique().tolist()
+
 # --------- Gráfica histórica ---------
 def draw_history(fig_title, level_name, level_values, metric_kind, total_series_builders, agg_ps_all, agg_tipo_all, x_labels, x_map, sel_x):
     palette = px.colors.qualitative.Safe + px.colors.qualitative.Bold + px.colors.qualitative.Pastel
@@ -1690,7 +1699,7 @@ else:
                     member_all_label="All"
                 )
 
-            areas_all = sorted(set(agg_ps_all_tm["_AREA"].astype(str).unique()) | set(agg_tipo_all_tm["_AREA"].astype(str).unique()))
+            areas_all = sorted(set(_safe_unique_labels(agg_ps_all_tm, "_AREA")) | set(_safe_unique_labels(agg_tipo_all_tm, "_AREA")))
             with colG:
                 draw_history(
                     "Evolution by Academic Area",
@@ -1903,7 +1912,7 @@ else:
                     member_all_label="All"
                 )
 
-            fields_all = sorted(set(agg_ps_all_tm["_FIELD"].astype(str).unique()) | set(agg_tipo_all_tm["_FIELD"].astype(str).unique()))
+            fields_all = sorted(set(_safe_unique_labels(agg_ps_all_tm, "_FIELD")) | set(_safe_unique_labels(agg_tipo_all_tm, "_FIELD")))
             with colF_R:
                 draw_history(
                     "Evolution by Academic Field",
@@ -2179,8 +2188,8 @@ else:
                     member_all_label="All"
                 )
         
-            progs_all = sorted(set(agg_ps_all_p_tm["_PROG"].astype(str).unique()) |
-                               set(agg_tipo_all_p_tm["_PROG"].astype(str).unique()))
+            progs_all = sorted(set(_safe_unique_labels(agg_ps_all_p_tm, "_PROG")) |
+                               set(_safe_unique_labels(agg_tipo_all_p_tm, "_PROG")))
             with colP_R:
                 draw_history(
                     "Evolution by Program",
