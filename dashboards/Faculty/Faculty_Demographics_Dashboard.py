@@ -73,66 +73,40 @@ def render_header(title: str, subtitle: str = ""):
 render_header("Faculty Demographics", "PhD attainment, international diversity, and composition over time")
 
 
-# ── Data loading (Google Drive) ────────────────────────────────────────────
-DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
-DRIVE_URLS = [
-    "https://drive.usercontent.google.com/download",  # current Google endpoint, avoids the HTML gate
-    "https://drive.google.com/uc?export=download",     # legacy endpoint, kept as fallback
-]
-
-
-def _extract_confirm_token(resp: requests.Response) -> str | None:
-    for key, value in resp.cookies.items():
-        if key.startswith("download_warning"):
-            return value
-    text = resp.text or ""
-    m = re.search(r'confirm=([0-9A-Za-z_-]+)', text) or re.search(r'name="confirm"\s+value="([0-9A-Za-z_-]+)"', text)
-    return m.group(1) if m else None
-
-
-def _try_download(url: str) -> bytes:
-    session = requests.Session()
-    params = {"id": DRIVE_FILE_ID, "export": "download", "confirm": "t"}
-    response = session.get(url, params=params, stream=True)
-
-    if "text/html" in response.headers.get("Content-Type", ""):
-        token = _extract_confirm_token(response)
-        if token:
-            params["confirm"] = token
-            response = session.get(url, params=params, stream=True)
-
-    return response.content
+# ── Data loading (Google Sheets export) ────────────────────────────────────
+SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
+SHEET_EXPORT_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
 
 
 @st.cache_data(ttl=300)
 def download_excel() -> str | None:
-    """Download the faculty workbook from Google Drive to /tmp. Returns None on failure."""
+    """Export the Google Sheet as .xlsx to /tmp. Returns None on failure."""
     path = "/tmp/BD_Faculty_demo.xlsx"
+    try:
+        response = requests.get(SHEET_EXPORT_URL, stream=True, timeout=30)
+        content = response.content
+    except Exception:
+        return None
 
-    for url in DRIVE_URLS:
-        try:
-            content = _try_download(url)
-        except Exception:
-            continue
-        if content.startswith(b"PK"):
-            with open(path, "wb") as f:
-                f.write(content)
-            return path
+    if not content.startswith(b"PK"):
+        return None
 
-    return None
+    with open(path, "wb") as f:
+        f.write(content)
+    return path
 
 
 def load_excel_or_stop() -> str:
     path = download_excel()
     if path is None:
         st.error(
-            "❌ No se pudo descargar el archivo de Google Drive.\n\n"
-            "Esto casi siempre significa que el archivo **no está compartido "
-            "públicamente**. Verifica en Google Drive:\n\n"
-            "1. Clic derecho sobre `BD_Faculty.xlsx` → **Compartir**.\n"
+            "❌ No se pudo descargar la hoja de Google Sheets.\n\n"
+            "Verifica que el documento esté compartido como **'Cualquiera con "
+            "el enlace' → Lector**:\n\n"
+            "1. Abre el Google Sheet → **Compartir**.\n"
             "2. En 'Acceso general', selecciona **'Cualquiera con el enlace'**.\n"
             "3. Rol: **Lector**.\n\n"
-            f"ID de archivo usado: `{DRIVE_FILE_ID}`"
+            f"ID del documento usado: `{SHEET_ID}`"
         )
         st.stop()
     return path
