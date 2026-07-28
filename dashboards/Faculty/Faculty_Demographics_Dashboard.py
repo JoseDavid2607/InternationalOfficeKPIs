@@ -79,42 +79,17 @@ SHEET_EXPORT_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?fo
 
 
 @st.cache_data(ttl=300)
-def download_excel() -> str | None:
-    """Export the Google Sheet as .xlsx to /tmp. Returns None on failure."""
+def download_excel() -> str:
     path = "/tmp/BD_Faculty_demo.xlsx"
-    try:
-        response = requests.get(SHEET_EXPORT_URL, stream=True, timeout=30)
-        content = response.content
-    except Exception:
-        return None
-
-    if not content.startswith(b"PK"):
-        return None
-
+    content = requests.get(SHEET_EXPORT_URL).content
     with open(path, "wb") as f:
         f.write(content)
     return path
 
 
-def load_excel_or_stop() -> str:
-    path = download_excel()
-    if path is None:
-        st.error(
-            "❌ No se pudo descargar la hoja de Google Sheets.\n\n"
-            "Verifica que el documento esté compartido como **'Cualquiera con "
-            "el enlace' → Lector**:\n\n"
-            "1. Abre el Google Sheet → **Compartir**.\n"
-            "2. En 'Acceso general', selecciona **'Cualquiera con el enlace'**.\n"
-            "3. Rol: **Lector**.\n\n"
-            f"ID del documento usado: `{SHEET_ID}`"
-        )
-        st.stop()
-    return path
-
-
 @st.cache_data(ttl=0)
 def load_fulltime() -> pd.DataFrame:
-    df = pd.read_excel(load_excel_or_stop(), sheet_name="BD_PLANTA")
+    df = pd.read_excel(download_excel(), sheet_name="BD_PLANTA")
 
     if "Semestre" in df.columns:
         sem = df["Semestre"].astype(str).str.strip()
@@ -136,7 +111,7 @@ def load_fulltime() -> pd.DataFrame:
 
 @st.cache_data(ttl=0)
 def load_parttime() -> pd.DataFrame:
-    df = pd.read_excel(load_excel_or_stop(), sheet_name="Faculty Distribution")
+    df = pd.read_excel(download_excel(), sheet_name="Faculty Distribution")
 
     if "PLANTA_CATEDRA" in df.columns:
         col = df["PLANTA_CATEDRA"].astype(str).str.strip()
