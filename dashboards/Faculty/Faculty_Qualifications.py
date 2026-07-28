@@ -104,15 +104,6 @@ def _xlsx_bytes(df, sheet_name="Data"):
     buf.seek(0)
     return buf.getvalue()
 
-def _download_link(label, df, filename):
-    b64 = _b64.b64encode(_xlsx_bytes(df)).decode()
-    href = ("data:application/vnd.openxmlformats-officedocument"
-            ".spreadsheetml.sheet;base64," + b64)
-    st.markdown(
-        '<a class="dl-min" download="' + filename + '" href="' + href + '">' + label + '</a>',
-        unsafe_allow_html=True,
-    )
-
 def _render_header(title, subtitle=""):
     sub = '<div class="sh-sub">' + subtitle + '</div>' if subtitle else ""
     st.markdown(
@@ -122,45 +113,22 @@ def _render_header(title, subtitle=""):
         '</div>',
         unsafe_allow_html=True,
     )
-    
-def _kpi_row(cards):
-    html = '<div class="kpi-row">'
-    for c in cards:
-        html += ('<div class="kpi-card"><div class="kv">' + str(c.get("v", "\u2014")) +
-                 '</div><div class="kl">' + str(c.get("l", "")) + '</div></div>')
-    html += "</div>"
-    st.markdown(html, unsafe_allow_html=True)
-
-def _sec_div():
-    st.markdown('<hr class="sec-sep">', unsafe_allow_html=True)
-    
-def _highlight_band(fig, label, all_labels):
-    if label in all_labels:
-        pos = all_labels.index(label)
-        fig.add_shape(
-            type="rect", xref="x", yref="paper",
-            x0=pos - 0.4, x1=pos + 0.4, y0=0, y1=1,
-            fillcolor=_P["highlight"], opacity=0.35, line_width=0,
-        )
-    return fig
 
 # ── Header ─────────────────────────────────────────────────────────────────────
 _render_header("Full-time Faculty Qualifications", "P/S and qualification type analysis with sensitivity mode")
 
 import requests as _requests
 
-DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
+SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
+SHEET_EXPORT_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
 
 @st.cache_data(ttl=300)
 def _download_excel() -> str:
-    """Download BD_Faculty.xlsx from Google Drive to /tmp and return local path."""
-    url = f"https://drive.google.com/uc?export=download&id={DRIVE_FILE_ID}"
+    """Export the Google Sheet as .xlsx to /tmp and return the local path."""
     path = "/tmp/BD_Faculty.xlsx"
-    response = _requests.get(url, stream=True)
+    content = _requests.get(SHEET_EXPORT_URL).content
     with open(path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=32768):
-            if chunk:
-                f.write(chunk)
+        f.write(content)
     return path
 
 @st.cache_data(ttl=0)
@@ -514,44 +482,6 @@ def _needed_OTHERS_more_for_OTHER_overall(totals, target_overall, credits_each=3
     if t <= 0: return 0
     need_credits = (OT - t*TQ)/t
     return 0 if need_credits <= 0 else math.ceil(need_credits/credits_each)
-
-# Heatmap de impacto (+Δ p.p.)
-def _style_impact_heatmap(df_: pd.DataFrame, label_col: str, value_col: str, overall_mode: bool = False):
-    sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
-    vals = pd.to_numeric(df_[value_col], errors="coerce")
-    is_total = df_[label_col].astype(str).str.upper().eq("TOTAL")
-
-    if overall_mode:
-        # todo naranja en Overall
-        sty[value_col] = 'background-color:#FFA500;'
-        return sty
-
-    base = vals[~is_total]
-    if len(base) == 0 or base.max() == base.min():
-        sty[value_col] = 'background-color:#FFA500;'
-        return sty
-
-    vmin, vmax = float(base.min()), float(base.max())
-
-    def color_for(v):
-        if pd.isna(v): return ''
-        if vmin == vmax: return 'background-color:#FFA500;'
-        t = (v - vmin)/(vmax - vmin)
-        if t < 0.5:
-            g = int(77 + (221-77)*(t/0.5))   # rojo->amarillo
-            return f'background-color: rgb(255,{g},77);'
-        else:
-            r = int(255 - (178)*((t-0.5)/0.5))
-            g = int(221 - (37)*((t-0.5)/0.5))
-            return f'background-color: rgb({r},{g},77);'
-
-    for i in df_.index:
-        if is_total.loc[i]:
-            sty.at[i, value_col] = 'background-color:#FFA500;'
-        else:
-            sty.at[i, value_col] = color_for(vals.loc[i])
-
-    return sty
 
 # ================== HISTORY (timeframe-aware) ==================
 def _period_sort_key(p: str) -> tuple[int,int]:
@@ -1328,27 +1258,6 @@ def _style_impact_heatmap(df: pd.DataFrame, id_col: str):
     # Asegura que el id_col no reciba estilo accidental
     if id_col in sty.columns:
         sty[id_col] = ''
-
-    return sty
-
-    # Magnitudes absolutas
-    vals_abs = pd.concat(
-        [pd.to_numeric(df_[c], errors="coerce").abs() for c in impact_cols],
-        axis=1
-    )
-    # vmax a partir del conjunto completo (evita escala por-columna)
-    vmax = float(np.nanmax(vals_abs.values)) if vals_abs.size else 0.0
-    if not np.isfinite(vmax) or vmax <= 0:
-        # todos 0 o NaN: colorear todo como rojo para los impact cols
-        for c in impact_cols:
-            sty[c] = 'background-color:#FF0000;'
-        return sty
-
-    # Asignar color por celda
-    for c in impact_cols:
-        col = pd.to_numeric(df_[c], errors="coerce").abs()
-        t = (col / vmax).clip(lower=0.0, upper=1.0).fillna(0.0)
-        sty[c] = t.map(_interp_color).radd('background-color:')
 
     return sty
 
