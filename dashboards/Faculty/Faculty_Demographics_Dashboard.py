@@ -75,7 +75,10 @@ render_header("Faculty Demographics", "PhD attainment, international diversity, 
 
 # ── Data loading (Google Drive) ────────────────────────────────────────────
 DRIVE_FILE_ID = "1rPDVrdIxBFMrf0VkBmLtdUmbhvT4dku-"
-DRIVE_URL = "https://drive.google.com/uc?export=download"
+DRIVE_URLS = [
+    "https://drive.usercontent.google.com/download",  # current Google endpoint, avoids the HTML gate
+    "https://drive.google.com/uc?export=download",     # legacy endpoint, kept as fallback
+]
 
 
 def _extract_confirm_token(resp: requests.Response) -> str | None:
@@ -87,37 +90,57 @@ def _extract_confirm_token(resp: requests.Response) -> str | None:
     return m.group(1) if m else None
 
 
-@st.cache_data(ttl=300)
-def download_excel() -> str:
-    """Download the faculty workbook from Google Drive to /tmp and validate it."""
-    path = "/tmp/BD_Faculty_demo.xlsx"
+def _try_download(url: str) -> bytes:
     session = requests.Session()
-    params = {"id": DRIVE_FILE_ID}
+    params = {"id": DRIVE_FILE_ID, "export": "download", "confirm": "t"}
+    response = session.get(url, params=params, stream=True)
 
-    response = session.get(DRIVE_URL, params=params, stream=True)
     if "text/html" in response.headers.get("Content-Type", ""):
-        token = _extract_confirm_token(response) or "t"
-        params["confirm"] = token
-        response = session.get(DRIVE_URL, params=params, stream=True)
+        token = _extract_confirm_token(response)
+        if token:
+            params["confirm"] = token
+            response = session.get(url, params=params, stream=True)
 
-    content = response.content
-    if not content.startswith(b"PK"):
-        snippet = content[:300].decode("utf-8", errors="ignore")
-        raise ValueError(
-            "Google Drive did not return a valid Excel file (the file may not be "
-            "shared publicly, or Drive returned a confirmation page). Make sure the "
-            "file is shared as 'Anyone with the link - Viewer'.\n"
-            f"Received content preview:\n{snippet}"
+    return response.content
+
+
+@st.cache_data(ttl=300)
+def download_excel() -> str | None:
+    """Download the faculty workbook from Google Drive to /tmp. Returns None on failure."""
+    path = "/tmp/BD_Faculty_demo.xlsx"
+
+    for url in DRIVE_URLS:
+        try:
+            content = _try_download(url)
+        except Exception:
+            continue
+        if content.startswith(b"PK"):
+            with open(path, "wb") as f:
+                f.write(content)
+            return path
+
+    return None
+
+
+def load_excel_or_stop() -> str:
+    path = download_excel()
+    if path is None:
+        st.error(
+            "❌ No se pudo descargar el archivo de Google Drive.\n\n"
+            "Esto casi siempre significa que el archivo **no está compartido "
+            "públicamente**. Verifica en Google Drive:\n\n"
+            "1. Clic derecho sobre `BD_Faculty.xlsx` → **Compartir**.\n"
+            "2. En 'Acceso general', selecciona **'Cualquiera con el enlace'**.\n"
+            "3. Rol: **Lector**.\n\n"
+            f"ID de archivo usado: `{DRIVE_FILE_ID}`"
         )
-
-    with open(path, "wb") as f:
-        f.write(content)
+        st.stop()
     return path
 
 
 @st.cache_data(ttl=0)
 def load_fulltime() -> pd.DataFrame:
-    df = pd.read_excel(download_excel(), sheet_name="BD_PLANTA")
+    df = pd.read_excel(load_excel_or_stop(), sheet_name="BD_PLANTA")
 
     if "Semestre" in df.columns:
         sem = df["Semestre"].astype(str).str.strip()
@@ -139,7 +162,7 @@ def load_fulltime() -> pd.DataFrame:
 
 @st.cache_data(ttl=0)
 def load_parttime() -> pd.DataFrame:
-    df = pd.read_excel(download_excel(), sheet_name="Faculty Distribution")
+    df = pd.read_excel(load_excel_or_stop(), sheet_name="Faculty Distribution")
 
     if "PLANTA_CATEDRA" in df.columns:
         col = df["PLANTA_CATEDRA"].astype(str).str.strip()
