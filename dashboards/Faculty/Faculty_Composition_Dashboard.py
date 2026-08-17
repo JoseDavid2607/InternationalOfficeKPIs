@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 import re
 import io
 import base64
+import time
 import requests
 
 # ===========================================================================
@@ -125,10 +126,21 @@ SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
 @st.cache_data(ttl=300)
 def load_data():
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
-    try:
-        resp = requests.get(url, timeout=30)
-    except Exception as e:
-        st.error(f"🌐 No se pudo conectar con Google Sheets: {e}")
+
+    resp = None
+    last_err = None
+    # Reintenta hasta 3 veces: la primera descarga en frío contra Google a
+    # veces redirige a un host googleusercontent.com que puede tardar.
+    for attempt in range(3):
+        try:
+            resp = requests.get(url, timeout=60)
+            break
+        except Exception as e:
+            last_err = e
+            time.sleep(2)
+
+    if resp is None:
+        st.error(f"🌐 No se pudo conectar con Google Sheets tras varios intentos: {last_err}")
         st.stop()
 
     if resp.status_code != 200 or "text/html" in resp.headers.get("Content-Type", ""):
@@ -834,5 +846,5 @@ pages = [
     st.Page(page_staffing, title="Staffing Levels", icon="📊", url_path="staffing"),
 ]
 
-pg = st.navigation(pages)
+pg = st.navigation(pages, position="top")
 pg.run()
