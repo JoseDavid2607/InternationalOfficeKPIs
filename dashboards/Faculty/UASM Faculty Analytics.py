@@ -5891,7 +5891,7 @@ pages = [
 pg = st.navigation(pages, position="hidden")
 
 with st.container(key="nav_toggle"):
-    with st.expander("", expanded=False, help="Ir a otra página"):
+    with st.expander("Go to other section", expanded=False):
         nav_cols = st.columns(len(pages))
         for col, page_obj in zip(nav_cols, pages):
             with col:
