@@ -89,7 +89,7 @@ st.markdown(
     "width:30px;height:30px;margin:0 auto !important;padding:0 !important;"
     "background:transparent !important;border:none !important;box-shadow:none !important;"
     "border-radius:50%;display:flex;align-items:center;justify-content:center;}"
-    "div[data-testid='stExpander'] summary:hover{background:rgba(0,168,150,.12 !important;}"
+    "div[data-testid='stExpander'] summary:hover{background:rgba(0,168,150,.12) !important;}"
     "div[data-testid='stExpander'] summary svg{color:#00A896 !important;}"
     "div[data-testid='stExpanderDetails']{"
     "background:#FFFFFF;border:1px solid #D1E8E4;border-radius:12px;"
