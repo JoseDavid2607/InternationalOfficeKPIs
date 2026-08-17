@@ -81,20 +81,20 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    "div[data-testid='stExpander']{"
-    "position:fixed !important;top:0.55rem;right:1rem;"
-    "z-index:999999;width:auto !important;border:none !important;"
+    ".st-key-nav_toggle{display:flex;justify-content:flex-end;margin:-4px 0 4px 0;}"
+    ".st-key-nav_toggle div[data-testid='stExpander']{"
+    "width:auto !important;border:none !important;"
     "background:transparent !important;box-shadow:none !important;margin:0 !important;}"
-    "div[data-testid='stExpander'] summary{"
-    "width:30px;height:30px;margin:0 auto !important;padding:0 !important;"
+    ".st-key-nav_toggle div[data-testid='stExpander'] summary{"
+    "width:30px;height:30px;margin:0 !important;padding:0 !important;"
     "background:transparent !important;border:none !important;box-shadow:none !important;"
     "border-radius:50%;display:flex;align-items:center;justify-content:center;}"
-    "div[data-testid='stExpander'] summary:hover{background:rgba(0,168,150,.12) !important;}"
-    "div[data-testid='stExpander'] summary svg{color:#00A896 !important;}"
-    "div[data-testid='stExpanderDetails']{"
+    ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover{background:rgba(0,168,150,.12) !important;}"
+    ".st-key-nav_toggle div[data-testid='stExpander'] summary svg{color:#00A896 !important;}"
+    ".st-key-nav_toggle div[data-testid='stExpanderDetails']{"
     "background:#FFFFFF;border:1px solid #D1E8E4;border-radius:12px;"
     "box-shadow:0 6px 20px rgba(0,77,71,.15);padding:10px 16px !important;"
-    "margin-top:4px;min-width:520px;}"
+    "margin-top:4px;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -5886,10 +5886,11 @@ pages = [
 ]
 pg = st.navigation(pages, position="hidden")
 
-with st.expander("", expanded=False):
-    nav_cols = st.columns(len(pages))
-    for col, page_obj in zip(nav_cols, pages):
-        with col:
-            st.page_link(page_obj)
+with st.container(key="nav_toggle"):
+    with st.expander("", expanded=False):
+        nav_cols = st.columns(len(pages))
+        for col, page_obj in zip(nav_cols, pages):
+            with col:
+                st.page_link(page_obj)
 
 pg.run()
