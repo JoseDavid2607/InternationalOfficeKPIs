@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>International Weeks 2026 · Facultad de Administración</title>
+
+<script src="JS/plotly.min.js"></script>
+<script src="JS/jspdf.umd.min.js"></script>
+<script src="JS/xlsx.full.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --pink:#E61166; --ink:#241420; --ink-soft:#6E5C68; --paper:#FAF8FA; --card:#FFFFFF;
+  --line:#E9E2E7; --muted:#8C7F87; --income:#2E8B57; --income-soft:#E3F3EA;
+  --expense:#C23B3B; --expense-soft:#FBE6E6; --balance:#1C6FA5; --balance-soft:#E1EEF7;
+  --klu:#F2994A; --klu-soft:#FCEADA; --nova:#9B6FD1; --nova-soft:#EDE3F8;
+  --fgv:#4FA8D8; --fgv-soft:#E1F1FA; --babson:#5FB88A; --babson-soft:#E2F3E9;
+  --font-display:'Source Serif 4',Georgia,serif; --font-body:'Inter',-apple-system,Helvetica,Arial,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,'SF Mono',Consolas,monospace;
+}
+*{box-sizing:border-box;}
+html,body{margin:0; padding:0; background:var(--paper); color:var(--ink); font-family:var(--font-body);}
+h1,h2,h3{font-family:var(--font-display); font-weight:600; margin:0; color:var(--ink);}
+p{line-height:1.6; margin:0;}
+button{font-family:var(--font-body); cursor:pointer;}
+:focus-visible{outline:2px solid var(--pink); outline-offset:2px;}
+
+#topbar{position:sticky; top:0; z-index:50; background:var(--card); border-bottom:1px solid var(--line);}
+#topbar-inner{max-width:1180px; margin:0 auto; padding:16px 28px; display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap;}
+.brand .eyebrow{font-family:var(--font-mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
+.brand h1{font-size:19px;}
+nav.tabs{display:flex; gap:4px; flex-wrap:wrap;}
+nav.tabs button{border:1px solid var(--line); background:var(--paper); color:var(--ink-soft); font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;}
+nav.tabs button:hover{border-color:var(--muted); color:var(--ink);}
+nav.tabs button.active{background:var(--ink); border-color:var(--ink); color:#fff;}
+nav.tabs button .dot{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:middle;}
+
+main{max-width:1180px; margin:0 auto; padding:32px 28px 80px;}
+#mainViews{ max-width:none; margin:0; padding:0; width:100%; }
+#viewport{ position:fixed; left:0; right:0; bottom:0; overflow:hidden; }
+#mainViews{ display:flex; height:100%; transition:transform .55s cubic-bezier(.65,0,.35,1); }
+.view{ flex:0 0 100vw; height:100%; overflow-y:auto; display:flex; flex-direction:column; align-items:center; padding:32px 28px 80px; }
+.view > *{ width:100%; max-width:1180px; }
+.subtitle{font-size:14.5px; color:var(--ink-soft); max-width:640px; margin-top:6px;}
+
+.kpi-strip{display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-top:20px;}
+.kpi{background:var(--card); padding:16px 16px;}
+.kpi-value{font-family:var(--font-mono); font-size:18px; font-weight:600; color:var(--ink); line-height:1.25; word-break:break-word;}
+.kpi-value.income{color:var(--income);}
+.kpi-value.expense{color:var(--expense);}
+.kpi-value.balance{color:var(--balance);}
+.kpi-label{font-size:11px; color:var(--muted); margin-top:5px;}
+.kpi.income-bg{background:var(--income-soft);}
+.kpi.expense-bg{background:var(--expense-soft);}
+.kpi.balance-bg{background:var(--balance-soft);}
+
+.card{border:1px solid var(--line); border-radius:14px; background:var(--card); padding:22px 24px; margin-top:20px;}
+.fin-hero{display:flex; gap:20px; align-items:stretch; flex-wrap:wrap;}
+.fin-stack{display:flex; flex-direction:column; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:12px; overflow:hidden; width:220px; flex:0 0 220px;}
+.fin-stack .kpi{padding:14px 16px;}
+.margin-box{width:150px; flex:0 0 150px; border:1px solid var(--line); border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:10px;}
+.margin-box .kpi-value{font-size:26px;}
+.fin-hero-chart{flex:1; min-width:280px; border:1px solid var(--line); border-radius:12px; padding:14px 18px;}
+.fin-hero-chart h3{font-size:13px; margin-bottom:2px;}
+
+.card h3{font-size:15px; margin-bottom:4px;}
+.card .card-note{font-size:12px; color:var(--muted); margin-bottom:14px;}
+.subtle-reset{ font-family:var(--font-mono); font-size:11px; color:var(--muted); background:none; border:none; cursor:pointer; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px; padding:0; }
+.subtle-reset:hover{ color:var(--ink); }
+.ov-map-wrap{ position:relative; }
+.ov-selected-overlay{ position:absolute; top:44px; right:10px; width:270px; z-index:5; box-shadow:0 10px 30px rgba(36,20,32,.14); }
+.ov-selected-overlay .partner-card{ margin:0; background:var(--card); }
+@media (max-width:760px){ .ov-selected-overlay{ position:static; width:100%; margin-top:14px; box-shadow:none; } }
+.two-col{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+@media (max-width:820px){.two-col{grid-template-columns:1fr;} .fin-stack, .margin-box{width:100%; flex:1 1 100%;}}
+
+.partner-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:16px; margin-top:20px;}
+.ov-map-layout{display:block;}
+#ovMapSideChart .partner-card{margin-top:0;}
+.partner-card{border-radius:14px; padding:20px; border:1px solid var(--line); background:var(--card); border-top:5px solid var(--week-color,var(--pink)); cursor:pointer; transition:transform .15s;}
+.partner-card:hover{transform:translateY(-2px); box-shadow:0 8px 24px rgba(36,20,32,.08);}
+.partner-card img.logo{height:26px; max-width:120px; object-fit:contain; object-position:left; display:block; margin-bottom:14px;}
+.partner-card .loc{font-family:var(--font-mono); font-size:11px; color:var(--muted); margin-bottom:14px;}
+.partner-card .n{font-family:var(--font-display); font-size:30px; font-weight:600;}
+.partner-card .n-label{font-size:11.5px; color:var(--ink-soft); margin-bottom:12px;}
+.partner-card .gender-row{display:flex; gap:18px; font-size:17px; font-weight:600; font-family:var(--font-mono); color:var(--ink); margin-bottom:16px;}
+.partner-card .fin-row{display:flex; justify-content:space-between; border-top:1px solid var(--line); padding-top:10px; font-size:12px; gap:8px;}
+.partner-card .fin-row .val{font-family:var(--font-mono); font-weight:600; text-align:right;}
+.partner-card .fin-row.income .val{color:var(--income);}
+.partner-card .fin-row.expense .val{color:var(--expense);}
+.partner-card .margin-pill{display:inline-block; margin-top:10px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; background:var(--week-soft,#EEE); color:var(--week-color,var(--ink));}
+
+.week-band{border-radius:16px; padding:26px 30px; display:flex; align-items:center; gap:24px; flex-wrap:wrap;}
+.week-band img.logo{height:34px; max-width:150px; object-fit:contain; background:#fff; padding:8px 14px; border-radius:10px;}
+.week-band .info{flex:1; min-width:240px;}
+.week-band .info .eyebrow{font-family:var(--font-mono); font-size:11px; color:var(--week-color); text-transform:uppercase; letter-spacing:.06em; font-weight:600;}
+.week-band .info h2{font-size:20px; margin-top:4px;}
+.week-band .info .loc{font-size:12.5px; color:var(--ink-soft); margin-top:6px;}
+.week-band .prof{display:flex; align-items:center; gap:10px; background:#fff; border-radius:12px; padding:8px 14px 8px 8px;}
+.week-band .prof img{width:44px; height:44px; border-radius:50%; object-fit:cover;}
+.week-band .prof .pname{font-weight:600; font-size:13px;}
+.week-band .prof .prole{font-size:10.5px; color:var(--muted); font-family:var(--font-mono); text-transform:uppercase;}
+
+.week-hero{display:flex; gap:16px; align-items:stretch; flex-wrap:wrap;}
+.week-hero-main{flex:2; min-width:320px; display:flex; flex-direction:column; gap:16px;}
+.week-hero-map{flex:1; min-width:260px; margin-top:0;}
+.week-hero .kpi-strip{margin-top:0;}
+
+.pdf-btn-row{margin-top:24px; text-align:center;}
+.pdf-btn{background:var(--ink); color:#fff; border:none; border-radius:8px; padding:12px 22px; font-size:13px; font-weight:600;}
+.pdf-btn:hover{opacity:.85;}
+
+table.datatable{width:100%; border-collapse:collapse; font-size:12.5px;}
+table.datatable th{text-align:left; font-family:var(--font-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap;}
+table.datatable td{padding:8px 10px; border-bottom:1px solid var(--line);}
+table.datatable tbody tr:hover{background:var(--paper);}
+table.datatable tbody tr.not-abroad{opacity:.55;}
+.table-scroll{max-height:460px; overflow-y:auto; border:1px solid var(--line); border-radius:10px;}
+.table-scroll table.datatable th{position:sticky; top:0; background:var(--card); z-index:2;}
+.tick{color:var(--income); font-weight:700;}
+.cross{color:var(--expense); font-weight:700;}
+.pill{display:inline-block; padding:2px 9px; border-radius:20px; font-size:10.5px; font-weight:600; font-family:var(--font-mono);}
+.pill.complete{background:var(--income-soft); color:var(--income);}
+.pill.pending{background:var(--expense-soft); color:var(--expense);}
+
+.fin-compare td, .fin-compare th{text-align:right;}
+.fin-compare td:first-child, .fin-compare th:first-child{text-align:left;}
+.fin-compare tr.total td{font-weight:700; border-top:2px solid var(--ink);}
+.week-chip{display:inline-flex; align-items:center; gap:6px; font-weight:600;}
+.week-chip .dot{width:8px; height:8px; border-radius:50%;}
+
+.fin-detail-week{border-radius:14px; padding:22px 24px; margin-top:20px; border:1px solid var(--line); border-top:5px solid var(--week-color);}
+.fin-detail-week h3{font-size:16px;}
+.trm-note{font-family:var(--font-mono); font-size:11px; color:var(--muted); margin:6px 0 16px;}
+.fin-subtotal{display:flex; justify-content:space-between; font-size:13px; font-weight:700; padding:10px 10px 4px; border-top:2px solid var(--ink); margin-top:4px;}
+
+
+footer.report-footer{text-align:center; padding:40px 0 10px; font-size:11.5px; color:var(--muted); font-family:var(--font-mono);}
+
+/* ---------- Brand logo (top-left, returns to Data Center) ---------- */
+.brand-logo-link{ display:flex; align-items:center; cursor:pointer; }
+.brand-logo-link img{ height:38px; width:auto; display:block; }
+.brand-logo-fallback{ display:none; flex-direction:column; line-height:1.1; }
+.brand-logo-fallback .b1{ font-family:var(--font-display); font-weight:700; font-size:15px; color:var(--pink); }
+.brand-logo-fallback .b2{ font-family:var(--font-mono); font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+
+.back-to-eiv{
+  display:flex; align-items:center; gap:8px; padding:7px 12px 7px 7px; border:1px solid var(--line);
+  border-radius:20px; background:var(--paper); text-decoration:none; color:var(--ink-soft);
+  font-family:var(--font-mono); font-size:11px; white-space:nowrap;
+}
+.back-to-eiv:hover{ border-color:var(--pink); color:var(--pink); }
+.back-to-eiv img{ height:20px; width:20px; border-radius:50%; object-fit:cover; display:block; }
+.back-to-eiv .eiv-fallback{ display:none; width:20px; height:20px; border-radius:50%; background:var(--pink-soft); color:var(--pink); align-items:center; justify-content:center; font-weight:700; font-size:9px; font-family:var(--font-display); }
+
+/* ---------- Data Center ---------- */
+.datacenter{ max-width:640px; margin:50px auto; }
+.datacenter .banner{ width:100%; height:auto; display:block; border-radius:12px; margin-bottom:34px; }
+.datacenter .eyebrow{ font-family:var(--font-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--pink); font-weight:600; margin-bottom:8px; }
+.datacenter .subtitle{ margin-top:8px; margin-bottom:26px; }
+.filelist{ list-style:none; margin:0 0 22px; padding:0; }
+.filelist li{ display:flex; align-items:center; gap:12px; padding:11px 2px; border-bottom:1px solid var(--line); }
+.filelist .dot{ width:7px; height:7px; border-radius:50%; background:var(--muted); flex:0 0 auto; }
+.filelist .dot.ok{ background:var(--income); }
+.filelist .fname{ font-family:var(--font-mono); font-size:13px; color:var(--ink); }
+.filelist .fstatus{ font-size:12.5px; color:var(--muted); flex:1; text-align:right; padding-right:18px; }
+.filelist .file-download{
+  font-family:var(--font-mono); font-size:11.5px; color:var(--ink-soft); background:none; border:none;
+  cursor:pointer; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px; white-space:nowrap;
+}
+.filelist .file-download:hover{ color:var(--pink); }
+.summary-line{ font-size:13px; color:var(--ink-soft); margin-bottom:22px; }
+.summary-line strong{ color:var(--ink); }
+.enter-btn{ background:var(--ink); color:#fff; border:none; border-radius:9px; padding:14px 26px; font-size:14px; font-weight:600; cursor:pointer; }
+.enter-btn:hover{ opacity:.88; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="topbar-inner">
+    <a href="javascript:void(0)" class="brand-logo-link" onclick="showView('datacenter')" title="Back to Data Center">
+      <img id="brandLogo" src="PICS/LOGOS/Banner_Semanas.jpg" alt="International Weeks 2026"
+           onerror="this.style.display='none'; document.getElementById('brandLogoFallback').style.display='flex';">
+      <div class="brand-logo-fallback" id="brandLogoFallback">
+        <span class="b1">Int'l Weeks 2026</span>
+        <span class="b2">Data Center</span>
+      </div>
+    </a>
+    <div class="brand">
+      <span class="eyebrow">Facultad de Administración · Universidad de los Andes</span>
+      <h1>International Weeks 2026</h1>
+    </div>
+    <nav class="tabs" id="tabNav"></nav>
+    <a class="back-to-eiv" href="../EIV_REPORT/index.html" title="Back to International Summer School Report">
+      <img src="../PICS/LOGO/logo2026.png" alt="ISS 2026" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+      <span class="eiv-fallback">ISS</span>
+      Back to International Summer School Report
+    </a>
+  </div>
+</div>
+
+<div id="viewport"><main id="mainViews"></main></div>
+
+<script>
+const DATA = {"weeks": [{"key": "KLU", "name": "KLU POSGRADO 2026", "logo": "KLU.png", "color": "#F2994A", "colorSoft": "#FCEADA", "lat": 53.5511, "lon": 9.9937, "countryCode": "DEU", "course": "Supply Chain Management in the Age of Disruptive Innovations and Sustainability", "professor": "Marcus Thiell", "photo": "marcus_thiell.jpg", "location": "Hamburg", "country": "Germany", "invoiceCurrency": "EUR", "invoiceValue": 41609.5, "invoiceAttendees": 30, "abroadCount": 30, "registeredCount": 31, "gender": {"F": 13, "M": 17}, "programas": {"MBA Online": 3, "Maestría en Administración": 12, "Maestría en Gestión de Cadena de Suministro": 9, "Maestría en Gerencia Estratégica": 1, "Especialización en Negociación": 3, "Especialización Inteligencia de Mercados": 2}, "programaGender": {"MBA Online": {"F": 1, "M": 2}, "Maestría en Administración": {"F": 4, "M": 8}, "Maestría en Gestión de Cadena de Suministro": {"F": 5, "M": 4}, "Maestría en Gerencia Estratégica": {"F": 1, "M": 0}, "Especialización en Negociación": {"F": 0, "M": 3}, "Especialización Inteligencia de Mercados": {"F": 2, "M": 0}}, "pago1Count": 31, "pago2Count": 30, "ingresos": 327520000, "egresos": 268861593.026, "balance": 58658406.97399998, "marginPct": 17.91, "participantsList": [{"nombre": "ADRIANA MARCELA MIRANDA BARRERA", "genero": "F", "codigo": 202027052, "programa": "MBA Online", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ANDREA TATIANA SALINAS", "genero": "F", "codigo": 202525810, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ANGELICA MAJTHENYI BLACKBURN", "genero": "F", "codigo": 202521891, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "CARLOS EDUARDO URREGO CHINOME", "genero": "M", "codigo": 202224918, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DANIELA DEL GALLEGO BUSTAMANTE", "genero": "F", "codigo": 202120618, "programa": "Maestría en Gestión de Cadena de Suministro", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DANIELA IVANA RUSSI RUSSI", "genero": "F", "codigo": 201011822, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DIANA CAROLINA RODRIGUEZ RAMIREZ", "genero": "F", "codigo": 202425167, "programa": "Maestría en Gerencia Estratégica", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DIEGO FELIPE ROJAS LASSO", "genero": "M", "codigo": 200413222, "programa": "MBA Online", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "GERMAN ALEJANDRO PINEDA ARDILA", "genero": "M", "codigo": 201115692, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ISRAEL HEREDIA VARGAS", "genero": "M", "codigo": 202423140, "programa": "Maestría en Gestión de Cadena de Suministro", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "IVAN CAMILO HERNANDEZ HERNANDEZ", "genero": "M", "codigo": 202513507, "programa": "Especialización en Negociación", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JOHANN MAURICIO ARENAS QUIMBAYO", "genero": "M", "codigo": 202416163, "programa": "Maestría en Gestión de Cadena de Suministro", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JORGE ANTONIO RONCANCIO CERON", "genero": "M", "codigo": 202423356, "programa": "Maestría en Gestión de Cadena de Suministro", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUAN CAMILO GARCIA MACHADO", "genero": "M", "codigo": 201126424, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUAN CAMILO HUNDA QUIROGA", "genero": "M", "codigo": 201318284, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUAN CAMILO SUAREZ", "genero": "M", "codigo": 202315920, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUAN FELIPE ROJAS RESTREPO", "genero": "M", "codigo": 200320615, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUAN PABLO ALBORNOZ BRAHIM", "genero": "M", "codigo": 201012097, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LAURA TOVAR CASTILLO", "genero": "F", "codigo": 202521909, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LAURA VALENTINA VANEGAS CORTES", "genero": "F", "codigo": 202611622, "programa": "Especialización Inteligencia de Mercados", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "MARIA ALEJANDRA RUBIO", "genero": "F", "codigo": 202524510, "programa": "Especialización Inteligencia de Mercados", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "NATALIA CAROLINA MARTINEZ ROJAS", "genero": "F", "codigo": 202421886, "programa": "Maestría en Gestión de Cadena de Suministro", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "NICOLAS MONROY BERNATE", "genero": "M", "codigo": 201222490, "programa": "Maestría en Gestión de Cadena de Suministro", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "OMAR SALCEDO URIZA", "genero": "M", "codigo": 202023241, "programa": "Especialización en Negociación", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "OSCAR ANDRES ZAMBRANO NARANJO", "genero": "M", "codigo": 202027969, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "PAULA ANDREA PALACIOS BAHAMON", "genero": "F", "codigo": 201314959, "programa": "Maestría en Gestión de Cadena de Suministro", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "PAULA ANDREA ROJAS DIAZ", "genero": "F", "codigo": 202412515, "programa": "Maestría en Gestión de Cadena de Suministro", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "RODRIGO SANTAMARIA GARCIA", "genero": "M", "codigo": 201524451, "programa": "MBA Online", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "URIEL ESTEBAN PICO QUIROGA", "genero": "M", "codigo": 202525287, "programa": "Especialización en Negociación", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "VANESSA MURILLO ALDANA", "genero": "F", "codigo": 202425594, "programa": "Maestría en Gestión de Cadena de Suministro", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "MARIANTONIA TABARES", "genero": "F", "codigo": 202610657, "programa": "Especialización en Negociación", "tipoPrograma": "EPOS", "pago1": true, "pago2": false, "matricula": false}], "budgetLines": [{"concepto": "Contribución con gastos generales", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "Valor póliza Uniandes", "tipo": "gasto", "precio": 170000, "moneda": "COP", "cantidad": 1, "presupuestado": -170000, "ejecutado": null}, {"concepto": "Tiquetes x2", "tipo": "gasto", "precio": 5000000, "moneda": "COP", "cantidad": 2, "presupuestado": -10000000, "ejecutado": -9827372}, {"concepto": "Viaticos x2", "tipo": "gasto", "precio": 700, "moneda": "USD", "cantidad": 2, "presupuestado": -5647600, "ejecutado": -5722417}, {"concepto": "Hotel participantes", "tipo": "gasto", "precio": 70224000, "moneda": "COP", "cantidad": 1, "presupuestado": -70224000, "ejecutado": -62335581}, {"concepto": "Bonificación profesor", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "Honorarios personal profesional KLU (pago factura)", "tipo": "gasto", "precio": 41609.5, "moneda": "EUR", "cantidad": 1, "presupuestado": -182819993.026, "ejecutado": -91409996.513}, {"concepto": "Impuesto de timbre", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "KLU sin hotel", "tipo": "ingreso", "precio": 8320000, "moneda": "COP", "cantidad": 10, "presupuestado": 83200000, "ejecutado": null}, {"concepto": "KLU con hotel", "tipo": "ingreso", "precio": 10560000, "moneda": "COP", "cantidad": 8, "presupuestado": 84480000, "ejecutado": null}, {"concepto": "KLU MBA", "tipo": "ingreso", "precio": 13320000, "moneda": "COP", "cantidad": 12, "presupuestado": 159840000, "ejecutado": null}], "dates": "07 - 12 Jun. 2026", "survey": {"n": 202, "avg": 4.95, "nps": 9.81, "npsN": 16, "aspects": [{"aspect": "Participación de los estudiantes", "avg": 5.0, "n": 21}, {"aspect": "Responsabilidades de los estudiantes", "avg": 5.0, "n": 10}, {"aspect": "Coherencia", "avg": 4.97, "n": 31}, {"aspect": "Fomento de pensamiento crítico, discusión y participación", "avg": 4.97, "n": 33}, {"aspect": "Gestión de clase", "avg": 4.95, "n": 21}, {"aspect": "Trato a estudiantes", "avg": 4.94, "n": 32}, {"aspect": "Retroalimentación, monitoreo y criterios de calificación", "avg": 4.91, "n": 33}, {"aspect": "Fomento de autonomía", "avg": 4.9, "n": 21}], "commentGroups": [{"label": "Course — Valued Most", "items": ["La programación, el tiempo, las empresas y el contenido del programa ", "La inmersión fue increíble, los profesores que la dictaron eran de talla internacional, con mucho conocimiento y muchas perspectivas de abordar los problemas, gracias!", "Resalto el apoyo Juan Pablo, Marcus Thiel  y el equipo de KLU. La experiencia y aprendizaje ha sido muy gratificante y supero mis expectativas", "La experiencia es increible", "las visitas a Volkswagen, Airbus, la cerveceria, el tour por Hamburgo y el interés del profe Marcus y las personas del programa por hacernos vivir una experiencia completa y significativa.", "La guía y el acompañamiento de Marcus y Juan Pablo fueron excelentes, las diferentes herramientas como lecturas entre otros van de acuerod a los objetivos del curso.", "Me parece que fue el mejor curso, me decidí por este porque era muy completo, no solo por el intercambio intercultural, sino por las visitas, las clases y profesores. ", "Muy buen curso, debería ser más frecuente este tipo de experiencias. Se aprende más sobre diferentes aspectos representativos de el curso en el contexto desarrollado ", "La experiencia de poder compartir con otros programas permitió tener discusiones interesantes en el aula. Las temáticas de las sesiónes sincronicas fueron actuales y dinámicas", "Internacionalización, experiencia multicultural, acompañamiento y calidad de los profesores", "El nivel de organización y coordinación, la disposición de ayuda, el acompañamiento, en general el curso fue excelente", "Las clases me parecieron apropiadas, profesores con experiencia. Visitas increíbles. Muy bien organizado todo.", "Fue una experiencia realmente enriquecedora, muy completa, las visitas fueron excelentes y recibimos un acompañamiento muy completo de Marcus, el monitor y el equipo de KLU. ", "El curso fue muy enriquecedor en los temas tratados junto con la visualización precencial de las fábricas lo cual favoreció mucho el entendimiento de los conceptos ", "Cumplio y supero las expectativas, las visitas que realizamos y las clases fueron de gran nivel.", "Es una semana intensiva de aprendizaje e inmersión en la cultura alemana - Hamburgo, los profesores de KLU son de muy alto nivel, con los cuales aprendí mucho."], "n": 16}, {"label": "Faculty — Valued Most", "items": ["Muy buena organización y acompañamiento en el programa", "El dominio, la gestión, la atención, gracias profe por este espacio y por apoyarnos durante toda la maestria", "Resalto su apertura, capacidad de discernimiento, su amabilidad y pasión para compartir tanto los temas académicos como los de conocimiento de la cultura Alemana. ", "Excelente docente, profesional pero sobre todo persona! que gran ser humano", "Su interés y disposición para hacer de la semana una experiencia real de inmersión tanto en la universidad como en la ciudad.", "Su expertiz y conocimientos aportan uchísimo valor para el desarrollo de cada estudiante", "Marcus es un gran profesor, no solo estaba pendiente de las sesiones y visitas académicas, también estaba muy atento y disponible a guiarnos frente a la experiencia en Hamburgo, nos contaba datos poco conocidos, nos recomendaba lugares y estaba siempre abierto y con una gran actitud durante todo el viaje. ", "El profesor es muy ilustrado y letrado sobre todos los temas desarrollados en el curso. Expone y argumenta claramente las ideas ", "Acompañamiento y alto entendimiento. Profundo conocimiento", "Excelente docente, tuvimos muy buen acompañamiento, apoyo, colaboración ", "Estuvo pendiente de todos los estudiantes. Fue muy amable. Contestaba todas las preguntas de forma clara y amigable. Hizo que la experiencia en Hamburgo fuera mucho mejor.", "El profesor estuvo presente en todo momento, nos acompañó en cada clase y actividad, resolvió dudas, nos dio sugerencias. Su acompañamiento, explicaciones, solicitudes fueron muy completos y creo que dio más de lo que esperaba. ", "Siempre fue muy amable , siempre nos quizo explicar todo correctamente ", "Agradecida con Marcus por guiarnos en este viaje, se nota que le gusta lo que hace y eso transmite y motiva. Nos explico muchas cosas de su ciudad.", "Marcus fue excelente profesor, acompañandonos durante toda la semana, en las actividades académicas y culturales. Siendo este su país, tenpia mucho conocimiento sobre la cultura del país y de la ciudad, gracias a él esta terminó siendo una gran experiencia internacional. Igualmente dando la introducción de todos los profesores y la introducción a las temáticas de las clases fue de gran apoyo en el entendimiento inicial de las clases."], "n": 15}, {"label": "Course — Could Improve", "items": ["Algunas clases fueron muy teóricas y se pudo haber aprovechando aún más la práctica o dinamismo.", "Nada", "Es posible mejorar las experiencia para el conocimiento de la cultura local. ", "nada", "Nada, fue un gran curso, tal vez ofrecer opción de habitación sin compartir. ", "Lo veo muy bien planteado. Mantenerlo con el mismo rigor que ya está desarrollado.", "La preparación del curso fue extensa y se cruza con el cierre de ciclo lo que dificulta el enfoque esperado", "Un poco de mayor extensión que cubra aspectos culturales claves de la región", "Nada, el curso está muy bien estructurado y con un gran docente al frente ", "Nada", "No tengo aspectos por incluir.", "Nada , todo siempre estuvo muy bien organizado ", "todo fue excelente."], "n": 13}, {"label": "Faculty — Could Improve", "items": ["Na", "Así esta perfecto", "Seria un gran aporte generar un espacio asincrónico de conversación previa sobre la semana en KLU desde el punto de vista de actividades y temas académicos. Diferente a una exposición formal de la semana.", "Que no cambie y siga siendo esa gran persona y profesional", "Nada, es un excelente profesor. ", "Muy bien profesor. Mantener el mismo enfoque para los futuros intercambios ", "Nada, que continué de la misma forma, fue un excelente profesor", "Nada", "No tengo comentarios acerca del profesor, creo que hizo más de lo que esperábamos.", "Nada se nota profesionalidad ", "supero expectativas."], "n": 11}], "respondents": 16, "responseRate": 53.3, "workloadAvg": 2.27, "workloadN": 11, "objectivesAllPct": 100.0, "objectivesN": 11, "questions": [{"text": "¿Tienes la percepción de que la carga de trabajo asociada a este curso ha sido excesiva? (Recuerda que un crédito equivale a 3 horas de trabajo semanal en cursos de 16 semanas y a 6 horas de trabajo semanal en cursos de 8 semanas).", "aspect": "Carga académica", "type": "carga", "options": {"Nada": 1, "Poco": 6, "Mucho": 4}}, {"text": "Las actividades desarrolladas contribuyeron al logro de los objetivos del curso.", "aspect": "Coherencia", "type": "acuerdo", "options": {"Totalmente de acuerdo": 10}}, {"text": "¿Se cumplieron los objetivos de este curso?", "aspect": "Coherencia", "type": "cantidad", "options": {"Todos": 11}}, {"text": "Las evaluaciones dan cuenta del cumplimiento de los objetivos del curso.", "aspect": "Coherencia", "type": "acuerdo", "options": {"De acuerdo": 1, "Totalmente de acuerdo": 10}}, {"text": "Las actividades están orientadas a consolidar lo aprendido y a ponerlo en práctica en ejercicios significativos.", "aspect": "Coherencia", "type": "acuerdo", "options": {"Totalmente de acuerdo": 10}}, {"text": "El profesor me transmite confianza en mi habilidad para desempeñarme bien en el curso.", "aspect": "Fomento de autonomía", "type": "acuerdo", "options": {"De acuerdo": 1, "Totalmente de acuerdo": 10}}, {"text": "El profesor trata de entender cómo yo veo las cosas antes de sugerirme nuevas formas de hacerlas.", "aspect": "Fomento de autonomía", "type": "acuerdo", "options": {"Totalmente de acuerdo": 9, "De acuerdo": 1}}, {"text": "El profesor promueve que los estudiantes cuestionen los conceptos (teorías, modelos, enfoques, etc.) abordados.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"Totalmente de acuerdo": 11}}, {"text": "El profesor invita a los estudiantes a cuestionar sus propias ideas.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"Totalmente de acuerdo": 10, "De acuerdo": 1}}, {"text": "El profesor fomenta que los estudiantes respalden las argumentaciones y conclusiones de sus trabajos con rigor lógico y evidencias.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"Totalmente de acuerdo": 11}}, {"text": "¿Qué tan probable es que recomiendes tomar este curso con este/a profesor/a?", "aspect": "General", "type": "escala010", "options": {"10": 15, "7": 1}}, {"text": "Las temáticas y las actividades programadas se cumplen adecuadamente.", "aspect": "Gestión de clase", "type": "acuerdo", "options": {"Totalmente de acuerdo": 11}}, {"text": "El profesor organizó las clases y actividades del curso de forma efectiva para el aprendizaje.", "aspect": "Gestión de clase", "type": "acuerdo", "options": {"Totalmente de acuerdo": 9, "De acuerdo": 1}}, {"text": "En el curso hubo un ambiente de confianza para participar y hacer preguntas, y si las hubo, se respetaron las diferencias de criterio y opinión.", "aspect": "Participación de los estudiantes", "type": "acuerdo", "options": {"Totalmente de acuerdo": 10}}, {"text": "La dinámica y las actividades de los encuentros sincrónicos propiciaron que los estudiantes estuviéramos involucrados, es decir, participando o concentrados.", "aspect": "Participación de los estudiantes", "type": "acuerdo", "options": {"Totalmente de acuerdo": 11}}, {"text": "En el curso me sentí motivado.", "aspect": "Responsabilidades de los estudiantes", "type": "acuerdo", "options": {"Totalmente de acuerdo": 10}}, {"text": "Las instrucciones y expectativas de las actividades y del trabajo por realizar se comunicaron con claridad, precisión y suficiente anticipación.", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"Totalmente de acuerdo": 11}}, {"text": "Recibí del profesor retroalimentación constructiva que contribuyó a mi proceso de aprendizaje (retroalimentación se refiere a las intervenciones o comentarios del profesor que te permiten identificar tus fortalezas, y las áreas en las que debes mejorar).", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"De acuerdo": 1, "Totalmente de acuerdo": 10}}, {"text": "La retroalimentación dada por el profesor es oportuna, pertinente y clara.", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"De acuerdo": 2, "Totalmente de acuerdo": 9}}, {"text": "El profesor les da el mismo trato a todos los estudiantes, sin discriminación.", "aspect": "Trato a estudiantes", "type": "acuerdo", "options": {"Totalmente de acuerdo": 15, "De acuerdo": 1}}, {"text": "El profesor es respetuoso con todos los estudiantes.", "aspect": "Trato a estudiantes", "type": "acuerdo", "options": {"Totalmente de acuerdo": 15, "De acuerdo": 1}}]}}, {"key": "NOVA", "name": "NOVA 2026", "logo": "NOVA.png", "color": "#9B6FD1", "colorSoft": "#EDE3F8", "lat": 38.6979, "lon": -9.3389, "countryCode": "PRT", "course": "Shaping the Digital Future: Insights from Portugal", "professor": "Nathalia Franco", "photo": "natalia-franco.jpg", "location": "Carcavelos", "country": "Portugal", "invoiceCurrency": "EUR", "invoiceValue": 105200, "invoiceAttendees": 40, "abroadCount": 40, "registeredCount": 42, "gender": {"F": 25, "M": 15}, "programas": {"Maestría en Mercadeo": 2, "Maestría en Administración": 32, "Maestría en Finanzas": 1, "Especialización en Negociación": 1, "Maestría en Gerencia Estratégica": 3, "MBA Online": 1}, "programaGender": {"Maestría en Mercadeo": {"F": 2, "M": 0}, "Maestría en Administración": {"F": 19, "M": 13}, "Maestría en Finanzas": {"F": 1, "M": 0}, "Especialización en Negociación": {"F": 0, "M": 1}, "Maestría en Gerencia Estratégica": {"F": 2, "M": 1}, "MBA Online": {"F": 1, "M": 0}}, "pago1Count": 41, "pago2Count": 40, "ingresos": 537280000, "egresos": 474854062.41599995, "balance": 62425937.58400005, "marginPct": 11.62, "participantsList": [{"nombre": "ANDREA CAROLINA MENESES BERNAL", "genero": "F", "codigo": 202424513, "programa": "Maestría en Mercadeo", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ANDREA TATIANA SALINAS", "genero": "F", "codigo": 202525810, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DANIELA BERNAL PRIETO", "genero": "F", "codigo": 201521204, "programa": "Maestría en Finanzas", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DANIELA IVANA RUSSI RUSSI", "genero": "F", "codigo": 201011822, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DANIELA TORRES RAMOS", "genero": "F", "codigo": 202521908, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DANIELA VILLAMIZAR ROBAYO", "genero": "F", "codigo": 202525705, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DEISY MARCELA CARVAJAL OLARTE", "genero": "F", "codigo": null, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DIANA TELLEZ OROZCO", "genero": "F", "codigo": 202525701, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DIEGO GOMEZ LLINAS", "genero": "M", "codigo": 201124049, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "FABIAN ARMANDO BARRAGAN RAMIREZ", "genero": "M", "codigo": 202515237, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "FELIPE VALENCIA SERRANO", "genero": "M", "codigo": 202523097, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "HECTOR JOSE TORRES HERNANDEZ", "genero": "M", "codigo": 202512051, "programa": "Especialización en Negociación", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JASON FLOREZ", "genero": "M", "codigo": 202524497, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JOSE MIGUEL URUEÑA SUAREZ", "genero": "M", "codigo": 202525702, "programa": "Maestría en Gerencia Estratégica", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUAN JOSE JACOME VELASQUEZ", "genero": "M", "codigo": 201611371, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JULIAN ANDRES SANCHEZ MORANTE", "genero": "M", "codigo": 202522493, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JULIETH VIVIANA PEÑA HORTUA", "genero": "F", "codigo": 202525368, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JULY MARCELA REYES RIVERO", "genero": "F", "codigo": 202523019, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "KAREN STEPHANY ACEVEDO ARIAS", "genero": "F", "codigo": 202512977, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LAURA ARIZA VELASQUEZ", "genero": "F", "codigo": 202522448, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LAURA MARCELA LOPEZ SANTOYO", "genero": "F", "codigo": 202524663, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LAURA MARIA JAVELA VARGAS", "genero": "F", "codigo": 201124951, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LAURA SOFIA BULA TORRES", "genero": "F", "codigo": 201613249, "programa": "Maestría en Gerencia Estratégica", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LEIDY MARCELA PEÑA BUENO", "genero": "F", "codigo": 202524409, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LISETH FERNANDA MENDOZA CARO", "genero": "F", "codigo": 202027891, "programa": "MBA Online", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LUIS ALEJANDRO CASTELLANOS BERNAL", "genero": "M", "codigo": 200813983, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LUISA FERNANDA SERNA OSORIO", "genero": "F", "codigo": 202514364, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "MARIA EMILIA PEREZ GUTIERREZ", "genero": "F", "codigo": 200912612, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "MARIA MANRIQUE GONZALEZ", "genero": "F", "codigo": 202521892, "programa": "Maestría en Gerencia Estratégica", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "MARIA MILAGROS CELEDON LUBO", "genero": "F", "codigo": 201213129, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "NATALIA SANABRIA URIBE", "genero": "F", "codigo": 202523020, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "NICOLAS PRECIADO MUÑOZ", "genero": "M", "codigo": 201117865, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "RANDY NEIL DE LOS SANTOS SEVILLANO", "genero": "M", "codigo": 202524372, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "RAUL HERNANDEZ", "genero": "M", "codigo": 202525068, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "SANTIAGO ALFONSO CASTELLANOS MAESTRE", "genero": "M", "codigo": 202322565, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "SANTIAGO CHIRIBOGA VILLOTA", "genero": "M", "codigo": 202523154, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "SOFIA BEJARANO MARTINEZ", "genero": "F", "codigo": 202425844, "programa": "Maestría en Mercadeo", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "STEPHANIE CAROLINA GALINDO VILLACIS", "genero": "F", "codigo": 202515462, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "VANNESSA ANDREA VILLANUEVA RAMIREZ", "genero": "F", "codigo": 202512053, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "WILLIAM CAMILO GARCIA FORERO", "genero": "M", "codigo": 201626983, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "CARLOS ANDRES PEÑUELA RODRIGUEZ", "genero": "M", "codigo": 201112311, "programa": "Maestría en Mercadeo", "tipoPrograma": "EPOS", "pago1": true, "pago2": false, "matricula": false}, {"nombre": "CARLOS EDUARDO RODRIGUEZ VACA", "genero": "M", "codigo": null, "programa": "Spe. in Negotiation", "tipoPrograma": "EPOS", "pago1": false, "pago2": false, "matricula": false}], "budgetLines": [{"concepto": "Contribución con gastos generales", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "Valor póliza Uniandes", "tipo": "gasto", "precio": 190000, "moneda": "COP", "cantidad": 1, "presupuestado": -190000, "ejecutado": null}, {"concepto": "Tiquetes", "tipo": "gasto", "precio": 5000000, "moneda": "COP", "cantidad": 1, "presupuestado": -5000000, "ejecutado": -4920178}, {"concepto": "Viaticos", "tipo": "gasto", "precio": 700, "moneda": "USD", "cantidad": 1, "presupuestado": -2823800, "ejecutado": -1887937}, {"concepto": "Bonificación profesor", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "VAT", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "Honorarios personal profesional NOVA (pago factura)", "tipo": "gasto", "precio": 105200, "moneda": "EUR", "cantidad": 1, "presupuestado": -462218081.59999996, "ejecutado": -221679112}, {"concepto": "Impuesto de timbre", "tipo": "gasto", "precio": 4622180.816, "moneda": "COP", "cantidad": 1, "presupuestado": -4622180.816, "ejecutado": null}, {"concepto": "NOVA EPOS", "tipo": "ingreso", "precio": 13880000, "moneda": "COP", "cantidad": 8, "presupuestado": 111040000, "ejecutado": null}, {"concepto": "NOVA MBA", "tipo": "ingreso", "precio": 13320000, "moneda": "COP", "cantidad": 32, "presupuestado": 426240000, "ejecutado": null}], "dates": "29 Jun. - 03 Jul. 2026", "survey": {"n": 319, "avg": 4.03, "nps": 9.36, "npsN": 28, "aspects": [{"aspect": "Responsabilidades de los estudiantes", "avg": 4.4, "n": 20}, {"aspect": "Participación de los estudiantes", "avg": 4.24, "n": 37}, {"aspect": "Coherencia", "avg": 4.12, "n": 59}, {"aspect": "Trato a estudiantes", "avg": 4.08, "n": 48}, {"aspect": "Fomento de autonomía", "avg": 4.0, "n": 31}, {"aspect": "Gestión de clase", "avg": 3.94, "n": 36}, {"aspect": "Fomento de pensamiento crítico, discusión y participación", "avg": 3.9, "n": 41}, {"aspect": "Retroalimentación, monitoreo y criterios de calificación", "avg": 3.77, "n": 47}], "commentGroups": [{"label": "Course — Valued Most", "items": ["Mejor manejo del tiempo", "Buena organización ", "La experiencia es muy completa, las instalaciones fueron muy cómodas y adecuadas", "Me ha gustado mucho me dio perspectivas y reflexiones que me llevó para la vida ", "Los profesores de buen nivel, el contexto y el uso de los espacios estuvo muy bien \n", "Excelente programa y buen manejo del tema, los profesores muy bien calificados ", "Muy buen contenido y calidad de profesores", "Muchos intercambios culturales y sobre negocios.", "La relevancia de los temas y la experiencia de los profesores en contextos reales, no solo académicos ", "Me gustó las clases de los profesores fueron bastantes dinámicas. Las visitas a las empresas fueron muy interesantes. Los temas vistos se pueden aplicar ", "Contenido compartido (información de AI y frameworks para aplicarla en las compañías desde el rol de liderazgo)", "Contacto con profesores de muy alta calidad, y contenidos de la barrera del conocimiento en el tema. ", "Un gran acierto aliarse con Nova, es realmente una universidad orientada en la experiencia del estudiante, con un profesionalismo impecable y atención a cada detalle! Súper buena semana Internacional! ", "Todo muy bueno. ", "La experiencia inmersiva de esta semana internacional ha sido muy enriquecedora. Aprendí muchísimo y me voy muy contento con los resultados de esta experiencia. Disfruté mucho las clases magistrales, junto con las actividades participativas. Fueron una gran oportunidad para asimilar e interiozar las lecciones y conocimientos compartidos.  ", "La universidad muy bonita y la experiencia. Mejoraría la visita a empresas especialmente la primera. De resto el contenido y el personal de Nova muy atento.", "La experiencia de los profesores y su motivación y calidad humana. Son personas que no solo se enfocaron en los conocimientos técnicos sino no también en la conexión humana y los valores del día a día empresarial.", "Una grandiosa experiencia que hace complemento a nuestra formación académica como líderes del cambio.", "La experiencia es maravillosa, las personas que nos recibieron en Nova pendientes de cada cosa, los profesores del miércoles,  jueves y viernes fueron los mejores", "La locación y la temática ", "Excelentes profesores ", "La logística de la universidad. La mayoría de los docentes tienen gran experiencia en el tema del curso y esto fue de mucha utilidad", "El tema es relevante y en sintonía con las tendencias del mundo y lo estudiado en la maestría. ", "Excelente", "los profesores tienen un amplio manejo de los temas y los presentan de forma que motiva a los estudiantes. ", "La inmersión cultural y la experiencia de tomar clase con profesores no colombianos, tienen una nueva perspectiva y nos hace pensar en diferencias y similitudes entre Portugal y Colombia", "Al final se ligra interiorizar los conceptos aprendidos, las temáticas tratadas son de actualidad y relevantes para ribustecer las habilidadea prifesionales. El feedback se incorporó de manera inmediata"], "n": 27}, {"label": "Faculty — Valued Most", "items": ["Muy buena su ayuda y como manejo todo", "Mucha disposición y buena energía ", "El acompañamiento fue insuperable, la profe siempre estuvo pendiente se involucro y aporto a las clases de manera práctica ", "Está pendiente de todos ha sido una gran orquestadora ", "Se articuló con los docentes de Nova, interactivo en los momentos clave y se notó que estuvo en el frente. ", "Muy buena persona y excelente profesional", "Muy tranquila y genera confianza", "Muy atenta y excelente profe ", "Comprensiva y siempre apoyando las actividades.", "Estuvo siempre atenta para nosotros ", "Mucha información útil que me llevo para mi trabajo y progreso como profesional. ", "No aplica ", "Creo que se coordinó bien y comunicó bien durante la semana ", "Top", "Tienen conocimiento sobre los temas y manejan muy bien los términos. "], "n": 15}, {"label": "Course — Could Improve", "items": ["Diseñar un el curso un poco mejor. Los tiempos fueron raros y hubo poca flexibilidad del lado de ellos", "Deben revisar el valor en dólares, debería haber un ajuste al valor del programa ", "Me gustaría que hubiese abarcado una perspectiva financiera en alguno de los contenidos de liderazgo, se hablo de manera un poco superficial ", "Es pesado podría ser dos semanas un poquito más tranqui ", "Las visitas. Agregarles un mayor propósito y que incentiven a un objetivo específico, no solo por conocer un proceso o una empresa, que se puede hacer de otras formas. ", "Agregaría una mayor visita empresarial ", "Las visitas. Nos quedamos con ganas de ir a Jerónimo Martins", "Las visitas a empresas súper malas.", "La organización previa por parte de la Universidad y la calidad de las visitas empresariales para que sean más dinámicas y entretenidas. ", "Recomendación: \nNos cambiaron una de las empresas a visitar y también la cena", "Las visitas. Que sean mejor organizadas.", "Que fueran dos semanas. ", "La alineación y comunicación antes del viaje, no parecían tener claridad en la agenda, la documentación, etc y tomaron bastante tiempo en enviar el material y confirmaciones ", "Todo muy bueno. ", "Si van haber cambios en el cronograma, deberían comunicarlos con mayor anterioridad. Fue una sorpresa no ir a Jerónimo Martims y enterarnos el mismo día que íbamos a escasas horas de salir. Generó bastante ruido entre todos.", "Mejores visitas empresariales.", "Se sintió un poco de improvisación especialmente con el bussiness safari, las dos empresas que nos habían dicho inicialmente cambiaron y se notó que las nuevas empresas no tenían tanto contexto, especialmente la primera empresa que visitamos, donde hubo un panel con preguntas muy improvisadas y que los asistentes no respondieron correctamente. La segunda visita fue considerablemente mejor, pero no se tuvo buen audio.", "Poco tiempo para desarrollar todo el potencial ", "Cancelaron 2 actividades la visita a jerónimo y la cena de bienvenida ", "Se sintió desordenado. El que nos informaran a último momento el cambio de visita de Jerónimo Martins fue una decepción.", "Más estructura para las visitas a empresas ", "Las visitas empresariales no cumplieron mis expectativas, fueron poco aplicadas", "Agregaría actividades o talleres que permitan aterrizar los conceptos dados. ", "Así como esta, esta excelente. Quizá un poco mejor la logística a las salidas de campo y hacerlas mas aplicadas. ", "detalles logísticos como el envío de material preparatorio, reservas de hotel. comunicación clara cuando cambien lo planteado inicialmente.", "Las salidas a las empresas, me gustaría que fueran pensadas diferente, la primera salida empresarial que salimos a Cloudflare fue una decepción totalmente, el profesor que llevaba las entrevistas o las preguntas para los panelistas hizo muy malas preguntas y llevó el panel demasiado mal, además, los oradores fueron terribles, parecía que fuera improvisado y no tenían el conocimiento suficiente para responder las preguntas ", "Organizacion de algunas secciones, envío de informacion con mas oportunidad o tiempo previo al inicio de la semana. En las primeras sesiones desarrolar mas actividades dinamicas en las clases, como desde el miercoles en adelante"], "n": 27}, {"label": "Faculty — Could Improve", "items": ["Todo súper 10/10", "Fue excelente", "Te queremos ", "Todo muy bien, no hay fallo ", "Ninguna ", "N/A", "Ninguna.", "Mejorar la organización de las visitas a empresas.", "No aplica ", "Conversar y relacionarse más con todos los estudiantes, estuvo muy lejana y pasiva ", "Top"], "n": 11}], "respondents": 28, "responseRate": 70.0, "workloadAvg": 2.0, "workloadN": 19, "objectivesAllPct": 76.5, "objectivesN": 17, "questions": [{"text": "¿Tienes la percepción de que la carga de trabajo asociada a este curso ha sido excesiva? (Recuerda que un crédito equivale a 3 horas de trabajo semanal en cursos de 16 semanas y a 6 horas de trabajo semanal en cursos de 8 semanas).", "aspect": "Carga académica", "type": "carga", "options": {"Poco": 14, "Mucho": 1, "Demasiado": 1, "Nada": 3}}, {"text": "Las actividades desarrolladas contribuyeron al logro de los objetivos del curso.", "aspect": "Coherencia", "type": "acuerdo", "options": {"Totalmente de acuerdo": 13, "Totalmente en desacuerdo": 3, "De acuerdo": 4}}, {"text": "¿Se cumplieron los objetivos de este curso?", "aspect": "Coherencia", "type": "cantidad", "options": {"Todos": 13, "Algunos": 4}}, {"text": "Las evaluaciones dan cuenta del cumplimiento de los objetivos del curso.", "aspect": "Coherencia", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 2, "Totalmente de acuerdo": 8, "Ni de acuerdo ni en desacuerdo": 2, "De acuerdo": 7}}, {"text": "Las actividades están orientadas a consolidar lo aprendido y a ponerlo en práctica en ejercicios significativos.", "aspect": "Coherencia", "type": "acuerdo", "options": {"Totalmente de acuerdo": 10, "Totalmente en desacuerdo": 2, "Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 7}}, {"text": "El profesor me transmite confianza en mi habilidad para desempeñarme bien en el curso.", "aspect": "Fomento de autonomía", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 2, "No aplica": 3, "De acuerdo": 6, "Totalmente de acuerdo": 6}}, {"text": "El profesor trata de entender cómo yo veo las cosas antes de sugerirme nuevas formas de hacerlas.", "aspect": "Fomento de autonomía", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 3, "Totalmente de acuerdo": 10, "No aplica": 3, "Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 3}}, {"text": "El profesor promueve que los estudiantes cuestionen los conceptos (teorías, modelos, enfoques, etc.) abordados.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 2, "No aplica": 4, "De acuerdo": 4, "Totalmente de acuerdo": 7}}, {"text": "El profesor invita a los estudiantes a cuestionar sus propias ideas.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 3, "Totalmente de acuerdo": 4, "Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 7, "No aplica": 4}}, {"text": "El profesor fomenta que los estudiantes respalden las argumentaciones y conclusiones de sus trabajos con rigor lógico y evidencias.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 2, "No aplica": 4, "De acuerdo": 4, "Totalmente de acuerdo": 7}}, {"text": "¿Qué tan probable es que recomiendes tomar este curso con este/a profesor/a?", "aspect": "General", "type": "escala010", "options": {"10": 18, "6": 1, "7": 1, "8": 3, "9": 5}}, {"text": "Las temáticas y las actividades programadas se cumplen adecuadamente.", "aspect": "Gestión de clase", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 2, "De acuerdo": 8, "Totalmente de acuerdo": 6, "Ni de acuerdo ni en desacuerdo": 3}}, {"text": "El profesor organizó las clases y actividades del curso de forma efectiva para el aprendizaje.", "aspect": "Gestión de clase", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 3, "Totalmente de acuerdo": 10, "No aplica": 3, "De acuerdo": 4}}, {"text": "En el curso hubo un ambiente de confianza para participar y hacer preguntas, y si las hubo, se respetaron las diferencias de criterio y opinión.", "aspect": "Participación de los estudiantes", "type": "acuerdo", "options": {"Totalmente de acuerdo": 16, "Totalmente en desacuerdo": 2, "De acuerdo": 2}}, {"text": "La dinámica y las actividades de los encuentros sincrónicos propiciaron que los estudiantes estuviéramos involucrados, es decir, participando o concentrados.", "aspect": "Participación de los estudiantes", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 2, "Totalmente de acuerdo": 6, "Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 8}}, {"text": "En el curso me sentí motivado.", "aspect": "Responsabilidades de los estudiantes", "type": "acuerdo", "options": {"Totalmente de acuerdo": 14, "Totalmente en desacuerdo": 2, "De acuerdo": 4}}, {"text": "Las instrucciones y expectativas de las actividades y del trabajo por realizar se comunicaron con claridad, precisión y suficiente anticipación.", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 2, "Totalmente de acuerdo": 6, "En desacuerdo": 1, "Ni de acuerdo ni en desacuerdo": 5, "De acuerdo": 5}}, {"text": "Recibí del profesor retroalimentación constructiva que contribuyó a mi proceso de aprendizaje (retroalimentación se refiere a las intervenciones o comentarios del profesor que te permiten identificar tus fortalezas, y las áreas en las que debes mejorar).", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 1, "No aplica": 4, "De acuerdo": 6, "Totalmente de acuerdo": 6}}, {"text": "La retroalimentación dada por el profesor es oportuna, pertinente y clara.", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 3, "Totalmente de acuerdo": 3, "Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 8, "No aplica": 4}}, {"text": "El profesor les da el mismo trato a todos los estudiantes, sin discriminación.", "aspect": "Trato a estudiantes", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 3, "Totalmente de acuerdo": 13, "No aplica": 4, "Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 7}}, {"text": "El profesor es respetuoso con todos los estudiantes.", "aspect": "Trato a estudiantes", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 4, "Totalmente de acuerdo": 13, "No aplica": 4, "De acuerdo": 7}}]}}, {"key": "FGV", "name": "GETULIO VARGAS 2026", "logo": "FGV.png", "color": "#4FA8D8", "colorSoft": "#DCEEF9", "lat": -23.5505, "lon": -46.6333, "countryCode": "BRA", "course": "Innovation, Fintech and Digital Leadership", "professor": "Sebastian Schorch", "photo": "sebastian-schorch.jpg", "location": "Sao Paulo", "country": "Brazil", "invoiceCurrency": "USD", "invoiceValue": 61100, "invoiceAttendees": 25, "abroadCount": 25, "registeredCount": 25, "gender": {"F": 12, "M": 13}, "programas": {"Maestría en Administración": 22, "Maestría en Finanzas": 1, "Maestría en Gerencia Ambiental": 1, "Maestría en Gerencia Estratégica": 1}, "programaGender": {"Maestría en Administración": {"F": 9, "M": 13}, "Maestría en Finanzas": {"F": 1, "M": 0}, "Maestría en Gerencia Ambiental": {"F": 1, "M": 0}, "Maestría en Gerencia Estratégica": {"F": 1, "M": 0}}, "pago1Count": 25, "pago2Count": 25, "ingresos": 331680000, "egresos": 251644400, "balance": 80035600, "marginPct": 24.13, "participantsList": [{"nombre": "ANA MARIA PARRA PEREZ", "genero": "F", "codigo": 202525367, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ANDREA CAROLINA COBA ARDILA", "genero": "F", "codigo": 202523513, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ANDRES ENRIQUE RAMIREZ MOISES", "genero": "M", "codigo": 200615363, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ANDRES LOZADA CAVIEDES", "genero": "M", "codigo": 202521889, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "CAROLINA CAMARGO BARRERA", "genero": "F", "codigo": 201223926, "programa": "Maestría en Finanzas", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "CAROLINA VELASQUEZ GARCIA", "genero": "F", "codigo": 202524516, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "EDWARD MAURICIO TRUJILLO NIETO", "genero": "M", "codigo": 202521910, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "FABIANA ALEJANDRA CALIFA CAMACHO", "genero": "F", "codigo": 201613340, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "FEDERICO BERMUDEZ HERNANDEZ", "genero": "M", "codigo": 201212847, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "FRANCHESCO LOBO BASTO", "genero": "M", "codigo": 202523084, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "FRANZ MOLINERO QUISPE", "genero": "M", "codigo": 202524394, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "HENRY ALEXANDER BUSTOS RODRIGUEZ", "genero": "M", "codigo": 202423835, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ILLEYN ANDREA VILLANUEVA BOHORQUEZ", "genero": "F", "codigo": 202524019, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JOHAN ESTEBAN VERDUGO QUEVEDO", "genero": "M", "codigo": 201215390, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUAN PABLO GONZALEZ PEÑA", "genero": "M", "codigo": 201424703, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUANA ARIZA MESA", "genero": "F", "codigo": 202524356, "programa": "Maestría en Gerencia Ambiental", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JULIO CESAR GALEANO GARCIA", "genero": "M", "codigo": 202523968, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LUISA FERNANDA QUIROGA BARRERO", "genero": "F", "codigo": 202521899, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LUISA PAOLA DUARTE CORREALES", "genero": "F", "codigo": 202522778, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "MARIA CATALINA CASTAÑEDA PALENCIA", "genero": "F", "codigo": 201812348, "programa": "Maestría en Gerencia Estratégica", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "RODRIGO ORLANDO BENITEZ AMAYA", "genero": "M", "codigo": 200913805, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "SANTIAGO ALFONSO CASTELLANOS MAESTRE", "genero": "M", "codigo": 202322565, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "SARA LYA DALEL RUEDA", "genero": "F", "codigo": 201425679, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "SEBASTIAN OSPINA BALLESTEROS", "genero": "M", "codigo": 202422204, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "YORLENY VERA MUÑOZ", "genero": "F", "codigo": 202524433, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}], "budgetLines": [{"concepto": "Contribución con gastos generales", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "Valor póliza Uniandes", "tipo": "gasto", "precio": 150000, "moneda": "COP", "cantidad": 1, "presupuestado": -150000, "ejecutado": null}, {"concepto": "Tiquetes", "tipo": "gasto", "precio": 3000000, "moneda": "COP", "cantidad": 1, "presupuestado": -3000000, "ejecutado": -3478070}, {"concepto": "Viaticos", "tipo": "gasto", "precio": 500, "moneda": "USD", "cantidad": 1, "presupuestado": -2017000, "ejecutado": -1627409}, {"concepto": "Bonificación profesor", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "VAT", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "Honorarios personal profesional FGV (pago factura)", "tipo": "gasto", "precio": 61100, "moneda": "USD", "cantidad": 1, "presupuestado": -246477400, "ejecutado": -222677117}, {"concepto": "Impuesto de timbre", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "FGV EPOS", "tipo": "ingreso", "precio": 12880000, "moneda": "COP", "cantidad": 3, "presupuestado": 38640000, "ejecutado": null}, {"concepto": "FGV MBA", "tipo": "ingreso", "precio": 13320000, "moneda": "COP", "cantidad": 22, "presupuestado": 293040000, "ejecutado": null}], "dates": "06 - 10 Jul. 2026", "survey": {"n": 166, "avg": 4.51, "nps": 8.54, "npsN": 13, "aspects": [{"aspect": "Participación de los estudiantes", "avg": 4.61, "n": 18}, {"aspect": "Fomento de pensamiento crítico, discusión y participación", "avg": 4.54, "n": 24}, {"aspect": "Trato a estudiantes", "avg": 4.54, "n": 26}, {"aspect": "Coherencia", "avg": 4.5, "n": 28}, {"aspect": "Fomento de autonomía", "avg": 4.5, "n": 18}, {"aspect": "Retroalimentación, monitoreo y criterios de calificación", "avg": 4.5, "n": 24}, {"aspect": "Responsabilidades de los estudiantes", "avg": 4.4, "n": 10}, {"aspect": "Gestión de clase", "avg": 4.39, "n": 18}], "commentGroups": [{"label": "Course — Valued Most", "items": ["El curso esta orientado correctamente en introducir a los estudiantes en el ecosistema brasileño y explicar su funcionamiento financiero. Los profesores parecen muy preparados, con experiencia y ejemplos practicos para explicar. ", "Los profesores fueron muy concretos, claros y con gran calidad en los temas tratados, fue una gran oportunidad haber compartido esta experiencia.", "El nivel de los docentes es alto. Las clases están organizada de tal forma que se entiende todo el contexto y el tema de forma organizada. La logística es muy buena ", "La disposición de los encargados del curso, fueron demasiado diligentes y atentos en cada una de las clases ", "Fueron temas muy interesantes los tratados en cada una de las clases acerca de la economía, la cultura y el liderazgo de Brasil", "excelentes docentes con gran trayectoria profesional. La universidad es reconocida a nivel mundial y el programa permite ampliar  la vision de la cultura en Brasil. excelentes lecturas y bibliografia. Se sugiere cumplir los horarios de finalizacion de clases para combinar parte academica y recreativa. Los coordinadores de FGV fueron excelentes y siempre pendientes de todo", "Los profesores son de alto nivel y se hacen entender con todos los temas", "resalto la preparación de los profesores", "Excelente organizacion. Clases de excelente contenido ", "Nivel de profesores ", "Los profesores cuentan con gran dominio y experticia "], "n": 11}, {"label": "Faculty — Valued Most", "items": ["Es muy amable", "El profesor siempre estuvo acompañando las clases, dejando las reglas claras de evaluacion y pendiente en calificar los entregables de manera oportunida. ", "La experiencia que tienen en empresas del sector fintech, su análisis en los temas, la forma de explicar cada uno de los temas.", "Si bien no nos dio clases fue organizado con los procesos de evaluación, logística y acompañamiento", "Estuvo siempre muy presente y atento a los requerimientos instructivos y manejo de grupo ", "El acompañamiento constante del profesor en cada uno de los temas relacionados con las lecturas envíadas", "estuvo muy pendiente del grupo, de la participacion y que nos sintieramos bien recibidos. Atento a todas las clases y calificacion de actividades.", "Tuvo acompañamiento en todas la clases", "NA", "Excelente"], "n": 10}, {"label": "Course — Could Improve", "items": ["Habría preferido que las clases comenzaran y finalizaran más temprano, ya que la carga académica fue bastante exigente. Al finalizar cada jornada, aún debíamos dedicar tiempo a estudiar para los quices y elaborar el ensayo con la reflexión del día, lo que reducía significativamente el tiempo disponible para descansar y recuperarnos para la siguiente jornada. ", "Mas que solo explicar el ecosistema brasileño y contexto, falta profundizar mas en oportunidades y en llevar la semana a algo mas innovador, no solo explicativo. Explicar PIX es muy importante, pero parece que los profesores no tienen en cuenta los otros cursos/clases para no repetir informacion. ", "Realmente nada en concreto, quizás la logística del hotel, pero sobre el tea académico no tengo ningún comentario.", "Buscaría que las visitas estuvieran más relacionadas con los temas vistos en clase ", "Tener salidas que estén conectadas con la temática de la semana o por lo menos la temática a desarrollar en el día. ", "Nada", "En general alinearia a algunos profesores, para que sepan que temas se han tratado las clases previas y no se repitan, dado que este tiempo puede ser mejor optimizado. Algunos profesores hablan muy bajito y se dificulta escuchar. El hotel definitivamente fue malo, tenia habitaciones normales y otras demasiado antiguas, el ascensor sonaba y se movia de lado a lado, el pasillo del piso 15 parece de pelicula de terror, la atencion de las personas del lobby y el restaurante de muy baja calidad. A veces habia huevos al desayuno pero a veces no, por lo que quedé sin desayuno un par de dias. Solo  queso y jamón y poca variedad. Definitivamente se deberia evaluar hoteles que esten al nivel de la Universidad de los Andes y de MBA.", "N/A", "Las Visitas a empresas deberían estar enfocadas con el tema de la semana internacional. en el caso de Brasil, el tema era Fintech pero ninguna de las 2 empresas visitadas fueron de esa industria. Adicional, debería dejarse un espacio para concer la ciudad como parte del programa", "Nada", "Contenido y visitas empresariales directamente relacionadas con la temática, esto no se cumplio", "Desde la primera clase entrar con temas mas robustos, orientados a profundizar en la tema de la semana internacional. Hacer las clases mas dinámicas, con un par de actividades para conectar y aplicar conceptos como lo hizo el profesor Sandro, su clase fue muy interesante y dinámica."], "n": 12}, {"label": "Faculty — Could Improve", "items": ["Una recomendación sería fomentar una mayor integración e interacción con los estudiantes durante las clases. En algunos momentos, el profesor se percibía distante, lo que generaba una barrera en la comunicación y dificultaba la creación de un ambiente de confianza. Una mayor cercanía, apertura al diálogo y participación activa con el grupo podría favorecer un entorno de aprendizaje más dinámico, colaborativo y motivador.\n", "Nada a recomendar. ", "Ninguna", "Nada", "Ninguna", "Retroalimentación de la clases ", "NA", "Nada"], "n": 8}], "respondents": 13, "responseRate": 52.0, "workloadAvg": 1.88, "workloadN": 8, "objectivesAllPct": 75.0, "objectivesN": 8, "questions": [{"text": "¿Tienes la percepción de que la carga de trabajo asociada a este curso ha sido excesiva? (Recuerda que un crédito equivale a 3 horas de trabajo semanal en cursos de 16 semanas y a 6 horas de trabajo semanal en cursos de 8 semanas).", "aspect": "Carga académica", "type": "carga", "options": {"Nada": 2, "Poco": 5, "Mucho": 1}}, {"text": "Las actividades desarrolladas contribuyeron al logro de los objetivos del curso.", "aspect": "Coherencia", "type": "acuerdo", "options": {"De acuerdo": 5, "Totalmente de acuerdo": 5}}, {"text": "¿Se cumplieron los objetivos de este curso?", "aspect": "Coherencia", "type": "cantidad", "options": {"Algunos": 2, "Todos": 6}}, {"text": "Las evaluaciones dan cuenta del cumplimiento de los objetivos del curso.", "aspect": "Coherencia", "type": "acuerdo", "options": {"De acuerdo": 4, "Totalmente de acuerdo": 4}}, {"text": "Las actividades están orientadas a consolidar lo aprendido y a ponerlo en práctica en ejercicios significativos.", "aspect": "Coherencia", "type": "acuerdo", "options": {"De acuerdo": 5, "Totalmente de acuerdo": 5}}, {"text": "El profesor me transmite confianza en mi habilidad para desempeñarme bien en el curso.", "aspect": "Fomento de autonomía", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 2, "Totalmente de acuerdo": 5}}, {"text": "El profesor trata de entender cómo yo veo las cosas antes de sugerirme nuevas formas de hacerlas.", "aspect": "Fomento de autonomía", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 3, "Totalmente de acuerdo": 6}}, {"text": "El profesor promueve que los estudiantes cuestionen los conceptos (teorías, modelos, enfoques, etc.) abordados.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"De acuerdo": 3, "Totalmente de acuerdo": 5}}, {"text": "El profesor invita a los estudiantes a cuestionar sus propias ideas.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 3, "Totalmente de acuerdo": 4}}, {"text": "El profesor fomenta que los estudiantes respalden las argumentaciones y conclusiones de sus trabajos con rigor lógico y evidencias.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"De acuerdo": 3, "Totalmente de acuerdo": 5}}, {"text": "¿Qué tan probable es que recomiendes tomar este curso con este/a profesor/a?", "aspect": "General", "type": "escala010", "options": {"10": 6, "6": 3, "8": 3, "9": 1}}, {"text": "Las temáticas y las actividades programadas se cumplen adecuadamente.", "aspect": "Gestión de clase", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 3, "Totalmente de acuerdo": 4}}, {"text": "El profesor organizó las clases y actividades del curso de forma efectiva para el aprendizaje.", "aspect": "Gestión de clase", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 4, "Totalmente de acuerdo": 5}}, {"text": "En el curso hubo un ambiente de confianza para participar y hacer preguntas, y si las hubo, se respetaron las diferencias de criterio y opinión.", "aspect": "Participación de los estudiantes", "type": "acuerdo", "options": {"De acuerdo": 3, "Totalmente de acuerdo": 7}}, {"text": "La dinámica y las actividades de los encuentros sincrónicos propiciaron que los estudiantes estuviéramos involucrados, es decir, participando o concentrados.", "aspect": "Participación de los estudiantes", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 2, "Totalmente de acuerdo": 5}}, {"text": "En el curso me sentí motivado.", "aspect": "Responsabilidades de los estudiantes", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 4, "Totalmente de acuerdo": 5}}, {"text": "Las instrucciones y expectativas de las actividades y del trabajo por realizar se comunicaron con claridad, precisión y suficiente anticipación.", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"De acuerdo": 3, "Totalmente de acuerdo": 5}}, {"text": "Recibí del profesor retroalimentación constructiva que contribuyó a mi proceso de aprendizaje (retroalimentación se refiere a las intervenciones o comentarios del profesor que te permiten identificar tus fortalezas, y las áreas en las que debes mejorar).", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 2, "Totalmente de acuerdo": 5}}, {"text": "La retroalimentación dada por el profesor es oportuna, pertinente y clara.", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 3, "Totalmente de acuerdo": 4}}, {"text": "El profesor les da el mismo trato a todos los estudiantes, sin discriminación.", "aspect": "Trato a estudiantes", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 4, "Totalmente de acuerdo": 8}}, {"text": "El profesor es respetuoso con todos los estudiantes.", "aspect": "Trato a estudiantes", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 4, "Totalmente de acuerdo": 8}}]}}, {"key": "BABSON", "name": "BABSON POSGRADO 2026", "logo": "BABSON.png", "color": "#5FB88A", "colorSoft": "#DEF3E6", "lat": 42.2967, "lon": -71.2924, "countryCode": "USA", "course": "Babson Build Entrepreneurship Program", "professor": "Eduardo Boada", "photo": "eduardo-boada.jpg", "location": "Massachusetts", "country": "USA", "invoiceCurrency": "USD", "invoiceValue": 91000, "invoiceAttendees": 34, "abroadCount": 34, "registeredCount": 36, "gender": {"F": 13, "M": 21}, "programas": {"Maestría en Administración": 26, "Maestría en Finanzas": 1, "EMBA": 2, "Especialización Inteligencia de Mercados": 3, "Especialización Administración Financiera": 1, "MBA Online": 1}, "programaGender": {"Maestría en Administración": {"F": 10, "M": 16}, "Maestría en Finanzas": {"F": 1, "M": 0}, "EMBA": {"F": 0, "M": 2}, "Especialización Inteligencia de Mercados": {"F": 1, "M": 2}, "Especialización Administración Financiera": {"F": 0, "M": 1}, "MBA Online": {"F": 1, "M": 0}}, "pago1Count": 36, "pago2Count": 34, "ingresos": 444320000, "egresos": 382365340, "balance": 61954660, "marginPct": 13.94, "participantsList": [{"nombre": "ALEXANDRA SOFIA MARTINEZ GHISAYS", "genero": "F", "codigo": 202512557, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ANDRES FELIPE MEJIA VERNAZA", "genero": "M", "codigo": 201531698, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ANDRES LEONARDO NOVA MARTINEZ", "genero": "M", "codigo": 202120867, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ANGEL AUGUSTO SOLER CIFUENTES", "genero": "M", "codigo": 201421533, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "CAMILO FERNANDO TIBADUIZA REYES", "genero": "M", "codigo": 202524429, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "CAROLINA CAMARGO BARRERA", "genero": "F", "codigo": 201223926, "programa": "Maestría en Finanzas", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DANIEL FELIPE SILVA MORALES", "genero": "M", "codigo": 202512674, "programa": "EMBA", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DANIEL REDONDO MERCADO", "genero": "M", "codigo": 202611620, "programa": "Especialización Inteligencia de Mercados", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DANIEL ZAPATA MARTINEZ", "genero": "M", "codigo": 202524438, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DANIELA GONZALEZ CARDONA", "genero": "F", "codigo": 201314113, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DIEGO ALEJANDRO SEGURA", "genero": "M", "codigo": 202325362, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DIEGO ARMANDO FARFAN BARRERO", "genero": "M", "codigo": 201224233, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "IVAN DARIO MORENO RUSSI", "genero": "M", "codigo": 202523087, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JAVIER PATIÑO CONGOTE", "genero": "M", "codigo": 201424096, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUAN CAMILO GARCIA MACHADO", "genero": "M", "codigo": 201126424, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUAN CAMILO ROCHA DIAZ", "genero": "M", "codigo": 200312396, "programa": "EMBA", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUAN MANUEL OCAMPO", "genero": "M", "codigo": 202021677, "programa": "Especialización Administración Financiera", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JUAN PABLO GONZALEZ PEÑA", "genero": "M", "codigo": 201424703, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JULIAN ANDRES SANCHEZ MORANTE", "genero": "M", "codigo": 202522493, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "JULIO CESAR GALEANO GARCIA", "genero": "M", "codigo": 202523968, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LAURA ARIZA VELASQUEZ", "genero": "F", "codigo": 202522448, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LEIDY LORENA VERA SUAZA", "genero": "F", "codigo": 202524434, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LINGRUI CHEN", "genero": "F", "codigo": 202522460, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LUISA FERNANDA OTERO SARMIENTO", "genero": "F", "codigo": 202423639, "programa": "MBA Online", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LUISA PAOLA DUARTE CORREALES", "genero": "F", "codigo": 202522778, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "LUMARA STEPHANIE PARRA HENRIQUEZ", "genero": "F", "codigo": 201631813, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "MAYRA ALEJANDRA NOGUERA MONROY", "genero": "F", "codigo": 201116600, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "MELLANIE ACEVEDO", "genero": "F", "codigo": 202612986, "programa": "Especialización Inteligencia de Mercados", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "PAULA CAMELA CAYCEDO SILVERA", "genero": "F", "codigo": 201511628, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "ROBBIN ESCOBAR ESPINOSA", "genero": "M", "codigo": 202523157, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "SANTIAGO ALFONSO CASTELLANOS MAESTRE", "genero": "M", "codigo": 202322565, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "SEBASTIAN VELEZ RODRIGUEZ", "genero": "M", "codigo": 201533065, "programa": "Especialización Inteligencia de Mercados", "tipoPrograma": "EPOS", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "TOMAS MERCHAN ORTIZ", "genero": "M", "codigo": 201326988, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "YISELL FERNANDA RAMIREZ RUIZ", "genero": "F", "codigo": 202524412, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": true, "matricula": true}, {"nombre": "DANIEL GIL CHAPARRO", "genero": "M", "codigo": 202522780, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": false, "matricula": false}, {"nombre": "JAIR ALFONSO GOMEZ MARIN", "genero": "M", "codigo": 200415243, "programa": "Maestría en Administración", "tipoPrograma": "MBA", "pago1": true, "pago2": false, "matricula": false}], "budgetLines": [{"concepto": "Contribución con gastos generales", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "Valor póliza Uniandes", "tipo": "gasto", "precio": 180000, "moneda": "COP", "cantidad": 1, "presupuestado": -180000, "ejecutado": null}, {"concepto": "Tiquetes", "tipo": "gasto", "precio": 4000000, "moneda": "COP", "cantidad": 1, "presupuestado": -4000000, "ejecutado": -4087620}, {"concepto": "Viaticos", "tipo": "gasto", "precio": 600, "moneda": "USD", "cantidad": 1, "presupuestado": -2420400, "ejecutado": -7023555}, {"concepto": "Hotel profesor", "tipo": "gasto", "precio": 5000000, "moneda": "COP", "cantidad": 1, "presupuestado": -5000000, "ejecutado": null}, {"concepto": "Bonificación profesor", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "VAT", "tipo": "gasto", "precio": 0, "moneda": "COP", "cantidad": 0, "presupuestado": 0, "ejecutado": null}, {"concepto": "Honorarios personal profesional Babson (pago factura)", "tipo": "gasto", "precio": 91000, "moneda": "USD", "cantidad": 1, "presupuestado": -367094000, "ejecutado": -157379404}, {"concepto": "Impuesto de timbre", "tipo": "gasto", "precio": 3670940, "moneda": "COP", "cantidad": 1, "presupuestado": -3670940, "ejecutado": null}, {"concepto": "BABSON EPOS", "tipo": "ingreso", "precio": 12250000, "moneda": "COP", "cantidad": 8, "presupuestado": 98000000, "ejecutado": null}, {"concepto": "BABSON MBA", "tipo": "ingreso", "precio": 13320000, "moneda": "COP", "cantidad": 26, "presupuestado": 346320000, "ejecutado": null}], "dates": "12 - 17 Jul. 2026", "survey": {"n": 179, "avg": 4.68, "nps": 9.29, "npsN": 17, "aspects": [{"aspect": "Responsabilidades de los estudiantes", "avg": 4.9, "n": 10}, {"aspect": "Coherencia", "avg": 4.8, "n": 30}, {"aspect": "Gestión de clase", "avg": 4.71, "n": 21}, {"aspect": "Participación de los estudiantes", "avg": 4.71, "n": 21}, {"aspect": "Trato a estudiantes", "avg": 4.64, "n": 28}, {"aspect": "Fomento de autonomía", "avg": 4.61, "n": 18}, {"aspect": "Retroalimentación, monitoreo y criterios de calificación", "avg": 4.59, "n": 27}, {"aspect": "Fomento de pensamiento crítico, discusión y participación", "avg": 4.54, "n": 24}], "commentGroups": [{"label": "Course — Valued Most", "items": ["La organización y el nivel de Babson", "Experiencia internacional, task con personas de otras latitudes y culturas. También la forma en la que se abordan los temas de emprendimiento ", "Excelente experiencia académica! Muy buen nivel, los profesores, los temas y los compañeros internacionales de todas partes del mundo! Hermosas intalaciones las del college, muy bien poder vivir la experiencia de estudiar en Boston!", "HAY MUY BUENOS PROFESORES", "Interacción con casos reales de emprendimiento, y de un buen nivel.\nConocimiento del contexto colombiano de algunos profesores, lo que puede ayudar a aplicar algunas de esas ideas a Colombia.", "Contenido muy bien curado para la duración del curso.\nProfesores con credenciales excelentes para dictar los temas que enseñan.\nExcelentes instalaciones de la universidad.\nBuen orden para la gestión del curso.", "La Semana Internacional en Babson College fue una experiencia verdaderamente inolvidable y una de esas oportunidades que difícilmente se presentan más de una vez en la vida. Vivir durante una semana el ambiente de una institución reconocida mundialmente por su liderazgo en emprendimiento permitió ampliar mi perspectiva sobre cómo identificar oportunidades, crear valor e innovar en entornos de alta incertidumbre.\nMás allá de los contenidos académicos, fue una experiencia transformadora por el intercambio con compañeros de diferentes países, la calidad de los profesores y profesoras y la metodología práctica, que nos desafió constantemente a pensar de forma diferente y a convertir las ideas en propuestas con impacto.\nRegreso con nuevos conocimientos, una mentalidad más emprendedora y la motivación de aplicar estos aprendizajes tanto en mi desarrollo profesional como personal.", "En general la experiencia de conocimiento en el programa de Babson ha sido buena, aunque la verdad esperaba un poco más de algunos profesores y compañeros en general. Sugiero explorar la posibilidad de hacer contactos con más universidades en Boston dado que acá es una cuna académica y profesional, lo que nos permitiría, para los siguientes períodos, considerar otras alternativas. ", "Bien Organizado, buen profesorado", "La experiencia de los progesores se ve reflejada en como dan las clases, su metodología y actividades, asi mismo los casos vistos muchos de ellos fueron escritos por los mismos profesores.", "Profesoras, personas de diferentes universidades y la universidad", "Una experiencia muy enriquecedora, con un contenido de alto valor y una gran posibilidad para poder hacer networking y concocer otras maneras de hacer las cosas.", "El curso en babson tiene excelentes clases y un contenido academico excelente. Creo que sera una de las mejores semanas internacionales. Destaco de Babson la posibilidad de interactuar con personas de otras maestrias y principalmente de otros paises, donde se puede crecer bastante gracias al trabajo en equipo. ", "Networking\nconocimiento y metodología de los profesores", "Networking and cross-country collaboration"], "n": 15}, {"label": "Faculty — Valued Most", "items": ["Muy orofesuonal", "Su experiencia y storytelling ", "No interactué mucho con Eduardo, fue formal.", "Varios profesores con experiencias distintas en emprendimiento", "Persona muy agradable e interesante que siempre veló por nuestros intereses y necesidades.", "El profesor acompañante siempre estuvo dispuesto a apoyar los aspectos logísticos del programa y fue amable durante toda la semana.", "Involucrarse más con el grupo y realizar procesos de retroalimentación de lo visto durante el día", "Excelente curso ", "ninguno", "Pendiente de los estudiantes.", "Un profesor muy profesional y centrado en su trabajo", "Todos los profesores fueron excelentes, impresionante el dominio de los temas, la experiencia que tienen, y el ejemplo con sus propias hojas de vida. "], "n": 12}, {"label": "Course — Could Improve", "items": ["Garantizaría que las personas de los Andes que vayan dominen el inglés, pues garantiza el fluido del curso", "Logisticamente el nivel fue inferior al del EMBA pero era consiente de ello cuando hice el cambio.", "PIENSO QUE LA CLASE DE MERCADEO NO APORTA MUCHO.", "Más tiempo para interactuar con los profesores y poder traer enseñanzas al contexto colombiano.", "Las clases pueden ser un poco largas con la duración de 3.5h. ", "Considero que uno de los aspectos por mejorar es la oferta de alimentación. Aunque la calidad de la comida era buena, la variedad de los platos fue limitada, por lo que, al cabo de unos días, era común terminar comiendo prácticamente lo mismo. Contar con un menú más diverso haría la experiencia mucho más agradable, especialmente para quienes permanecen toda la semana en el campus.", "Aunque Babson es una entidad de prestigio, el servicio al cliente y su atención hacia nosotros (NO de los profesores sino más del área administrativa y de organización de la semana de estudio) fue deficiente, en mi concepto, por ejemplo, en la salida a Boston literal nos dejaron allá y eso fue todo; si bien no es algo necesariamente académico si hace parte de la propuesta de valor de este viaje. Adicionalmente, considero que se deben incluir opciones de semana internacional en Español, como por ejemplo lo tienen los programas ejecutivos que tiene la facultad. ", "Algunos temas son un poco antiguos, por ejemplo la clase de marketing deberia ser mas moderna, marketing esta evolucionando cada dia y debemos actuar de esta forma para aprender", "lo haría quizas mas extenso para abordar mas temas.", "Muchas personas para el proyecto final", "Todo es demasiado de afán, no tuvimos el tiempo de vivir la experiencia universitaria porque el tiempo era muy limitado. El curso sería mucho mas provechoso si se tuviera mas tiempo porque incluso las participaciones de los estudiantes durante la clase eran limitadas por el tiempo disponible", "Las actividades extra academicas son pesimas, dejarnos botados en Boston sin guia, sin un plan, no es una actividad de la universidad. Por otro lado, la comida, es muy mala, todos los dias lo mismo y pesima calidad de comida. Los horarios y distancias no eran adecuadas para ir a almorzar por ejemplo. La actividad de integracion fue una de las peores que he vivido, supuestamente la llamaron party, pero cuando regalan algo para despues no alcanzar a reclamarlo porque solo habia una persona atendiendo, no tiene sentido. En general, la organizacion de Babson en terminos extra academicos deja mucho que desear. ", "Realizaría un filtro del nivel de inglés de los estudiantes, dado que esto es fundamental para poder desarrollar las actividades en grupo. "], "n": 13}, {"label": "Faculty — Could Improve", "items": ["Que se involucre más ", "no tuve ninguna experiencia académica con Eduardo", "Más material de estudio posterior a las clases para poder profundizar.", "Adelante con su aspiración académica.", "Como oportunidad de mejora, habría sido valioso contar con una mayor cercanía e interacción con el grupo, promoviendo más espacios de conversación, integración y reflexión sobre la experiencia que estábamos viviendo. Creo que su acompañamiento pudo haber tenido un impacto aún mayor si hubiera existido una participación más activa con los estudiantes.", "Dado que es un profesor de acompañamiento, no tengo comentarios adicionales al respecto.", "Tratar de enseñar temas mas actualizados", "poca / nula interacción con los estudiantes a lo largo del programa", "No hubo un acercamiento del profesor con los estudiantes, es decir, sabíamos que el estaba con nosotros, sin embargo la interacción con los estudiantes era muy poca y su posición siempre fue muy alejada y autoritaria.", "Ninguna."], "n": 10}], "respondents": 17, "responseRate": 50.0, "workloadAvg": 2.5, "workloadN": 12, "objectivesAllPct": 91.7, "objectivesN": 12, "questions": [{"text": "¿Tienes la percepción de que la carga de trabajo asociada a este curso ha sido excesiva? (Recuerda que un crédito equivale a 3 horas de trabajo semanal en cursos de 16 semanas y a 6 horas de trabajo semanal en cursos de 8 semanas).", "aspect": "Carga académica", "type": "carga", "options": {"Mucho": 5, "Nada": 1, "Poco": 5, "Demasiado": 1}}, {"text": "Las actividades desarrolladas contribuyeron al logro de los objetivos del curso.", "aspect": "Coherencia", "type": "acuerdo", "options": {"Totalmente de acuerdo": 8, "De acuerdo": 2}}, {"text": "¿Se cumplieron los objetivos de este curso?", "aspect": "Coherencia", "type": "cantidad", "options": {"Todos": 11, "Algunos": 1}}, {"text": "Las evaluaciones dan cuenta del cumplimiento de los objetivos del curso.", "aspect": "Coherencia", "type": "acuerdo", "options": {"De acuerdo": 3, "Totalmente de acuerdo": 7, "No aplica": 2}}, {"text": "Las actividades están orientadas a consolidar lo aprendido y a ponerlo en práctica en ejercicios significativos.", "aspect": "Coherencia", "type": "acuerdo", "options": {"Totalmente de acuerdo": 9, "De acuerdo": 1}}, {"text": "El profesor me transmite confianza en mi habilidad para desempeñarme bien en el curso.", "aspect": "Fomento de autonomía", "type": "acuerdo", "options": {"Totalmente de acuerdo": 6, "No aplica": 4, "Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 1}}, {"text": "El profesor trata de entender cómo yo veo las cosas antes de sugerirme nuevas formas de hacerlas.", "aspect": "Fomento de autonomía", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "Totalmente de acuerdo": 7, "De acuerdo": 2}}, {"text": "El profesor promueve que los estudiantes cuestionen los conceptos (teorías, modelos, enfoques, etc.) abordados.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"Totalmente de acuerdo": 6, "No aplica": 4, "Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 1}}, {"text": "El profesor invita a los estudiantes a cuestionar sus propias ideas.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 2, "No aplica": 4, "De acuerdo": 1, "Totalmente de acuerdo": 5}}, {"text": "El profesor fomenta que los estudiantes respalden las argumentaciones y conclusiones de sus trabajos con rigor lógico y evidencias.", "aspect": "Fomento de pensamiento crítico, discusión y participación", "type": "acuerdo", "options": {"Totalmente de acuerdo": 6, "No aplica": 4, "Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 1}}, {"text": "¿Qué tan probable es que recomiendes tomar este curso con este/a profesor/a?", "aspect": "General", "type": "escala010", "options": {"10": 12, "7": 1, "5": 1, "8": 1, "9": 2}}, {"text": "Las temáticas y las actividades programadas se cumplen adecuadamente.", "aspect": "Gestión de clase", "type": "acuerdo", "options": {"De acuerdo": 2, "Totalmente de acuerdo": 9, "No aplica": 1}}, {"text": "El profesor organizó las clases y actividades del curso de forma efectiva para el aprendizaje.", "aspect": "Gestión de clase", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 1, "Totalmente de acuerdo": 7, "De acuerdo": 2}}, {"text": "En el curso hubo un ambiente de confianza para participar y hacer preguntas, y si las hubo, se respetaron las diferencias de criterio y opinión.", "aspect": "Participación de los estudiantes", "type": "acuerdo", "options": {"Totalmente de acuerdo": 8, "De acuerdo": 2}}, {"text": "La dinámica y las actividades de los encuentros sincrónicos propiciaron que los estudiantes estuviéramos involucrados, es decir, participando o concentrados.", "aspect": "Participación de los estudiantes", "type": "acuerdo", "options": {"De acuerdo": 4, "Totalmente de acuerdo": 7, "No aplica": 1}}, {"text": "En el curso me sentí motivado.", "aspect": "Responsabilidades de los estudiantes", "type": "acuerdo", "options": {"Totalmente de acuerdo": 9, "De acuerdo": 1}}, {"text": "Las instrucciones y expectativas de las actividades y del trabajo por realizar se comunicaron con claridad, precisión y suficiente anticipación.", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"De acuerdo": 2, "Totalmente de acuerdo": 9, "No aplica": 1}}, {"text": "Recibí del profesor retroalimentación constructiva que contribuyó a mi proceso de aprendizaje (retroalimentación se refiere a las intervenciones o comentarios del profesor que te permiten identificar tus fortalezas, y las áreas en las que debes mejorar).", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"De acuerdo": 2, "No aplica": 4, "Ni de acuerdo ni en desacuerdo": 1, "Totalmente de acuerdo": 5}}, {"text": "La retroalimentación dada por el profesor es oportuna, pertinente y clara.", "aspect": "Retroalimentación, monitoreo y criterios de calificación", "type": "acuerdo", "options": {"Ni de acuerdo ni en desacuerdo": 2, "No aplica": 4, "De acuerdo": 1, "Totalmente de acuerdo": 5}}, {"text": "El profesor les da el mismo trato a todos los estudiantes, sin discriminación.", "aspect": "Trato a estudiantes", "type": "acuerdo", "options": {"Totalmente de acuerdo": 11, "No aplica": 4, "Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 1}}, {"text": "El profesor es respetuoso con todos los estudiantes.", "aspect": "Trato a estudiantes", "type": "acuerdo", "options": {"Totalmente en desacuerdo": 1, "Totalmente de acuerdo": 12, "Ni de acuerdo ni en desacuerdo": 1, "De acuerdo": 1, "No aplica": 2}}]}}], "totals": {"weeks": 4, "countries": 4, "studentsAbroad": 129, "totalIncome": 1640800000, "totalExpense": 1377725395.442, "totalBalance": 263074604.5580001, "marginPct": 16.03}, "trm": {"USD": 4034, "EUR": 4393.708}, "origin": {"lat": 4.711, "lon": -74.0721}};
+
+/* International Weeks 2026 — rendering logic. Reads DATA (above) and
+   builds the DOM + Plotly charts. No network calls, no build step. */
+
+const fmt = n => (n<0?'-':'') + '$' + Math.round(Math.abs(n)).toLocaleString('en-US');
+const FLAGS = {Germany:'🇩🇪', Portugal:'🇵🇹', Brazil:'🇧🇷', USA:'🇺🇸'};
+const GEO_SCOPE = {DEU:'europe', PRT:'europe', BRA:'south america', USA:'usa'};
+
+/* ---------- Nav ---------- */
+function buildNav(){
+  const tabs = [{id:'overview', label:'Overview'}]
+    .concat(DATA.weeks.map(w => ({id:w.key, label:w.key, color:w.color})))
+    .concat([{id:'financial', label:'Financial Detail'}]);
+  document.getElementById('tabNav').innerHTML = tabs.map(t =>
+    '<button data-tab="'+t.id+'" onclick="showView(\''+t.id+'\')">'
+    + (t.color ? '<span class="dot" style="background:'+t.color+'"></span>' : '')
+    + t.label + '</button>'
+  ).join('');
+}
+
+function tabOrder(){
+  return ['datacenter', 'overview'].concat(DATA.weeks.map(w=>w.key)).concat(['financial']);
+}
+
+let currentViewId = null;
+
+function showView(id){
+  const isWeek = k => DATA.weeks.some(w => w.key === k);
+  const cameFromWeek = currentViewId && isWeek(currentViewId);
+  const goingToWeek = isWeek(id);
+
+  const order = tabOrder();
+  const idx = order.indexOf(id);
+  document.getElementById('mainViews').style.transform = 'translateX(-' + (idx*100) + 'vw)';
+
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.getElementById('tabNav').style.display = (id === 'datacenter') ? 'none' : 'flex';
+  updateViewportTop();
+  const el = document.getElementById('view-' + id);
+  if(!el.dataset.rendered){
+    el.dataset.rendered = '1';
+    if(id === 'datacenter'){ /* static content, nothing to render */ }
+    else if(id === 'overview') renderOverviewCharts();
+    else if(id === 'financial') renderFinancialCharts();
+    else renderWeekCharts(id);
+  }
+  // Week ↔ week keeps the scroll position (each .view now scrolls
+  // independently and stays in the DOM, so this happens naturally) — you
+  // can flip between weeks and compare the same section side by side.
+  if(!(cameFromWeek && goingToWeek)) el.scrollTop = 0;
+  currentViewId = id;
+}
+
+function updateViewportTop(){
+  const topbar = document.getElementById('topbar');
+  const vp = document.getElementById('viewport');
+  if(topbar && vp) vp.style.top = topbar.offsetHeight + 'px';
+}
+window.addEventListener('resize', updateViewportTop);
+window.addEventListener('load', updateViewportTop);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(updateViewportTop);
+
+
+function kpi(v, l, cls){
+  return '<div class="kpi'+(cls?' '+cls+'-bg':'')+'"><div class="kpi-value'+(cls?' '+cls:'')+'">'+v+'</div><div class="kpi-label">'+l+'</div></div>';
+}
+
+/* ================= Overview ================= */
+function partnerCardHTML(w){
+  const genderTxt = Object.entries(w.gender).map(([g,n]) => (g==='F'?'♀':'♂')+' '+n).join('   ');
+  return '<div class="partner-card" style="--week-color:'+w.color+'; --week-soft:'+w.colorSoft+';" onclick="showView(\''+w.key+'\')">'
+    + '<img class="logo" src="PICS/LOGOS/'+w.logo+'" alt="'+w.key+'">'
+    + '<div class="loc">'+(FLAGS[w.country]||'')+' '+w.location+', '+w.country+' · '+w.dates+'</div>'
+    + '<div class="n">'+w.abroadCount+'</div><div class="n-label">Students Abroad</div>'
+    + '<div class="gender-row">'+genderTxt+'</div>'
+    + '<div class="fin-row income"><span>Ingresos</span><span class="val">'+fmt(w.ingresos)+'</span></div>'
+    + '<div class="fin-row expense"><span>Egresos</span><span class="val">'+fmt(w.egresos)+'</span></div>'
+    + '<div class="fin-row"><span>Balance</span><span class="val">'+fmt(w.balance)+'</span></div>'
+    + '<span class="margin-pill">'+w.marginPct+'% margin</span>'
+  + '</div>';
+}
+
+function overviewHTML(){
+  const T = DATA.totals;
+  const cards = DATA.weeks.map(partnerCardHTML).join('');
+
+  return ''
+  + '<h1>2026 International Weeks — Program Summary</h1>'
+  + '<p class="subtitle">Four graduate international immersions this year, each pairing a partner business school abroad with a School of Management cohort.</p>'
+  + '<div class="kpi-strip">'
+    + kpi(T.weeks, 'International Weeks')
+    + kpi(T.countries, 'Countries')
+    + kpi(T.studentsAbroad, 'Total Students Abroad')
+  + '</div>'
+  + '<div class="fin-hero" style="margin-top:20px;">'
+    + '<div class="fin-stack">'
+      + kpi(fmt(T.totalIncome), 'Total Income', 'income')
+      + kpi(fmt(T.totalExpense), 'Total Expenses', 'expense')
+      + kpi(fmt(T.totalBalance), 'Total Balance', 'balance')
+    + '</div>'
+    + '<div class="margin-box">' + kpi(T.marginPct+'%', 'Total Margin') + '</div>'
+    + '<div class="fin-hero-chart"><h3>Margin by Week</h3><p class="card-note">Dashed line = blended total margin ('+T.marginPct+'%).</p><div id="ovMarginChart" style="height:150px;"></div></div>'
+  + '</div>'
+  + '<div class="card">'
+    + '<div class="ov-map-wrap" id="ovMapLayout">'
+      + '<h3>Where Students Went</h3><p class="card-note">Click a destination to see its International Week card.</p>'
+      + '<div id="ovMap" style="height:420px;"></div>'
+      + '<div id="ovSelectedOverlay" class="ov-selected-overlay" style="display:none;"></div>'
+    + '</div>'
+    + '<button type="button" class="subtle-reset" id="ovMapReset" style="display:none; margin-top:10px;">&#8634; Show all International Weeks</button>'
+    + '<div style="margin-top:24px;"><h3 id="ovProgramTitle">Participants by Program</h3><p class="card-note" id="ovProgramNote">Highest-enrollment program first, stacked by International Week.</p><div id="ovProgramChart" style="height:420px;"></div></div>'
+  + '</div>'
+  + '<div id="ovPartnerSection">'
+    + '<h3 style="margin-top:28px; margin-bottom:4px;">By Partner</h3>'
+    + '<p class="subtitle">Click a card for the full roster, payment status, and budget breakdown.</p>'
+    + '<div class="partner-grid" id="ovPartnerGrid">' + cards + '</div>'
+  + '</div>';
+}
+
+function computeProgramByWeek(onlyKey){
+  const totals = {}, byProgWeek = {};
+  const weeks = onlyKey ? DATA.weeks.filter(w=>w.key===onlyKey) : DATA.weeks;
+  weeks.forEach(w=>{
+    (w.participantsList||[]).filter(p=>p.matricula).forEach(p=>{
+      const prog = p.programa || 'Unspecified';
+      totals[prog] = (totals[prog]||0)+1;
+      byProgWeek[prog] = byProgWeek[prog] || {};
+      byProgWeek[prog][w.key] = (byProgWeek[prog][w.key]||0)+1;
+    });
+  });
+  const programs = Object.keys(totals).sort((a,b)=>totals[b]-totals[a]);
+  return {programs, byProgWeek, weeks};
+}
+
+function renderProgramChart(onlyKey){
+  const {programs, byProgWeek, weeks} = computeProgramByWeek(onlyKey);
+  if(!programs.length){ Plotly.purge('ovProgramChart'); return; }
+  const traces = weeks.map(w => ({
+    type:'bar', orientation:'h', name:w.key,
+    x: programs.map(p => (byProgWeek[p] && byProgWeek[p][w.key]) || 0),
+    y: programs, marker:{color:w.color},
+  }));
+  Plotly.newPlot('ovProgramChart', traces, {
+    barmode:'stack',
+    margin:{t:6, r:16, b:26, l:170},
+    legend:{orientation:'h', x:0, y:1.12},
+    xaxis:{gridcolor:'#EFEBEE'},
+    yaxis:{tickfont:{size:10}, automargin:true, categoryorder:'array', categoryarray:programs, autorange:'reversed'},
+    plot_bgcolor:'rgba(0,0,0,0)', paper_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'Inter', color:'#241420'}
+  }, {displayModeBar:false, responsive:true});
+}
+
+function selectOverviewWeek(key){
+  const w = DATA.weeks.find(x=>x.key===key);
+  if(!w) return;
+  const overlay = document.getElementById('ovSelectedOverlay');
+  overlay.innerHTML = partnerCardHTML(w);
+  overlay.style.display = 'block';
+  document.getElementById('ovMapReset').style.display = 'inline-block';
+  document.getElementById('ovProgramTitle').textContent = w.key + ' — Participants by Program';
+  document.getElementById('ovProgramNote').textContent = 'Highest-enrollment program first, for '+w.key+' only.';
+  renderProgramChart(key);
+}
+
+function resetOverviewMap(){
+  document.getElementById('ovSelectedOverlay').style.display = 'none';
+  document.getElementById('ovSelectedOverlay').innerHTML = '';
+  document.getElementById('ovMapReset').style.display = 'none';
+  document.getElementById('ovProgramTitle').textContent = 'Participants by Program';
+  document.getElementById('ovProgramNote').textContent = 'Highest-enrollment program first, stacked by International Week.';
+  renderProgramChart();
+}
+
+function renderOverviewCharts(){
+  Plotly.newPlot('ovMarginChart', [{
+    x: DATA.weeks.map(w=>w.marginPct), y: DATA.weeks.map(w=>w.key), type:'bar', orientation:'h',
+    marker:{color:'#4C8A3F'}, cliponaxis:false,
+    text: DATA.weeks.map(w=>w.marginPct+'%'), textposition:'outside',
+    textfont:{size:10.5, family:'IBM Plex Mono', color:'#241420'}
+  }], {
+    margin:{t:6, r:46, b:26, l:56},
+    xaxis:{ticksuffix:'%', gridcolor:'#EFEBEE', zeroline:true, zerolinecolor:'#D8CFD5'},
+    yaxis:{tickfont:{size:10.5}},
+    shapes:[{type:'line', x0:DATA.totals.marginPct, x1:DATA.totals.marginPct, y0:-0.5, y1:3.5, line:{color:'#241420', width:1.5, dash:'dot'}}],
+    annotations:[{x:DATA.totals.marginPct, y:3.5, yshift:10, showarrow:false, text:'Total Margin: '+DATA.totals.marginPct+'%', font:{size:9.5, family:'IBM Plex Mono', color:'#241420'}}],
+    plot_bgcolor:'rgba(0,0,0,0)', paper_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'Inter', color:'#241420'}
+  }, {displayModeBar:false, responsive:true});
+
+  const o = DATA.origin;
+  const lines = DATA.weeks.map(w => ({
+    type:'scattergeo', mode:'lines', lat:[o.lat, w.lat], lon:[o.lon, w.lon],
+    line:{color:w.color, width:1.6}, opacity:.7, showlegend:false, hoverinfo:'skip'
+  }));
+  const destMarkers = {
+    type:'scattergeo', mode:'markers+text', lat:DATA.weeks.map(w=>w.lat), lon:DATA.weeks.map(w=>w.lon),
+    text:DATA.weeks.map(w=>w.key), textposition:'top center', textfont:{size:11, family:'Inter', color:'#241420'},
+    marker:{size:13, color:DATA.weeks.map(w=>w.color), line:{color:'#fff', width:1.5}}, showlegend:false,
+    customdata:DATA.weeks.map(w=>w.key),
+    hovertext:DATA.weeks.map(w=>w.location+', '+w.country+' — '+w.abroadCount+' students — click to select'), hoverinfo:'text'
+  };
+  const originMarker = {
+    type:'scattergeo', mode:'markers+text', lat:[o.lat], lon:[o.lon], text:['Bogotá'], textposition:'bottom center',
+    textfont:{size:11, family:'Inter', color:'#241420'}, marker:{size:11, color:'#241420', symbol:'diamond'}, showlegend:false, hoverinfo:'skip'
+  };
+  const mapEl = document.getElementById('ovMap');
+  Plotly.newPlot(mapEl, lines.concat([destMarkers, originMarker]), {
+    geo:{ scope:'world', projection:{type:'natural earth'}, showland:true, landcolor:'#F1EDEF',
+      showcountries:true, countrycolor:'#DDD4D9', showocean:true, oceancolor:'#FAF8FA',
+      showcoastlines:false, bgcolor:'rgba(0,0,0,0)' },
+    margin:{t:10,r:10,b:10,l:10}, paper_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'Inter'}
+  }, {displayModeBar:false, responsive:true});
+  mapEl.on('plotly_click', (ev)=>{
+    const pt = ev.points.find(p=>p.customdata);
+    if(pt) selectOverviewWeek(pt.customdata);
+  });
+  document.getElementById('ovMapReset').addEventListener('click', resetOverviewMap);
+
+  renderProgramChart();
+}
+
+/* ================= Week detail ================= */
+function weekHTML(w){
+  const notAbroadCount = w.registeredCount - w.abroadCount;
+  return ''
+  + '<div class="week-hero">'
+    + '<div class="week-hero-main">'
+      + '<div class="week-band" style="--week-color:'+w.color+'; background:'+w.colorSoft+';">'
+        + '<img class="logo" src="PICS/LOGOS/'+w.logo+'" alt="'+w.key+'">'
+        + '<div class="info">'
+          + '<div class="eyebrow">'+w.name+'</div>'
+          + '<h2>'+w.course+'</h2>'
+          + '<div class="loc">'+(FLAGS[w.country]||'')+' '+w.location+', '+w.country+' · '+w.dates+'</div>'
+        + '</div>'
+        + '<div class="prof">'
+          + '<img src="PICS/PROFES/'+w.photo+'" alt="'+w.professor+'" onerror="this.style.display=\'none\'">'
+          + '<div><div class="pname">'+w.professor+'</div><div class="prole">Faculty Lead</div></div>'
+        + '</div>'
+      + '</div>'
+      + '<div class="kpi-strip">'
+        + kpi(fmt(w.ingresos), 'Ingresos', 'income')
+        + kpi(fmt(w.egresos), 'Egresos', 'expense')
+        + kpi(fmt(w.balance), 'Balance', 'balance')
+        + kpi(w.marginPct + '%', '% Margin')
+      + '</div>'
+    + '</div>'
+    + '<div class="card week-hero-map">'
+      + '<div class="kpi-strip" style="grid-template-columns:1fr 1fr; margin-bottom:14px;">'
+        + kpi(w.abroadCount, 'Students Abroad')
+        + kpi(notAbroadCount, 'Registered, Did Not Travel')
+      + '</div>'
+      + '<h3>'+w.country+'</h3><p class="card-note">'+w.location+'</p><div id="'+w.key+'-countryMap" style="height:220px;"></div>'
+    + '</div>'
+  + '</div>'
+  + '<div class="card" style="margin-top:20px;">'
+    + '<h3>Participants by Program</h3><p class="card-note">Women (left) vs. men (right); total shown at right.</p>'
+    + '<div id="'+w.key+'-pyramidChart" style="height:280px;"></div>'
+  + '</div>'
+  + '<div class="card">'
+    + '<h3>Roster ('+w.registeredCount+' registered · '+w.abroadCount+' traveled)</h3>'
+    + '<div class="table-scroll"><table class="datatable">'
+      + '<thead><tr><th>#</th><th>Name</th><th>Code</th><th>Program</th><th>Type</th><th>1er Pago</th><th>2do Pago</th><th>Matrícula</th></tr></thead>'
+      + '<tbody>' + w.participantsList.map((p,i) =>
+          '<tr class="'+(p.matricula?'':'not-abroad')+'"><td>'+(i+1)+'</td><td>'+p.nombre+'</td><td>'+(p.codigo||'—')+'</td><td>'+p.programa+'</td><td>'+p.tipoPrograma+'</td>'
+          + '<td>'+tick(p.pago1)+'</td><td>'+tick(p.pago2)+'</td><td>'+tick(p.matricula)+'</td></tr>'
+        ).join('')
+      + '</tbody>'
+    + '</table></div>'
+    + '<button type="button" class="subtle-reset" style="margin-top:10px;" onclick="downloadRosterExcel(\''+w.key+'\')">&#8595; Download as Excel</button>'
+  + '</div>'
+  + '<div class="card">'
+    + '<h3>Course Evaluation Survey</h3>'
+    + '<p class="card-note">'+w.survey.respondents+' of '+w.abroadCount+' students abroad responded to the survey.</p>'
+    + '<div class="kpi-strip">'
+      + kpi(w.survey.respondents, 'Students Responded')
+      + kpi(w.survey.responseRate + '%', 'Response Rate')
+      + kpi(w.survey.avg!=null ? w.survey.avg+' / 5.0' : '—', 'Avg. Satisfaction')
+      + kpi(w.survey.npsN ? w.survey.nps+' / 10' : '—', 'Would Recommend')
+      + kpi(w.survey.objectivesN ? w.survey.objectivesAllPct+'%' : '—', 'Objectives Met')
+    + '</div>'
+    + '<h3 style="font-size:12.5px; color:var(--ink-soft); margin-top:20px;">By Aspect</h3>'
+    + '<div id="'+w.key+'-surveyChart" style="height:280px;"></div>'
+    + surveyCommentsHTML(w.survey.commentGroups)
+  + '</div>'
+  + '<div class="pdf-btn-row"><button class="pdf-btn" onclick="generateWeekPDF(\''+w.key+'\')">Generate Evaluation Report</button></div>';
+}
+
+function surveyCommentsHTML(groups){
+  return '<div class="two-col" style="margin-top:16px;">' + groups.map(g =>
+    '<div><h3 style="font-size:12.5px; color:var(--ink-soft);">'+g.label+' ('+g.n+')</h3>'
+    + (g.n ? '<ul style="margin:0; padding-left:18px; font-size:12.5px; color:var(--ink-soft); max-height:180px; overflow-y:auto;">'
+        + g.items.map(t=>'<li style="margin-bottom:6px;">'+t+'</li>').join('') + '</ul>'
+      : '<p class="card-note">No comments for this question.</p>')
+    + '</div>'
+  ).join('') + '</div>';
+}
+
+function tick(v){ return v ? '<span class="tick">✓</span>' : '<span class="cross">✗</span>'; }
+
+function downloadRosterExcel(key){
+  const w = DATA.weeks.find(x=>x.key===key);
+  if(!w) return;
+  const rows = w.participantsList.map(p => ({
+    Name: p.nombre, Code: p.codigo||'', Program: p.programa, Type: p.tipoPrograma,
+    'Primer Pago': p.pago1?'Yes':'No', 'Segundo Pago': p.pago2?'Yes':'No', 'Matrícula': p.matricula?'Yes':'No',
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Roster');
+  XLSX.writeFile(wb, w.key+'_Roster.xlsx');
+}
+
+function downloadBudgetExcel(key){
+  const w = DATA.weeks.find(x=>x.key===key);
+  if(!w) return;
+  const rows = w.budgetLines.map(b => ({
+    Concept: b.concepto, Type: b.tipo, 'Unit Price': b.precio, Currency: b.moneda, Qty: b.cantidad,
+    Budgeted_COP: b.presupuestado, Executed_COP: b.ejecutado,
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Budget');
+  XLSX.writeFile(wb, w.key+'_Budget.xlsx');
+}
+
+function downloadComparisonExcel(){
+  const T = DATA.totals;
+  const rows = DATA.weeks.map(w => ({ Week: w.name, Ingresos: w.ingresos, Egresos: w.egresos, Balance: w.balance, 'Margin %': w.marginPct }));
+  rows.push({ Week: 'Total', Ingresos: T.totalIncome, Egresos: T.totalExpense, Balance: T.totalBalance, 'Margin %': T.marginPct });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Comparison');
+  XLSX.writeFile(wb, 'International_Weeks_Financial_Comparison.xlsx');
+}
+
+function renderWeekCharts(key){
+  const w = DATA.weeks.find(x => x.key === key);
+
+  const programs = Object.keys(w.programas).sort((a,b)=>w.programas[b]-w.programas[a]);
+  const women = programs.map(p => -(w.programaGender[p].F||0));
+  const men = programs.map(p => w.programaGender[p].M||0);
+  const totals = programs.map(p => (w.programaGender[p].F||0) + (w.programaGender[p].M||0));
+  Plotly.newPlot(key+'-pyramidChart', [
+    {x:women, y:programs, type:'bar', orientation:'h', name:'Women', marker:{color:w.colorSoft},
+      text:women.map(v=>String(-v)), textposition:'inside', textfont:{size:10, color:w.color}},
+    {x:men, y:programs, type:'bar', orientation:'h', name:'Men', marker:{color:w.color},
+      text:men.map(String), textposition:'inside', textfont:{size:10, color:'#fff'}},
+  ], {
+    barmode:'overlay',
+    margin:{t:10, r:90, b:26, l:190},
+    xaxis:{gridcolor:'#EFEBEE', zeroline:true, zerolinecolor:'#D8CFD5',
+      tickvals:autoTicks(women, men), ticktext:autoTicks(women,men).map(v=>String(Math.abs(v)))},
+    yaxis:{tickfont:{size:10.5}, automargin:true, autorange:'reversed'},
+    legend:{orientation:'h', x:0, y:1.12},
+    annotations: programs.map((p,i) => ({xref:'paper', x:1.03, xanchor:'left', y:p, showarrow:false, text:'Total: '+totals[i], font:{size:9.5, family:'IBM Plex Mono', color:'#6E5C68'}})),
+    plot_bgcolor:'rgba(0,0,0,0)', paper_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'Inter', color:'#241420'}
+  }, {displayModeBar:false, responsive:true});
+
+  Plotly.newPlot(key+'-countryMap', [
+    {type:'choropleth', locations:[w.countryCode], z:[1], locationmode:'ISO-3', colorscale:[[0,w.color],[1,w.color]], showscale:false, marker:{line:{color:'#fff', width:0.5}}},
+    {type:'scattergeo', mode:'markers+text', lat:[w.lat], lon:[w.lon], text:[w.location], textposition:'bottom center',
+      textfont:{size:11, family:'Inter', color:'#241420'}, marker:{size:12, color:'#241420', symbol:'circle', line:{color:'#fff', width:1.5}}}
+  ], {
+    geo:{ scope:GEO_SCOPE[w.countryCode]||'world', showland:true, landcolor:'#F1EDEF', showcountries:true, countrycolor:'#DDD4D9', showocean:true, oceancolor:'#FAF8FA', bgcolor:'rgba(0,0,0,0)' },
+    margin:{t:6,r:6,b:6,l:6}, showlegend:false, paper_bgcolor:'rgba(0,0,0,0)', font:{family:'Inter'}
+  }, {displayModeBar:false, responsive:true});
+
+  const aspects = w.survey.aspects;
+  Plotly.newPlot(key+'-surveyChart', [{
+    x: aspects.map(a=>a.avg), y: aspects.map(a=>a.aspect), type:'bar', orientation:'h',
+    marker:{color:w.color}, cliponaxis:false,
+    text: aspects.map(a=>a.avg.toFixed(2)), textposition:'outside',
+    textfont:{size:10, family:'IBM Plex Mono', color:'#241420'}
+  }], {
+    margin:{t:10, r:50, b:26, l:270},
+    xaxis:{range:[1,5.5], gridcolor:'#EFEBEE'},
+    yaxis:{tickfont:{size:10.5}, automargin:true, autorange:'reversed'},
+    plot_bgcolor:'rgba(0,0,0,0)', paper_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'Inter', color:'#241420'}
+  }, {displayModeBar:false, responsive:true});
+}
+
+// Mirrored pyramid axis: nice symmetric ticks around 0 covering both sides.
+function autoTicks(women, men){
+  const m = Math.max(...women.map(Math.abs), ...men.map(Math.abs), 1);
+  const step = Math.ceil(m/4) || 1;
+  const ticks = [];
+  for(let v=-step*4; v<=step*4; v+=step) ticks.push(v);
+  return ticks;
+}
+
+/* ================= Financial Detail ================= */
+function financialHTML(){
+  const T = DATA.totals;
+  const compareRows = DATA.weeks.map(w =>
+    '<tr><td><span class="week-chip"><span class="dot" style="background:'+w.color+'"></span>'+w.name+'</span></td>'
+    + '<td>'+fmt(w.ingresos)+'</td><td>'+fmt(w.egresos)+'</td><td>'+fmt(w.balance)+'</td><td>'+w.marginPct+'%</td></tr>'
+  ).join('');
+
+  const weekDetail = DATA.weeks.map(w => {
+    const income = w.budgetLines.filter(b=>b.tipo==='ingreso');
+    const expense = w.budgetLines.filter(b=>b.tipo==='gasto');
+    const usedCurrencies = [...new Set(w.budgetLines.filter(b=>b.moneda!=='COP').map(b=>b.moneda))];
+    const trmNote = usedCurrencies.length
+      ? 'TRM used: ' + usedCurrencies.map(c => c+' = '+fmt(DATA.trm[c])).join('  ·  ')
+      : 'All line items in COP.';
+
+    const lineRow = b => '<tr><td>'+b.concepto+'</td><td>'+(b.precio ? b.precio.toLocaleString('en-US')+' '+b.moneda : '—')+'</td>'
+      + '<td>'+b.cantidad+'</td><td>'+fmt(b.tipo==='gasto' ? Math.abs(b.presupuestado) : b.presupuestado)+'</td>'
+      + '<td>'+(b.ejecutado!=null ? fmt(Math.abs(b.ejecutado)) : '<span class="pill pending">pending</span>')+'</td></tr>';
+
+    return '<div class="fin-detail-week" style="--week-color:'+w.color+';">'
+      + '<h3>'+w.name+'</h3>'
+      + '<div class="trm-note">'+trmNote+'</div>'
+      + '<div class="two-col">'
+        + '<div><h3 style="font-size:13px; color:var(--income);">Income</h3>'
+          + '<table class="datatable"><thead><tr><th>Concept</th><th>Unit Price</th><th>Qty</th><th>Total (COP)</th><th>Executed</th></tr></thead>'
+          + '<tbody>' + income.map(lineRow).join('') + '</tbody></table>'
+          + '<div class="fin-subtotal"><span>Total Income</span><span style="color:var(--income);">'+fmt(w.ingresos)+'</span></div>'
+        + '</div>'
+        + '<div><h3 style="font-size:13px; color:var(--expense);">Expenses</h3>'
+          + '<table class="datatable"><thead><tr><th>Concept</th><th>Unit Price</th><th>Qty</th><th>Budgeted (COP)</th><th>Executed</th></tr></thead>'
+          + '<tbody>' + expense.map(lineRow).join('') + '</tbody></table>'
+          + '<div class="fin-subtotal"><span>Total Expenses</span><span style="color:var(--expense);">'+fmt(w.egresos)+'</span></div>'
+        + '</div>'
+      + '</div>'
+      + '<div class="fin-subtotal" style="margin-top:14px;"><span>Balance ('+w.marginPct+'% margin)</span><span style="color:var(--balance);">'+fmt(w.balance)+'</span></div>'
+      + '<button type="button" class="subtle-reset" style="margin-top:10px;" onclick="downloadBudgetExcel(\''+w.key+'\')">&#8595; Download as Excel</button>'
+    + '</div>';
+  }).join('');
+
+  return ''
+  + '<h1>Financial Detail</h1>'
+  + '<p class="subtitle">Full budget by concept for every week — sourced from BD_presupuesto.xlsx. "Executed" fills in once a line item is reconciled.</p>'
+  + '<div class="kpi-strip">'
+    + kpi(fmt(T.totalIncome), 'Total Income', 'income')
+    + kpi(fmt(T.totalExpense), 'Total Expenses', 'expense')
+    + kpi(fmt(T.totalBalance), 'Total Balance', 'balance')
+    + kpi(T.marginPct + '%', 'Total Margin')
+  + '</div>'
+  + '<div class="card"><h3>Ingresos vs. Egresos by Week</h3><div id="finCompareChart" style="height:300px;"></div></div>'
+  + '<div class="card"><h3>Comparison</h3><table class="datatable fin-compare">'
+    + '<thead><tr><th>Week</th><th>Ingresos</th><th>Egresos</th><th>Balance</th><th>Margin</th></tr></thead>'
+    + '<tbody>' + compareRows + '<tr class="total"><td>Total</td><td>'+fmt(T.totalIncome)+'</td><td>'+fmt(T.totalExpense)+'</td><td>'+fmt(T.totalBalance)+'</td><td>'+T.marginPct+'%</td></tr></tbody>'
+  + '</table>'
+  + '<button type="button" class="subtle-reset" style="margin-top:10px;" onclick="downloadComparisonExcel()">&#8595; Download as Excel</button>'
+  + '</div>'
+  + '<h3 style="margin-top:28px;">Detailed Budget by Week</h3>'
+  + weekDetail;
+}
+
+function renderFinancialCharts(){
+  Plotly.newPlot('finCompareChart', [
+    {x:DATA.weeks.map(w=>w.key), y:DATA.weeks.map(w=>w.ingresos), name:'Ingresos', type:'bar', marker:{color:'#2E8B57'}},
+    {x:DATA.weeks.map(w=>w.key), y:DATA.weeks.map(w=>w.egresos), name:'Egresos', type:'bar', marker:{color:'#C23B3B'}},
+  ], {
+    barmode:'group', margin:{t:20, r:10, b:30, l:90},
+    legend:{orientation:'h', x:0, y:1.14},
+    yaxis:{tickformat:'$,.0f', gridcolor:'#EFEBEE'},
+    plot_bgcolor:'rgba(0,0,0,0)', paper_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'Inter', color:'#241420'}
+  }, {displayModeBar:false, responsive:true});
+}
+
+/* ---------- Evaluation report PDF (survey only, no financials) ----------
+   Same visual language as the standalone Course Evaluation Report
+   Generator (stacked bars per question, NPS gradient, legends), just
+   themed with the week's own color instead of an uploaded logo. */
+const LIKERT_ORDER = ['Totalmente en desacuerdo','En desacuerdo','Ni de acuerdo ni en desacuerdo','De acuerdo','Totalmente de acuerdo'];
+const LIKERT_COL = {'Totalmente en desacuerdo':[210,45,45],'En desacuerdo':[255,112,67],'Ni de acuerdo ni en desacuerdo':[255,193,7],'De acuerdo':[139,195,74],'Totalmente de acuerdo':[46,125,50]};
+const WL_ORDER = ['Nada','Poco','Mucho','Demasiado'];
+const WL_COL = {'Nada':[46,125,50],'Poco':[139,195,74],'Mucho':[255,112,67],'Demasiado':[210,45,45]};
+const OBJ_ORDER = ['Ninguno','Algunos','Todos'];
+const OBJ_COL = {'Ninguno':[210,45,45],'Algunos':[255,193,7],'Todos':[46,125,50]};
+const NPS_COL = {0:[210,45,45],1:[220,55,55],2:[225,85,55],3:[240,110,40],4:[255,145,0],5:[255,190,0],6:[205,215,55],7:[155,200,80],8:[95,175,95],9:[55,155,75],10:[25,135,55]};
+
+function pdfCheckPage(doc, y, needed, pageH, drawHeader){
+  if(y + needed > pageH - 16){ doc.addPage(); drawHeader(); return 32; }
+  return y;
+}
+
+function pdfStackedBar(doc, opts, order, colorMap, x, y, w, h){
+  let total = 0; order.forEach(k=> total += (opts[k]||0));
+  if(!total) return y+h+2;
+  let cx = x;
+  order.forEach(k=>{
+    const n = opts[k]||0; if(!n) return;
+    const sw = w*(n/total), col = colorMap[k]||[180,180,180];
+    doc.setFillColor(col[0],col[1],col[2]); doc.rect(cx,y,sw,h,'F');
+    if(sw>14){ doc.setFontSize(6.5); doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.text(Math.round(n/total*100)+'%', cx+sw/2, y+h/2+2.2, {align:'center'}); }
+    cx += sw;
+  });
+  doc.setDrawColor(200,200,200); doc.setLineWidth(0.2); doc.rect(x,y,w,h);
+  return y+h+2;
+}
+
+function pdfLegend(doc, opts, order, colorMap, x, y, w){
+  let lx = x; doc.setFontSize(6.5);
+  order.forEach(k=>{
+    const n = opts[k]||0; if(!n) return;
+    const col = colorMap[k]||[180,180,180];
+    doc.setFillColor(col[0],col[1],col[2]); doc.rect(lx,y,3.5,3.2,'F');
+    doc.setTextColor(36,20,32);
+    const lbl = k+' ('+n+')';
+    doc.text(lbl, lx+5, y+3.2);
+    lx += doc.getTextWidth(lbl)+8;
+    if(lx > x+w-24){ lx=x; y+=5; }
+  });
+  return y+6;
+}
+
+function pdfNpsBar(doc, opts, x, y, w, h){
+  const sw = w/11;
+  doc.setFontSize(6); doc.setTextColor(140,127,135); doc.setFont('helvetica','normal');
+  for(let i=0;i<=10;i++) doc.text(String(i), x+i*sw+sw/2, y-2, {align:'center'});
+  for(let i=0;i<=10;i++){
+    const n = opts[String(i)]||0, col = NPS_COL[i];
+    doc.setFillColor(col[0],col[1],col[2]); doc.rect(x+i*sw, y, sw-0.4, h, 'F');
+    if(n>0){ doc.setFontSize(7); doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.text(String(n), x+i*sw+sw/2, y+h/2+2.5, {align:'center'}); }
+  }
+  doc.setDrawColor(200,200,200); doc.setLineWidth(0.2); doc.rect(x,y,w,h);
+  return y+h+3;
+}
+
+function generateWeekPDF(key){
+  const w = DATA.weeks.find(x => x.key === key);
+  const S = w.survey;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+  const c = hexToRgb(w.color), pW = 210, pH = 297, mg = 14, cW = pW-2*mg;
+  let pn = 1;
+
+  const drawHeader = () => {
+    doc.setFillColor(c[0],c[1],c[2]); doc.rect(0,0,pW,22,'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+    doc.text(w.professor, pW-mg, 9, {align:'right'});
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+    doc.text(w.course, pW-mg, 15, {align:'right'});
+    doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    doc.text(w.name, mg, 12);
+  };
+  const drawFooter = () => {
+    doc.setFillColor(248,246,248); doc.rect(0,pH-11,pW,11,'F');
+    doc.setTextColor(140,127,135); doc.setFont('helvetica','normal'); doc.setFontSize(7);
+    doc.text('International Weeks 2026 — Course Evaluation', mg, pH-4);
+    doc.text(String(pn), pW-mg, pH-4, {align:'right'});
+  };
+
+  // ---- Cover ----
+  doc.setFillColor(c[0],c[1],c[2]); doc.rect(0,0,pW,70,'F');
+  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(18);
+  doc.text('Course Evaluation Report', pW/2, 30, {align:'center'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(11);
+  doc.text(w.name, pW/2, 40, {align:'center'});
+  doc.setFontSize(9);
+  doc.text(w.location+', '+w.country+' · '+w.dates, pW/2, 48, {align:'center'});
+
+  doc.setFillColor(255,255,255); doc.roundedRect(mg, 80, cW, 40, 5, 5, 'F');
+  doc.setFillColor(c[0],c[1],c[2]); doc.roundedRect(mg, 80, 4, 40, 2, 2, 'F');
+  doc.setTextColor(c[0],c[1],c[2]); doc.setFont('helvetica','bold'); doc.setFontSize(14);
+  doc.text(w.professor, mg+10, 96);
+  doc.setTextColor(36,20,32); doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+  doc.text(w.course, mg+10, 104);
+  doc.setTextColor(140,127,135); doc.setFontSize(8);
+  doc.text('Faculty Lead — International Week', mg+10, 111);
+
+  let y = 132;
+  doc.setTextColor(36,20,32); doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.text('SURVEY OVERVIEW', mg, y); y += 9;
+  const stats = [
+    ['Students Responded', S.respondents+' / '+w.abroadCount], ['Response Rate', S.responseRate+'%'],
+    ['Avg. Satisfaction', S.avg!=null ? S.avg+' / 5.0' : 'N/A'],
+  ];
+  const bw = cW/3;
+  stats.forEach((s,i)=>{
+    const bx = mg+i*bw;
+    doc.setFillColor(248,246,248); doc.roundedRect(bx+1, y, bw-3, 30, 4, 4, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(c[0],c[1],c[2]);
+    doc.text(s[1], bx+bw/2-1, y+15, {align:'center'});
+    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(140,127,135);
+    doc.text(s[0], bx+bw/2-1, y+23, {align:'center'});
+  });
+  drawFooter();
+
+  // ---- Classify questions ----
+  const qLikert=[], qNPS=[], qObj=[], qCarga=[];
+  S.questions.forEach(q=>{
+    if(q.type==='acuerdo') qLikert.push(q);
+    else if(q.type==='escala010') qNPS.push(q);
+    else if(q.type==='cantidad') qObj.push(q);
+    else if(q.type==='carga') qCarga.push(q);
+  });
+
+  // ---- Quantitative: Likert by aspect ----
+  doc.addPage(); pn++; drawHeader(); drawFooter(); y = 32;
+  doc.setFillColor(c[0],c[1],c[2]); doc.rect(mg,y,cW,7.5,'F');
+  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+  doc.text('QUANTITATIVE EVALUATION', mg+5, y+5.3); y += 11;
+
+  const byAspect = {};
+  qLikert.forEach(q=>{ (byAspect[q.aspect] = byAspect[q.aspect]||[]).push(q); });
+  Object.keys(byAspect).forEach(asp=>{
+    y = pdfCheckPage(doc, y, 22, pH, ()=>{ drawHeader(); drawFooter(); });
+    doc.setFillColor(230,226,231); doc.rect(mg,y,cW,6.5,'F');
+    doc.setTextColor(36,20,32); doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
+    doc.text(asp.toUpperCase(), mg+4, y+4.6); y += 9.5;
+    byAspect[asp].forEach(q=>{
+      const qLines = doc.splitTextToSize(q.text, cW-26);
+      const needed = qLines.length*4 + 7 + 14;
+      y = pdfCheckPage(doc, y, needed, pH, ()=>{ drawHeader(); drawFooter(); });
+      doc.setTextColor(36,20,32); doc.setFont('helvetica','normal'); doc.setFontSize(8);
+      doc.text(qLines, mg, y);
+      const total = Object.values(q.options).reduce((a,b)=>a+b,0);
+      if(total){
+        doc.setFillColor(248,246,248); doc.roundedRect(mg+cW-22, y-4, 22, 6, 2, 2, 'F');
+        doc.setFontSize(7); doc.setTextColor(140,127,135);
+        doc.text('n='+total, mg+cW-11, y+0.5, {align:'center'});
+      }
+      y += qLines.length*4+3;
+      y = pdfStackedBar(doc, q.options, LIKERT_ORDER, LIKERT_COL, mg, y, cW, 7);
+      y = pdfLegend(doc, q.options, LIKERT_ORDER, LIKERT_COL, mg, y, cW);
+      doc.setDrawColor(230,230,230); doc.line(mg,y,mg+cW,y); y += 5;
+    });
+    y += 2;
+  });
+
+  // ---- NPS / Objectives / Workload ----
+  if(qNPS.length || qObj.length || qCarga.length){
+    doc.addPage(); pn++; drawHeader(); drawFooter(); y = 32;
+  }
+  if(qNPS.length){
+    doc.setFillColor(c[0],c[1],c[2]); doc.rect(mg,y,cW,7.5,'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+    doc.text('RECOMMENDATION (0-10)', mg+5, y+5.3); y += 11;
+    qNPS.forEach(q=>{
+      const qLines = doc.splitTextToSize(q.text, cW-4);
+      y = pdfCheckPage(doc, y, qLines.length*4+20, pH, ()=>{ drawHeader(); drawFooter(); });
+      doc.setTextColor(36,20,32); doc.setFont('helvetica','normal'); doc.setFontSize(8);
+      doc.text(qLines, mg, y); y += qLines.length*4+5;
+      y = pdfNpsBar(doc, q.options, mg, y, cW, 10) + 4;
+    });
+  }
+  if(qObj.length){
+    y = pdfCheckPage(doc, y, 24, pH, ()=>{ drawHeader(); drawFooter(); });
+    doc.setFillColor(c[0],c[1],c[2]); doc.rect(mg,y,cW,7.5,'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+    doc.text('COURSE OBJECTIVES', mg+5, y+5.3); y += 11;
+    qObj.forEach(q=>{
+      const qLines = doc.splitTextToSize(q.text, cW-4);
+      y = pdfCheckPage(doc, y, qLines.length*4+20, pH, ()=>{ drawHeader(); drawFooter(); });
+      doc.setTextColor(36,20,32); doc.setFont('helvetica','normal'); doc.setFontSize(8);
+      doc.text(qLines, mg, y); y += qLines.length*4+3;
+      y = pdfStackedBar(doc, q.options, OBJ_ORDER, OBJ_COL, mg, y, cW, 7);
+      y = pdfLegend(doc, q.options, OBJ_ORDER, OBJ_COL, mg, y, cW) + 2;
+    });
+  }
+  if(qCarga.length){
+    y = pdfCheckPage(doc, y, 24, pH, ()=>{ drawHeader(); drawFooter(); });
+    doc.setFillColor(c[0],c[1],c[2]); doc.rect(mg,y,cW,7.5,'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+    doc.text('ACADEMIC WORKLOAD', mg+5, y+5.3); y += 11;
+    qCarga.forEach(q=>{
+      const qLines = doc.splitTextToSize(q.text, cW-4);
+      y = pdfCheckPage(doc, y, qLines.length*4+20, pH, ()=>{ drawHeader(); drawFooter(); });
+      doc.setTextColor(36,20,32); doc.setFont('helvetica','normal'); doc.setFontSize(8);
+      doc.text(qLines, mg, y); y += qLines.length*4+3;
+      y = pdfStackedBar(doc, q.options, WL_ORDER, WL_COL, mg, y, cW, 7);
+      y = pdfLegend(doc, q.options, WL_ORDER, WL_COL, mg, y, cW) + 2;
+    });
+  }
+
+  // ---- Comments ----
+  if(S.commentGroups.some(g=>g.n)){
+    doc.addPage(); pn++; drawHeader(); drawFooter(); y = 32;
+    doc.setFillColor(c[0],c[1],c[2]); doc.rect(mg,y,cW,7.5,'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+    doc.text('OPEN COMMENTS', mg+5, y+5.3); y += 11;
+    S.commentGroups.forEach(g=>{
+      if(!g.n) return;
+      y = pdfCheckPage(doc, y, 20, pH, ()=>{ drawHeader(); drawFooter(); });
+      doc.setFillColor(248,246,248); doc.rect(mg,y,cW,6.5,'F');
+      doc.setFillColor(c[0],c[1],c[2]); doc.rect(mg,y,3,6.5,'F');
+      doc.setTextColor(36,20,32); doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
+      doc.text(g.label.toUpperCase()+' ('+g.n+')', mg+6, y+4.6); y += 10;
+      g.items.forEach(t=>{
+        const lines = doc.splitTextToSize('- '+t, cW-4);
+        const needed = lines.length*4.5+3;
+        y = pdfCheckPage(doc, y, needed, pH, ()=>{ drawHeader(); drawFooter(); });
+        doc.setFont('helvetica','normal'); doc.setFontSize(7.8); doc.setTextColor(80,72,78);
+        doc.text(lines, mg+2, y); y += needed;
+      });
+      y += 6;
+    });
+  }
+
+  doc.save('ISS_2026_' + w.key + '_Evaluation_Report.pdf');
+}
+
+function hexToRgb(hex){
+  const n = parseInt(hex.replace('#',''), 16);
+  return [(n>>16)&255, (n>>8)&255, n&255];
+}
+
+/* ---------- Data Center ---------- */
+function datacenterHTML(){
+  const files = [
+    {file:'BD_listas.xlsx', desc:'Enrollment, payments & program catalog per week'},
+    {file:'BD_presupuesto.xlsx', desc:'Budget by concept — income & expenses, per week'},
+    {file:'BD_semanas.xlsx', desc:'Week metadata — professor, dates, location, invoice'},
+    {file:'BD_encuesta_curso.xlsx', desc:'Course evaluation survey — frecuencias & comentarios'},
+  ];
+  return '<div class="datacenter">'
+  + '<img class="banner" src="PICS/LOGOS/Banner_Semanas.jpg" alt="International Weeks 2026" onerror="this.style.display=\'none\'">'
+  + '<div class="eyebrow">International Weeks 2026 · Report</div>'
+  + '<h1>Data Center</h1>'
+  + '<p class="subtitle">Verification of the sources powering this report.</p>'
+  + '<ul class="filelist">' + files.map(f =>
+      '<li title="'+f.desc+'"><span class="dot ok"></span><span class="fname">'+f.file+'</span><span class="fstatus">Loaded (bundled)</span>'
+      + '<a class="file-download" href="DATA/'+f.file+'" download>&#8595; Download</a></li>'
+    ).join('') + '</ul>'
+  + '<div class="summary-line"><strong>'+files.length+' sources loaded</strong></div>'
+  + '<button class="enter-btn" onclick="showView(\'overview\')">Enter the Report &#8594;</button>'
+  + '</div>';
+}
+
+function boot(){
+  buildNav();
+  const views = ['<div class="view" id="view-datacenter">'+datacenterHTML()+'</div>']
+    .concat(['<div class="view" id="view-overview">'+overviewHTML()+'</div>'])
+    .concat(DATA.weeks.map(w => '<div class="view" id="view-'+w.key+'">'+weekHTML(w)+'</div>'))
+    .concat(['<div class="view" id="view-financial">'+financialHTML()+'<footer class="report-footer">International Weeks 2026 · Facultad de Administración · Universidad de los Andes</footer></div>']);
+  document.getElementById('mainViews').innerHTML = views.join('');
+  document.getElementById('view-datacenter').dataset.rendered = '1';
+  updateViewportTop();
+  showView('datacenter');
+}
+boot();
+
+</script>
+
+</body>
+</html>
