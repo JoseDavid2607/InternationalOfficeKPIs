@@ -331,7 +331,7 @@ def qual_load_cartelera() -> pd.DataFrame:
 with st.sidebar:
     col_logo, col_title = st.columns([1, 3])
     with col_logo:
-        st.image("../../imagenes/logo.png", width=65)
+        st.image("imagenes/logo.png", width=65)
     with col_title:
         st.markdown(
             '<div style="padding-top:10px;color:#004d47;font-size:24px;'
