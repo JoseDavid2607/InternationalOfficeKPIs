@@ -32,6 +32,96 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ===========================================================================
+# NAVEGACIÓN SUPERIOR DESPLEGABLE (TOP NAVBAR)
+# ===========================================================================
+
+# 1. Estilos CSS para fijar el menú en el borde superior central
+st.markdown("""
+<style>
+/* Contenedor flotante en la parte superior */
+div[data-testid="stExpander"] {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 99999;
+    background-color: #004d47;
+    border-radius: 0 0 16px 16px;
+    box-shadow: 0px 4px 15px rgba(0, 0, 0, 0.25);
+    border: none !important;
+    width: auto;
+    min-width: 280px;
+    transition: all 0.3s ease;
+}
+
+/* Oculta los bordes por defecto del expander */
+div[data-testid="stExpander"] > details {
+    border: none !important;
+    background: transparent !important;
+}
+
+/* Estilo del botón / flecha sutil */
+div[data-testid="stExpander"] summary {
+    color: #56D6C9 !important;
+    font-weight: 700;
+    font-size: 14px;
+    justify-content: center;
+    padding: 4px 16px !important;
+    cursor: pointer;
+}
+
+div[data-testid="stExpander"] summary:hover {
+    color: #ffffff !important;
+}
+
+/* Contenido interno desplegado */
+div[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+    padding: 12px 20px !important;
+    background-color: #004d47;
+    border-radius: 0 0 16px 16px;
+}
+
+/* Ajuste del padding superior de la app para que el contenido no quede oculto */
+.main .block-container {
+    padding-top: 2rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# 2. Estado de sesión para controlar la página activa
+if "page" not in st.session_state:
+    st.session_state.page = "Página 1"
+
+# 3. Componente desplegable en la parte superior
+with st.expander("🔻 Navegación de Páginas", expanded=False):
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        if st.button("Composition", use_container_width=True):
+            st.session_state.page = "Página 1"
+            st.rerun()
+    with col2:
+        if st.button("Staffing", use_container_width=True):
+            st.session_state.page = "Página 2"
+            st.rerun()
+    with col3:
+        if st.button("Distribution", use_container_width=True):
+            st.session_state.page = "Página 3"
+            st.rerun()
+    with col4:
+        if st.button("Demographics", use_container_width=True):
+            st.session_state.page = "Página 4"
+            st.rerun()
+    with col5:
+        if st.button("Activities", use_container_width=True):
+            st.session_state.page = "Página 5"
+            st.rerun()
+    with col6:
+        if st.button("Qualifications", use_container_width=True):
+            st.session_state.page = "Página 6"
+            st.rerun()
+
 # ── CSS compartido por ambas páginas ───────────────────────────────────────
 st.markdown(
     "<style>"
@@ -5932,4 +6022,17 @@ page_3 = st.Page(page_area, title="Distribution by Area", icon="🏢")
 page_4 = st.Page(page_demographics, title="Faculty Demographics", icon="👥")
 page_5 = st.Page(page_activities, title="Faculty Activities", icon="📝")
 page_6 = st.Page(page_qualifications, title="Faculty Qualifications", icon="🎓")
+
+if st.session_state.page == "Página 1":
+    page_composition()
+elif st.session_state.page == "Página 2":
+    page_staffing()
+elif st.session_state.page == "Página 3":
+    page_area()
+elif st.session_state.page == "Página 4":
+    page_demographics()
+elif st.session_state.page == "Página 5":
+    page_activities()
+elif st.session_state.page == "Página 6":
+    page_qualifications()
 pg.run()
