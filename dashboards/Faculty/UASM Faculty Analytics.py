@@ -81,11 +81,14 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    "div[data-testid='stExpander']{border:none !important;margin-bottom:8px;}"
+    "div[data-testid='stExpander']{border:none !important;margin:-8px 0 4px 0 !important;}"
     "div[data-testid='stExpander'] summary{"
-    "background:#F8FFFE;border:1px solid #D1E8E4;border-radius:8px;"
-    "padding:6px 12px !important;color:#21877D;font-size:13px;font-weight:600;}"
+    "width:44px;height:20px;margin:0 auto !important;padding:0 !important;"
+    "background:#F8FFFE;border:1px solid #D1E8E4;border-top:none;"
+    "border-radius:0 0 10px 10px;display:flex;align-items:center;justify-content:center;}"
     "div[data-testid='stExpander'] summary:hover{background:#dff7f2;}"
+    "div[data-testid='stExpander'] summary svg{color:#21877D !important;}"
+    "div[data-testid='stExpander'] summary span{display:none;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -5877,7 +5880,7 @@ pages = [
 ]
 pg = st.navigation(pages, position="hidden")
 
-with st.expander("☰  Ir a otra página", expanded=False):
+with st.expander("", expanded=False):
     nav_cols = st.columns(len(pages))
     for col, page_obj in zip(nav_cols, pages):
         with col:
