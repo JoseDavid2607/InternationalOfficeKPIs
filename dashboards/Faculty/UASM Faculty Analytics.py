@@ -22,16 +22,14 @@ import math
 import requests
 from typing import Optional, Tuple, List, Dict
 
-# ===========================================================================
 # 1) CONFIGURACIÓN GLOBAL (una sola vez para toda la app)
-# ===========================================================================
 st.set_page_config(
     page_title="UASM Faculty Analytics",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-# ── CSS compartido por ambas páginas ───────────────────────────────────────
+# CSS compartido por todas las páginas
 st.markdown(
     "<style>"
     ".suite-header{display:flex;flex-direction:column;margin-top:-35px;align-items:center;"
@@ -83,13 +81,16 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
+    "div[data-testid='stExpander']{border:none !important;margin-bottom:8px;}"
+    "div[data-testid='stExpander'] summary{"
+    "background:#F8FFFE;border:1px solid #D1E8E4;border-radius:8px;"
+    "padding:6px 12px !important;color:#21877D;font-size:13px;font-weight:600;}"
+    "div[data-testid='stExpander'] summary:hover{background:#dff7f2;}"
     "</style>",
     unsafe_allow_html=True,
 )
 
-# ===========================================================================
 # 2) HELPERS COMPARTIDOS
-# ===========================================================================
 def _xlsx_bytes(df, sheet_name="Data"):
     buf = io.BytesIO()
     with pd.ExcelWriter(buf) as w:
@@ -125,9 +126,12 @@ def _highlight_band(fig, label, all_labels, color="#D0E5F5"):
                       fillcolor=color, opacity=0.35, line_width=0)
 
 
-# ===========================================================================
-# 3) CARGA DE DATOS (compartida por ambas páginas)
-# ===========================================================================
+def _is_inter_label(p) -> bool:
+    """True si el período es 'YYYY Intersemestral' (usado en Area y Demographics)."""
+    return bool(re.fullmatch(r"\d{4}\s+Intersemestral", str(p)))
+
+
+# 3) CARGA DE DATOS (compartida por todas las páginas)
 SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
 
 
@@ -204,7 +208,7 @@ def load_data():
 df = load_data()
 
 
-# ── Loaders específicos: página "Distribution by Area" ─────────────────────
+# Loaders específicos: página "Distribution by Area"
 # (mismo workbook, pero conservan exactamente la lógica original de esa página)
 @st.cache_data(ttl=0)
 def area_load_fulltime() -> pd.DataFrame:
@@ -248,7 +252,7 @@ def area_load_parttime() -> pd.DataFrame:
     return df_
 
 
-# ── Loaders específicos: página "Demographics" ──────────────────────────────
+# Loaders específicos: página "Demographics"
 # Nota: esta página usa un formato de Periodo sin guion ("YYYY10"/"YYYY Intersemestral"),
 # distinto al de las demás páginas — se conserva igual que en el script original.
 @st.cache_data(ttl=0)
@@ -296,7 +300,7 @@ def demo_load_parttime() -> pd.DataFrame:
     return df_
 
 
-# ── Loaders específicos: página "Qualifications" ────────────────────────────
+# Loaders específicos: página "Qualifications"
 @st.cache_data(ttl=0)
 def qual_load_planta() -> pd.DataFrame:
     try:
@@ -324,9 +328,7 @@ def qual_load_cartelera() -> pd.DataFrame:
     return df_
 
 
-# ===========================================================================
 # 4) SIDEBAR — encabezado común (logo + título), visible en todas las páginas
-# ===========================================================================
 with st.sidebar:
     col_logo, col_title = st.columns([1, 3])
     with col_logo:
@@ -341,16 +343,14 @@ with st.sidebar:
     st.markdown("---")
 
 
-# ===========================================================================
 # 5) PÁGINA 1 — Full-time Faculty Composition
-# ===========================================================================
 def page_composition():
     all_periods = df["Periodo"].astype(str).unique().tolist()
     sem_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
     inter_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sIntersemestral', p)]
     years = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 
-    # ── Sidebar específico de esta página ──────────────────────────────
+    # Sidebar específico de esta página
     with st.sidebar:
         st.markdown("#### Timeframe")
         tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
@@ -383,7 +383,7 @@ def page_composition():
     _render_header("Full-time Faculty Composition",
                    "Evolution and distribution of full-time faculty by ranking")
 
-    # ── Ranking order & color map ───────────────────────────────────────
+    # Ranking order & color map
     base_order = ["Full Professor", "Associate Professor", "Assistant Professor",
                   "Instructor", "Adjunct Faculty", "Distinguished Practitioner", "Emeritus Professor"]
     uniq_ranks = df["Faculty Ranking"].dropna().astype(str).unique().tolist()
@@ -398,7 +398,7 @@ def page_composition():
                "#118AB2", "#073B4C", "#8AC926", "#FF70A6"]
     color_map_rk = {rk: palette[i % len(palette)] for i, rk in enumerate(ranking_order)}
 
-    # ── Helpers de filtrado por periodo ────────────────────────────────
+    # Helpers de filtrado por periodo
     def periods_for_tables():
         if tmode == "Semestral":
             return sem_periods
@@ -469,7 +469,7 @@ def page_composition():
                          "Count": int(dfa[dfa["Faculty Ranking"] == rank]["ID"].count())})
         return pd.DataFrame(vals), cols
 
-    # ── Pivot table ──────────────────────────────────────────────────────
+    # Pivot table
     pivot = pivot_counts().reindex(ranking_order)
     pivot.loc["Total"] = pivot.sum(numeric_only=True)
 
@@ -494,7 +494,7 @@ def page_composition():
                    pivot.reset_index().rename(columns={"index": "Faculty Ranking"}),
                    f"FT_Composition_{tmode}.xlsx")
 
-    # ── Charts ───────────────────────────────────────────────────────────
+    # Charts
     periods_sorted = periods_for_tables()
     st.session_state.setdefault("show_all", True)
     st.session_state.setdefault("single_ranking", "Select...")
@@ -572,7 +572,7 @@ def page_composition():
             _highlight_band(fig_line, sel_period_internal, list(xcats))
             st.plotly_chart(fig_line, use_container_width=True)
 
-    # ── Detail table ─────────────────────────────────────────────────────
+    # Detail table
     st.subheader("Faculty Detail")
     active = df_active()
     selected_ranking = (None if st.session_state.show_all or
@@ -596,14 +596,12 @@ def page_composition():
                    f"FT_Composition_Detail_{sel_period_label}.xlsx")
 
 
-# ===========================================================================
 # 6) PÁGINA 2 — Full-time Faculty Staffing Levels
-# ===========================================================================
 def page_staffing():
     all_periods = sorted(df["Periodo"].astype(str).unique().tolist())
     sem_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
 
-    # ── Sidebar específico de esta página ──────────────────────────────
+    # Sidebar específico de esta página
     with st.sidebar:
         st.markdown("#### Select Semester")
         vis_opts = [p.replace("-", "") for p in sem_periods]
@@ -622,7 +620,7 @@ def page_staffing():
 
     _render_header("Full-time Faculty Staffing Levels", "New entrants, leavers, and headcount evolution")
 
-    # ── Helpers (solo semestral) ────────────────────────────────────────
+    # Helpers (solo semestral)
     def perlist_sem():
         return sem_periods
 
@@ -638,7 +636,7 @@ def page_staffing():
             ).sum())
         return pd.Series(counts)
 
-    # ── Staffing summary table ──────────────────────────────────────────
+    # Staffing summary table
     cols_summary = perlist_sem()
     fin_ser = final_count_series_sem(df).reindex(cols_summary, fill_value=0)
     new_ser = in_out_counts_sem(df, "IN").reindex(cols_summary, fill_value=0)
@@ -690,7 +688,7 @@ def page_staffing():
         simple_tbl = summary_df.reset_index().rename(columns={"index": "Metric"})
         _download_link("Descargar tabla (Excel)", simple_tbl, "FT_New_Leavers_Semestral.xlsx")
 
-    # ── Charts layout ────────────────────────────────────────────────────
+    # Charts layout
     areas = sorted(df.get("Academic Area", pd.Series(dtype=object)).dropna().unique().tolist())
     col_left, col_right = st.columns([3, 2])
 
@@ -791,7 +789,7 @@ def page_staffing():
 
         st.plotly_chart(fig_line, use_container_width=True)
 
-    # ── Faculty details (semestre seleccionado) ─────────────────────────
+    # Faculty details (semestre seleccionado)
     st.markdown("### View Faculty details")
 
     active = df[df["Periodo"].astype(str).eq(sel_period_internal)].copy()
@@ -826,7 +824,7 @@ def page_staffing():
                        yaxis=dict(domain=[0.2, 1]))
     c1.plotly_chart(figG, use_container_width=True)
 
-    # ── Full table ───────────────────────────────────────────────────────
+    # Full table
     st.markdown("### Complete Full-time table")
     cols_full = [
         "ID Nr.", "ID", "First Name", "Last Name",
@@ -854,7 +852,7 @@ def page_staffing():
         full.index += 1
         st.dataframe(full, use_container_width=False)
 
-    # ── Professor trajectory (PLANTA only) ──────────────────────────────
+    # Professor trajectory (PLANTA only)
     def _c(df0, *names):
         if df0 is None or df0.empty:
             return None
@@ -969,9 +967,7 @@ def page_staffing():
             _download_link("Descargar trayectoria (Excel)", out_df, f"Trajectory_{chosen_id}.xlsx")
 
 
-# ===========================================================================
 # 7) PÁGINA 3 — Distribution by Academic Area
-# ===========================================================================
 def page_area():
     MINT = "#00A896"
     HIGHLIGHT = "#D0E5F5"
@@ -983,11 +979,6 @@ def page_area():
 
     def is_sem_label(p: str) -> bool:
         return bool(re.fullmatch(r"\d{4}-(10|20)", str(p)))
-
-
-    def is_inter_label(p: str) -> bool:
-        return bool(re.fullmatch(r"\d{4}\s+Intersemestral", str(p)))
-
 
     def display_label_sem(p_internal: str) -> str:
         return str(p_internal).replace("-", "")
@@ -1030,7 +1021,7 @@ def page_area():
     st.session_state.setdefault("modo_faculty", "Full-time")
 
 
-    # ── Sidebar ──────────────────────────────────────────────────────────────────
+    # Sidebar
     with st.sidebar:
         st.markdown("#### Faculty Type")
         st.markdown('<div id="mode-pill">', unsafe_allow_html=True)
@@ -1066,7 +1057,7 @@ def page_area():
             sel_value = st.selectbox("Periodo", years, index=default_idx if years else None)
             sel_label = sel_value
         else:
-            inters = [p for p in all_periods if is_inter_label(p)]
+            inters = [p for p in all_periods if _is_inter_label(p)]
             default_idx = len(inters) - 1 if inters else 0
             sel_value = st.selectbox("Periodo", inters, index=default_idx if inters else None)
             sel_label = sel_value
@@ -1086,7 +1077,7 @@ def page_area():
         )
 
 
-    # ── Active dataset ───────────────────────────────────────────────────────────
+    # Active dataset
     df = df_full.copy() if st.session_state.modo_faculty == "Full-time" else df_part.copy()
 
     tmode_now = st.session_state.get("sel_tf_mode", "Semestral")
@@ -1095,7 +1086,7 @@ def page_area():
     IDCOL = "ID"
 
 
-    # ── Pivot table by academic area ────────────────────────────────────────────
+    # Pivot table by academic area
     df_view = df.copy()
 
     if tmode_now == "Semestral":
@@ -1106,7 +1097,7 @@ def page_area():
         col_order = sorted(df_view["Periodo_display"].unique().tolist())
 
     elif tmode_now == "Intersemestral":
-        df_view = df_view[df_view["Periodo"].astype(str).apply(is_inter_label)].copy()
+        df_view = df_view[df_view["Periodo"].astype(str).apply(_is_inter_label)].copy()
         df_view["Periodo_display"] = df_view["Periodo"].astype(str)
         pivot_area = pd.pivot_table(df_view, index="AREA_PROFESOR", columns="Periodo_display",
                                      values=IDCOL, aggfunc="nunique", fill_value=0).sort_index()
@@ -1154,7 +1145,7 @@ def page_area():
     _download_link("Descargar tabla (Excel)", pivot_download, fname_pvt)
 
 
-    # ── Charts: evolution line + donut ──────────────────────────────────────────
+    # Charts: evolution line + donut
     st.markdown(f"### Evolution by Academic Area — Number of {st.session_state.modo_faculty} Faculty")
 
     mode_key = "ft" if st.session_state.modo_faculty == "Full-time" else "pt"
@@ -1169,7 +1160,7 @@ def page_area():
         base_line["X"] = base_line["Periodo"].astype(str).map(display_label_sem)
         x_to_filter = sel_label
     elif tmode_now == "Intersemestral":
-        base_line = df[df["Periodo"].astype(str).apply(is_inter_label)].copy()
+        base_line = df[df["Periodo"].astype(str).apply(_is_inter_label)].copy()
         base_line["X"] = base_line["Periodo"].astype(str)
         x_to_filter = sel_label
     else:  # Anual
@@ -1186,14 +1177,6 @@ def page_area():
         .reindex(x_labels).fillna(0).astype(int)
         .reset_index(name="Total")
     )
-
-
-    def highlight_current(fig, labels, current):
-        if current in labels:
-            pos = labels.index(current)
-            fig.add_shape(type="rect", xref="x", yref="paper", x0=pos - 0.4, x1=pos + 0.4, y0=0, y1=1,
-                          fillcolor=HIGHLIGHT, opacity=0.35, line_width=0)
-        return fig
 
 
     colL, colR = st.columns([3, 2])
@@ -1225,7 +1208,7 @@ def page_area():
             fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title=None)
             fig_line.update_yaxes(rangemode="tozero", tickformat=".0%", title=None)
             fig_line.update_layout(showlegend=False)
-            fig_line = highlight_current(fig_line, x_labels, x_to_filter)
+            _highlight_band(fig_line, x_to_filter, x_labels, color=HIGHLIGHT)
             st.plotly_chart(fig_line, use_container_width=True)
 
         elif area_sel_val == "Select...":
@@ -1251,7 +1234,7 @@ def page_area():
             fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title=None)
             fig_line.update_yaxes(rangemode="tozero", tickformat=".0%", title=None)
             fig_line.update_layout(showlegend=False)
-            fig_line = highlight_current(fig_line, x_labels, x_to_filter)
+            _highlight_band(fig_line, x_to_filter, x_labels, color=HIGHLIGHT)
             st.plotly_chart(fig_line, use_container_width=True)
 
     with colR:
@@ -1275,7 +1258,7 @@ def page_area():
             _download_link("Descargar tabla (Excel)", donut_df, fname_donut)
 
 
-    # ── Detail table ─────────────────────────────────────────────────────────────
+    # Detail table
     detail = filter_for_timeframe(df, tmode_now, sel_value)
 
     cols_prefer_ft = ["Full Name", "AREA_PROFESOR", "Faculty Ranking", "Faculty Qualific.", "P/S"]
@@ -1294,9 +1277,7 @@ def page_area():
     _download_link("Descargar tabla (Excel)", detail_out, fname_det)
 
 
-# ===========================================================================
 # 8) PÁGINA 4 — Faculty Demographics
-# ===========================================================================
 def page_demographics():
     COLORS = {
         "primary": "#21877D", "primary_dark": "#004d47", "primary_light": "#dff7f2",
@@ -1309,7 +1290,7 @@ def page_demographics():
     df_full = demo_load_fulltime()
     df_part = demo_load_parttime()
 
-    # ── Timeframe helpers ──────────────────────────────────────────────────────
+    # Timeframe helpers
     def col_id(df_: pd.DataFrame) -> str | None:
         return "ID Nr." if "ID Nr." in df_.columns else ("ID" if "ID" in df_.columns else None)
 
@@ -1328,11 +1309,6 @@ def page_demographics():
 
     def is_semester_label(p: str) -> bool:
         return bool(re.fullmatch(r"\d{4}(10|20)", str(p)))
-
-
-    def is_inter_label(p: str) -> bool:
-        return bool(re.fullmatch(r"\d{4}\s+Intersemestral", str(p)))
-
 
     def normalize_degree(series: pd.Series) -> pd.Series:
         s = series.astype(str).str.strip()
@@ -1400,7 +1376,7 @@ def page_demographics():
         if time_mode == "Semestral":
             return sorted([p for p in per.unique() if is_semester_label(p)])
         if time_mode == "Intersemestral":
-            return sorted([p for p in per.unique() if is_inter_label(p)])
+            return sorted([p for p in per.unique() if _is_inter_label(p)])
         return sorted(per.str[:4].unique().tolist())
 
 
@@ -1425,7 +1401,7 @@ def page_demographics():
             return 0.0 if tot == 0 else round(100 * sub.loc[is_valid, idcol].nunique() / tot, 1)
 
         if time_mode in ("Semestral", "Intersemestral"):
-            label_filter = is_semester_label if time_mode == "Semestral" else is_inter_label
+            label_filter = is_semester_label if time_mode == "Semestral" else _is_inter_label
             periods = sorted([p for p in df_src["Periodo"].dropna().astype(str).unique() if label_filter(p)])
             for p in periods:
                 sub = df_src[df_src["Periodo"].astype(str).eq(p)]
@@ -1451,13 +1427,13 @@ def page_demographics():
         return pd.cut(pd.to_numeric(series, errors="coerce"), bins=AGE_BINS, labels=AGE_LABELS)
 
 
-    # ── Session defaults ────────────────────────────────────────────────────────
+    # Session defaults
     st.session_state.setdefault("modo_faculty", "Full-time")
     st.session_state.setdefault("time_mode_side", "Semestral")
     st.session_state.setdefault("sel_tf_label", None)
 
 
-    # ── Sidebar ─────────────────────────────────────────────────────────────────
+    # Sidebar
     with st.sidebar:
         st.markdown("#### Faculty Type")
         st.markdown('<div id="mode-pill">', unsafe_allow_html=True)
@@ -1512,7 +1488,7 @@ def page_demographics():
         )
 
 
-    # ── Active dataset ──────────────────────────────────────────────────────────
+    # Active dataset
     mode_now = st.session_state.get("modo_faculty", "Full-time")
     df = (df_full if mode_now == "Full-time" else df_part).copy()
     if "ID Nr." not in df.columns and "ID" in df.columns:
@@ -1526,7 +1502,7 @@ def page_demographics():
     col_table, col_side = st.columns([3, 1.2])
 
 
-    # ── Main table ──────────────────────────────────────────────────────────────
+    # Main table
     with col_table:
         IDCOL = col_id(df)
         if not IDCOL:
@@ -1643,7 +1619,7 @@ def page_demographics():
                 active = active[active["Periodo"].astype(str).apply(is_semester_label)].copy()
                 keys = sorted(active["Periodo"].dropna().astype(str).unique().tolist())
             elif tmode == "Intersemestral":
-                active = active[active["Periodo"].astype(str).apply(is_inter_label)].copy()
+                active = active[active["Periodo"].astype(str).apply(_is_inter_label)].copy()
                 keys = sorted(active["Periodo"].dropna().astype(str).unique().tolist())
             else:
                 active["__Year"] = active["Periodo"].astype(str).str[:4]
@@ -1756,7 +1732,7 @@ def page_demographics():
             st.dataframe(styled_table, use_container_width=True, height=48 + 33 * (len(display_df) + 1))
 
 
-    # ── Side KPI charts ─────────────────────────────────────────────────────────
+    # Side KPI charts
     with col_side:
         IDCOL = col_id(df)
         if not IDCOL:
@@ -1839,7 +1815,7 @@ def page_demographics():
             st.plotly_chart(fig_age, use_container_width=True)
 
 
-    # ── Row 1: % PhD over time + PhD by region ─────────────────────────────────
+    # Row 1: % PhD over time + PhD by region
     st.markdown("---")
 
     tmode_ts = st.session_state.get("time_mode_side", "Semestral")
@@ -1851,7 +1827,7 @@ def page_demographics():
         if tmode_ts == "Anual":
             period_current = sel_lbl if sel_lbl in labels_ts else labels_ts[-1]
         elif tmode_ts == "Intersemestral":
-            period_current = sel_lbl if (sel_lbl in labels_ts and is_inter_label(sel_lbl)) else labels_ts[-1]
+            period_current = sel_lbl if (sel_lbl in labels_ts and _is_inter_label(sel_lbl)) else labels_ts[-1]
         else:
             period_current = sel_lbl if (sel_lbl in labels_ts and is_semester_label(sel_lbl)) else labels_ts[-1]
     else:
@@ -1867,14 +1843,6 @@ def page_demographics():
         y_min_phd, y_max_phd = 0, 100
 
 
-    def highlight_current(fig, labels, current):
-        if current in labels:
-            pos = labels.index(current)
-            fig.add_shape(type="rect", xref="x", yref="paper", x0=pos - 0.4, x1=pos + 0.4, y0=0, y1=1,
-                          fillcolor=COLORS["highlight"], opacity=0.35, line_width=0)
-        return fig
-
-
     with row1_left:
         df_pct_phd = pd.DataFrame({"Label": labels_ts, "Percent": phd_ts})
         title_phd = "% of Full-time Faculty with PhD" if mode_now == "Full-time" else "% of Part-time Professors with PhD"
@@ -1883,7 +1851,7 @@ def page_demographics():
                               texttemplate="%{y:.1f}%", textposition="top center")
         fig_phd.update_xaxes(type="category", categoryorder="array", categoryarray=labels_ts, tickangle=0, title=None)
         fig_phd.update_yaxes(range=[y_min_phd, y_max_phd], title=None)
-        fig_phd = highlight_current(fig_phd, labels_ts, period_current)
+        _highlight_band(fig_phd, period_current, labels_ts, color=COLORS["highlight"])
         fig_phd.update_layout(height=line_h, margin=dict(l=10, r=10, t=40, b=40), showlegend=False)
         st.plotly_chart(fig_phd, use_container_width=True)
 
@@ -1946,7 +1914,7 @@ def page_demographics():
                 st.dataframe(detalle_phd.reset_index(drop=True), use_container_width=True)
 
 
-    # ── Row 2: % International over time + nationalities ───────────────────────
+    # Row 2: % International over time + nationalities
     st.markdown("---")
     row2_left, row2_right = st.columns([6, 4])
 
@@ -1965,7 +1933,7 @@ def page_demographics():
                               texttemplate="%{y:.1f}%", textposition="top center")
         fig_int.update_xaxes(type="category", categoryorder="array", categoryarray=labels_ts, tickangle=0, title=None)
         fig_int.update_yaxes(range=[y_min_int, y_max_int], title=None)
-        fig_int = highlight_current(fig_int, labels_ts, period_current)
+        _highlight_band(fig_int, period_current, labels_ts, color=COLORS["highlight"])
         fig_int.update_layout(height=line_h2, margin=dict(l=10, r=10, t=40, b=40), showlegend=False)
         st.plotly_chart(fig_int, use_container_width=True)
 
@@ -2008,11 +1976,9 @@ def page_demographics():
                 st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True)
 
 
-# ===========================================================================
 # 9) PÁGINA 5 — Full-time Faculty Activities
-# ===========================================================================
 def page_activities():
-    # ── Helper functions (from original) ────────────────────────────────────────
+    # Helper functions (from original)
     def resolve_column(df: pd.DataFrame, target: str) -> Optional[str]:
         t = target.strip().casefold()
         for c in df.columns:
@@ -2075,7 +2041,7 @@ def page_activities():
         if not df_noncr.empty:  df_noncr.columns  = df_noncr.columns.str.strip()
         return df_credit, df_noncr, sh_credit, sh_noncr
 
-    # ── Header ─────────────────────────────────────────────────────────────────────
+    # Header
     _render_header("Full-time Faculty Activities", "Questionnaire-based engagement summary 2020–2025")
 
     df_full = load_fulltime()
@@ -2084,13 +2050,13 @@ def page_activities():
 
     # ================= SIDEBAR: NAVIGATION (selector + Open) =================
 
-    #================= CONSTANTS ==================================================
+    # CONSTANTS
     TOT_PROFESSORS = 64           # denominator for % (donuts)
     MINT      = "#56D6C9"          # mint for "YES"
     MINT_DARK = "#1FA89B"          # darker mint (center text)
     GREY      = "#C7C7C7"          # grey for "NO"
     DONUT_H   = 160                # height of each donut
-    #================= YEARS (fixed 2020–2025) ====================================
+    # YEARS (fixed 2020–2025)
     YEARS = [2020, 2021, 2022, 2023, 2024, 2025]
     def _norm(s: pd.Series) -> pd.Series:
         return s.astype(str).str.strip().str.lower()
@@ -2140,7 +2106,7 @@ def page_activities():
             return int(sub["ID"].nunique())
         return int(len(sub))
 
-    #================= MANUAL OVERRIDES (table + donuts <=2024) ===================
+    # MANUAL OVERRIDES (table + donuts <=2024)
     # Keys map to row indicators for consistency.
     KEY1 = "total_ft"
     KEY2 = "postdoc"
@@ -2190,7 +2156,7 @@ def page_activities():
                 value=st.session_state.manual_execed[y_edit] if st.session_state.manual_execed[y_edit] is not None else 0
             )
 
-    #================= TABLE BUILD (2020–2025) ====================================
+    # TABLE BUILD (2020–2025)
     ROWS = [
         "Total Full-time Faculty",
         "Number of Full-time Faculty with Postdoc",
@@ -2232,10 +2198,10 @@ def page_activities():
         ]
     table = pd.DataFrame(data)
 
-    #================= LAYOUT: LEFT (TABLE) / RIGHT (DONUTS) ======================
+    # LAYOUT: LEFT (TABLE) / RIGHT (DONUTS)
     colL, colR = st.columns([7,5], gap="large")
 
-    #================= LEFT: TABLE ===============================================
+    # LEFT: TABLE
     with colL:
         st.subheader("Summary 2020–2025")
 
@@ -2257,7 +2223,7 @@ def page_activities():
             f"summary_{YEARS[0]}_{YEARS[-1]}.xlsx"
         )
 
-    #================= RIGHT: RESPONSE KPI + DONUTS ===============================
+    # RIGHT: RESPONSE KPI + DONUTS
     with colR:
         # Year nav
         if "year_idx" not in st.session_state:
@@ -2328,7 +2294,7 @@ def page_activities():
             st.plotly_chart(donut_fig("Faculty in Administrative Positions", admin), use_container_width=True)
             st.plotly_chart(donut_fig("Faculty Teaching in ExecEd",       execed), use_container_width=True)
 
-    #================= COURSE TABLES (from dedicated sheets) ======================
+    # COURSE TABLES (from dedicated sheets)
     st.markdown("---")
     st.subheader("Courses taught by Full-time Faculty Abroad")
 
@@ -2479,9 +2445,7 @@ def page_activities():
                             f"{safe_name_noncr}_full.xlsx")
 
 
-# ===========================================================================
 # 10) PÁGINA 6 — Faculty Qualifications
-# ===========================================================================
 def page_qualifications():
     _render_header("Full-time Faculty Qualifications", "P/S and qualification type analysis with sensitivity mode")
 
@@ -4792,9 +4756,7 @@ def page_qualifications():
         # Evita romper la app si algo falla en este bloque
         pass
 
-    # ==========================================================
     # HELPERS (únicos en este módulo, sin duplicados)
-    # ==========================================================
     def _extract_year(s):
         m = re.search(r"(19|20)\d{2}", str(s) if s is not None else "")
         return int(m.group(0)) if m else None
@@ -4951,9 +4913,7 @@ def page_qualifications():
 
                 cL, cR = st.columns([7,5], gap="large")
 
-                # ==================================================
                 # LEFT: Filters + Detail Table (+ popup trigger)
-                # ==================================================
                 with cL:
                     # --- Filters (always visible) ---
                     colF1, colF2 = st.columns([1,1])
@@ -5906,9 +5866,7 @@ def page_qualifications():
             st.dataframe(res_out, use_container_width=True, hide_index=True)
 
 
-# ===========================================================================
-# 11) NAVEGACIÓN MULTIPÁGINA (todo en un solo archivo)
-# ===========================================================================
+# Navegación multipágina — menú nativo oculto; desplegable sutil (flecha) con los enlaces
 pages = [
     st.Page(page_composition, title="Composition", icon="🎓", url_path="composition", default=True),
     st.Page(page_staffing, title="Staffing Levels", icon="📊", url_path="staffing"),
@@ -5917,19 +5875,12 @@ pages = [
     st.Page(page_activities, title="Activities", icon="🧭", url_path="activities"),
     st.Page(page_qualifications, title="Qualifications", icon="📚", url_path="qualifications"),
 ]
+pg = st.navigation(pages, position="hidden")
 
-pg = st.navigation(pages, position="top")
-
-# ===========================================================================
-# N) CONFIGURACIÓN DE NAVEGACIÓN (st.navigation)
-# ===========================================================================
-
-# Definir cada página usando st.Page y referenciando las funciones
-page_1 = st.Page(page_composition, title="Faculty Composition", icon="📊", default=True)
-page_2 = st.Page(page_staffing, title="Staffing Levels", icon="📈")
-page_3 = st.Page(page_area, title="Distribution by Area", icon="🏢")
-page_4 = st.Page(page_demographics, title="Faculty Demographics", icon="👥")
-page_5 = st.Page(page_activities, title="Faculty Activities", icon="📝")
-page_6 = st.Page(page_qualifications, title="Faculty Qualifications", icon="🎓")
+with st.expander("☰  Ir a otra página", expanded=False):
+    nav_cols = st.columns(len(pages))
+    for col, page_obj in zip(nav_cols, pages):
+        with col:
+            st.page_link(page_obj)
 
 pg.run()
