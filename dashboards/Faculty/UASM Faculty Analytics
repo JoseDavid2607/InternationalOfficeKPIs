@@ -1,9 +1,11 @@
 # ===========================================================================
-#  UASM · Faculty Analytics Suite  ·  App multipágina (un solo archivo)
+#  UASM · Faculty Analytics  ·  App multipágina
 #  Página 1: Full-time Faculty Composition
 #  Página 2: Full-time Faculty Staffing Levels
 #  Página 3: Distribution by Academic Area
 #  Página 4: Faculty Demographics
+#  Página 5: Full-time Faculty Activities
+#  Página 6: Faculty Qualifications
 # ===========================================================================
 from __future__ import annotations
 
