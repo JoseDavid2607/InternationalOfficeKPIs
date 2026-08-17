@@ -82,7 +82,7 @@ st.markdown(
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     ".st-key-nav_toggle{"
-    "position:fixed !important;top:0.4rem;left:12rem;z-index:999999;"
+    "position:fixed !important;top:0.4rem;left:2.5rem;z-index:999999;"
     "width:auto !important;margin:0 !important;}"
     ".st-key-nav_toggle div[data-testid='stExpander']{"
     "width:auto !important;border:none !important;outline:none !important;"
