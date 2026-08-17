@@ -5920,4 +5920,31 @@ pages = [
 ]
 
 pg = st.navigation(pages, position="top")
+
+# ===========================================================================
+# N) CONFIGURACIÓN DE NAVEGACIÓN (st.navigation)
+# ===========================================================================
+
+# 1. Definir cada página usando st.Page y referenciando las funciones
+page_1 = st.Page(page_composition, title="Faculty Composition", icon="📊", default=True)
+page_2 = st.Page(page_staffing, title="Staffing Levels", icon="📈")
+page_3 = st.Page(page_area, title="Distribution by Area", icon="🏢")
+page_4 = st.Page(page_demographics, title="Faculty Demographics", icon="👥")
+page_5 = st.Page(page_activities, title="Faculty Activities", icon="📝")
+page_6 = st.Page(page_qualifications, title="Faculty Qualifications", icon="🎓")
+
+# 2. Configurar el menú de navegación
+# Puedes pasar una lista simple o un diccionario si quieres que tengan una cabecera de sección.
+pg = st.navigation({
+    "Analytics Dashboards": [
+        page_1, 
+        page_2, 
+        page_3, 
+        page_4,
+        page_5,
+        page_6
+    ]
+})
+
+# 3. Ejecutar la navegación
 pg.run()
