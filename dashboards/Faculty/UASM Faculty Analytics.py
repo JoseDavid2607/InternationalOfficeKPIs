@@ -183,12 +183,37 @@ def _get_gspread_client():
         return None
 
 
+def _get_gspread_access_token() -> Optional[str]:
+    """Token de acceso de la service account, para pedirle a Google Sheets el
+    .xlsx exportado ya autenticados (necesario si el Sheet no es público)."""
+    if not _GSPREAD_OK or "gcp_service_account" not in st.secrets:
+        return None
+    try:
+        from google.auth.transport.requests import Request as _GoogleAuthRequest
+        creds = Credentials.from_service_account_info(
+            dict(st.secrets["gcp_service_account"]), scopes=_GSPREAD_SCOPES
+        )
+        creds.refresh(_GoogleAuthRequest())
+        return creds.token
+    except Exception:
+        return None
+
+
 @st.cache_data(ttl=300)
 def _download_workbook_bytes() -> bytes:
     """Descarga el Google Sheet completo (una sola vez, cacheado 5 min) y
     devuelve los bytes del .xlsx. Todas las páginas leen de aquí para evitar
-    descargas repetidas y minimizar el riesgo de timeouts."""
+    descargas repetidas y minimizar el riesgo de timeouts.
+
+    Si hay credenciales de service account configuradas (`st.secrets['gcp_service_account']`),
+    la descarga se autentica con ellas — esto evita el HTTP 401 que aparece
+    cuando el Sheet no está compartido como "cualquiera con el enlace puede ver".
+    Sin credenciales, cae de vuelta al link público de exportación (comportamiento
+    anterior), que solo funciona si el Sheet es público.
+    """
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
+    token = _get_gspread_access_token()
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
 
     resp = None
     last_err = None
@@ -196,7 +221,7 @@ def _download_workbook_bytes() -> bytes:
     # veces redirige a un host googleusercontent.com que puede tardar.
     for attempt in range(3):
         try:
-            resp = requests.get(url, timeout=60)
+            resp = requests.get(url, timeout=60, headers=headers)
             if resp.status_code == 200 and "text/html" not in resp.headers.get("Content-Type", ""):
                 return resp.content
             last_err = RuntimeError(f"HTTP {resp.status_code}")
@@ -204,7 +229,15 @@ def _download_workbook_bytes() -> bytes:
             last_err = e
         time.sleep(2)
 
-    st.error(f"🌐 No se pudo conectar con Google Sheets tras varios intentos: {last_err}")
+    hint = (
+        "Verifica que el Google Sheet esté compartido con la service account "
+        "configurada en secrets (o, si no usas service account, que el Sheet "
+        "esté compartido como 'Cualquiera con el enlace puede ver')."
+        if not token else
+        "La service account no tiene acceso a este Sheet — compártelo con su "
+        "correo (el campo 'client_email' de tu JSON) con permiso de Viewer o Editor."
+    )
+    st.error(f"🌐 No se pudo conectar con Google Sheets tras varios intentos: {last_err}\n\n{hint}")
     st.stop()
 
 
@@ -6156,18 +6189,21 @@ def page_update_data():
 
         with st.expander("⚙️ Configuración requerida (una sola vez)"):
             st.markdown(
-                "Para que este botón pueda escribir en el Google Sheet maestro, "
-                "necesitas:\n\n"
+                "Esta misma Service Account también soluciona el error "
+                "`HTTP 401` al cargar los dashboards (aparece cuando el "
+                "Google Sheet no está compartido públicamente). Para "
+                "configurarla:\n\n"
                 "1. Crear una **Service Account** en Google Cloud (con la API de "
                 "Google Sheets habilitada) y descargar su archivo JSON.\n"
                 "2. Compartir el Google Sheet `BD_Faculty` "
-                f"(`{SHEET_ID}`) con el correo de esa service account, con "
-                "permiso de **Editor**.\n"
+                f"(`{SHEET_ID}`) con el correo de esa service account "
+                "(el campo `client_email` del JSON), con permiso de **Editor**.\n"
                 "3. Pegar el contenido del JSON en los *Secrets* de Streamlit "
                 "bajo la clave `gcp_service_account`.\n\n"
-                "Sin esto configurado, el botón de guardar mostrará un error "
-                "explicando que faltan credenciales — la vista previa y el "
-                "mapeo de columnas funcionan igual sin esta configuración."
+                "Alternativa más simple (pero menos privada) si no quieres usar "
+                "Service Account: comparte el Sheet como **'Cualquiera con el "
+                "enlace puede ver'** — eso también resuelve el HTTP 401, aunque "
+                "sin ella el botón de guardar en esta sección seguirá sin funcionar."
             )
             st.caption(
                 "✅ Conectado a Google Sheets con permisos de escritura." if _get_gspread_client()
