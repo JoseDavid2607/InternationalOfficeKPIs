@@ -33,7 +33,7 @@ header.hero {
   overflow: hidden; text-align: center;
   background:
     linear-gradient(to bottom, rgba(8,12,20,.08), rgba(8,12,20,.12), rgba(8,12,20,.20)),
-    url("../../imagenes/Santodomingo.jpg") center center / cover no-repeat;
+    url("../imagenes/Santodomingo.jpg") center center / cover no-repeat;
 }
 header.hero::after {
   content: ""; position: absolute; inset: 0;
@@ -385,7 +385,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 
 <div class="intro-wrap">
   <div class="intro-seneca" aria-hidden="true">
-    <img src="../../imagenes/seneca.png" alt="Seneca">
+    <img src="../imagenes/seneca.png" alt="Seneca">
   </div>
   <div class="intro-panel">
     <p>This BaseRoom centralizes the main documentation chapters required for accreditation review and institutional evidence management. Each folder contains the files, supporting materials, reports, and references corresponding to its section.</p>
@@ -551,9 +551,9 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       </div>
       <div>
         <div style="font-size:1.1rem;font-weight:800;color:#1f2937;margin-bottom:8px;" id="viewerExternalTitle">Dashboard</div>
-        <div style="color:#6b7280;font-size:.9rem;line-height:1.6;max-width:380px;">This dashboard cannot be embedded directly due to browser security restrictions.</div>
+        <div style="color:#6b7280;font-size:.9rem;line-height:1.6;max-width:380px;" id="viewerExternalDesc">This dashboard cannot be embedded directly due to browser security restrictions.</div>
       </div>
-      <a id="viewerExternalLink" href="#" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:13px 28px;border-radius:999px;background:#1f2937;color:#fff;font-size:.92rem;font-weight:800;text-decoration:none;">Open dashboard ↗</a>
+      <a id="viewerExternalLink" href="#" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:13px 28px;border-radius:999px;background:#1f2937;color:#fff;font-size:.92rem;font-weight:800;text-decoration:none;">Open document ↗</a>
     </div>
   </div>
 </div>
@@ -1648,8 +1648,16 @@ function openViewer(docId){
   const frame=document.getElementById("viewerFrame");
   const noUrl=document.getElementById("viewerNoUrl");
   const ext=document.getElementById("viewerExternal");
+  // SharePoint/OneDrive blocks iframe embedding by policy, so we route those to the
+  // same "open externally" panel already used for non-embeddable dashboards.
+  const isBlockedEmbed=rawUrl&&/sharepoint\.com|1drv\.ms|onedrive\.live\.com/i.test(rawUrl);
   if(!embedUrl){
     frame.src="";frame.style.display="none";noUrl.style.display="flex";ext.style.display="none";
+  } else if(isBlockedEmbed){
+    frame.src="";frame.style.display="none";noUrl.style.display="none";ext.style.display="flex";
+    document.getElementById("viewerExternalTitle").textContent=doc.title;
+    document.getElementById("viewerExternalDesc").textContent="This file is hosted on SharePoint/OneDrive and cannot be embedded directly due to Microsoft's browser security restrictions.";
+    document.getElementById("viewerExternalLink").href=cleanUrl;
   } else {
     frame.src=embedUrl;frame.style.display="block";noUrl.style.display="none";ext.style.display="none";
   }
