@@ -38,6 +38,7 @@ except ImportError as _e:
 try:
     import openpyxl
     from openpyxl.styles import Font, Border, Side
+    from openpyxl.utils import range_boundaries, get_column_letter
     _OPENPYXL_OK = True
 except ImportError:
     _OPENPYXL_OK = False
@@ -6156,6 +6157,21 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
                 cell.font = font
                 cell.border = thin_border
 
+        # 3.5) Extiende la Tabla de Excel "tabla_planta" para que incluya las
+        # filas nuevas — sin esto, aunque las celdas queden vacías, Excel no
+        # las reconoce como parte de la tabla y no autocompleta las columnas
+        # calculadas (F, V).
+        new_last_row = append_start + len(rows) - 1 if rows else ws.max_row
+        try:
+            table_names = list(ws.tables.keys())
+        except AttributeError:
+            table_names = list(ws.tables)
+        match = next((n for n in table_names if n.strip().lower() == "tabla_planta"), None)
+        if match:
+            tbl = ws.tables[match]
+            min_col, min_row, max_col, _old_max_row = range_boundaries(tbl.ref)
+            tbl.ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
+
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
@@ -6171,7 +6187,14 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
         demo_load_fulltime.clear()
         _download_drive_file_bytes.clear()
 
-        return True, f"✓ BD_profesores.xlsx (hoja 'planta') actualizada — {len(rows)} filas para el período {periodo}."
+        msg = f"✓ BD_profesores.xlsx (hoja 'planta') actualizada — {len(rows)} filas para el período {periodo}."
+        if not match:
+            msg += (
+                " ⚠️ No encontré una Tabla de Excel llamada 'tabla_planta' en la hoja — "
+                "las filas se agregaron igual, pero puede que F y V no se autocompleten "
+                "hasta que abras el archivo en Excel y extiendas la tabla manualmente."
+            )
+        return True, msg
     except Exception as e:
         return False, f"Error al escribir en la hoja 'planta': {e}"
 
