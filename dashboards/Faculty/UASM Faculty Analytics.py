@@ -6087,7 +6087,7 @@ def _drive_upload_file_bytes(file_id: str, content: bytes) -> Tuple[bool, str]:
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }
     try:
-        resp = requests.put(url, headers=headers, data=content, timeout=120)
+        resp = requests.patch(url, headers=headers, data=content, timeout=120)
         if resp.status_code == 200:
             return True, ""
         return False, f"HTTP {resp.status_code}: {resp.text[:300]}"
