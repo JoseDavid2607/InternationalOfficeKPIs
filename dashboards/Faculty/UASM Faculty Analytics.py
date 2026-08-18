@@ -30,8 +30,10 @@ try:
     import gspread
     from google.oauth2.service_account import Credentials
     _GSPREAD_OK = True
-except ImportError:
+    _GSPREAD_IMPORT_ERR = None
+except ImportError as _e:
     _GSPREAD_OK = False
+    _GSPREAD_IMPORT_ERR = str(_e)
 
 try:
     import openpyxl
@@ -216,11 +218,26 @@ def _download_drive_file_bytes(file_id: str) -> bytes:
     descargas repetidas entre páginas."""
     token = _get_gspread_access_token()
     if not token:
-        st.error(
-            "🔑 No hay credenciales configuradas para leer los archivos de Drive. "
-            "Falta `st.secrets['gcp_service_account']` — revisa las instrucciones "
-            "en la sección **Update Data → ⚙️ Configuración requerida**."
-        )
+        if not _GSPREAD_OK:
+            st.error(
+                "📦 Falta instalar las librerías `gspread` y `google-auth` en el "
+                f"entorno (el import falló con: `{_GSPREAD_IMPORT_ERR}`). "
+                "Agrégalas a tu `requirements.txt`:\n\n```\ngspread\ngoogle-auth\n```"
+            )
+        elif "gcp_service_account" not in st.secrets:
+            st.error(
+                "🔑 No encuentro `st.secrets['gcp_service_account']`. Revisa en "
+                "Streamlit Cloud → tu app → Settings → Secrets que el bloque "
+                "empiece exactamente con `[gcp_service_account]` y que lo hayas "
+                "guardado (la app se reinicia sola al guardar)."
+            )
+        else:
+            st.error(
+                "🔑 Las credenciales de `gcp_service_account` están presentes pero "
+                "no se pudieron usar para autenticar — revisa que el JSON esté "
+                "completo y bien formado en los Secrets (especialmente el campo "
+                "`private_key`, que debe conservar los `\\n` tal cual)."
+            )
         st.stop()
 
     url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
@@ -6245,10 +6262,14 @@ def page_update_data():
                 "modifica, y lo vuelve a subir — si alguien más lo tiene abierto y "
                 "guarda al mismo tiempo, gana el último que guarde."
             )
-            st.caption(
-                "✅ Conectado a Drive con permisos de escritura." if _get_gspread_client()
-                else "⚠️ Aún no hay credenciales de escritura configuradas."
-            )
+            if _get_gspread_client():
+                st.caption("✅ Conectado a Drive con permisos de escritura.")
+            elif not _GSPREAD_OK:
+                st.caption(f"⚠️ Falta instalar `gspread`/`google-auth` — import error: `{_GSPREAD_IMPORT_ERR}`")
+            elif "gcp_service_account" not in st.secrets:
+                st.caption("⚠️ No encuentro `st.secrets['gcp_service_account']` — revisa Settings → Secrets.")
+            else:
+                st.caption("⚠️ Hay un `gcp_service_account` en Secrets pero no se pudo autenticar con él — revisa el JSON.")
 
     # ── BD_Cartelera (próximamente) ────────────────────────────────────
     with tab_cartelera:
