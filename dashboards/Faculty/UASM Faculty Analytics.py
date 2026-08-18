@@ -33,6 +33,13 @@ try:
 except ImportError:
     _GSPREAD_OK = False
 
+try:
+    import openpyxl
+    from openpyxl.styles import Font
+    _OPENPYXL_OK = True
+except ImportError:
+    _OPENPYXL_OK = False
+
 # 1) CONFIGURACIÓN GLOBAL (una sola vez para toda la app)
 st.set_page_config(
     page_title="UASM Faculty Analytics",
@@ -156,16 +163,19 @@ def _is_inter_label(p) -> bool:
 
 
 # 3) CARGA DE DATOS (compartida por todas las páginas)
-SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
+# BD_Faculty (el Google Sheet combinado) fue retirado. Ahora la fuente de
+# verdad son 3 archivos .xlsx sueltos en Drive — cada uno con varias hojas:
+PROFESORES_FILE_ID = "1ncnUk_8VsDt1I0Hui9g0VyoTkA-8P376"      # BD_profesores.xlsx  → hojas: planta, Info. Profesores, Faculty Distribution
+CARTELERA_FILE_ID = "14Hongi8a180XTvuZGUf3soixgQpFp0Wl"       # BD_cartelera.xlsx   → hojas: cartelera, programas, cursos, qualifications
+QUESTIONNAIRE_FILE_ID = "1u6YTILxGOEq7eq1RE_l5sPg-vM5Wu5jH"   # BD_faculty_questionnaire.xlsx → hoja: Faculty_questionnaire
 
-# ── Escritura en el Google Sheet maestro (sección "Update Data") ───────────
-# Requiere una service account de Google Cloud con acceso de Editor al Sheet
-# (compartir el Sheet con el correo de la service account) y su JSON guardado
-# en Streamlit secrets bajo la clave "gcp_service_account". Ver docs al final
-# de page_update_data() para el detalle de configuración.
+# ── Autenticación (lectura y escritura vía Service Account) ────────────────
+# Requiere una service account de Google Cloud, compartida como Editor en los
+# 3 archivos de arriba, con su JSON guardado en Streamlit secrets bajo la
+# clave "gcp_service_account". Ver docs al final de page_update_data().
 _GSPREAD_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive",
 ]
 
 
@@ -184,8 +194,8 @@ def _get_gspread_client():
 
 
 def _get_gspread_access_token() -> Optional[str]:
-    """Token de acceso de la service account, para pedirle a Google Sheets el
-    .xlsx exportado ya autenticados (necesario si el Sheet no es público)."""
+    """Token de acceso de la service account, para llamar la API de Drive
+    ya autenticados (necesario porque estos archivos ya no son públicos)."""
     if not _GSPREAD_OK or "gcp_service_account" not in st.secrets:
         return None
     try:
@@ -200,59 +210,46 @@ def _get_gspread_access_token() -> Optional[str]:
 
 
 @st.cache_data(ttl=300)
-def _download_workbook_bytes() -> bytes:
-    """Descarga el Google Sheet completo (una sola vez, cacheado 5 min) y
-    devuelve los bytes del .xlsx. Todas las páginas leen de aquí para evitar
-    descargas repetidas y minimizar el riesgo de timeouts.
-
-    Si hay credenciales de service account configuradas (`st.secrets['gcp_service_account']`),
-    la descarga se autentica con ellas — esto evita el HTTP 401 que aparece
-    cuando el Sheet no está compartido como "cualquiera con el enlace puede ver".
-    Sin credenciales, cae de vuelta al link público de exportación (comportamiento
-    anterior), que solo funciona si el Sheet es público.
-    """
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
+def _download_drive_file_bytes(file_id: str) -> bytes:
+    """Descarga un archivo .xlsx de Drive (autenticado con la service account)
+    y devuelve sus bytes crudos. Cacheado 5 min por archivo para evitar
+    descargas repetidas entre páginas."""
     token = _get_gspread_access_token()
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    if not token:
+        st.error(
+            "🔑 No hay credenciales configuradas para leer los archivos de Drive. "
+            "Falta `st.secrets['gcp_service_account']` — revisa las instrucciones "
+            "en la sección **Update Data → ⚙️ Configuración requerida**."
+        )
+        st.stop()
+
+    url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
+    headers = {"Authorization": f"Bearer {token}"}
 
     resp = None
     last_err = None
-    # Reintenta hasta 3 veces: la primera descarga en frío contra Google a
-    # veces redirige a un host googleusercontent.com que puede tardar.
     for attempt in range(3):
         try:
             resp = requests.get(url, timeout=60, headers=headers)
-            if resp.status_code == 200 and "text/html" not in resp.headers.get("Content-Type", ""):
+            if resp.status_code == 200:
                 return resp.content
-            last_err = RuntimeError(f"HTTP {resp.status_code}")
+            last_err = RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
             last_err = e
         time.sleep(2)
 
-    hint = (
-        "Verifica que el Google Sheet esté compartido con la service account "
-        "configurada en secrets (o, si no usas service account, que el Sheet "
-        "esté compartido como 'Cualquiera con el enlace puede ver')."
-        if not token else
-        "La service account no tiene acceso a este Sheet — compártelo con su "
-        "correo (el campo 'client_email' de tu JSON) con permiso de Viewer o Editor."
+    st.error(
+        f"🌐 No se pudo descargar el archivo de Drive ({file_id}) tras varios intentos: "
+        f"{last_err}\n\nVerifica que el archivo esté compartido con el correo de la "
+        "service account (`client_email` de tu JSON), con permiso de Editor."
     )
-    st.error(f"🌐 No se pudo conectar con Google Sheets tras varios intentos: {last_err}\n\n{hint}")
     st.stop()
 
 
 @st.cache_data(ttl=300)
 def load_data():
-    raw = io.BytesIO(_download_workbook_bytes())
-    try:
-        xls = pd.ExcelFile(raw)
-    except Exception:
-        st.error("❌ El archivo descargado no es un Excel válido.")
-        st.stop()
-
-    tab = next((s for s in xls.sheet_names if "planta" in s.lower()), xls.sheet_names[0])
-    raw.seek(0)
-    df_ = pd.read_excel(raw, sheet_name=tab)
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="planta")
 
     def _norm_per(val):
         if pd.isna(val):
@@ -290,11 +287,11 @@ df = load_data()
 
 
 # Loaders específicos: página "Distribution by Area"
-# (mismo workbook, pero conservan exactamente la lógica original de esa página)
+# (mismo archivo BD_profesores.xlsx, pero conservan exactamente la lógica original de esa página)
 @st.cache_data(ttl=0)
 def area_load_fulltime() -> pd.DataFrame:
-    raw = io.BytesIO(_download_workbook_bytes())
-    df_ = pd.read_excel(raw, sheet_name="BD_PLANTA")
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="planta")
 
     sem = df_["Semestre"].astype(str).str.strip() if "Semestre" in df_.columns else df_.iloc[:, 0].astype(str).str.strip()
     is_inter = sem.str.contains("inter", case=False, na=False)
@@ -313,7 +310,7 @@ def area_load_fulltime() -> pd.DataFrame:
 
 @st.cache_data(ttl=0)
 def area_load_parttime() -> pd.DataFrame:
-    raw = io.BytesIO(_download_workbook_bytes())
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
     df_ = pd.read_excel(raw, sheet_name="Faculty Distribution")
 
     if "PLANTA_CATEDRA" in df_.columns:
@@ -338,8 +335,8 @@ def area_load_parttime() -> pd.DataFrame:
 # distinto al de las demás páginas — se conserva igual que en el script original.
 @st.cache_data(ttl=0)
 def demo_load_fulltime() -> pd.DataFrame:
-    raw = io.BytesIO(_download_workbook_bytes())
-    df_ = pd.read_excel(raw, sheet_name="BD_PLANTA")
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="planta")
 
     if "Semestre" in df_.columns:
         sem = df_["Semestre"].astype(str).str.strip()
@@ -361,7 +358,7 @@ def demo_load_fulltime() -> pd.DataFrame:
 
 @st.cache_data(ttl=0)
 def demo_load_parttime() -> pd.DataFrame:
-    raw = io.BytesIO(_download_workbook_bytes())
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
     df_ = pd.read_excel(raw, sheet_name="Faculty Distribution")
 
     if "PLANTA_CATEDRA" in df_.columns:
@@ -385,8 +382,8 @@ def demo_load_parttime() -> pd.DataFrame:
 @st.cache_data(ttl=0)
 def qual_load_planta() -> pd.DataFrame:
     try:
-        raw = io.BytesIO(_download_workbook_bytes())
-        dfp = pd.read_excel(raw, sheet_name="BD_PLANTA")
+        raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+        dfp = pd.read_excel(raw, sheet_name="planta")
         dfp.columns = dfp.columns.str.strip()
         return dfp
     except Exception:
@@ -395,7 +392,7 @@ def qual_load_planta() -> pd.DataFrame:
 
 @st.cache_data(ttl=0)
 def qual_load_faculty_distribution() -> pd.DataFrame:
-    raw = io.BytesIO(_download_workbook_bytes())
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
     df_ = pd.read_excel(raw, sheet_name="Faculty Distribution")
     df_.columns = df_.columns.str.strip()
     return df_
@@ -403,8 +400,8 @@ def qual_load_faculty_distribution() -> pd.DataFrame:
 
 @st.cache_data(ttl=0)
 def qual_load_cartelera() -> pd.DataFrame:
-    raw = io.BytesIO(_download_workbook_bytes())
-    df_ = pd.read_excel(raw, sheet_name="BD_Cartelera")
+    raw = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="cartelera")
     df_.columns = df_.columns.str.strip()
     return df_
 
@@ -2069,7 +2066,7 @@ def page_activities():
 
     @st.cache_data(ttl=0)
     def load_fulltime():
-        df = pd.read_excel(io.BytesIO(_download_workbook_bytes()), sheet_name="BD_PLANTA")
+        df = pd.read_excel(io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID)), sheet_name="planta")
         raw = df.iloc[:, 0].astype(str)
         df["Periodo"] = raw.str.slice(0, 4) + "-" + raw.str.slice(4, 6)
         if "ID Nr." in df.columns and "ID" not in df.columns:
@@ -2079,7 +2076,7 @@ def page_activities():
 
     @st.cache_data(ttl=0)
     def load_questionnaire():
-        df = pd.read_excel(io.BytesIO(_download_workbook_bytes()), sheet_name="Faculty_questionnaire")
+        df = pd.read_excel(io.BytesIO(_download_drive_file_bytes(QUESTIONNAIRE_FILE_ID)), sheet_name="Faculty_questionnaire")
         df.columns = df.columns.str.strip()
         ycol = resolve_column(df, "Year")
         if ycol:
@@ -2090,8 +2087,11 @@ def page_activities():
 
     @st.cache_data(ttl=0)
     def load_courses_sheets():
-        """Load sheets for: Credit granted courses / Non-credit granted courses (name tolerant)."""
-        xls = pd.ExcelFile(io.BytesIO(_download_workbook_bytes()))
+        """Load sheets for: Credit granted courses / Non-credit granted courses (name tolerant).
+        Estas hojas no existen en el reparto actual de archivos (BD_cartelera.xlsx
+        tiene cartelera/programas/cursos/qualifications) — se deja la búsqueda
+        tolerante por si se agregan más adelante; si no aparecen, retorna vacío."""
+        xls = pd.ExcelFile(io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID)))
         sheets = xls.sheet_names
 
         def pick_sheet(candidates: List[str]) -> Optional[str]:
@@ -6058,64 +6058,103 @@ def _style_planta_preview(df: pd.DataFrame):
     return df.style.apply(_row_style, axis=1)
 
 
+def _drive_upload_file_bytes(file_id: str, content: bytes) -> Tuple[bool, str]:
+    """Sube contenido nuevo sobre un archivo YA EXISTENTE en Drive (lo
+    sobreescribe completo), autenticado con la service account."""
+    token = _get_gspread_access_token()
+    if not token:
+        return False, "No hay credenciales configuradas (falta st.secrets['gcp_service_account'])."
+    url = f"https://www.googleapis.com/upload/drive/v3/files/{file_id}?uploadType=media"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+    try:
+        resp = requests.put(url, headers=headers, data=content, timeout=120)
+        if resp.status_code == 200:
+            return True, ""
+        return False, f"HTTP {resp.status_code}: {resp.text[:300]}"
+    except Exception as e:
+        return False, str(e)
+
+
 def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, str]:
-    """Escribe las filas nuevas en BD_PLANTA del Sheet maestro:
-    1) borra cualquier fila existente con el mismo Periodo (semántica de reemplazo,
-       igual que hacía el modal HTML), 2) agrega las filas nuevas al final,
-       3) aplica el resaltado de Notes (IN IN → azul negrilla, OUT IN → rojo)."""
-    gc = _get_gspread_client()
-    if gc is None:
+    """Escribe las filas nuevas en la hoja 'planta' de BD_profesores.xlsx:
+    1) borra cualquier fila existente con el mismo Periodo (semántica de
+       reemplazo, igual que el modal HTML original), 2) agrega las filas
+       nuevas al final, 3) aplica el resaltado de Notes (IN IN → azul
+       negrilla, OUT IN → rojo), 4) sube el archivo completo de vuelta a Drive.
+
+    Nota: como BD_profesores.xlsx es un archivo .xlsx normal (no un Google
+    Sheet nativo), no se puede editar celda por celda vía API — hay que
+    descargar el archivo entero, modificarlo con openpyxl, y volver a subirlo
+    completo. Esto reemplaza el archivo tal cual queda guardado; si alguien
+    más lo está editando en Excel/Sheets al mismo tiempo, esos cambios se
+    perderían (último en guardar gana)."""
+    if not _OPENPYXL_OK:
+        return False, "Falta la librería `openpyxl` en el entorno (agrégala a requirements.txt)."
+
+    token = _get_gspread_access_token()
+    if not token:
         return False, (
-            "No hay credenciales configuradas para escribir en Google Sheets. "
+            "No hay credenciales configuradas para escribir en Drive. "
             "Falta `st.secrets['gcp_service_account']` (ver instrucciones abajo)."
         )
     try:
-        sh = gc.open_by_key(SHEET_ID)
-        ws = sh.worksheet("BD_PLANTA")
+        raw_bytes = _download_drive_file_bytes(PROFESORES_FILE_ID)
+        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
+        if "planta" not in wb.sheetnames:
+            return False, "No encontré la hoja 'planta' dentro de BD_profesores.xlsx."
+        ws = wb["planta"]
 
-        col_a = ws.col_values(1)  # incluye encabezado en la fila 1
-        matching_rows = [
-            i + 1 for i, v in enumerate(col_a)
-            if i > 0 and str(v).strip().replace(".0", "") == str(periodo)
+        # 1) Borra filas existentes con el mismo Periodo (columna A), de abajo hacia arriba
+        rows_to_delete = [
+            r for r in range(2, ws.max_row + 1)
+            if str(ws.cell(row=r, column=1).value or "").strip().replace(".0", "") == str(periodo)
         ]
-        if matching_rows:
-            for r in sorted(matching_rows, reverse=True):
-                ws.delete_rows(r)
-            col_a = ws.col_values(1)
+        for r in sorted(rows_to_delete, reverse=True):
+            ws.delete_rows(r)
 
-        append_start = len(col_a) + 1
+        # 2) Agrega las filas nuevas al final
+        append_start = ws.max_row + 1
         rows = [
             _build_planta_row(list(r), periodo, append_start + i)
             for i, r in enumerate(new_rows_df.itertuples(index=False, name=None))
         ]
-        ws.append_rows(rows, value_input_option="USER_ENTERED")
 
-        # Resaltado condicional según Notes (columna AA = índice 27, 1-indexado)
-        formats = []
-        for i, r in enumerate(rows):
-            note = r[26]
-            style = _planta_note_style(note)
-            if not style:
-                continue
+        blue_bold_font = Font(color="1D4ED8", bold=True)
+        red_font = Font(color="DC2626")
+
+        for i, row_vals in enumerate(rows):
             rn = append_start + i
-            fmt = (
-                {"textFormat": {"foregroundColor": {"red": 0.11, "green": 0.25, "blue": 0.85}, "bold": True}}
-                if style == "blue_bold"
-                else {"textFormat": {"foregroundColor": {"red": 0.86, "green": 0.15, "blue": 0.15}, "bold": False}}
-            )
-            formats.append({"range": f"A{rn}:AB{rn}", "format": fmt})
-        if formats:
-            ws.batch_format(formats)
+            for c, val in enumerate(row_vals, start=1):
+                ws.cell(row=rn, column=c, value=val)
+            # 3) Resaltado condicional según Notes (índice 26 = columna AA)
+            style = _planta_note_style(row_vals[26])
+            if style:
+                font = blue_bold_font if style == "blue_bold" else red_font
+                for c in range(1, 29):
+                    ws.cell(row=rn, column=c).font = font
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        # 4) Sube el archivo completo de vuelta a Drive
+        ok, err = _drive_upload_file_bytes(PROFESORES_FILE_ID, buf.getvalue())
+        if not ok:
+            return False, f"Error al subir el archivo actualizado a Drive: {err}"
 
         load_data.clear()
         qual_load_planta.clear()
         area_load_fulltime.clear()
         demo_load_fulltime.clear()
-        _download_workbook_bytes.clear()
+        _download_drive_file_bytes.clear()
 
-        return True, f"✓ BD_PLANTA actualizada — {len(rows)} filas para el período {periodo}."
+        return True, f"✓ BD_profesores.xlsx (hoja 'planta') actualizada — {len(rows)} filas para el período {periodo}."
     except Exception as e:
-        return False, f"Error al escribir en BD_PLANTA: {e}"
+        return False, f"Error al escribir en la hoja 'planta': {e}"
+
 
 
 def page_update_data():
@@ -6191,22 +6230,23 @@ def page_update_data():
             st.markdown(
                 "Esta misma Service Account también soluciona el error "
                 "`HTTP 401` al cargar los dashboards (aparece cuando el "
-                "Google Sheet no está compartido públicamente). Para "
-                "configurarla:\n\n"
+                "archivo no está compartido con ella). Para configurarla:\n\n"
                 "1. Crear una **Service Account** en Google Cloud (con la API de "
-                "Google Sheets habilitada) y descargar su archivo JSON.\n"
-                "2. Compartir el Google Sheet `BD_Faculty` "
-                f"(`{SHEET_ID}`) con el correo de esa service account "
-                "(el campo `client_email` del JSON), con permiso de **Editor**.\n"
+                "Google Drive habilitada) y descargar su archivo JSON.\n"
+                "2. Compartir estos 3 archivos con el correo de esa service account "
+                "(el campo `client_email` del JSON), con permiso de **Editor**:\n"
+                f"   - `BD_profesores.xlsx` (`{PROFESORES_FILE_ID}`)\n"
+                f"   - `BD_cartelera.xlsx` (`{CARTELERA_FILE_ID}`)\n"
+                f"   - `BD_faculty_questionnaire.xlsx` (`{QUESTIONNAIRE_FILE_ID}`)\n"
                 "3. Pegar el contenido del JSON en los *Secrets* de Streamlit "
                 "bajo la clave `gcp_service_account`.\n\n"
-                "Alternativa más simple (pero menos privada) si no quieres usar "
-                "Service Account: comparte el Sheet como **'Cualquiera con el "
-                "enlace puede ver'** — eso también resuelve el HTTP 401, aunque "
-                "sin ella el botón de guardar en esta sección seguirá sin funcionar."
+                "**Importante:** como estos son archivos `.xlsx` normales (no Google "
+                "Sheets nativos), guardar aquí descarga el archivo completo, lo "
+                "modifica, y lo vuelve a subir — si alguien más lo tiene abierto y "
+                "guarda al mismo tiempo, gana el último que guarde."
             )
             st.caption(
-                "✅ Conectado a Google Sheets con permisos de escritura." if _get_gspread_client()
+                "✅ Conectado a Drive con permisos de escritura." if _get_gspread_client()
                 else "⚠️ Aún no hay credenciales de escritura configuradas."
             )
 
