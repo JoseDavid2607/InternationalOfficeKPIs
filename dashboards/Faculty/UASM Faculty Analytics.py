@@ -6,6 +6,9 @@
 #  Página 4: Faculty Demographics
 #  Página 5: Full-time Faculty Activities
 #  Página 6: Faculty Qualifications
+#  Página 7: Update Data (BD_PLANTA — sube la Template y la escribe en el
+#            Google Sheet maestro, replicando la lógica que antes vivía
+#            en el modal "Update data" del HTML de KPIs)
 # ===========================================================================
 from __future__ import annotations
 
@@ -19,8 +22,16 @@ import io
 import base64
 import time
 import math
+import datetime
 import requests
 from typing import Optional, Tuple, List, Dict
+
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    _GSPREAD_OK = True
+except ImportError:
+    _GSPREAD_OK = False
 
 # 1) CONFIGURACIÓN GLOBAL (una sola vez para toda la app)
 st.set_page_config(
@@ -146,6 +157,30 @@ def _is_inter_label(p) -> bool:
 
 # 3) CARGA DE DATOS (compartida por todas las páginas)
 SHEET_ID = "1PZkqgtvct5LFNWVUEkA5fuglvqvAuMxseSq10MV9ji8"
+
+# ── Escritura en el Google Sheet maestro (sección "Update Data") ───────────
+# Requiere una service account de Google Cloud con acceso de Editor al Sheet
+# (compartir el Sheet con el correo de la service account) y su JSON guardado
+# en Streamlit secrets bajo la clave "gcp_service_account". Ver docs al final
+# de page_update_data() para el detalle de configuración.
+_GSPREAD_SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
+
+
+def _get_gspread_client():
+    if not _GSPREAD_OK:
+        return None
+    if "gcp_service_account" not in st.secrets:
+        return None
+    try:
+        creds = Credentials.from_service_account_info(
+            dict(st.secrets["gcp_service_account"]), scopes=_GSPREAD_SCOPES
+        )
+        return gspread.authorize(creds)
+    except Exception:
+        return None
 
 
 @st.cache_data(ttl=300)
@@ -5879,6 +5914,282 @@ def page_qualifications():
             st.dataframe(res_out, use_container_width=True, hide_index=True)
 
 
+# 6) PÁGINA 7 — Update Data (BD_PLANTA)
+# ---------------------------------------------------------------------------
+# Reemplaza el antiguo modal "Update data" del HTML de KPIs. Sube la
+# Template_BD_PLANTA.xlsx, la transforma fila por fila con el mismo mapeo de
+# columnas que usaba ese modal (función buildBDRow original), y la escribe
+# directamente en la pestaña BD_PLANTA del Google Sheet maestro.
+
+# Columnas B..W de la Template (índice 0-based tras quitar la columna A,
+# que es solo la etiqueta descriptiva) → columna destino en BD_PLANTA.
+# F y V de la base son fórmulas (Full Name y Age) y nunca se sobreescriben
+# con datos de la template.
+_PLANTA_TEMPLATE_HEADER_ROW = 4     # fila 4 = nombres de columna en la template
+_PLANTA_TEMPLATE_DATA_ROW = 6       # los datos empiezan en la fila 6 (1-indexado)
+_PLANTA_TEMPLATE_START_COL = 1      # columna B (0-indexado) = primera columna de datos
+
+
+def _planta_fmt_date(v) -> str:
+    """Normaliza una fecha de la template (datetime, serial de Excel, o texto) a DD/MM/YYYY."""
+    if v is None or (isinstance(v, float) and pd.isna(v)) or v == "":
+        return ""
+    if isinstance(v, (datetime.datetime, datetime.date)):
+        return v.strftime("%d/%m/%Y")
+    if isinstance(v, (int, float)):
+        try:
+            dt = datetime.datetime(1899, 12, 30) + datetime.timedelta(days=float(v))
+            return dt.strftime("%d/%m/%Y")
+        except (ValueError, OverflowError):
+            return str(v)
+    return str(v).strip()
+
+
+def _build_planta_row(tpl_row: list, periodo: str, formula_row_num: int) -> list:
+    """Traduce una fila de la Template_BD_PLANTA (empezando en columna B) a una
+    fila completa A:AB de BD_PLANTA, replicando 1 a 1 el mapeo que ya tenía el
+    modal HTML (columnas F=Full Name y V=Age quedan como fórmula, no se pisan)."""
+
+    def t(idx):
+        v = tpl_row[idx] if idx < len(tpl_row) else ""
+        return "" if v is None or (isinstance(v, float) and pd.isna(v)) else v
+
+    row = [""] * 28  # A .. AB
+
+    row[0] = periodo                                   # A — Periodo
+    row[1] = t(0)                                       # B — Nº                (tpl B)
+    row[2] = t(1)                                       # C — ID Nr.            (tpl C)
+    row[3] = t(2)                                       # D — First Name        (tpl D)
+    row[4] = t(3)                                       # E — Last Name         (tpl E)
+    row[5] = f'=D{formula_row_num}&" "&E{formula_row_num}'  # F — Full Name (fórmula, NO se pisa con la template)
+    row[6] = _planta_fmt_date(t(8))                      # G — Date of First Appointment (tpl J)
+    row[7] = t(9)                                        # H — Academic Area     (tpl K)
+    row[8] = t(13)                                       # I — Highest Earned Degree (tpl O)
+    row[9] = t(14)                                       # J — Year (Degree)     (tpl P)
+    row[10] = t(15)                                      # K — University        (tpl Q)
+    row[11] = t(16)                                      # L — Region            (tpl R)
+    row[12] = t(17)                                      # M — Highest Degree    (tpl S)
+    row[13] = t(18)                                      # N — International Degree (tpl T)
+    row[14] = t(11)                                      # O — % devoted to Mission (tpl M)
+    row[15] = t(10)                                      # P — Faculty Ranking   (tpl L)
+    row[16] = ""                                         # Q — Subcategorization (vacío)
+    row[17] = t(19)                                      # R — Field             (tpl U)
+    row[18] = t(6)                                       # S — Country of Birth  (tpl H)
+    row[19] = t(7)                                       # T — Double Nationality (tpl I)
+    row[20] = _planta_fmt_date(t(4))                     # U — Date of Birth     (tpl F)
+    row[21] = (                                          # V — Age (fórmula, NO se pisa con la template)
+        f'=SIFECHA(U{formula_row_num};FECHA(IZQUIERDA(BD_PLANTA!$A{formula_row_num};4);'
+        f'SI(DERECHA(BD_PLANTA!$A{formula_row_num};2)="10";2;'
+        f'SI(DERECHA(BD_PLANTA!$A{formula_row_num};2)="20";8;6));1);"Y")'
+    )
+    row[22] = t(5)                                        # W — Gender            (tpl G)
+    row[23] = t(12)                                       # X — Faculty Qualific. (tpl N)
+    row[24] = "P"                                          # Y — P/S, fijo "P"
+    row[25] = t(20)                                       # Z — Normal professional Resp. (tpl V)
+    row[26] = t(21)                                       # AA — Notes            (tpl W)
+    row[27] = "PLANTA"                                    # AB — fijo "PLANTA"
+
+    return row
+
+
+def _planta_note_style(note: str) -> Optional[str]:
+    """'IN IN...' → azul y negrilla · 'OUT IN...' → rojo · si no, sin estilo."""
+    n = str(note or "").strip().upper()
+    if n.startswith("IN IN"):
+        return "blue_bold"
+    if n.startswith("OUT IN"):
+        return "red"
+    return None
+
+
+def _read_planta_template(uploaded_file) -> pd.DataFrame:
+    """Lee la Template_BD_PLANTA.xlsx tal como la define el layout original:
+    encabezados en la fila 4, datos desde la fila 6, empezando en la columna B."""
+    raw = pd.read_excel(uploaded_file, sheet_name=0, header=None)
+    headers = raw.iloc[_PLANTA_TEMPLATE_HEADER_ROW - 1, _PLANTA_TEMPLATE_START_COL:].tolist()
+    headers = [str(h).replace("\n", " ").strip() if pd.notna(h) else "" for h in headers]
+    data = raw.iloc[_PLANTA_TEMPLATE_DATA_ROW - 1:, _PLANTA_TEMPLATE_START_COL:].copy()
+    data.columns = headers
+    data = data.dropna(how="all").reset_index(drop=True)
+    return data
+
+
+def _style_planta_preview(df: pd.DataFrame):
+    def _row_style(row):
+        style = _planta_note_style(row.get("Notes", ""))
+        if style == "blue_bold":
+            return ["color: #1d4ed8; font-weight: 700;"] * len(row)
+        if style == "red":
+            return ["color: #dc2626;"] * len(row)
+        return [""] * len(row)
+    return df.style.apply(_row_style, axis=1)
+
+
+def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, str]:
+    """Escribe las filas nuevas en BD_PLANTA del Sheet maestro:
+    1) borra cualquier fila existente con el mismo Periodo (semántica de reemplazo,
+       igual que hacía el modal HTML), 2) agrega las filas nuevas al final,
+       3) aplica el resaltado de Notes (IN IN → azul negrilla, OUT IN → rojo)."""
+    gc = _get_gspread_client()
+    if gc is None:
+        return False, (
+            "No hay credenciales configuradas para escribir en Google Sheets. "
+            "Falta `st.secrets['gcp_service_account']` (ver instrucciones abajo)."
+        )
+    try:
+        sh = gc.open_by_key(SHEET_ID)
+        ws = sh.worksheet("BD_PLANTA")
+
+        col_a = ws.col_values(1)  # incluye encabezado en la fila 1
+        matching_rows = [
+            i + 1 for i, v in enumerate(col_a)
+            if i > 0 and str(v).strip().replace(".0", "") == str(periodo)
+        ]
+        if matching_rows:
+            for r in sorted(matching_rows, reverse=True):
+                ws.delete_rows(r)
+            col_a = ws.col_values(1)
+
+        append_start = len(col_a) + 1
+        rows = [
+            _build_planta_row(list(r), periodo, append_start + i)
+            for i, r in enumerate(new_rows_df.itertuples(index=False, name=None))
+        ]
+        ws.append_rows(rows, value_input_option="USER_ENTERED")
+
+        # Resaltado condicional según Notes (columna AA = índice 27, 1-indexado)
+        formats = []
+        for i, r in enumerate(rows):
+            note = r[26]
+            style = _planta_note_style(note)
+            if not style:
+                continue
+            rn = append_start + i
+            fmt = (
+                {"textFormat": {"foregroundColor": {"red": 0.11, "green": 0.25, "blue": 0.85}, "bold": True}}
+                if style == "blue_bold"
+                else {"textFormat": {"foregroundColor": {"red": 0.86, "green": 0.15, "blue": 0.15}, "bold": False}}
+            )
+            formats.append({"range": f"A{rn}:AB{rn}", "format": fmt})
+        if formats:
+            ws.batch_format(formats)
+
+        load_data.clear()
+        qual_load_planta.clear()
+        area_load_fulltime.clear()
+        demo_load_fulltime.clear()
+        _download_workbook_bytes.clear()
+
+        return True, f"✓ BD_PLANTA actualizada — {len(rows)} filas para el período {periodo}."
+    except Exception as e:
+        return False, f"Error al escribir en BD_PLANTA: {e}"
+
+
+def page_update_data():
+    _render_header("Update Data", "Sube la Template para actualizar la BD maestra")
+
+    st.markdown(
+        "Esta sección reemplaza el antiguo modal *Update data* de la web de KPIs. "
+        "Los cambios que hagas aquí se escriben directamente en el Google Sheet que "
+        "alimenta todos los dashboards."
+    )
+
+    tab_planta, tab_cartelera, tab_quest = st.tabs(
+        ["BD_PLANTA", "BD_Cartelera", "BD_Faculty_Questionnaire"]
+    )
+
+    # ── BD_PLANTA ───────────────────────────────────────────────────────
+    with tab_planta:
+        st.markdown("#### Actualizar BD_PLANTA")
+        st.caption(
+            "Sube `Template_BD_PLANTA.xlsx`. Los datos deben empezar en la fila 6, "
+            "columnas B a W, igual que la plantilla oficial."
+        )
+
+        periodo = st.text_input(
+            "Periodo (formato Base, ej: 202510 o '2025 Intersemestral')",
+            key="planta_periodo",
+            placeholder="202510",
+        )
+        up = st.file_uploader("Template_BD_PLANTA.xlsx", type=["xlsx"], key="planta_upload")
+
+        if up is not None:
+            try:
+                tpl_df = _read_planta_template(up)
+            except Exception as e:
+                st.error(f"No pude leer el archivo: {e}")
+                tpl_df = None
+
+            if tpl_df is not None and not tpl_df.empty:
+                st.success(f"{len(tpl_df)} filas detectadas en la template.")
+
+                preview_cols = list(tpl_df.columns)
+                notes_col = next((c for c in preview_cols if str(c).strip().lower() == "notes"), None)
+                if notes_col and notes_col != "Notes":
+                    tpl_df = tpl_df.rename(columns={notes_col: "Notes"})
+
+                st.markdown(
+                    "**Vista previa** — filas con `IN IN…` en azul y negrilla, "
+                    "`OUT IN…` en rojo (igual que quedarán en la Base):"
+                )
+                st.dataframe(_style_planta_preview(tpl_df), use_container_width=True)
+
+                st.markdown(
+                    "Las columnas **F (Full Name)** y **V (Age)** de la Base "
+                    "quedan como fórmula — no se sobreescriben con la template."
+                )
+
+                disabled = not periodo.strip()
+                if disabled:
+                    st.info("Ingresa el Periodo antes de guardar.")
+
+                if st.button("💾 Guardar en BD_PLANTA", type="primary", disabled=disabled):
+                    with st.spinner("Escribiendo en el Google Sheet…"):
+                        ok, msg = push_planta_updates(tpl_df, periodo.strip())
+                    if ok:
+                        st.success(msg)
+                        st.balloons()
+                    else:
+                        st.error(msg)
+            elif tpl_df is not None:
+                st.warning("No se detectaron filas de datos a partir de la fila 6.")
+
+        with st.expander("⚙️ Configuración requerida (una sola vez)"):
+            st.markdown(
+                "Para que este botón pueda escribir en el Google Sheet maestro, "
+                "necesitas:\n\n"
+                "1. Crear una **Service Account** en Google Cloud (con la API de "
+                "Google Sheets habilitada) y descargar su archivo JSON.\n"
+                "2. Compartir el Google Sheet `BD_Faculty` "
+                f"(`{SHEET_ID}`) con el correo de esa service account, con "
+                "permiso de **Editor**.\n"
+                "3. Pegar el contenido del JSON en los *Secrets* de Streamlit "
+                "bajo la clave `gcp_service_account`.\n\n"
+                "Sin esto configurado, el botón de guardar mostrará un error "
+                "explicando que faltan credenciales — la vista previa y el "
+                "mapeo de columnas funcionan igual sin esta configuración."
+            )
+            st.caption(
+                "✅ Conectado a Google Sheets con permisos de escritura." if _get_gspread_client()
+                else "⚠️ Aún no hay credenciales de escritura configuradas."
+            )
+
+    # ── BD_Cartelera (próximamente) ────────────────────────────────────
+    with tab_cartelera:
+        st.info(
+            "🚧 La actualización de BD_Cartelera desde su template todavía no está "
+            "implementada aquí — por ahora se sigue haciendo por el proceso anterior."
+        )
+
+    # ── BD_Faculty_Questionnaire (próximamente) ─────────────────────────
+    with tab_quest:
+        st.info(
+            "🚧 La actualización de BD_faculty_questionnaire desde su template "
+            "todavía no está implementada aquí — por ahora se sigue haciendo por "
+            "el proceso anterior."
+        )
+
+
 # Navegación multipágina — menú nativo oculto; desplegable sutil (flecha) con los enlaces
 pages = [
     st.Page(page_composition, title="Composition", icon="🎓", url_path="composition", default=True),
@@ -5887,6 +6198,7 @@ pages = [
     st.Page(page_demographics, title="Demographics", icon="🧑‍🤝‍🧑", url_path="demographics"),
     st.Page(page_activities, title="Activities", icon="🧭", url_path="activities"),
     st.Page(page_qualifications, title="Qualifications", icon="📚", url_path="qualifications"),
+    st.Page(page_update_data, title="Update Data", icon="🔄", url_path="update-data"),
 ]
 pg = st.navigation(pages, position="hidden")
 
