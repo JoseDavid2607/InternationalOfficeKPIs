@@ -37,7 +37,7 @@ except ImportError as _e:
 
 try:
     import openpyxl
-    from openpyxl.styles import Font
+    from openpyxl.styles import Font, Border, Side
     _OPENPYXL_OK = True
 except ImportError:
     _OPENPYXL_OK = False
@@ -5997,8 +5997,10 @@ def _planta_fmt_date(v) -> str:
 
 def _build_planta_row(tpl_row: list, periodo: str, formula_row_num: int) -> list:
     """Traduce una fila de la Template_BD_PLANTA (empezando en columna B) a una
-    fila completa A:AB de BD_PLANTA, replicando 1 a 1 el mapeo que ya tenía el
-    modal HTML (columnas F=Full Name y V=Age quedan como fórmula, no se pisan)."""
+    fila completa A:AB de BD_PLANTA. F (Full Name) y V (Age) NO se tocan —
+    ya tienen fórmula en la Base y se diligencian solas. AB tampoco se escribe
+    (ya no hace falta la etiqueta "PLANTA"). Estas 3 columnas quedan como
+    `None` en la lista devuelta como señal de "no escribir esta celda"."""
 
     def t(idx):
         v = tpl_row[idx] if idx < len(tpl_row) else ""
@@ -6011,7 +6013,7 @@ def _build_planta_row(tpl_row: list, periodo: str, formula_row_num: int) -> list
     row[2] = t(1)                                       # C — ID Nr.            (tpl C)
     row[3] = t(2)                                       # D — First Name        (tpl D)
     row[4] = t(3)                                       # E — Last Name         (tpl E)
-    row[5] = f'=D{formula_row_num}&" "&E{formula_row_num}'  # F — Full Name (fórmula, NO se pisa con la template)
+    row[5] = None                                        # F — Full Name (fórmula ya existente, NO se escribe)
     row[6] = _planta_fmt_date(t(8))                      # G — Date of First Appointment (tpl J)
     row[7] = t(9)                                        # H — Academic Area     (tpl K)
     row[8] = t(13)                                       # I — Highest Earned Degree (tpl O)
@@ -6027,17 +6029,13 @@ def _build_planta_row(tpl_row: list, periodo: str, formula_row_num: int) -> list
     row[18] = t(6)                                       # S — Country of Birth  (tpl H)
     row[19] = t(7)                                       # T — Double Nationality (tpl I)
     row[20] = _planta_fmt_date(t(4))                     # U — Date of Birth     (tpl F)
-    row[21] = (                                          # V — Age (fórmula, NO se pisa con la template)
-        f'=SIFECHA(U{formula_row_num};FECHA(IZQUIERDA(BD_PLANTA!$A{formula_row_num};4);'
-        f'SI(DERECHA(BD_PLANTA!$A{formula_row_num};2)="10";2;'
-        f'SI(DERECHA(BD_PLANTA!$A{formula_row_num};2)="20";8;6));1);"Y")'
-    )
+    row[21] = None                                       # V — Age (fórmula ya existente, NO se escribe)
     row[22] = t(5)                                        # W — Gender            (tpl G)
     row[23] = t(12)                                       # X — Faculty Qualific. (tpl N)
     row[24] = "P"                                          # Y — P/S, fijo "P"
     row[25] = t(20)                                       # Z — Normal professional Resp. (tpl V)
     row[26] = t(21)                                       # AA — Notes            (tpl W)
-    row[27] = "PLANTA"                                    # AB — fijo "PLANTA"
+    row[27] = None                                        # AB — ya no se escribe "PLANTA"
 
     return row
 
@@ -6139,19 +6137,24 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
             for i, r in enumerate(new_rows_df.itertuples(index=False, name=None))
         ]
 
-        blue_bold_font = Font(color="1D4ED8", bold=True)
-        red_font = Font(color="DC2626")
+        base_font = Font(name="Arial", size=11, color="000000")
+        blue_bold_font = Font(name="Arial", size=11, color="1D4ED8", bold=True)
+        red_font = Font(name="Arial", size=11, color="DC2626")
+        thin = Side(style="thin")
+        thin_border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
         for i, row_vals in enumerate(rows):
             rn = append_start + i
+            style = _planta_note_style(row_vals[26])  # índice 26 = columna AA (Notes)
+            font = blue_bold_font if style == "blue_bold" else red_font if style == "red" else base_font
             for c, val in enumerate(row_vals, start=1):
-                ws.cell(row=rn, column=c, value=val)
-            # 3) Resaltado condicional según Notes (índice 26 = columna AA)
-            style = _planta_note_style(row_vals[26])
-            if style:
-                font = blue_bold_font if style == "blue_bold" else red_font
-                for c in range(1, 29):
-                    ws.cell(row=rn, column=c).font = font
+                if val is None:
+                    # F (Full Name) y V (Age) ya tienen fórmula en la Base — no se tocan.
+                    # AB ya no se usa — se deja como está (vacío).
+                    continue
+                cell = ws.cell(row=rn, column=c, value=val)
+                cell.font = font
+                cell.border = thin_border
 
         buf = io.BytesIO()
         wb.save(buf)
