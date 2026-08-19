@@ -104,24 +104,14 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    ".st-key-nav_toggle{"
-    "position:fixed !important;top:0.6rem;left:3.5rem;z-index:999999;"
-    "width:auto !important;margin:0 !important;}"
     ".st-key-nav_toggle div[data-testid='stExpander']{"
-    "width:auto !important;border:none !important;outline:none !important;"
-    "background:transparent !important;box-shadow:none !important;margin:0 !important;}"
+    "border:none !important;background:transparent !important;box-shadow:none !important;"
+    "margin:2px 0 6px 0 !important;}"
     ".st-key-nav_toggle div[data-testid='stExpander'] summary{"
-    "width:30px;height:30px;margin:0 !important;padding:0 !important;"
-    "background:transparent !important;border:none !important;outline:none !important;"
-    "box-shadow:none !important;border-radius:50%;"
-    "display:flex;align-items:center;justify-content:center;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover{background:rgba(0,168,150,.12) !important;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary:focus{outline:none !important;box-shadow:none !important;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary svg{color:#00A896 !important;}"
-    ".st-key-nav_toggle div[data-testid='stExpanderDetails']{"
-    "background:#FFFFFF;border:1px solid #D1E8E4;border-radius:12px;"
-    "box-shadow:0 6px 20px rgba(0,77,71,.15);padding:10px 16px !important;"
-    "margin-top:4px;}"
+    "padding:4px 6px !important;font-size:13px !important;color:#4b5563 !important;"
+    "border-radius:8px;}"
+    ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover{background:rgba(0,168,150,.10) !important;}"
+    ".st-key-nav_toggle div[data-testid='stExpanderDetails']{padding:4px 2px 2px 6px !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -481,20 +471,6 @@ def qual_load_cartelera() -> pd.DataFrame:
     return df_
 
 
-# 4) SIDEBAR — encabezado común (logo + título), visible en todas las páginas
-with st.sidebar:
-    col_logo, col_title = st.columns([1, 3])
-    with col_logo:
-        st.image("imagenes/logo.png", width=65)
-    with col_title:
-        st.markdown(
-            '<div style="padding-top:10px;color:#004d47;font-size:24px;'
-            'font-weight:800;line-height:1.1;">UASM Faculty KPIs</div>',
-            unsafe_allow_html=True,
-        )
-        st.caption("Analytics Dashboard")
-    st.markdown("---")
-
 
 # 5) PÁGINA 1 — Full-time Faculty Composition
 def page_composition():
@@ -637,7 +613,7 @@ def page_composition():
     def _highlight_last(df_):
         s = pd.DataFrame("", index=df_.index, columns=df_.columns)
         if len(df_.columns) > 0 and "Total" in df_.index:
-            s.loc["Total", df_.columns[-1]] = "background-color:#dff7f2;color:#004d47;font-weight:700;"
+            s.loc["Total", df_.columns[-1]] = "background-color:#dff7f2;color:#00A896;font-weight:700;"
         return s
 
     st.dataframe(
@@ -7172,12 +7148,55 @@ pages = [
 ]
 pg = st.navigation(pages, position="hidden")
 
-if pg is not pages[-1]:  # pages[-1] = Update Data — comparación por identidad, más confiable que el título
-    with st.container(key="nav_toggle"):
-        with st.expander("", expanded=False):
-            nav_cols = st.columns(len(pages))
-            for col, page_obj in zip(nav_cols, pages):
-                with col:
+
+def _period_sort_key(p):
+    s = str(p)
+    return (int(s[:4]), 30 if "Intersemestral" in s else int(s[-2:].replace("-", "")))
+
+
+with st.sidebar:
+    col_logo, col_title = st.columns([1, 3])
+    with col_logo:
+        st.image("imagenes/logo.png", width=65)
+    with col_title:
+        st.markdown(
+            '<div style="padding-top:10px;color:#004d47;font-size:24px;'
+            'font-weight:800;line-height:1.1;">UASM Faculty KPIs</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption("Analytics Dashboard")
+
+    if pg is not pages[-1]:  # pages[-1] = Update Data — comparación por identidad, más confiable que el título
+        with st.container(key="nav_toggle"):
+            with st.expander("Other sections", expanded=False, icon="🧭"):
+                for page_obj in pages:
                     st.page_link(page_obj)
+
+    with st.expander("⬇️ Download Database", expanded=False, icon="🗂️"):
+        _dl_periods = sorted(df["Periodo"].dropna().unique().tolist(), key=_period_sort_key, reverse=True)
+        dl_period = st.selectbox("Periodo", _dl_periods, index=0, key="dl_db_period")
+        dl_scope = st.radio("Incluir", ["Planta", "Cátedra", "Todo"], key="dl_db_scope", horizontal=True)
+
+        def _build_db_download(period: str, scope: str) -> bytes:
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf) as writer:
+                if scope in ("Planta", "Todo"):
+                    df[df["Periodo"].astype(str) == str(period)].to_excel(writer, index=False, sheet_name="Planta")
+                if scope in ("Cátedra", "Todo"):
+                    df_cat = demo_load_parttime()
+                    period_nodash = str(period).replace("-", "")
+                    df_cat[df_cat["Periodo"].astype(str) == period_nodash].to_excel(
+                        writer, index=False, sheet_name="Catedra"
+                    )
+            buf.seek(0)
+            return buf.getvalue()
+
+        st.download_button(
+            "Descargar", data=_build_db_download(dl_period, dl_scope),
+            file_name=f"BD_{dl_scope}_{dl_period}.xlsx".replace(" ", "_"),
+            key="dl_db_btn", use_container_width=True,
+        )
+
+    st.markdown("---")
 
 pg.run()
