@@ -105,20 +105,22 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    ".st-key-nav_toggle{margin:2px 0 4px 0 !important;}"
+    ".st-key-nav_toggle{"
+    "position:fixed !important;top:0.3rem;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:auto !important;margin:0 !important;}"
     ".st-key-nav_toggle a{"
-    "font-size:11px !important;color:#9CA3AF !important;font-weight:600 !important;"
-    "text-decoration:none !important;padding:2px 0 !important;}"
+    "font-size:13px !important;color:#6B7280 !important;font-weight:600 !important;"
+    "text-decoration:none !important;padding:4px 6px !important;}"
     ".st-key-nav_toggle a:hover{color:#00A896 !important;}"
-    ".st-key-nav_toggle a svg{width:14px !important;height:14px !important;color:#C7CCD1 !important;}"
-    ".st-key-nav_toggle a:hover svg{color:#00A896 !important;}"
+    ".st-key-update_sidebar_group{text-align:center;}"
+    ".st-key-update_sidebar_group img{margin:0 auto;}"
     ".st-key-go_to_dashboard_btn a{"
     "display:flex !important;align-items:center;justify-content:center;gap:10px;"
-    "background:#FFFFFF !important;border:2px solid #004d47 !important;"
-    "color:#004d47 !important;font-size:20px !important;font-weight:800 !important;"
+    "background:#004d47 !important;border:none !important;"
+    "color:#FFFFFF !important;font-size:20px !important;font-weight:800 !important;"
     "border-radius:14px !important;padding:20px 10px !important;text-decoration:none !important;"
-    "box-shadow:0 4px 14px rgba(0,77,71,.15);transition:transform .15s ease;}"
-    ".st-key-go_to_dashboard_btn a:hover{transform:translateY(-2px);background:#F0FAF8 !important;}"
+    "box-shadow:0 4px 14px rgba(0,77,71,.25);transition:transform .15s ease;}"
+    ".st-key-go_to_dashboard_btn a:hover{transform:translateY(-2px);background:#00332E !important;}"
     ".st-key-go_to_update_btn a{"
     "display:flex !important;align-items:center;justify-content:center;gap:6px;"
     "background:#FFFFFF !important;border:1px solid #D1E8E4 !important;"
@@ -6876,9 +6878,10 @@ def page_update_data():
     _render_header("Update Data", "Sube la Template para actualizar la BD maestra")
 
     st.markdown(
-        "Esta sección reemplaza el antiguo modal *Update data* de la web de KPIs. "
-        "Los cambios que hagas aquí se escriben directamente en el Google Sheet que "
-        "alimenta todos los dashboards."
+        "<div style='text-align:center;'>Esta sección reemplaza el antiguo modal "
+        "<i>Update data</i> de la web de KPIs. Los cambios que hagas aquí se escriben "
+        "directamente en el Google Sheet que alimenta todos los dashboards.</div>",
+        unsafe_allow_html=True,
     )
 
     tab_planta, tab_cartelera, tab_quest = st.tabs(
@@ -6963,10 +6966,6 @@ def page_update_data():
         st.download_button(
             "Descargar Template_cartelera.xlsx", data=_download_drive_file_bytes(TEMPLATE_CARTELERA_FILE_ID),
             file_name="Template_cartelera.xlsx", key="dl_template_cartelera", icon=":material/download:",
-        )
-        st.caption(
-            "Sube `Template_cartelera.xlsx` diligenciada. Los datos deben "
-            "empezar en la fila 6, columnas B a H, igual que la plantilla oficial."
         )
 
         up_cart = st.file_uploader("Template_cartelera.xlsx", type=["xlsx"], key="cartelera_upload")
@@ -7203,27 +7202,28 @@ def page_update_data():
             elif cart_df is not None:
                 st.warning("No se detectaron filas de datos a partir de la fila 6.")
 
-    # ── BD_Faculty_Questionnaire (próximamente) ─────────────────────────
+    # ── BD_Faculty_Questionnaire ─────────────────────────────────────────
     with tab_quest:
-        st.info(
-            "🚧 La actualización de BD_faculty_questionnaire desde su template "
-            "todavía no está implementada aquí — por ahora se sigue haciendo por "
-            "el proceso anterior."
-        )
+        pass
 
 
 # Navegación multipágina — menú nativo oculto; desplegable sutil (flecha) con los enlaces
 pages = [
-    st.Page(page_composition, title="Composition", icon=":material/school:", url_path="composition", default=True),
-    st.Page(page_staffing, title="Staffing Levels", icon=":material/groups:", url_path="staffing"),
-    st.Page(page_area, title="By Area", icon=":material/account_tree:", url_path="area"),
-    st.Page(page_demographics, title="Demographics", icon=":material/diversity_3:", url_path="demographics"),
-    st.Page(page_activities, title="Activities", icon=":material/explore:", url_path="activities"),
-    st.Page(page_qualifications, title="Qualifications", icon=":material/menu_book:", url_path="qualifications"),
-    st.Page(page_update_data, title="Update Data", icon=":material/sync:", url_path="update-data"),
+    st.Page(page_composition, title="Composition", icon="🎓", url_path="composition", default=True),
+    st.Page(page_staffing, title="Staffing Levels", icon="📊", url_path="staffing"),
+    st.Page(page_area, title="By Area", icon="🏛️", url_path="area"),
+    st.Page(page_demographics, title="Demographics", icon="🧑‍🤝‍🧑", url_path="demographics"),
+    st.Page(page_activities, title="Activities", icon="🧭", url_path="activities"),
+    st.Page(page_qualifications, title="Qualifications", icon="📚", url_path="qualifications"),
+    st.Page(page_update_data, title="Update Data", icon="🔄", url_path="update-data"),
 ]
 pg = st.navigation(pages, position="hidden")
 IS_UPDATE_PAGE = pg is pages[-1]  # comparación por identidad, más confiable que el título
+
+if not IS_UPDATE_PAGE:
+    # Recuerda en qué página estaba el usuario antes de ir a Update Data,
+    # para que "Go to Faculty Dashboard" lo regrese exactamente ahí.
+    st.session_state["_return_page_idx"] = pages.index(pg)
 
 
 def _period_sort_key(p):
@@ -7231,23 +7231,22 @@ def _period_sort_key(p):
     return (int(s[:4]), 30 if "Intersemestral" in s else int(s[-2:].replace("-", "")))
 
 
-with st.sidebar:
-    col_logo, col_title = st.columns([1, 3])
-    with col_logo:
-        st.image("imagenes/logo.png", width=65)
-    with col_title:
-        st.markdown(
-            '<div style="padding-top:10px;color:#004d47;font-size:24px;'
-            'font-weight:800;line-height:1.1;">UASM Faculty KPIs</div>',
-            unsafe_allow_html=True,
-        )
-        st.caption("Analytics Dashboard")
-
-    if not IS_UPDATE_PAGE:
+if not IS_UPDATE_PAGE:
+    with st.sidebar:
+        col_logo, col_title = st.columns([1, 3])
+        with col_logo:
+            st.image("imagenes/logo.png", width=65)
+        with col_title:
+            st.markdown(
+                '<div style="padding-top:10px;color:#004d47;font-size:24px;'
+                'font-weight:800;line-height:1.1;">UASM Faculty KPIs</div>',
+                unsafe_allow_html=True,
+            )
+            st.caption("Analytics Dashboard")
         st.markdown("---")
 
-if not IS_UPDATE_PAGE:
-    # "Other sections": links uno al lado del otro, sin menú desplegable, sin Update Data
+    # "Other sections": flotante, bien arriba de la página (fuera del sidebar),
+    # con los emojis originales.
     with st.container(key="nav_toggle"):
         nav_cols = st.columns(len(pages) - 1)
         for col, page_obj in zip(nav_cols, pages[:-1]):
@@ -7257,11 +7256,20 @@ if not IS_UPDATE_PAGE:
 pg.run()
 
 if IS_UPDATE_PAGE:
-    # Update Data: solo el botón de volver, grande y claro, a media altura del sidebar
+    # Update Data: logo + título pegados justo encima del botón, todo el
+    # grupo centrado a media altura del sidebar — nada arriba por separado.
+    return_page = pages[st.session_state.get("_return_page_idx", 0)]
     with st.sidebar:
-        st.markdown('<div style="height:32vh;"></div>', unsafe_allow_html=True)
-        with st.container(key="go_to_dashboard_btn"):
-            st.page_link(pages[0], label="Go to Faculty Dashboard", icon=":material/bar_chart:", use_container_width=True)
+        st.markdown('<div style="height:26vh;"></div>', unsafe_allow_html=True)
+        with st.container(key="update_sidebar_group"):
+            st.image("imagenes/logo.png", width=65)
+            st.markdown(
+                '<div style="color:#004d47;font-size:22px;font-weight:800;'
+                'line-height:1.15;margin-top:8px;">UASM Faculty KPIs</div>'
+                '<div style="color:#6b7280;font-size:13px;margin-bottom:16px;">Analytics Dashboard</div>',
+                unsafe_allow_html=True,
+            )
+            st.page_link(return_page, label="Go to Faculty Dashboard", icon=":material/bar_chart:", use_container_width=True)
 else:
     # Resto de páginas: Download Database + botón de Update, uno al lado del otro, al fondo del sidebar
     with st.sidebar:
