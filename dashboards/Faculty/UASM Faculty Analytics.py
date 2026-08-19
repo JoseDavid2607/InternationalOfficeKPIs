@@ -114,14 +114,13 @@ st.markdown(
     ".st-key-nav_toggle a:hover{color:#00A896 !important;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     ".st-key-update_sidebar_group img{margin:0 auto;}"
-    ".st-key-update_sidebar_group a{transition:opacity .15s ease;}"
-    ".st-key-update_sidebar_group a:hover{opacity:0.7;}"
     ".st-key-go_to_dashboard_btn a{"
-    "display:flex !important;align-items:center;justify-content:center;gap:10px;"
+    "display:flex !important;align-items:center;justify-content:center;gap:10px;text-align:center;"
     "background:#004d47 !important;border:none !important;"
-    "color:#FFFFFF !important;font-size:20px !important;font-weight:800 !important;"
-    "border-radius:14px !important;padding:20px 10px !important;text-decoration:none !important;"
+    "color:#FFFFFF !important;font-size:23px !important;font-weight:800 !important;"
+    "border-radius:14px !important;padding:22px 10px !important;text-decoration:none !important;"
     "box-shadow:0 4px 14px rgba(0,77,71,.25);transition:transform .15s ease;}"
+    ".st-key-go_to_dashboard_btn a span{color:#FFFFFF !important;}"
     ".st-key-go_to_dashboard_btn a:hover{transform:translateY(-2px);background:#00332E !important;}"
     ".st-key-go_to_update_btn a{"
     "display:flex !important;align-items:center;justify-content:center;gap:6px;"
@@ -6965,13 +6964,14 @@ def page_update_data():
                     icon=":material/download:",
                 )
 
+        _cart_periods = qual_load_cartelera()["Periodo"].dropna().unique().tolist()
+        last_cart_period = sorted(_cart_periods, key=_period_sort_key)[-1] if _cart_periods else "—"
+        st.caption(f"Último periodo registrado en la Base: **{last_cart_period}**")
+
         st.download_button(
             "Descargar Template_cartelera.xlsx", data=_download_drive_file_bytes(TEMPLATE_CARTELERA_FILE_ID),
             file_name="Template_cartelera.xlsx", key="dl_template_cartelera", icon=":material/download:",
         )
-        _cart_periods = qual_load_cartelera()["Periodo"].dropna().unique().tolist()
-        last_cart_period = sorted(_cart_periods, key=_period_sort_key)[-1] if _cart_periods else "—"
-        st.caption(f"Último periodo registrado en la Base: **{last_cart_period}**")
 
         up_cart = st.file_uploader("Template_cartelera.xlsx", type=["xlsx"], key="cartelera_upload")
 
@@ -7260,63 +7260,57 @@ if not IS_UPDATE_PAGE:
 
 pg.run()
 
-PAGE_URL_PATHS = ["composition", "staffing", "area", "demographics", "activities", "qualifications"]
-
 if IS_UPDATE_PAGE:
     # Update Data: logo + título pegados justo encima del botón, todo el
     # grupo centrado a media altura del sidebar — nada arriba por separado.
-    # Logo y texto también quedan linkeados a la misma página de vuelta.
+    # Logo y texto quedan planos (sin link); solo el botón es clicable.
     return_idx = st.session_state.get("_return_page_idx", 0)
     return_page = pages[return_idx]
-    return_url = PAGE_URL_PATHS[return_idx] if return_idx < len(PAGE_URL_PATHS) else "composition"
     with st.sidebar:
         st.markdown('<div style="height:26vh;"></div>', unsafe_allow_html=True)
         with st.container(key="update_sidebar_group"):
-            logo_b64 = base64.b64encode(open("imagenes/logo.png", "rb").read()).decode()
+            st.image("imagenes/logo.png", width=65)
             st.markdown(
-                f'<a href="/{return_url}" target="_self" style="text-decoration:none;">'
-                f'<img src="data:image/png;base64,{logo_b64}" width="65" style="display:block;margin:0 auto;">'
                 '<div style="color:#004d47;font-size:22px;font-weight:800;'
                 'line-height:1.15;margin-top:8px;">UASM Faculty KPIs</div>'
-                '<div style="color:#6b7280;font-size:13px;margin-bottom:16px;">Analytics Dashboard</div>'
-                '</a>',
+                '<div style="color:#6b7280;font-size:13px;margin-bottom:16px;">Analytics Dashboard</div>',
                 unsafe_allow_html=True,
             )
             with st.container(key="go_to_dashboard_btn"):
                 st.page_link(return_page, label="Go to Faculty Dashboard", icon=":material/bar_chart:", use_container_width=True)
 else:
-    # Resto de páginas: Download Database + botón de Update, uno al lado del otro, al fondo del sidebar
+    # Resto de páginas: Download + botón de Update, uno al lado del otro, al fondo del sidebar
     with st.sidebar:
         st.markdown("---")
         col_dl, col_upd = st.columns(2)
         with col_dl:
-            with st.expander("Download Database", expanded=False, icon=":material/download:"):
+            with st.expander("Download", expanded=False, icon=":material/download:"):
                 _dl_periods = sorted(df["Periodo"].dropna().unique().tolist(), key=_period_sort_key, reverse=True)
-                dl_period = st.selectbox("Periodo", _dl_periods, index=0, key="dl_db_period")
-                dl_scope = st.radio("Incluir", ["Planta", "Cátedra", "Todo"], key="dl_db_scope", horizontal=True)
+                dl_period = st.selectbox("Period", _dl_periods, index=0, key="dl_db_period")
+                dl_scope = st.radio("Scope", ["Full-time", "Part-time", "Catalog"], key="dl_db_scope", horizontal=True)
 
                 def _build_db_download(period: str, scope: str) -> bytes:
                     buf = io.BytesIO()
                     with pd.ExcelWriter(buf) as writer:
-                        if scope in ("Planta", "Todo"):
-                            df[df["Periodo"].astype(str) == str(period)].to_excel(writer, index=False, sheet_name="Planta")
-                        if scope in ("Cátedra", "Todo"):
+                        if scope == "Full-time":
+                            df[df["Periodo"].astype(str) == str(period)].to_excel(writer, index=False, sheet_name="Full-time")
+                        elif scope == "Part-time":
                             df_cat = demo_load_parttime()
                             period_nodash = str(period).replace("-", "")
                             df_cat[df_cat["Periodo"].astype(str) == period_nodash].to_excel(
-                                writer, index=False, sheet_name="Catedra"
+                                writer, index=False, sheet_name="Part-time"
                             )
-                        # Cartelera completa del periodo (incluye Field/Program y el
-                        # desglose de créditos P/S/OTHER/SA/PA/IP/SP ya calculados).
-                        df_cart_all = qual_load_cartelera()
-                        period_nodash = str(period).replace("-", "")
-                        cart_mask = df_cart_all["Periodo"].astype(str).isin([str(period), period_nodash])
-                        df_cart_all[cart_mask].to_excel(writer, index=False, sheet_name="Cartelera")
+                        else:  # Catalog — cartelera completa del periodo (incluye Field/Program y el
+                            # desglose de créditos P/S/OTHER/SA/PA/IP/SP ya calculados).
+                            df_cart_all = qual_load_cartelera()
+                            period_nodash = str(period).replace("-", "")
+                            cart_mask = df_cart_all["Periodo"].astype(str).isin([str(period), period_nodash])
+                            df_cart_all[cart_mask].to_excel(writer, index=False, sheet_name="Catalog")
                     buf.seek(0)
                     return buf.getvalue()
 
                 st.download_button(
-                    "Descargar", data=_build_db_download(dl_period, dl_scope),
+                    "Download", data=_build_db_download(dl_period, dl_scope),
                     file_name=f"BD_{dl_scope}_{dl_period}.xlsx".replace(" ", "_"),
                     key="dl_db_btn", use_container_width=True,
                 )
