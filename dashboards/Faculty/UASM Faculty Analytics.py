@@ -106,12 +106,14 @@ st.markdown(
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     ".st-key-nav_toggle div[data-testid='stExpander']{"
     "border:none !important;background:transparent !important;box-shadow:none !important;"
-    "margin:2px 0 6px 0 !important;}"
+    "margin:0 0 6px 0 !important;}"
     ".st-key-nav_toggle div[data-testid='stExpander'] summary{"
-    "padding:4px 6px !important;font-size:13px !important;color:#4b5563 !important;"
-    "border-radius:8px;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover{background:rgba(0,168,150,.10) !important;}"
-    ".st-key-nav_toggle div[data-testid='stExpanderDetails']{padding:4px 2px 2px 6px !important;}"
+    "padding:2px 0 !important;font-size:15px !important;color:#9CA3AF !important;"
+    "list-style:none;width:22px;}"
+    ".st-key-nav_toggle div[data-testid='stExpander'] summary::-webkit-details-marker{display:none;}"
+    ".st-key-nav_toggle div[data-testid='stExpander'] summary svg{display:none;}"
+    ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover{color:#00A896 !important;}"
+    ".st-key-nav_toggle div[data-testid='stExpanderDetails']{padding:2px 0 2px 4px !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -475,9 +477,15 @@ def qual_load_cartelera() -> pd.DataFrame:
 # 5) PÁGINA 1 — Full-time Faculty Composition
 def page_composition():
     all_periods = df["Periodo"].astype(str).unique().tolist()
-    sem_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
-    inter_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sIntersemestral', p)]
-    years = sorted(pd.Series(all_periods).str[:4].unique().tolist())
+    sem_periods = sorted(
+        [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)],
+        key=_period_sort_key, reverse=True,
+    )
+    inter_periods = sorted(
+        [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sIntersemestral', p)],
+        key=_period_sort_key, reverse=True,
+    )
+    years = sorted(pd.Series(all_periods).str[:4].unique().tolist(), reverse=True)
 
     # Sidebar específico de esta página
     with st.sidebar:
@@ -486,28 +494,19 @@ def page_composition():
 
         if tmode == "Semestral":
             vis = [p.replace("-", "") for p in sem_periods]
-            sel_vis = st.selectbox("Periodo", vis, index=len(vis) - 1 if vis else 0,
+            sel_vis = st.selectbox("Periodo", vis, index=0 if vis else 0,
                                     key="ft_comp_periodo_sem")
             sel_period_internal = sem_periods[vis.index(sel_vis)] if vis else None
             sel_period_label = sel_vis
         elif tmode == "Anual":
-            sel_period_internal = st.selectbox("Periodo", years, index=len(years) - 1 if years else 0,
+            sel_period_internal = st.selectbox("Periodo", years, index=0 if years else 0,
                                                 key="ft_comp_periodo_anual")
             sel_period_label = sel_period_internal
         else:
             sel_period_internal = st.selectbox("Periodo", inter_periods,
-                                                index=len(inter_periods) - 1 if inter_periods else 0,
+                                                index=0 if inter_periods else 0,
                                                 key="ft_comp_periodo_inter")
             sel_period_label = sel_period_internal
-
-        st.markdown("---")
-        xlsx_data = _xlsx_bytes(df)
-        b64 = base64.b64encode(xlsx_data).decode()
-        st.markdown(
-            f'<a class="modern-btn" download="FT_Base_Completa.xlsx" '
-            f'href="data:application/vnd.openxmlformats-officedocument.'
-            f'spreadsheetml.sheet;base64,{b64}">⭳ Descargar Base Completa</a>',
-            unsafe_allow_html=True)
 
     _render_header("Full-time Faculty Composition",
                    "Evolution and distribution of full-time faculty by ranking")
@@ -728,24 +727,18 @@ def page_composition():
 # 6) PÁGINA 2 — Full-time Faculty Staffing Levels
 def page_staffing():
     all_periods = sorted(df["Periodo"].astype(str).unique().tolist())
-    sem_periods = [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)]
+    sem_periods = sorted(
+        [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)],
+        key=_period_sort_key, reverse=True,
+    )
 
     # Sidebar específico de esta página
     with st.sidebar:
         st.markdown("#### Select Semester")
         vis_opts = [p.replace("-", "") for p in sem_periods]
-        idx = len(vis_opts) - 1 if vis_opts else 0
-        sel_vis = st.selectbox("", vis_opts, index=idx if vis_opts else None, key="ft_staff_periodo")
+        sel_vis = st.selectbox("", vis_opts, index=0 if vis_opts else None, key="ft_staff_periodo")
         sel_period_internal = sem_periods[vis_opts.index(sel_vis)] if vis_opts else None
         sel_period_label = sel_vis
-
-        _b64_dl = base64.b64encode(_xlsx_bytes(df)).decode()
-        st.markdown(
-            '<a class="modern-btn" download="FT_Base_Completa.xlsx" '
-            f'href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{_b64_dl}">'
-            '⭳ Descargar Base Completa</a>',
-            unsafe_allow_html=True,
-        )
 
     _render_header("Full-time Faculty Staffing Levels", "New entrants, leavers, and headcount evolution")
 
@@ -1174,36 +1167,23 @@ def page_area():
         all_periods = sorted(df_base["Periodo"].astype(str).dropna().unique().tolist())
 
         if tmode == "Semestral":
-            period_opts = [p for p in all_periods if is_sem_label(p)]
+            period_opts = sorted([p for p in all_periods if is_sem_label(p)], key=_period_sort_key, reverse=True)
             visible_opts = [display_label_sem(p) for p in period_opts]
-            default_idx = len(period_opts) - 1 if period_opts else 0
-            sel_visible = st.selectbox("Periodo", visible_opts, index=default_idx if period_opts else None)
+            sel_visible = st.selectbox("Periodo", visible_opts, index=0 if period_opts else None)
             sel_value = period_opts[visible_opts.index(sel_visible)] if period_opts else None
             sel_label = sel_visible
         elif tmode == "Anual":
-            years = sorted(pd.Series(all_periods).astype(str).str[:4].unique().tolist())
-            default_idx = len(years) - 1 if years else 0
-            sel_value = st.selectbox("Periodo", years, index=default_idx if years else None)
+            years = sorted(pd.Series(all_periods).astype(str).str[:4].unique().tolist(), reverse=True)
+            sel_value = st.selectbox("Periodo", years, index=0 if years else None)
             sel_label = sel_value
         else:
-            inters = [p for p in all_periods if _is_inter_label(p)]
-            default_idx = len(inters) - 1 if inters else 0
-            sel_value = st.selectbox("Periodo", inters, index=default_idx if inters else None)
+            inters = sorted([p for p in all_periods if _is_inter_label(p)], key=_period_sort_key, reverse=True)
+            sel_value = st.selectbox("Periodo", inters, index=0 if inters else None)
             sel_label = sel_value
 
         st.session_state["sel_tf_mode"] = tmode
         st.session_state["sel_tf_value"] = sel_value
         st.session_state["sel_tf_label"] = sel_label
-
-        export_df = filter_for_timeframe(df_base, tmode, sel_value)
-        fname = f"{'FT' if st.session_state.modo_faculty == 'Full-time' else 'PT'}_{tmode}_{str(sel_label).replace(' ', '_')}.xlsx"
-        b64_dl = base64.b64encode(_xlsx_bytes(export_df)).decode()
-        st.markdown(
-            f'<a class="modern-btn" download="{fname}" '
-            f'href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_dl}">'
-            f'⭳ Descargar Base — {st.session_state.modo_faculty} — {sel_label}</a>',
-            unsafe_allow_html=True,
-        )
 
 
     # Active dataset
@@ -1583,38 +1563,16 @@ def page_demographics():
         )
 
         df_base = df_full if st.session_state.modo_faculty == "Full-time" else df_part
-        options_tf = options_for_timeframe(df_base, time_mode_side)
+        options_tf = sorted(options_for_timeframe(df_base, time_mode_side), key=_period_sort_key, reverse=True)
 
         sel_label = st.selectbox(
             "Periodo", options_tf,
             index=(options_tf.index(st.session_state.sel_tf_label)
-                   if st.session_state.sel_tf_label in options_tf else len(options_tf) - 1),
+                   if st.session_state.sel_tf_label in options_tf else 0),
         ) if options_tf else None
 
         if sel_label != st.session_state.get("sel_tf_label"):
             st.session_state.sel_tf_label = sel_label
-
-        if sel_label:
-            if time_mode_side == "Semestral":
-                export_df = filter_for_timeframe(df_base, "Semestral", sel_sem=sel_label)
-            elif time_mode_side == "Anual":
-                export_df = filter_for_timeframe(df_base, "Anual", sel_year=int(sel_label))
-            else:
-                export_df = filter_for_timeframe(df_base, "Intersemestral", sel_inter_label=sel_label)
-            label_time = sel_label
-        else:
-            export_df = df_base.iloc[0:0].copy()
-            label_time = ""
-
-        modo_dl = st.session_state.get("modo_faculty", "Full-time")
-        fname = f"{'FT' if modo_dl == 'Full-time' else 'PT'}_{time_mode_side}_{str(label_time).replace(' ', '_')}.xlsx"
-        b64_dl = base64.b64encode(_xlsx_bytes(export_df)).decode()
-        st.markdown(
-            f'<a class="modern-btn" download="{fname}" '
-            f'href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_dl}">'
-            f'⭳ Descargar Base — {modo_dl} — {label_time}</a>',
-            unsafe_allow_html=True,
-        )
 
 
     # Active dataset
@@ -2670,7 +2628,7 @@ def page_qualifications():
             y = extract_year_from_period(p) or -1
             suf = int(period_suffix(p) or 0)
             return (y, suf)
-        return sorted(sorted(set(regs)), key=sort_key)
+        return sorted(sorted(set(regs)), key=sort_key, reverse=True)
 
     def list_years_from_sem():
         sem_col = _get_any(df_car, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
@@ -2684,7 +2642,7 @@ def page_qualifications():
         if ycol_fd:
             for y in pd.to_numeric(df_fd[ycol_fd], errors="coerce").dropna().astype(int):
                 years.add(int(y))
-        return sorted(years)
+        return sorted(years, reverse=True)
 
     def years_with_inter():
         sem_col = _get_any(df_car, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
@@ -2695,7 +2653,7 @@ def page_qualifications():
                     y = extract_year_from_period(s)
                     if y:
                         inter.add(y)
-        return sorted(inter)
+        return sorted(inter, reverse=True)
 
     def _slugify(s: str) -> str:
         return re.sub(r'[^A-Za-z0-9]+', '_', str(s)).strip('_')
@@ -3395,19 +3353,19 @@ def page_qualifications():
         time_mode = st.radio("Timeframe", ["Semestral", "Anual", "Intersemestral"], key="time_mode", label_visibility="collapsed", horizontal=False)
 
         if time_mode == "Semestral":
-            default_sem = SEMESTRAL_PERIODS[-1] if SEMESTRAL_PERIODS else "202510"
+            default_sem = SEMESTRAL_PERIODS[0] if SEMESTRAL_PERIODS else "202510"
             st.session_state.setdefault("sel_sem", default_sem)
             sel_sem = st.selectbox("Semester", SEMESTRAL_PERIODS or [default_sem], key="sel_sem")
-            sel_year = extract_year_from_period(sel_sem) or (YEARS_ALL[-1] if YEARS_ALL else 2025)
+            sel_year = extract_year_from_period(sel_sem) or (YEARS_ALL[0] if YEARS_ALL else 2025)
             sel_label = str(sel_sem)
         elif time_mode == "Anual":
-            default_year = YEARS_ALL[-1] if YEARS_ALL else 2025
+            default_year = YEARS_ALL[0] if YEARS_ALL else 2025
             st.session_state.setdefault("sel_year", default_year)
             sel_year = st.selectbox("Year", YEARS_ALL or [default_year], key="sel_year")
             sel_sem = None
             sel_label = f"{sel_year} (Annual)"
         else:
-            default_i = INTER_YEARS[-1] if INTER_YEARS else (YEARS_ALL[-1] if YEARS_ALL else 2025)
+            default_i = INTER_YEARS[0] if INTER_YEARS else (YEARS_ALL[0] if YEARS_ALL else 2025)
             # usa SIEMPRE "sel_year" como fuente de verdad
             st.session_state.setdefault("sel_year", default_i)
             sel_year = st.selectbox("Year (Intersemestral)", INTER_YEARS or YEARS_ALL or [default_i], key="sel_year")
@@ -3417,24 +3375,12 @@ def page_qualifications():
         st.session_state["sel_label"] = sel_label
         st.session_state.setdefault("view_mode", "By Academic Area")
         view_mode = st.selectbox("View", ["By Program", "By Academic Area", "By Field"], key="view_mode")
-        dl_bd_placeholder = st.empty()
 
     # ================== FILTROS BASE ==================
     df_car_base = df_car.copy()
     base = df_fd.copy()
     df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
     f = filter_df_fd(df_fd, time_mode, sel_year, sel_sem)
-
-    if 'dl_bd_placeholder' in locals():
-        safe = _sanitize_for_export(df_car_filt_all)
-        _b64_dl = base64.b64encode(_xlsx_bytes(safe)).decode()
-        _fname_dl = f"BD_Cartelera_{_slugify(sel_label)}.xlsx"
-        dl_bd_placeholder.markdown(
-            f'<a class="modern-btn" download="{_fname_dl}" '
-            f'href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{_b64_dl}">'
-            '⭳ Download DB (Excel)</a>',
-            unsafe_allow_html=True,
-        )
 
     # --------- Sensitivity: “Apply to” ---------
     if st.session_state.get("sens_mode", False):
@@ -7168,10 +7114,15 @@ with st.sidebar:
 
     if pg is not pages[-1]:  # pages[-1] = Update Data — comparación por identidad, más confiable que el título
         with st.container(key="nav_toggle"):
-            with st.expander("Other sections", expanded=False, icon="🧭"):
+            with st.expander("⌄", expanded=False):
                 for page_obj in pages:
                     st.page_link(page_obj)
 
+    st.markdown("---")
+
+pg.run()
+
+with st.sidebar:
     with st.expander("⬇️ Download Database", expanded=False, icon="🗂️"):
         _dl_periods = sorted(df["Periodo"].dropna().unique().tolist(), key=_period_sort_key, reverse=True)
         dl_period = st.selectbox("Periodo", _dl_periods, index=0, key="dl_db_period")
@@ -7188,6 +7139,12 @@ with st.sidebar:
                     df_cat[df_cat["Periodo"].astype(str) == period_nodash].to_excel(
                         writer, index=False, sheet_name="Catedra"
                     )
+                # Cartelera completa del periodo (incluye Field/Program y el
+                # desglose de créditos P/S/OTHER/SA/PA/IP/SP ya calculados).
+                df_cart_all = qual_load_cartelera()
+                period_nodash = str(period).replace("-", "")
+                cart_mask = df_cart_all["Periodo"].astype(str).isin([str(period), period_nodash])
+                df_cart_all[cart_mask].to_excel(writer, index=False, sheet_name="Cartelera")
             buf.seek(0)
             return buf.getvalue()
 
@@ -7196,7 +7153,3 @@ with st.sidebar:
             file_name=f"BD_{dl_scope}_{dl_period}.xlsx".replace(" ", "_"),
             key="dl_db_btn", use_container_width=True,
         )
-
-    st.markdown("---")
-
-pg.run()
