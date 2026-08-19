@@ -6560,127 +6560,6 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
         return False, f"Error al escribir en Faculty Distribution: {e}"
 
 
-def repair_cartelera_historical_calc_columns() -> Tuple[bool, str]:
-    """Reparación de una sola vez: las columnas B (Semestre), I (Field), J (Cod
-    program) y K (Program) de 'cartelera' llevaban una fórmula copiada que
-    nunca se recalculó — están vacías en TODA la hoja (no solo en las filas
-    nuevas), desde antes de que empezáramos a trabajar en este sistema. Este
-    repair recorre TODAS las filas existentes y rellena esas 4 columnas con el
-    mismo cálculo literal que ya usa push_cartelera_updates(), usando las
-    tablas de referencia reales del propio archivo. No toca H, M, N, O, P
-    (ya estaban bien) ni ninguna otra columna."""
-    if not _OPENPYXL_OK:
-        return False, "Falta la librería `openpyxl` en el entorno."
-    token = _get_gspread_access_token()
-    if not token:
-        return False, "No hay credenciales configuradas para escribir en Drive."
-    try:
-        raw_bytes = _download_drive_file_bytes(CARTELERA_FILE_ID)
-        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
-        if "cartelera" not in wb.sheetnames or "cursos" not in wb.sheetnames:
-            return False, "No encontré las hojas 'cartelera' y/o 'cursos' en BD_cartelera.xlsx."
-        ws_cart = wb["cartelera"]
-        ws_cursos = wb["cursos"]
-        ws_programas = wb["programas"] if "programas" in wb.sheetnames else None
-
-        base_font = Font(name="Arial", size=11, color="000000")
-        calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
-
-        semestre_map: Dict[str, object] = {}
-        for r in range(2, ws_cart.max_row + 1):
-            k = ws_cart.cell(row=r, column=30).value
-            if k is None:
-                continue
-            semestre_map[str(k).strip()] = ws_cart.cell(row=r, column=31).value
-
-        field_map: Dict[str, object] = {}
-        for r in range(2, ws_cursos.max_row + 1):
-            k = ws_cursos.cell(row=r, column=9).value
-            if k is None:
-                continue
-            field_map.setdefault(str(k).strip(), ws_cursos.cell(row=r, column=10).value)
-
-        codprog_map: Dict[str, object] = {}
-        for r in range(2, ws_cursos.max_row + 1):
-            k = ws_cursos.cell(row=r, column=12).value
-            if k is None:
-                continue
-            codprog_map.setdefault(str(k).strip(), ws_cursos.cell(row=r, column=13).value)
-
-        program_map: Dict[str, object] = {}
-        if ws_programas is not None:
-            for r in range(2, ws_programas.max_row + 1):
-                k = ws_programas.cell(row=r, column=1).value
-                if k is None:
-                    continue
-                program_map.setdefault(str(k).strip(), ws_programas.cell(row=r, column=3).value)
-
-        info = _table_info(ws_cart, "tabla_cartelera")
-        last_row = info[4] if info else ws_cart.max_row
-
-        n_fixed = 0
-        for r in range(2, last_row + 1):
-            periodo = ws_cart.cell(row=r, column=1).value
-            materia = ws_cart.cell(row=r, column=4).value
-            materia_key = str(materia).strip() if materia is not None else ""
-            h_val = ws_cart.cell(row=r, column=8).value
-
-            def _needs_fix(v):
-                # Vacío, texto de fórmula sin resolver, o ArrayFormula (fórmula
-                # de matriz tipo Ctrl+Shift+Enter) sin resolver — ambos casos
-                # existen en este archivo y nunca se recalcularon.
-                if v is None or v == "":
-                    return True
-                if isinstance(v, str) and v.startswith("="):
-                    return True
-                if isinstance(v, ArrayFormula):
-                    return True
-                return False
-
-            touched = False
-            if _needs_fix(ws_cart.cell(row=r, column=2).value):
-                cell = ws_cart.cell(row=r, column=2, value=semestre_map.get(str(periodo).strip(), ""))
-                cell.font = base_font
-                cell.fill = calc_fill
-                touched = True
-            if _needs_fix(ws_cart.cell(row=r, column=9).value):
-                cell = ws_cart.cell(row=r, column=9, value=field_map.get(str(h_val).strip(), ""))
-                cell.font = base_font
-                cell.fill = calc_fill
-                touched = True
-            if _needs_fix(ws_cart.cell(row=r, column=10).value):
-                cod_prog = codprog_map.get(materia_key[:4], "")
-                cell = ws_cart.cell(row=r, column=10, value=cod_prog)
-                cell.font = base_font
-                cell.fill = calc_fill
-                touched = True
-            if _needs_fix(ws_cart.cell(row=r, column=11).value):
-                cod_prog_existing = ws_cart.cell(row=r, column=10).value
-                cell = ws_cart.cell(row=r, column=11, value=program_map.get(str(cod_prog_existing).strip(), ""))
-                cell.font = base_font
-                cell.fill = calc_fill
-                touched = True
-            if touched:
-                n_fixed += 1
-
-        wb.calculation.fullCalcOnLoad = True
-        buf = io.BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-
-        ok, err = _drive_upload_file_bytes(CARTELERA_FILE_ID, buf.getvalue())
-        if not ok:
-            return False, f"Error al subir el archivo reparado a Drive: {err}"
-
-        qual_load_cartelera.clear()
-        _download_drive_file_bytes.clear()
-        _load_cursos_area_map.clear()
-
-        return True, f"✓ Reparación completa — {n_fixed} fila(s) de 'cartelera' actualizadas (Semestre/Field/Cod program/Program)."
-    except Exception as e:
-        return False, f"Error al reparar 'cartelera': {e}"
-
-
 def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFrame,
                             profesor_lookup: Optional[Dict[str, Tuple]] = None,
                             area_map: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
@@ -6809,6 +6688,61 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
         ]
         for r in sorted(rows_to_delete, reverse=True):
             ws_cart.delete_rows(r)
+
+        # ── Auto-reparación silenciosa ──────────────────────────────────
+        # Filas de cargas anteriores (antes de este arreglo) pueden haber
+        # quedado con fórmula sin resolver en B, I, J, K o Q-W. Cada vez que
+        # se guarda algo nuevo, se revisa y corrige TODO lo existente con las
+        # mismas tablas de referencia que ya construimos arriba — así no hace
+        # falta un botón de reparación aparte; se autocorrige solo.
+        def _needs_fix(v):
+            if v is None or v == "":
+                return True
+            if isinstance(v, str) and v.startswith("="):
+                return True
+            if isinstance(v, ArrayFormula):
+                return True
+            return False
+
+        heal_info = _table_info(ws_cart, "tabla_cartelera")
+        heal_last_row = heal_info[4] if heal_info else ws_cart.max_row
+        for r in range(2, heal_last_row + 1):
+            h_periodo = ws_cart.cell(row=r, column=1).value
+            h_materia = ws_cart.cell(row=r, column=4).value
+            h_materia_key = str(h_materia).strip() if h_materia is not None else ""
+            h_area = ws_cart.cell(row=r, column=8).value
+            h_ps = str(ws_cart.cell(row=r, column=16).value or "").strip().upper()
+            h_tipo = str(ws_cart.cell(row=r, column=15).value or "").strip().upper()
+            h_creditos = pd.to_numeric(pd.Series([ws_cart.cell(row=r, column=6).value]), errors="coerce").iloc[0]
+            h_creditos = 0 if pd.isna(h_creditos) else h_creditos
+
+            if _needs_fix(ws_cart.cell(row=r, column=2).value):
+                c = ws_cart.cell(row=r, column=2, value=semestre_map.get(str(h_periodo).strip(), ""))
+                c.font = base_font; c.fill = calc_fill
+            if _needs_fix(ws_cart.cell(row=r, column=9).value):
+                c = ws_cart.cell(row=r, column=9, value=field_map.get(str(h_area).strip(), ""))
+                c.font = base_font; c.fill = calc_fill
+            if _needs_fix(ws_cart.cell(row=r, column=10).value):
+                h_cp = codprog_map.get(h_materia_key[:4], "")
+                c = ws_cart.cell(row=r, column=10, value=h_cp)
+                c.font = base_font; c.fill = calc_fill
+            if _needs_fix(ws_cart.cell(row=r, column=11).value):
+                h_cp2 = ws_cart.cell(row=r, column=10).value
+                c = ws_cart.cell(row=r, column=11, value=program_map.get(str(h_cp2).strip(), ""))
+                c.font = base_font; c.fill = calc_fill
+            heal_breakdown = {
+                17: h_creditos if h_ps == "P" else 0,
+                18: h_creditos if h_ps == "S" else 0,
+                19: h_creditos if h_tipo == "OTHER" else 0,
+                20: h_creditos if h_tipo == "SA" else 0,
+                21: h_creditos if h_tipo == "PA" else 0,
+                22: h_creditos if h_tipo == "IP" else 0,
+                23: h_creditos if h_tipo == "SP" else 0,
+            }
+            for col, val in heal_breakdown.items():
+                if _needs_fix(ws_cart.cell(row=r, column=col).value):
+                    c = ws_cart.cell(row=r, column=col, value=val)
+                    c.font = base_font; c.fill = calc_fill
 
         info_cart2 = _table_info(ws_cart, "tabla_cartelera")
         _, _, _, _, last_row_ct2 = info_cart2
@@ -6982,21 +6916,6 @@ def page_update_data():
     # ── BD_Cartelera ─────────────────────────────────────────────────────
     with tab_cartelera:
         st.markdown("#### Actualizar BD_Cartelera")
-
-        with st.expander("🔧 Reparar columnas históricas (Semestre, Field, Cod program, Program)"):
-            st.caption(
-                "Estas 4 columnas de 'cartelera' llevaban una fórmula copiada que nunca se "
-                "recalculó — están vacías en TODA la hoja desde antes de este sistema, no solo "
-                "en las filas nuevas. Esto es lo que hace que Qualifications muestre muy pocos "
-                "periodos disponibles. Ejecuta esto una vez para repararlas todas de una vez."
-            )
-            if st.button("Reparar ahora"):
-                with st.spinner("Reparando 'cartelera'…"):
-                    ok_r, msg_r = repair_cartelera_historical_calc_columns()
-                if ok_r:
-                    st.success(msg_r)
-                else:
-                    st.error(msg_r)
 
         st.caption(
             "Sube `Template_BD_Cartelera.xlsx` diligenciada. Los datos deben "
