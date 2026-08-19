@@ -173,6 +173,7 @@ def _is_inter_label(p) -> bool:
 PROFESORES_FILE_ID = "1ncnUk_8VsDt1I0Hui9g0VyoTkA-8P376"      # BD_profesores.xlsx  → hojas: planta, Info. Profesores, Faculty Distribution
 CARTELERA_FILE_ID = "14Hongi8a180XTvuZGUf3soixgQpFp0Wl"       # BD_cartelera.xlsx   → hojas: cartelera, programas, cursos, qualifications
 QUESTIONNAIRE_FILE_ID = "1u6YTILxGOEq7eq1RE_l5sPg-vM5Wu5jH"   # BD_faculty_questionnaire.xlsx → hoja: Faculty_questionnaire
+TEMPLATE_PROFESORES_NUEVOS_FILE_ID = "1EEFfstkupiSD-2YyBPauO2WvzelZnYDl"  # Template_Profesores_Nuevos.xlsx (carpeta de templates)
 
 # ── Autenticación (lectura y escritura vía Service Account) ────────────────
 # Requiere una service account de Google Cloud, compartida como Editor en los
@@ -5995,8 +5996,8 @@ def _read_generic_template(uploaded_file, header_row: int = 4, data_row: int = 6
 
 
 AREA_OPTIONS = [
-    "Marketing", "SCM & IT", "Strategy & Entrepreneurship", "Finance",
-    "Management", "Organizations", "Sustainability",
+    "ORGANIZATIONS", "SUSTAINABILITY", "STRATEGY & ENTREPRENEURSHIP",
+    "MANAGEMENT", "MARKETING", "FINANCE", "SCM & IT",
 ]
 
 
@@ -6254,6 +6255,7 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
             min_col, min_row, max_col, _old_max_row = range_boundaries(tbl.ref)
             tbl.ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
 
+        wb.calculation.fullCalcOnLoad = True  # fuerza recálculo de fórmulas al abrir en Excel
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
@@ -6310,16 +6312,138 @@ def _load_cursos_area_map() -> Dict[str, str]:
     return dict(zip(key, dfc["Area del curso"]))
 
 
-def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFrame) -> Tuple[bool, str]:
-    """1) Si hay cursos nuevos (no encontrados en 'cursos'), los agrega ahí
-    primero (A-D valores directos; E-F son fórmulas de matriz existentes que
-    se copian/trasladan igual que F/V en planta, con fondo #c1f4e5).
-    2) Agrega las filas de cartelera: A,C-G,L directos; B,H,I,J,K son fórmulas
-    (XLOOKUP) que ya existen en la Base — se copian/trasladan igual, y H
-    además queda con fondo #f1ceee. Como H es un XLOOKUP en vivo contra
-    'cursos', en cuanto el curso nuevo quede ahí, el área aparece sola —
-    no hace falta "volver" a llenarla a mano.
-    3) Sube el archivo completo actualizado a Drive."""
+# ── Profesores (lookup + carga de nuevos) ───────────────────────────────
+def _read_profesores_nuevos_template(uploaded_file) -> pd.DataFrame:
+    """Template_Profesores_Nuevos: columnas B..T → Profesor, ID, AREA_PROFESOR,
+    GÉNERO, TIPO, P/S, PLANTA_CATEDRA, Date of First Appointment, Highest
+    Earned Degree, Highest Degree Year Earned, Highest Degree, University,
+    Region, International Degree?, Normal Professional Resp., Basis for
+    qualification, Nationality, Date of birth, Years Industry experience."""
+    return _read_generic_template(uploaded_file)
+
+
+# Columnas que NUNCA pueden quedar en TBD/blanco al cargar profesores nuevos.
+_PROFESORES_REQUIRED = ["ID", "AREA_PROFESOR", "GÉNERO", "TIPO", "P/S"]
+
+
+@st.cache_data(ttl=60)
+def _load_profesores_lookup() -> Dict[str, Tuple]:
+    """Profesor (columna A de 'Info. Profesores', normalizado) → (ID,
+    AREA_PROFESOR, TIPO, P/S) desde las columnas B, C, E, F."""
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    dfp = pd.read_excel(raw, sheet_name="Info. Profesores")
+    dfp.columns = dfp.columns.str.strip()
+    key = dfp["Profesor"].astype(str).str.strip().str.upper()
+    vals = list(zip(dfp["ID"], dfp["AREA_PROFESOR"], dfp["TIPO"], dfp["P/S"]))
+    return dict(zip(key, vals))
+
+
+def _build_prefilled_profesores_template(missing_names: List[str]) -> bytes:
+    """Descarga la Template_Profesores_Nuevos.xlsx real y prellena la columna
+    Profesor (B) con los nombres que no se encontraron, desde la fila 6."""
+    raw = _download_drive_file_bytes(TEMPLATE_PROFESORES_NUEVOS_FILE_ID)
+    wb = openpyxl.load_workbook(io.BytesIO(raw))
+    ws = wb[wb.sheetnames[0]]
+    for i, name in enumerate(missing_names):
+        ws.cell(row=6 + i, column=2, value=name)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
+    """Agrega profesores nuevos a la hoja 'Info. Profesores' de
+    BD_profesores.xlsx. Columnas A-F, H-Q, S vienen directo de la template
+    (los campos opcionales que queden vacíos se completan con "TBD", igual
+    que la convención ya usada en el resto del archivo). R (Age) no tiene
+    fórmula real en esta hoja hoy — se deja como "TBD" con fondo #caedfb
+    hasta que se defina cómo calcularla (ver aviso en el chat)."""
+    if not _OPENPYXL_OK:
+        return False, "Falta la librería `openpyxl` en el entorno."
+    token = _get_gspread_access_token()
+    if not token:
+        return False, "No hay credenciales configuradas para escribir en Drive."
+    try:
+        raw_bytes = _download_drive_file_bytes(PROFESORES_FILE_ID)
+        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
+        if "Info. Profesores" not in wb.sheetnames:
+            return False, "No encontré la hoja 'Info. Profesores' en BD_profesores.xlsx."
+        ws = wb["Info. Profesores"]
+
+        info = _table_info(ws, "tabla_profesores")
+        if not info:
+            return False, "No encontré la Tabla de Excel 'tabla_profesores'."
+        match, min_col, min_row, max_col, last_row = info
+
+        base_font = Font(name="Arial", size=11, color="000000")
+        age_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
+
+        # Template B..T → Info.Profesores A,B,C,D,E,F,(H sin destino=PLANTA_CATEDRA),G,H,I,J,K,L,M,N,O,P,Q,S
+        col_map = {
+            0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6,        # Profesor,ID,AREA_PROFESOR,GÉNERO,TIPO,P/S
+            # idx 6 = PLANTA_CATEDRA -> sin columna destino en Info. Profesores, se omite
+            7: 7, 8: 8, 9: 9, 10: 10, 11: 11, 12: 12,
+            13: 13, 14: 14, 15: 15, 16: 16, 17: 17, 18: 19,  # ...hasta S (Years Industry exp -> col 19)
+        }
+        required_idx = {0: "Profesor", 1: "ID", 2: "AREA_PROFESOR", 3: "GÉNERO", 4: "TIPO", 5: "P/S"}
+
+        append_start = last_row + 1
+        n_written = 0
+        for i, r in enumerate(new_profs_df.itertuples(index=False, name=None)):
+            rn = append_start + i
+            missing_required = [
+                label for idx, label in required_idx.items()
+                if idx >= len(r) or r[idx] is None or (isinstance(r[idx], float) and pd.isna(r[idx])) or str(r[idx]).strip() == ""
+            ]
+            if missing_required:
+                return False, (
+                    f"Fila {i+1} de la template de profesores: faltan campos obligatorios "
+                    f"({', '.join(missing_required)}). No se guardó nada — corrige y vuelve a subir."
+                )
+            for tpl_idx, dest_col in col_map.items():
+                val = r[tpl_idx] if tpl_idx < len(r) else None
+                if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() == "":
+                    val = "TBD" if tpl_idx not in required_idx else val
+                cell = ws.cell(row=rn, column=dest_col, value=val)
+                cell.font = base_font
+            # R — Age: sin fórmula real disponible en la Base hoy; queda "TBD" con fondo #caedfb
+            age_cell = ws.cell(row=rn, column=18, value="TBD")
+            age_cell.font = base_font
+            age_cell.fill = age_fill
+            n_written += 1
+
+        new_last_row = append_start + n_written - 1
+        ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
+
+        wb.calculation.fullCalcOnLoad = True
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        ok, err = _drive_upload_file_bytes(PROFESORES_FILE_ID, buf.getvalue())
+        if not ok:
+            return False, f"Error al subir el archivo actualizado a Drive: {err}"
+
+        _download_drive_file_bytes.clear()
+        _load_profesores_lookup.clear()
+
+        return True, f"✓ Info. Profesores actualizada — {n_written} profesor(es) nuevo(s)."
+    except Exception as e:
+        return False, f"Error al escribir en Info. Profesores: {e}"
+
+
+def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFrame,
+                            profesor_lookup: Optional[Dict[str, Tuple]] = None) -> Tuple[bool, str]:
+    """1) Si hay cursos nuevos, los agrega a 'cursos' (A-D valores directos,
+    sin borde; E-F son fórmulas de matriz existentes, copiadas/trasladadas,
+    con fondo #c1f4e5, sin borde).
+    2) Agrega las filas de cartelera: A,C-G,L directos (sin fondo especial).
+    B,H,I,J,K,Q,R,S,T,U,V,W son fórmulas que ya existen en la Base — se
+    copian/trasladan igual, con fondo #caedfb (excepto H, que es #f1ceee).
+    M,N,O,P (ID, AREA_PROFESOR, TIPO, P/S) se buscan por nombre del profesor
+    (columna L) contra 'Info. Profesores' y se escriben como valor literal
+    (no hay fórmula real ahí). Sin bordes en ninguna celda nueva.
+    3) Sube BD_cartelera.xlsx actualizado a Drive."""
     if not _OPENPYXL_OK:
         return False, "Falta la librería `openpyxl` en el entorno."
     token = _get_gspread_access_token()
@@ -6337,10 +6461,9 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
         ws_cursos = wb["cursos"]
 
         base_font = Font(name="Arial", size=11, color="000000")
-        thin = Side(style="thin")
-        thin_border = Border(left=thin, right=thin, top=thin, bottom=thin)
         area_fill = PatternFill(fill_type="solid", fgColor="F1CEEE")
         cursos_fill = PatternFill(fill_type="solid", fgColor="C1F4E5")
+        calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
 
         n_new_courses = 0
         # 1) Cursos nuevos → hoja 'cursos'
@@ -6361,14 +6484,12 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                 for col, val in [(1, codigo), (2, creditos), (3, nombre), (4, area)]:
                     cell = ws_cursos.cell(row=rn, column=col, value=val)
                     cell.font = base_font
-                    cell.border = thin_border
                 if ef_ok:
                     _write_translated_formula(ws_cursos, 5, rn, tpl_e_text, e_is_array, f"E{template_row_c}", f"E{rn}")
                     _write_translated_formula(ws_cursos, 6, rn, tpl_f_text, f_is_array, f"F{template_row_c}", f"F{rn}")
                     for col in (5, 6):
                         cell = ws_cursos.cell(row=rn, column=col)
                         cell.font = base_font
-                        cell.border = thin_border
                         cell.fill = cursos_fill
                 n_new_courses += 1
 
@@ -6382,17 +6503,11 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
         if not info_cart:
             return False, "No encontré la Tabla de Excel 'tabla_cartelera' en la hoja 'cartelera'."
         match_cart, min_col_ct, min_row_ct, max_col_ct, last_row_ct = info_cart
-        template_row_ct = last_row_ct
-
-        calc_cols = {}  # columna -> (texto, es_array)
-        for col in (2, 8, 9, 10, 11):  # B, H, I, J, K
-            txt, is_arr = _get_formula_text(ws_cart.cell(row=template_row_ct, column=col))
-            calc_cols[col] = (txt, is_arr)
 
         # Periodos presentes en la carga: borra filas existentes con esos periodos primero
         periodos = set(str(p).strip() for p in cartelera_df["Periodo"].dropna().unique())
         rows_to_delete = [
-            r for r in range(2, template_row_ct + 1)
+            r for r in range(2, last_row_ct + 1)
             if str(ws_cart.cell(row=r, column=1).value or "").strip() in periodos
         ]
         for r in sorted(rows_to_delete, reverse=True):
@@ -6400,9 +6515,15 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
 
         info_cart2 = _table_info(ws_cart, "tabla_cartelera")
         _, _, _, _, last_row_ct2 = info_cart2
+        template_row_ct = last_row_ct2  # fila de la que se copian las fórmulas, YA tras el borrado
         append_start_ct = last_row_ct2 + 1
-        template_row_ct = last_row_ct2  # fila de la que se copian las fórmulas, tras el borrado
 
+        calc_cols = {}  # columna -> (texto, es_array)
+        for col in (2, 8, 9, 10, 11, 17, 18, 19, 20, 21, 22, 23):  # B,H,I,J,K,Q,R,S,T,U,V,W
+            txt, is_arr = _get_formula_text(ws_cart.cell(row=template_row_ct, column=col))
+            calc_cols[col] = (txt, is_arr)
+
+        lookup = profesor_lookup or {}
         for i, r in enumerate(cartelera_df.itertuples(index=False, name=None)):
             rn = append_start_ct + i
             periodo, campus, materia, secc, creditos, nombre, profesor = (r + ("",) * 7)[:7]
@@ -6410,7 +6531,15 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             for col, val in direct.items():
                 cell = ws_cart.cell(row=rn, column=col, value=val)
                 cell.font = base_font
-                cell.border = thin_border
+
+            # M,N,O,P — ID, AREA_PROFESOR, TIPO, P/S (valor literal, buscado por nombre)
+            prof_key = str(profesor).strip().upper()
+            match_prof = lookup.get(prof_key)
+            if match_prof:
+                for col, val in zip((13, 14, 15, 16), match_prof):
+                    cell = ws_cart.cell(row=rn, column=col, value=val)
+                    cell.font = base_font
+
             for col, (txt, is_arr) in calc_cols.items():
                 if not txt:
                     continue
@@ -6418,15 +6547,14 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                 _write_translated_formula(ws_cart, col, rn, txt, is_arr, f"{col_letter}{template_row_ct}", f"{col_letter}{rn}")
                 cell = ws_cart.cell(row=rn, column=col)
                 cell.font = base_font
-                cell.border = thin_border
-                if col == 8:  # H — Area del curso
-                    cell.fill = area_fill
+                cell.fill = area_fill if col == 8 else calc_fill
 
         new_last_row_ct = append_start_ct + len(cartelera_df) - 1
         ws_cart.tables[match_cart].ref = (
             f"{get_column_letter(min_col_ct)}{min_row_ct}:{get_column_letter(max_col_ct)}{new_last_row_ct}"
         )
 
+        wb.calculation.fullCalcOnLoad = True
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
@@ -6563,26 +6691,34 @@ def page_update_data():
                 cart_df = None
 
             if cart_df is not None and not cart_df.empty:
+                # --- Área del curso (lookup contra 'cursos') ---
                 area_map = _load_cursos_area_map()
                 cart_df["Materia"] = cart_df["Materia"].astype(str).str.strip()
                 cart_df["Area del curso"] = cart_df["Materia"].map(area_map)
-                missing_mask = cart_df["Area del curso"].isna()
+                missing_area_mask = cart_df["Area del curso"].isna()
+
+                # --- Profesor (lookup contra 'Info. Profesores') ---
+                prof_lookup = _load_profesores_lookup()
+                cart_df["Profesor"] = cart_df["Profesor"].astype(str).str.strip()
+                missing_prof_mask = ~cart_df["Profesor"].str.upper().isin(prof_lookup.keys())
 
                 st.success(
-                    f"{len(cart_df)} filas detectadas. "
-                    f"{(~missing_mask).sum()} con área encontrada, {missing_mask.sum()} sin área."
+                    f"{len(cart_df)} filas detectadas · "
+                    f"{(~missing_area_mask).sum()} con área encontrada, {missing_area_mask.sum()} sin área · "
+                    f"{(~missing_prof_mask).sum()} con profesor encontrado, {missing_prof_mask.sum()} sin profesor."
                 )
                 st.dataframe(cart_df, use_container_width=True)
 
+                # ============== CURSOS NUEVOS (área) ==============
                 missing_courses = (
-                    cart_df.loc[missing_mask, ["Materia", "Créditos", "Nombre largo curso"]]
+                    cart_df.loc[missing_area_mask, ["Materia", "Créditos", "Nombre largo curso"]]
                     .drop_duplicates(subset=["Materia"])
                     .reset_index(drop=True)
                 )
 
                 new_courses_df = None
                 if missing_courses.empty:
-                    new_courses_df = pd.DataFrame(columns=["Materia", "Créditos", "Nombre largo curso", "Area del curso"])
+                    new_courses_df = pd.DataFrame(columns=["Código Materia", "Créditos", "Nombre largo curso", "Area del curso"])
                 else:
                     st.warning(
                         f"⚠️ {len(missing_courses)} curso(s) no están en la hoja 'cursos' — "
@@ -6595,22 +6731,21 @@ def page_update_data():
                     )
 
                     if fill_mode == "Seleccionar aquí mismo":
-                        editable = missing_courses.copy()
-                        editable["Area del curso"] = ""
-                        edited = st.data_editor(
-                            editable,
-                            column_config={
-                                "Area del curso": st.column_config.SelectboxColumn(
-                                    options=AREA_OPTIONS, required=True
-                                ),
-                                "Materia": st.column_config.TextColumn(disabled=True),
-                                "Créditos": st.column_config.NumberColumn(disabled=True),
-                                "Nombre largo curso": st.column_config.TextColumn(disabled=True),
-                            },
-                            use_container_width=True, key="cartelera_missing_editor", hide_index=True,
-                        )
-                        if edited["Area del curso"].ne("").all():
-                            new_courses_df = edited.rename(columns={"Materia": "Código Materia"})
+                        st.caption("Elige el área de cada curso (un clic, sin necesidad de tabla editable):")
+                        picked_areas = {}
+                        for idx, row in missing_courses.iterrows():
+                            c1, c2, c3, c4 = st.columns([2, 1, 3, 2])
+                            c1.markdown(f"**{row['Materia']}**")
+                            c2.markdown(str(row["Créditos"]))
+                            c3.markdown(row["Nombre largo curso"])
+                            picked_areas[row["Materia"]] = c4.selectbox(
+                                "Área", options=["— Selecciona —"] + AREA_OPTIONS,
+                                key=f"area_pick_{row['Materia']}", label_visibility="collapsed",
+                            )
+                        if all(v != "— Selecciona —" for v in picked_areas.values()):
+                            new_courses_df = missing_courses.assign(
+                                **{"Area del curso": missing_courses["Materia"].map(picked_areas)}
+                            ).rename(columns={"Materia": "Código Materia"})
                     else:
                         st.markdown(
                             "[📁 Abrir la carpeta de templates en Drive](https://drive.google.com/drive/folders/169oOSvEpEyGGK3UR5ASm-e2K0OJcgud8) "
@@ -6629,14 +6764,57 @@ def page_update_data():
                             except Exception as e:
                                 st.error(f"No pude leer la template de cursos nuevos: {e}")
 
-                ready = new_courses_df is not None
+                # ============== PROFESORES NUEVOS ==============
+                missing_profs = sorted(cart_df.loc[missing_prof_mask, "Profesor"].dropna().unique().tolist())
+                new_profs_df = None
+                if not missing_profs:
+                    new_profs_df = pd.DataFrame()
+                else:
+                    st.warning(
+                        f"⚠️ {len(missing_profs)} profesor(es) no están en 'Info. Profesores' — "
+                        "hay que completarlos antes de poder guardar."
+                    )
+                    st.download_button(
+                        "⬇️ Descargar Template_Profesores_Nuevos.xlsx (con los nombres ya puestos)",
+                        data=_build_prefilled_profesores_template(missing_profs),
+                        file_name="Template_Profesores_Nuevos.xlsx",
+                        key="prof_template_dl",
+                    )
+                    st.caption(
+                        "Completa la información de cada profesor (deja **TBD** en lo que no sepas, "
+                        "excepto en ID, AREA_PROFESOR, GÉNERO, TIPO, P/S y PLANTA_CATEDRA — esas son obligatorias) "
+                        "y súbela diligenciada abajo."
+                    )
+                    up_profs = st.file_uploader(
+                        "Template_Profesores_Nuevos.xlsx diligenciada", type=["xlsx"], key="profesores_nuevos_upload"
+                    )
+                    if up_profs is not None:
+                        try:
+                            npf = _read_profesores_nuevos_template(up_profs)
+                            npf.columns = [c.strip() for c in npf.columns]
+                            new_profs_df = npf
+                            st.dataframe(new_profs_df, use_container_width=True)
+                        except Exception as e:
+                            st.error(f"No pude leer la template de profesores nuevos: {e}")
+
+                ready = new_courses_df is not None and new_profs_df is not None
                 if not ready:
-                    st.info("Completa el área de todos los cursos pendientes antes de guardar.")
+                    st.info("Completa las áreas y/o los profesores pendientes antes de guardar.")
 
                 if st.button("💾 Guardar en BD_Cartelera", type="primary", disabled=not ready):
                     save_df = cart_df.drop(columns=["Area del curso"])
                     with st.spinner("Escribiendo en Drive…"):
-                        ok, msg = push_cartelera_updates(save_df, new_courses_df)
+                        combined_lookup = dict(prof_lookup)
+                        if new_profs_df is not None and not new_profs_df.empty:
+                            ok_p, msg_p = push_profesores_updates(new_profs_df)
+                            if not ok_p:
+                                st.error(msg_p)
+                                st.stop()
+                            st.success(msg_p)
+                            for r in new_profs_df.itertuples(index=False, name=None):
+                                name_key = str(r[0]).strip().upper()
+                                combined_lookup[name_key] = (r[1], r[2], r[4], r[5])  # ID, AREA_PROFESOR, TIPO, P/S
+                        ok, msg = push_cartelera_updates(save_df, new_courses_df, combined_lookup)
                     if ok:
                         st.success(msg)
                         st.balloons()
