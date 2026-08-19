@@ -39,6 +39,7 @@ try:
     import openpyxl
     from openpyxl.styles import Font, Border, Side
     from openpyxl.utils import range_boundaries, get_column_letter
+    from openpyxl.formula.translate import Translator
     _OPENPYXL_OK = True
 except ImportError:
     _OPENPYXL_OK = False
@@ -6138,6 +6139,19 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
             for i, r in enumerate(new_rows_df.itertuples(index=False, name=None))
         ]
 
+        # 2.5) Copia las fórmulas REALES de F (Full Name) y V (Age) desde la
+        # última fila existente, y las traslada a cada fila nueva con
+        # openpyxl.formula.translate.Translator — así nunca se "adivina" ni se
+        # transcribe la fórmula a mano, se copia tal cual y solo se ajustan
+        # las referencias de fila (respetando $ absolutos si los hay).
+        template_row = append_start - 1
+        tpl_formula_f = ws.cell(row=template_row, column=6).value if template_row > 1 else None
+        tpl_formula_v = ws.cell(row=template_row, column=22).value if template_row > 1 else None
+        formulas_ok = (
+            isinstance(tpl_formula_f, str) and tpl_formula_f.startswith("=")
+            and isinstance(tpl_formula_v, str) and tpl_formula_v.startswith("=")
+        )
+
         base_font = Font(name="Arial", size=11, color="000000")
         blue_bold_font = Font(name="Arial", size=11, color="1D4ED8", bold=True)
         red_font = Font(name="Arial", size=11, color="DC2626")
@@ -6150,9 +6164,14 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
             font = blue_bold_font if style == "blue_bold" else red_font if style == "red" else base_font
             for c, val in enumerate(row_vals, start=1):
                 if val is None:
-                    # F (Full Name) y V (Age) ya tienen fórmula en la Base — no se tocan.
-                    # AB ya no se usa — se deja como está (vacío).
-                    continue
+                    if c == 6 and formulas_ok:      # F — Full Name
+                        val = Translator(tpl_formula_f, origin=f"F{template_row}").translate_formula(f"F{rn}")
+                    elif c == 22 and formulas_ok:    # V — Age
+                        val = Translator(tpl_formula_v, origin=f"V{template_row}").translate_formula(f"V{rn}")
+                    else:
+                        # No hay fila anterior de la cual copiar la fórmula
+                        # (ej. la hoja quedó vacía) — se deja en blanco.
+                        continue
                 cell = ws.cell(row=rn, column=c, value=val)
                 cell.font = font
                 cell.border = thin_border
@@ -6191,8 +6210,12 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
         if not match:
             msg += (
                 " ⚠️ No encontré una Tabla de Excel llamada 'tabla_planta' en la hoja — "
-                "las filas se agregaron igual, pero puede que F y V no se autocompleten "
-                "hasta que abras el archivo en Excel y extiendas la tabla manualmente."
+                "las filas se agregaron igual, pero quedarán fuera de la tabla."
+            )
+        if not formulas_ok:
+            msg += (
+                " ⚠️ No encontré una fórmula existente en F/V de la última fila para "
+                "copiar — esas columnas quedaron en blanco en las filas nuevas."
             )
         return True, msg
     except Exception as e:
