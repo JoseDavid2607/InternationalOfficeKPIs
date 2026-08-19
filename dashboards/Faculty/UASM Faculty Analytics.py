@@ -378,6 +378,22 @@ def demo_load_fulltime() -> pd.DataFrame:
     return df_
 
 
+def _norm_id(v):
+    """Normaliza un ID para hacer merges seguros: números (12345678, 12345678.0,
+    '12345678') se normalizan todos al mismo string '12345678'; IDs no numéricos
+    (cédulas/pasaportes internacionales como 'XDC641686') se dejan como texto
+    limpio. Evita el bug de pandas donde NaN==NaN en un merge multiplica filas
+    cuando varios IDs no numéricos se convertían todos a NaN con pd.to_numeric."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    try:
+        f = float(v)
+        return str(int(f)) if f.is_integer() else str(f)
+    except (ValueError, TypeError):
+        s = str(v).strip().upper()
+        return s if s else None
+
+
 @st.cache_data(ttl=0)
 def demo_load_parttime() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
@@ -397,17 +413,22 @@ def demo_load_parttime() -> pd.DataFrame:
     # AREA_PROFESOR, GÉNERO, TIPO, P/S, PLANTA_CATEDRA) — insuficiente para el
     # análisis de demografía completo (título, nacionalidad, fecha de
     # nacimiento, universidad, etc.). Se trae TODA la información adicional
-    # desde 'Info. Profesores', unida por ID.
+    # desde 'Info. Profesores', unida por ID (normalizado como texto — NO con
+    # pd.to_numeric, que convierte las cédulas/pasaportes no numéricos en NaN
+    # y como pandas trata NaN==NaN en un merge, eso multiplicaba filas).
     raw2 = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
     df_info = pd.read_excel(raw2, sheet_name="Info. Profesores")
     df_info.columns = df_info.columns.str.strip()
     if "ID" in df_.columns and "ID" in df_info.columns:
         extra_cols = [c for c in df_info.columns
                       if c not in ("Profesor", "ID", "AREA_PROFESOR", "GÉNERO", "TIPO", "P/S")]
-        df_info_extra = df_info[["ID"] + extra_cols].drop_duplicates(subset=["ID"])
-        df_["ID"] = pd.to_numeric(df_["ID"], errors="coerce")
-        df_info_extra["ID"] = pd.to_numeric(df_info_extra["ID"], errors="coerce")
-        df_ = df_.merge(df_info_extra, on="ID", how="left")
+        df_info_extra = df_info[["ID"] + extra_cols].copy()
+        df_info_extra["_id_key"] = df_info_extra["ID"].map(_norm_id)
+        df_info_extra = df_info_extra.dropna(subset=["_id_key"]).drop_duplicates(subset=["_id_key"])
+        df_info_extra = df_info_extra.drop(columns=["ID"])
+
+        df_["_id_key"] = df_["ID"].map(_norm_id)
+        df_ = df_.merge(df_info_extra, on="_id_key", how="left").drop(columns=["_id_key"])
 
     if "ID Nr." not in df_.columns and "ID" in df_.columns:
         df_ = df_.rename(columns={"ID": "ID Nr."})
