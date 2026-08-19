@@ -6006,7 +6006,7 @@ AREA_OPTIONS = [
 GENERO_OPTIONS = ["Male", "Female"]
 TIPO_OPTIONS = ["IP", "OTHER", "PA", "SA", "SP"]
 PS_OPTIONS = ["P", "S"]
-PLANTA_CATEDRA_OPTIONS = ["Planta", "Cátedra", "Otra"]
+PLANTA_CATEDRA_OPTIONS = ["PLANTA", "CÁTEDRA"]
 HIGHEST_DEGREE_OPTIONS = ["Bachelor", "Master", "Ph.D.", "Specialization"]
 REGION_OPTIONS = ["Africa", "Asia", "Europe", "Latin America", "North America", "Oceania"]
 INTL_DEGREE_OPTIONS = ["Yes", "No"]
@@ -6375,6 +6375,89 @@ def _build_prefilled_profesores_template(missing_names: List[str]) -> bytes:
     return buf.getvalue()
 
 
+def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[bool, str]:
+    """Agrega a 'Faculty Distribution' (BD_profesores.xlsx) una fila por cada
+    ID único que quedó en la cartelera recién cargada, agrupado por periodo:
+    A=Periodo, C=ID (valores directos); B,D,E,F,G,H son fórmulas que ya
+    existen en la Base (XLOOKUP/IF) — se copian/trasladan igual que en los
+    demás casos, con fondo #caedfb. No agrega un (Periodo, ID) que ya
+    exista en la hoja."""
+    if not _OPENPYXL_OK:
+        return False, "Falta la librería `openpyxl` en el entorno."
+    token = _get_gspread_access_token()
+    if not token:
+        return False, "No hay credenciales configuradas para escribir en Drive."
+    try:
+        raw_bytes = _download_drive_file_bytes(PROFESORES_FILE_ID)
+        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
+        if "Faculty Distribution" not in wb.sheetnames:
+            return False, "No encontré la hoja 'Faculty Distribution' en BD_profesores.xlsx."
+        ws = wb["Faculty Distribution"]
+
+        info = _table_info(ws, "tabla_faculty_distribution")
+        if not info:
+            return False, "No encontré la Tabla de Excel 'tabla_faculty_distribution'."
+        match, min_col, min_row, max_col, last_row = info
+
+        base_font = Font(name="Arial", size=11, color="000000")
+        calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
+
+        existing_pairs = set()
+        for r in range(2, last_row + 1):
+            p = str(ws.cell(row=r, column=1).value or "").strip()
+            i = str(ws.cell(row=r, column=3).value or "").strip()
+            existing_pairs.add((p, i))
+
+        template_row = last_row
+        calc_cols = {}
+        for col in (2, 4, 5, 6, 7, 8):  # B,D,E,F,G,H
+            txt, is_arr = _get_formula_text(ws.cell(row=template_row, column=col))
+            calc_cols[col] = (txt, is_arr)
+
+        append_start = last_row + 1
+        n_written = 0
+        for periodo, ids in periodo_to_ids.items():
+            for prof_id in ids:
+                pair = (str(periodo).strip(), str(prof_id).strip())
+                if pair in existing_pairs:
+                    continue
+                rn = append_start + n_written
+                for col, val in [(1, periodo), (3, prof_id)]:
+                    cell = ws.cell(row=rn, column=col, value=val)
+                    cell.font = base_font
+                for col, (txt, is_arr) in calc_cols.items():
+                    if not txt:
+                        continue
+                    col_letter = get_column_letter(col)
+                    _write_translated_formula(ws, col, rn, txt, is_arr, f"{col_letter}{template_row}", f"{col_letter}{rn}")
+                    cell = ws.cell(row=rn, column=col)
+                    cell.font = base_font
+                    cell.fill = calc_fill
+                existing_pairs.add(pair)
+                n_written += 1
+
+        if n_written == 0:
+            return True, "✓ Faculty Distribution: no había IDs nuevos que agregar (ya estaban todos)."
+
+        new_last_row = append_start + n_written - 1
+        ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
+
+        wb.calculation.fullCalcOnLoad = True
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        ok, err = _drive_upload_file_bytes(PROFESORES_FILE_ID, buf.getvalue())
+        if not ok:
+            return False, f"Error al subir el archivo actualizado a Drive: {err}"
+
+        _download_drive_file_bytes.clear()
+
+        return True, f"✓ Faculty Distribution actualizada — {n_written} fila(s) nueva(s)."
+    except Exception as e:
+        return False, f"Error al escribir en Faculty Distribution: {e}"
+
+
 def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
     """Agrega profesores nuevos a la hoja 'Info. Profesores' de
     BD_profesores.xlsx. Columnas A-F, H-Q, S vienen directo de la template
@@ -6465,16 +6548,20 @@ def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
 
 
 def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFrame,
-                            profesor_lookup: Optional[Dict[str, Tuple]] = None) -> Tuple[bool, str]:
+                            profesor_lookup: Optional[Dict[str, Tuple]] = None,
+                            area_map: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
     """1) Si hay cursos nuevos, los agrega a 'cursos' (A-D valores directos,
     sin borde; E-F son fórmulas de matriz existentes, copiadas/trasladadas,
     con fondo #c1f4e5, sin borde).
     2) Agrega las filas de cartelera: A,C-G,L directos (sin fondo especial).
-    B,H,I,J,K,Q,R,S,T,U,V,W son fórmulas que ya existen en la Base — se
-    copian/trasladan igual, con fondo #caedfb (excepto H, que es #f1ceee).
-    M,N,O,P (ID, AREA_PROFESOR, TIPO, P/S) se buscan por nombre del profesor
-    (columna L) contra 'Info. Profesores' y se escriben como valor literal
-    (no hay fórmula real ahí). Sin bordes en ninguna celda nueva.
+    B,I,J,K,Q,R,S,T,U,V,W son fórmulas que ya existen en la Base — se
+    copian/trasladan igual, con fondo #caedfb. H (Area del curso) se busca
+    por Código Materia contra 'cursos' y se escribe como VALOR LITERAL
+    (no como fórmula, para que siempre se vea el valor sin depender de que
+    algo recalcule) con fondo #f1ceee. M,N,O,P (ID, AREA_PROFESOR, TIPO, P/S)
+    se buscan por nombre del profesor (columna L) contra 'Info. Profesores' y
+    se escriben como valor literal también, con fondo #f1ceee. Sin bordes en
+    ninguna celda nueva.
     3) Sube BD_cartelera.xlsx actualizado a Drive."""
     if not _OPENPYXL_OK:
         return False, "Falta la librería `openpyxl` en el entorno."
@@ -6497,9 +6584,14 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
         cursos_fill = PatternFill(fill_type="solid", fgColor="C1F4E5")
         calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
 
+        full_area_map = dict(area_map or {})
+
         n_new_courses = 0
         # 1) Cursos nuevos → hoja 'cursos'
         if new_courses_df is not None and not new_courses_df.empty:
+            for r in new_courses_df.itertuples(index=False, name=None):
+                full_area_map[str(r[0]).strip()] = r[3]  # Código Materia -> Area del curso
+
             info = _table_info(ws_cursos, "tabla_cursos")
             if not info:
                 return False, "No encontré la Tabla de Excel 'tabla_cursos' en la hoja 'cursos'."
@@ -6550,8 +6642,8 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
         template_row_ct = last_row_ct2  # fila de la que se copian las fórmulas, YA tras el borrado
         append_start_ct = last_row_ct2 + 1
 
-        calc_cols = {}  # columna -> (texto, es_array)
-        for col in (2, 8, 9, 10, 11, 17, 18, 19, 20, 21, 22, 23):  # B,H,I,J,K,Q,R,S,T,U,V,W
+        calc_cols = {}  # columna -> (texto, es_array)  (H se excluye: se escribe como valor, no fórmula)
+        for col in (2, 9, 10, 11, 17, 18, 19, 20, 21, 22, 23):  # B,I,J,K,Q,R,S,T,U,V,W
             txt, is_arr = _get_formula_text(ws_cart.cell(row=template_row_ct, column=col))
             calc_cols[col] = (txt, is_arr)
 
@@ -6564,6 +6656,12 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                 cell = ws_cart.cell(row=rn, column=col, value=val)
                 cell.font = base_font
 
+            # H — Area del curso: valor literal buscado por Código Materia contra 'cursos'
+            h_val = full_area_map.get(str(materia).strip(), "")
+            h_cell = ws_cart.cell(row=rn, column=8, value=h_val)
+            h_cell.font = base_font
+            h_cell.fill = area_fill
+
             # M,N,O,P — ID, AREA_PROFESOR, TIPO, P/S (valor literal, buscado por nombre)
             prof_key = str(profesor).strip().upper()
             match_prof = lookup.get(prof_key)
@@ -6571,6 +6669,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                 for col, val in zip((13, 14, 15, 16), match_prof):
                     cell = ws_cart.cell(row=rn, column=col, value=val)
                     cell.font = base_font
+                    cell.fill = area_fill
 
             for col, (txt, is_arr) in calc_cols.items():
                 if not txt:
@@ -6579,7 +6678,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                 _write_translated_formula(ws_cart, col, rn, txt, is_arr, f"{col_letter}{template_row_ct}", f"{col_letter}{rn}")
                 cell = ws_cart.cell(row=rn, column=col)
                 cell.font = base_font
-                cell.fill = area_fill if col == 8 else calc_fill
+                cell.fill = calc_fill
 
         new_last_row_ct = append_start_ct + len(cartelera_df) - 1
         ws_cart.tables[match_cart].ref = (
@@ -6610,6 +6709,9 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
 
 def page_update_data():
     _render_header("Update Data", "Sube la Template para actualizar la BD maestra")
+
+    with st.sidebar:
+        st.page_link(pages[0], label="Go to Faculty Report", icon="📊")
 
     st.markdown(
         "Esta sección reemplaza el antiguo modal *Update data* de la web de KPIs. "
@@ -6676,34 +6778,6 @@ def page_update_data():
                         st.error(msg)
             elif tpl_df is not None:
                 st.warning("No se detectaron filas de datos a partir de la fila 6.")
-
-        with st.expander("⚙️ Configuración requerida (una sola vez)"):
-            st.markdown(
-                "Esta misma Service Account también soluciona el error "
-                "`HTTP 401` al cargar los dashboards (aparece cuando el "
-                "archivo no está compartido con ella). Para configurarla:\n\n"
-                "1. Crear una **Service Account** en Google Cloud (con la API de "
-                "Google Drive habilitada) y descargar su archivo JSON.\n"
-                "2. Compartir estos 3 archivos con el correo de esa service account "
-                "(el campo `client_email` del JSON), con permiso de **Editor**:\n"
-                f"   - `BD_profesores.xlsx` (`{PROFESORES_FILE_ID}`)\n"
-                f"   - `BD_cartelera.xlsx` (`{CARTELERA_FILE_ID}`)\n"
-                f"   - `BD_faculty_questionnaire.xlsx` (`{QUESTIONNAIRE_FILE_ID}`)\n"
-                "3. Pegar el contenido del JSON en los *Secrets* de Streamlit "
-                "bajo la clave `gcp_service_account`.\n\n"
-                "**Importante:** como estos son archivos `.xlsx` normales (no Google "
-                "Sheets nativos), guardar aquí descarga el archivo completo, lo "
-                "modifica, y lo vuelve a subir — si alguien más lo tiene abierto y "
-                "guarda al mismo tiempo, gana el último que guarde."
-            )
-            if _get_gspread_client():
-                st.caption("✅ Conectado a Drive con permisos de escritura.")
-            elif not _GSPREAD_OK:
-                st.caption(f"⚠️ Falta instalar `gspread`/`google-auth` — import error: `{_GSPREAD_IMPORT_ERR}`")
-            elif "gcp_service_account" not in st.secrets:
-                st.caption("⚠️ No encuentro `st.secrets['gcp_service_account']` — revisa Settings → Secrets.")
-            else:
-                st.caption("⚠️ Hay un `gcp_service_account` en Secrets pero no se pudo autenticar con él — revisa el JSON.")
 
     # ── BD_Cartelera ─────────────────────────────────────────────────────
     with tab_cartelera:
@@ -6852,6 +6926,12 @@ def page_update_data():
                                 p_dob = r6c2.text_input("Date of birth (DD/MM/YYYY)", key=f"prof_dob_{name}")
                                 p_exp = r6c3.text_input("Years Industry experience", key=f"prof_exp_{name}")
 
+                                st.markdown("**Cursos que dicta (según esta carga):**")
+                                courses_taught = cart_df.loc[
+                                    cart_df["Profesor"] == name, ["Materia", "Créditos", "Nombre largo curso"]
+                                ].drop_duplicates().reset_index(drop=True)
+                                st.dataframe(courses_taught, use_container_width=True, hide_index=True)
+
                             row_required_ok = (
                                 p_id.strip() != "" and p_area != "— Selecciona —" and p_genero != "— Selecciona —"
                                 and p_tipo != "— Selecciona —" and p_ps != "— Selecciona —" and p_planta != "— Selecciona —"
@@ -6912,25 +6992,29 @@ def page_update_data():
                             for r in new_profs_df.itertuples(index=False, name=None):
                                 name_key = str(r[0]).strip().upper()
                                 combined_lookup[name_key] = (r[1], r[2], r[4], r[5])  # ID, AREA_PROFESOR, TIPO, P/S
-                        ok, msg = push_cartelera_updates(save_df, new_courses_df, combined_lookup)
+                        ok, msg = push_cartelera_updates(save_df, new_courses_df, combined_lookup, area_map)
                     if ok:
                         st.success(msg)
+                        # Faculty Distribution: un ID único por periodo, tomado de la cartelera recién guardada
+                        periodo_to_ids: Dict[str, List] = {}
+                        for periodo_val, prof_name in zip(save_df["Periodo"], save_df["Profesor"]):
+                            m = combined_lookup.get(str(prof_name).strip().upper())
+                            if not m:
+                                continue
+                            periodo_to_ids.setdefault(str(periodo_val).strip(), set()).add(m[0])
+                        periodo_to_ids = {p: sorted(ids, key=str) for p, ids in periodo_to_ids.items()}
+                        if periodo_to_ids:
+                            with st.spinner("Actualizando Faculty Distribution…"):
+                                ok_fd, msg_fd = push_faculty_distribution_updates(periodo_to_ids)
+                            if ok_fd:
+                                st.success(msg_fd)
+                            else:
+                                st.error(msg_fd)
                         st.balloons()
                     else:
                         st.error(msg)
             elif cart_df is not None:
                 st.warning("No se detectaron filas de datos a partir de la fila 6.")
-
-        with st.expander("⚙️ Configuración requerida (una sola vez)"):
-            st.markdown(
-                "Usa la misma Service Account de la pestaña BD_PLANTA. Asegúrate "
-                "de haber compartido también `BD_cartelera.xlsx` "
-                f"(`{CARTELERA_FILE_ID}`) con su correo, con permiso de **Editor**."
-            )
-            if _get_gspread_client():
-                st.caption("✅ Conectado a Drive con permisos de escritura.")
-            else:
-                st.caption("⚠️ Revisa la configuración en la pestaña BD_PLANTA.")
 
     # ── BD_Faculty_Questionnaire (próximamente) ─────────────────────────
     with tab_quest:
@@ -6953,11 +7037,12 @@ pages = [
 ]
 pg = st.navigation(pages, position="hidden")
 
-with st.container(key="nav_toggle"):
-    with st.expander("", expanded=False):
-        nav_cols = st.columns(len(pages))
-        for col, page_obj in zip(nav_cols, pages):
-            with col:
-                st.page_link(page_obj)
+if pg is not pages[-1]:  # pages[-1] = Update Data — comparación por identidad, más confiable que el título
+    with st.container(key="nav_toggle"):
+        with st.expander("", expanded=False):
+            nav_cols = st.columns(len(pages))
+            for col, page_obj in zip(nav_cols, pages):
+                with col:
+                    st.page_link(page_obj)
 
 pg.run()
