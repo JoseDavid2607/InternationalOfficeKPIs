@@ -105,16 +105,29 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
+    ".st-key-nav_toggle{"
+    "position:fixed !important;top:0.3rem;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:auto !important;margin:0 !important;}"
     ".st-key-nav_toggle div[data-testid='stExpander']{"
     "border:none !important;background:transparent !important;box-shadow:none !important;"
-    "margin:0 0 6px 0 !important;}"
+    "margin:0 !important;}"
     ".st-key-nav_toggle div[data-testid='stExpander'] summary{"
-    "padding:4px 2px !important;font-size:13px !important;color:#6B7280 !important;"
-    "font-weight:600;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary svg{color:#9CA3AF !important;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover{color:#00A896 !important;}"
+    "padding:2px 8px !important;font-size:11px !important;color:#B0B6BC !important;"
+    "font-weight:600;border-radius:8px;}"
+    ".st-key-nav_toggle div[data-testid='stExpander'] summary svg{color:#C7CCD1 !important;}"
+    ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover{color:#00A896 !important;"
+    "background:rgba(0,168,150,.08) !important;}"
     ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover svg{color:#00A896 !important;}"
-    ".st-key-nav_toggle div[data-testid='stExpanderDetails']{padding:2px 0 2px 4px !important;}"
+    ".st-key-nav_toggle div[data-testid='stExpanderDetails']{"
+    "background:#FFFFFF;border:1px solid #D1E8E4;border-radius:10px;"
+    "box-shadow:0 4px 16px rgba(0,77,71,.12);padding:8px 12px !important;margin-top:2px;}"
+    ".st-key-go_to_dashboard_btn a{"
+    "display:flex !important;align-items:center;justify-content:center;gap:8px;"
+    "background:linear-gradient(135deg,#00A896,#004d47) !important;"
+    "color:#FFFFFF !important;font-size:18px !important;font-weight:800 !important;"
+    "border-radius:14px !important;padding:18px 10px !important;text-decoration:none !important;"
+    "box-shadow:0 4px 14px rgba(0,77,71,.25);transition:transform .15s ease;}"
+    ".st-key-go_to_dashboard_btn a:hover{transform:translateY(-2px);}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -194,8 +207,9 @@ def _is_inter_label(p) -> bool:
 PROFESORES_FILE_ID = "1ncnUk_8VsDt1I0Hui9g0VyoTkA-8P376"      # BD_profesores.xlsx  → hojas: planta, Info. Profesores, Faculty Distribution
 CARTELERA_FILE_ID = "14Hongi8a180XTvuZGUf3soixgQpFp0Wl"       # BD_cartelera.xlsx   → hojas: cartelera, programas, cursos, qualifications
 QUESTIONNAIRE_FILE_ID = "1u6YTILxGOEq7eq1RE_l5sPg-vM5Wu5jH"   # BD_faculty_questionnaire.xlsx → hoja: Faculty_questionnaire
-TEMPLATE_PROFESORES_NUEVOS_FILE_ID = "1EEFfstkupiSD-2YyBPauO2WvzelZnYDl"  # Template_Profesores_Nuevos.xlsx (carpeta de templates)
-TEMPLATE_CURSOS_NUEVOS_FILE_ID = "1UGpwCGf3w3GByDm8Mj_1hJgNw0oYtqBb"  # Template_Cursos_Nuevos.xlsx (carpeta de templates)
+TEMPLATE_PROFESORES_NUEVOS_FILE_ID = "1EEFfstkupiSD-2YyBPauO2WvzelZnYDl"  # Template_profesores_nuevos.xlsx (carpeta de templates)
+TEMPLATE_CURSOS_NUEVOS_FILE_ID = "1UGpwCGf3w3GByDm8Mj_1hJgNw0oYtqBb"  # Template_cursos_nuevos.xlsx (carpeta de templates)
+TEMPLATE_PLANTA_FILE_ID = "1bE5cNo1UUUjN34-L799U7KJQarefQl1h"  # Template_planta.xlsx (carpeta de templates)
 
 # ── Autenticación (lectura y escritura vía Service Account) ────────────────
 # Requiere una service account de Google Cloud, compartida como Editor en los
@@ -2053,7 +2067,7 @@ def page_demographics():
                 "Year": ["Year", "Year Earned ", "Year Degree", "Year Earned", "Highest Degree, Year Earned"],
             })
             popover = st.popover if hasattr(st, "popover") else st.expander
-            with popover("🔎 Ver detalle de profesores con PhD"):
+            with popover("Ver detalle de profesores con PhD"):
                 st.dataframe(detalle_phd.reset_index(drop=True), use_container_width=True)
 
 
@@ -2115,7 +2129,7 @@ def page_demographics():
                 "Nationality": ["Nationality", "Country of Birth"],
             })
             popover2 = st.popover if hasattr(st, "popover") else st.expander
-            with popover2("🔎 Ver detalle de nacionalidad (profesores)"):
+            with popover2("Ver detalle de nacionalidad (profesores)"):
                 st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True)
 
 
@@ -3953,7 +3967,7 @@ def page_qualifications():
                             .apply(style_percent_tables, id_col="Academic Area", axis=None)
                             .hide(axis="index")
                         )
-                        st.dataframe(styled_tbl, use_container_width=True)
+                        st.dataframe(styled_tbl, use_container_width=True, hide_index=True)
                     else:
                         # ===== Tabla: Needed (dos columnas) + Impact (siempre) SIN TOTAL =====
                         # union de índices para no perder filas
@@ -5191,7 +5205,7 @@ def page_qualifications():
                     # ---------- Popup (modal if available; else expander fallback) ----------
                     if open_popup:
                         if hasattr(st, "dialog"):
-                            @st.dialog("Faculty by course count")
+                            @st.dialog("Faculty by course count", width="large")
                             def _dlg():
                                 _show_faculty_popup(base_tbl, display_label, opt_val)
                                 if st.button("Close"):
@@ -6098,12 +6112,14 @@ def _planta_fmt_date(v) -> str:
     return str(v).strip()
 
 
-def _build_planta_row(tpl_row: list, periodo: str, formula_row_num: int) -> list:
-    """Traduce una fila de la Template_BD_PLANTA (empezando en columna B) a una
-    fila completa A:AB de BD_PLANTA. F (Full Name) y V (Age) NO se tocan —
-    ya tienen fórmula en la Base y se diligencian solas. AB tampoco se escribe
-    (ya no hace falta la etiqueta "PLANTA"). Estas 3 columnas quedan como
-    `None` en la lista devuelta como señal de "no escribir esta celda"."""
+def _build_planta_row(tpl_row: list, nro: int, formula_row_num: int) -> list:
+    """Traduce una fila de la Template_planta (empezando en columna B) a una
+    fila completa A:AB de BD_PLANTA. La template ya NO trae el numero
+    indicativo en la columna B -- ahora trae el Periodo, y la app genera el
+    numero indicativo (Nro) ella misma, consecutivo. F (Full Name) y V (Age)
+    NO se tocan -- ya tienen formula en la Base y se diligencian solas. AB
+    tampoco se escribe. Estas 3 columnas quedan como None en la lista
+    devuelta como senal de "no escribir esta celda"."""
 
     def t(idx):
         v = tpl_row[idx] if idx < len(tpl_row) else ""
@@ -6111,34 +6127,34 @@ def _build_planta_row(tpl_row: list, periodo: str, formula_row_num: int) -> list
 
     row = [""] * 28  # A .. AB
 
-    row[0] = periodo                                   # A — Periodo
-    row[1] = t(0)                                       # B — Nº                (tpl B)
-    row[2] = t(1)                                       # C — ID Nr.            (tpl C)
-    row[3] = t(2)                                       # D — First Name        (tpl D)
-    row[4] = t(3)                                       # E — Last Name         (tpl E)
-    row[5] = None                                        # F — Full Name (fórmula ya existente, NO se escribe)
-    row[6] = _planta_fmt_date(t(8))                      # G — Date of First Appointment (tpl J)
-    row[7] = t(9)                                        # H — Academic Area     (tpl K)
-    row[8] = t(13)                                       # I — Highest Earned Degree (tpl O)
-    row[9] = t(14)                                       # J — Year (Degree)     (tpl P)
-    row[10] = t(15)                                      # K — University        (tpl Q)
-    row[11] = t(16)                                      # L — Region            (tpl R)
-    row[12] = t(17)                                      # M — Highest Degree    (tpl S)
-    row[13] = t(18)                                      # N — International Degree (tpl T)
-    row[14] = t(11)                                      # O — % devoted to Mission (tpl M)
-    row[15] = t(10)                                      # P — Faculty Ranking   (tpl L)
-    row[16] = ""                                         # Q — Subcategorization (vacío)
-    row[17] = t(19)                                      # R — Field             (tpl U)
-    row[18] = t(6)                                       # S — Country of Birth  (tpl H)
-    row[19] = t(7)                                       # T — Double Nationality (tpl I)
-    row[20] = _planta_fmt_date(t(4))                     # U — Date of Birth     (tpl F)
-    row[21] = None                                       # V — Age (fórmula ya existente, NO se escribe)
-    row[22] = t(5)                                        # W — Gender            (tpl G)
-    row[23] = t(12)                                       # X — Faculty Qualific. (tpl N)
-    row[24] = "P"                                          # Y — P/S, fijo "P"
-    row[25] = t(20)                                       # Z — Normal professional Resp. (tpl V)
-    row[26] = t(21)                                       # AA — Notes            (tpl W)
-    row[27] = None                                        # AB — ya no se escribe "PLANTA"
+    row[0] = t(0)                                        # A -- Periodo (tpl B, ahora es el Periodo)
+    row[1] = nro                                          # B -- Nro (generado por la app)
+    row[2] = t(1)                                       # C -- ID Nr.            (tpl C)
+    row[3] = t(2)                                       # D -- First Name        (tpl D)
+    row[4] = t(3)                                       # E -- Last Name         (tpl E)
+    row[5] = None                                        # F -- Full Name (formula existente, NO se escribe)
+    row[6] = _planta_fmt_date(t(8))                      # G -- Date of First Appointment (tpl J)
+    row[7] = t(9)                                        # H -- Academic Area     (tpl K)
+    row[8] = t(13)                                       # I -- Highest Earned Degree (tpl O)
+    row[9] = t(14)                                       # J -- Year (Degree)     (tpl P)
+    row[10] = t(15)                                      # K -- University        (tpl Q)
+    row[11] = t(16)                                      # L -- Region            (tpl R)
+    row[12] = t(17)                                      # M -- Highest Degree    (tpl S)
+    row[13] = t(18)                                      # N -- International Degree (tpl T)
+    row[14] = t(11)                                      # O -- % devoted to Mission (tpl M)
+    row[15] = t(10)                                      # P -- Faculty Ranking   (tpl L)
+    row[16] = ""                                         # Q -- Subcategorization (vacio)
+    row[17] = t(19)                                      # R -- Field             (tpl U)
+    row[18] = t(6)                                       # S -- Country of Birth  (tpl H)
+    row[19] = t(7)                                       # T -- Double Nationality (tpl I)
+    row[20] = _planta_fmt_date(t(4))                     # U -- Date of Birth     (tpl F)
+    row[21] = None                                       # V -- Age (formula existente, NO se escribe)
+    row[22] = t(5)                                        # W -- Gender            (tpl G)
+    row[23] = t(12)                                       # X -- Faculty Qualific. (tpl N)
+    row[24] = "P"                                          # Y -- P/S, fijo "P"
+    row[25] = t(20)                                       # Z -- Normal professional Resp. (tpl V)
+    row[26] = t(21)                                       # AA -- Notes            (tpl W)
+    row[27] = None                                        # AB -- ya no se escribe "PLANTA"
 
     return row
 
@@ -6196,21 +6212,24 @@ def _drive_upload_file_bytes(file_id: str, content: bytes) -> Tuple[bool, str]:
         return False, str(e)
 
 
-def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, str]:
-    """Escribe las filas nuevas en la hoja 'planta' de BD_profesores.xlsx:
-    1) borra cualquier fila existente con el mismo Periodo (semántica de
-       reemplazo, igual que el modal HTML original), 2) agrega las filas
-       nuevas al final, 3) aplica el resaltado de Notes (IN IN → azul
-       negrilla, OUT IN → rojo), 4) sube el archivo completo de vuelta a Drive.
+def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
+    """Escribe las filas nuevas en la hoja 'planta' de BD_profesores.xlsx.
+    La template ahora trae el Periodo en cada fila (columna B), asi que ya
+    no se pide un periodo global aparte: se toma directo de cada fila, se
+    borran las filas existentes que compartan esos periodos (reemplazo,
+    igual que antes), se agregan las nuevas al final con un numero
+    indicativo (Nro) consecutivo generado por la app, se aplica el
+    resaltado de Notes (IN IN -> azul negrilla, OUT IN -> rojo), y se sube
+    el archivo completo de vuelta a Drive.
 
     Nota: como BD_profesores.xlsx es un archivo .xlsx normal (no un Google
-    Sheet nativo), no se puede editar celda por celda vía API — hay que
-    descargar el archivo entero, modificarlo con openpyxl, y volver a subirlo
-    completo. Esto reemplaza el archivo tal cual queda guardado; si alguien
-    más lo está editando en Excel/Sheets al mismo tiempo, esos cambios se
-    perderían (último en guardar gana)."""
+    Sheet nativo), no se puede editar celda por celda via API -- hay que
+    descargar el archivo entero, modificarlo con openpyxl, y volver a
+    subirlo completo. Esto reemplaza el archivo tal cual queda guardado; si
+    alguien mas lo esta editando en Excel/Sheets al mismo tiempo, esos
+    cambios se perderian (ultimo en guardar gana)."""
     if not _OPENPYXL_OK:
-        return False, "Falta la librería `openpyxl` en el entorno (agrégala a requirements.txt)."
+        return False, "Falta la libreria `openpyxl` en el entorno (agregala a requirements.txt)."
 
     token = _get_gspread_access_token()
     if not token:
@@ -6222,29 +6241,44 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
         raw_bytes = _download_drive_file_bytes(PROFESORES_FILE_ID)
         wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
         if "planta" not in wb.sheetnames:
-            return False, "No encontré la hoja 'planta' dentro de BD_profesores.xlsx."
+            return False, "No encontre la hoja 'planta' dentro de BD_profesores.xlsx."
         ws = wb["planta"]
 
-        # 1) Borra filas existentes con el mismo Periodo (columna A), de abajo hacia arriba
+        periodos = set(
+            str(r[0]).strip() for r in new_rows_df.itertuples(index=False, name=None)
+            if r[0] is not None and str(r[0]).strip() != ""
+        )
+
+        # 1) Borra filas existentes con esos periodos (columna A), de abajo hacia arriba
         rows_to_delete = [
             r for r in range(2, ws.max_row + 1)
-            if str(ws.cell(row=r, column=1).value or "").strip().replace(".0", "") == str(periodo)
+            if str(ws.cell(row=r, column=1).value or "").strip().replace(".0", "") in periodos
         ]
         for r in sorted(rows_to_delete, reverse=True):
             ws.delete_rows(r)
 
+        # 1.5) Numero indicativo (Nro) consecutivo: continua desde el maximo
+        # existente en la columna B, ya que la template no lo trae mas.
+        max_nro = 0
+        for r in range(2, ws.max_row + 1):
+            v = ws.cell(row=r, column=2).value
+            try:
+                max_nro = max(max_nro, int(float(v)))
+            except (TypeError, ValueError):
+                continue
+
         # 2) Agrega las filas nuevas al final
         append_start = ws.max_row + 1
         rows = [
-            _build_planta_row(list(r), periodo, append_start + i)
+            _build_planta_row(list(r), max_nro + 1 + i, append_start + i)
             for i, r in enumerate(new_rows_df.itertuples(index=False, name=None))
         ]
 
-        # 2.5) Copia las fórmulas REALES de F (Full Name) y V (Age) desde la
-        # última fila existente, y las traslada a cada fila nueva con
-        # openpyxl.formula.translate.Translator — así nunca se "adivina" ni se
-        # transcribe la fórmula a mano, se copia tal cual y solo se ajustan
-        # las referencias de fila (respetando $ absolutos si los hay).
+        # 2.5) Copia las formulas REALES de F (Full Name) y V (Age) desde la
+        # ultima fila existente, y las traslada a cada fila nueva con
+        # openpyxl.formula.translate.Translator -- asi nunca se "adivina" ni
+        # se transcribe la formula a mano, se copia tal cual y solo se
+        # ajustan las referencias de fila (respetando $ absolutos si los hay).
         template_row = append_start - 1
         tpl_formula_f = ws.cell(row=template_row, column=6).value if template_row > 1 else None
         tpl_formula_v = ws.cell(row=template_row, column=22).value if template_row > 1 else None
@@ -6263,17 +6297,17 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
 
         for i, row_vals in enumerate(rows):
             rn = append_start + i
-            style = _planta_note_style(row_vals[26])  # índice 26 = columna AA (Notes)
+            style = _planta_note_style(row_vals[26])  # indice 26 = columna AA (Notes)
             font = blue_bold_font if style == "blue_bold" else red_font if style == "red" else base_font
             for c, val in enumerate(row_vals, start=1):
                 if val is None:
-                    if c == 6 and formulas_ok:      # F — Full Name
+                    if c == 6 and formulas_ok:      # F -- Full Name
                         val = Translator(tpl_formula_f, origin=f"F{template_row}").translate_formula(f"F{rn}")
-                    elif c == 22 and formulas_ok:    # V — Age
+                    elif c == 22 and formulas_ok:    # V -- Age
                         val = Translator(tpl_formula_v, origin=f"V{template_row}").translate_formula(f"V{rn}")
                     else:
-                        # No hay fila anterior de la cual copiar la fórmula
-                        # (ej. la hoja quedó vacía) — se deja en blanco.
+                        # No hay fila anterior de la cual copiar la formula
+                        # (ej. la hoja quedo vacia) -- se deja en blanco.
                         continue
                 cell = ws.cell(row=rn, column=c, value=val)
                 cell.font = font
@@ -6283,7 +6317,7 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
                     cell.alignment = fv_align
 
         # 3.5) Extiende la Tabla de Excel "tabla_planta" para que incluya las
-        # filas nuevas — sin esto, aunque las celdas queden vacías, Excel no
+        # filas nuevas -- sin esto, aunque las celdas queden vacias, Excel no
         # las reconoce como parte de la tabla y no autocompleta las columnas
         # calculadas (F, V).
         new_last_row = append_start + len(rows) - 1 if rows else ws.max_row
@@ -6297,7 +6331,7 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
             min_col, min_row, max_col, _old_max_row = range_boundaries(tbl.ref)
             tbl.ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
 
-        wb.calculation.fullCalcOnLoad = True  # fuerza recálculo de fórmulas al abrir en Excel
+        wb.calculation.fullCalcOnLoad = True  # fuerza recalculo de formulas al abrir en Excel
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
@@ -6313,24 +6347,23 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
         demo_load_fulltime.clear()
         _download_drive_file_bytes.clear()
 
-        msg = f"✓ BD_profesores.xlsx (hoja 'planta') actualizada — {len(rows)} filas para el período {periodo}."
+        periodos_txt = ", ".join(sorted(periodos)) if periodos else "?"
+        msg = f"\u2713 BD_profesores.xlsx (hoja 'planta') actualizada \u2014 {len(rows)} filas para el/los periodo(s) {periodos_txt}."
         if not match:
             msg += (
-                " ⚠️ No encontré una Tabla de Excel llamada 'tabla_planta' en la hoja — "
-                "las filas se agregaron igual, pero quedarán fuera de la tabla."
+                " \u26a0\ufe0f No encontre una Tabla de Excel llamada 'tabla_planta' en la hoja -- "
+                "las filas se agregaron igual, pero quedaran fuera de la tabla."
             )
         if not formulas_ok:
             msg += (
-                " ⚠️ No encontré una fórmula existente en F/V de la última fila para "
-                "copiar — esas columnas quedaron en blanco en las filas nuevas."
+                " \u26a0\ufe0f No encontre una formula existente en F/V de la ultima fila para "
+                "copiar -- esas columnas quedaron en blanco en las filas nuevas."
             )
         return True, msg
     except Exception as e:
         return False, f"Error al escribir en la hoja 'planta': {e}"
 
 
-
-# ── BD_Cartelera ─────────────────────────────────────────────────────────
 def _read_cartelera_template(uploaded_file) -> pd.DataFrame:
     """Template_BD_Cartelera: columnas B..H → Periodo, Campus, Materia, Secc,
     Créditos, Nombre largo curso, Profesor."""
@@ -6381,7 +6414,7 @@ def _load_profesores_lookup() -> Dict[str, Tuple]:
 
 
 def _build_prefilled_cursos_template(missing_codes: List[str]) -> bytes:
-    """Descarga la Template_Cursos_Nuevos.xlsx real y prellena la columna
+    """Descarga la Template_cursos_nuevos.xlsx real y prellena la columna
     Código Materia (B) con los códigos que no se encontraron, desde la fila 6."""
     raw = _download_drive_file_bytes(TEMPLATE_CURSOS_NUEVOS_FILE_ID)
     wb = openpyxl.load_workbook(io.BytesIO(raw))
@@ -6393,8 +6426,15 @@ def _build_prefilled_cursos_template(missing_codes: List[str]) -> bytes:
     return buf.getvalue()
 
 
+def _build_info_profesores_download() -> bytes:
+    """Devuelve la hoja 'Info. Profesores' completa como un .xlsx descargable."""
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    dfi = pd.read_excel(raw, sheet_name="Info. Profesores")
+    return _xlsx_bytes(dfi, sheet_name="Info. Profesores")
+
+
 def _build_prefilled_profesores_template(missing_names: List[str]) -> bytes:
-    """Descarga la Template_Profesores_Nuevos.xlsx real y prellena la columna
+    """Descarga la Template_profesores_nuevos.xlsx real y prellena la columna
     Profesor (B) con los nombres que no se encontraron, desde la fila 6."""
     raw = _download_drive_file_bytes(TEMPLATE_PROFESORES_NUEVOS_FILE_ID)
     wb = openpyxl.load_workbook(io.BytesIO(raw))
@@ -6812,9 +6852,6 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
 def page_update_data():
     _render_header("Update Data", "Sube la Template para actualizar la BD maestra")
 
-    with st.sidebar:
-        st.page_link(pages[0], label="Go to Faculty Report", icon="📊")
-
     st.markdown(
         "Esta sección reemplaza el antiguo modal *Update data* de la web de KPIs. "
         "Los cambios que hagas aquí se escriben directamente en el Google Sheet que "
@@ -6822,23 +6859,33 @@ def page_update_data():
     )
 
     tab_planta, tab_cartelera, tab_quest = st.tabs(
-        ["BD_PLANTA", "BD_Cartelera", "BD_Faculty_Questionnaire"]
+        ["BD_planta", "BD_cartelera", "BD_Faculty_Questionnaire"]
     )
 
-    # ── BD_PLANTA ───────────────────────────────────────────────────────
+    # ── BD_planta ───────────────────────────────────────────────────────
     with tab_planta:
-        st.markdown("#### Actualizar BD_PLANTA")
+        st.markdown("#### Actualizar BD_planta")
+
+        last_period = sorted(df["Periodo"].dropna().unique().tolist(), key=_period_sort_key)[-1] if not df.empty else "—"
+        st.caption(f"Último periodo registrado en la Base: **{last_period}**")
+
+        col_dl1, col_dl2 = st.columns(2)
+        with col_dl1:
+            st.download_button(
+                "⬇️ Descargar Template_planta.xlsx", data=_download_drive_file_bytes(TEMPLATE_PLANTA_FILE_ID),
+                file_name="Template_planta.xlsx", key="dl_template_planta",
+            )
+        with col_dl2:
+            st.download_button(
+                "⬇️ Descargar Base Info. Profesores", data=_build_info_profesores_download(),
+                file_name="Info_Profesores.xlsx", key="dl_info_profesores",
+            )
         st.caption(
-            "Sube `Template_BD_PLANTA.xlsx`. Los datos deben empezar en la fila 6, "
-            "columnas B a W, igual que la plantilla oficial."
+            "La template ya trae el Periodo en cada fila (columna B) — no hace falta "
+            "escribirlo aparte. El número indicativo lo asigna la app sola."
         )
 
-        periodo = st.text_input(
-            "Periodo (formato Base, ej: 202510 o '2025 Intersemestral')",
-            key="planta_periodo",
-            placeholder="202510",
-        )
-        up = st.file_uploader("Template_BD_PLANTA.xlsx", type=["xlsx"], key="planta_upload")
+        up = st.file_uploader("Template_planta.xlsx diligenciada", type=["xlsx"], key="planta_upload")
 
         if up is not None:
             try:
@@ -6866,13 +6913,9 @@ def page_update_data():
                     "quedan como fórmula — no se sobreescriben con la template."
                 )
 
-                disabled = not periodo.strip()
-                if disabled:
-                    st.info("Ingresa el Periodo antes de guardar.")
-
-                if st.button("💾 Guardar en BD_PLANTA", type="primary", disabled=disabled):
-                    with st.spinner("Escribiendo en el Google Sheet…"):
-                        ok, msg = push_planta_updates(tpl_df, periodo.strip())
+                if st.button("💾 Guardar en BD_planta", type="primary"):
+                    with st.spinner("Escribiendo en Drive…"):
+                        ok, msg = push_planta_updates(tpl_df)
                     if ok:
                         st.success(msg)
                         st.balloons()
@@ -6881,16 +6924,16 @@ def page_update_data():
             elif tpl_df is not None:
                 st.warning("No se detectaron filas de datos a partir de la fila 6.")
 
-    # ── BD_Cartelera ─────────────────────────────────────────────────────
+    # ── BD_cartelera ─────────────────────────────────────────────────────
     with tab_cartelera:
-        st.markdown("#### Actualizar BD_Cartelera")
+        st.markdown("#### Actualizar BD_cartelera")
 
         st.caption(
-            "Sube `Template_BD_Cartelera.xlsx` diligenciada. Los datos deben "
+            "Sube `Template_cartelera.xlsx` diligenciada. Los datos deben "
             "empezar en la fila 6, columnas B a H, igual que la plantilla oficial."
         )
 
-        up_cart = st.file_uploader("Template_BD_Cartelera.xlsx", type=["xlsx"], key="cartelera_upload")
+        up_cart = st.file_uploader("Template_cartelera.xlsx", type=["xlsx"], key="cartelera_upload")
 
         if up_cart is not None:
             try:
@@ -6935,7 +6978,7 @@ def page_update_data():
                     )
                     fill_mode = st.radio(
                         "¿Cómo quieres completar las áreas?",
-                        ["Seleccionar aquí mismo", "Subir Template_Cursos_Nuevos.xlsx diligenciada"],
+                        ["Seleccionar aquí mismo", "Subir Template_cursos_nuevos.xlsx diligenciada"],
                         key="cartelera_fill_mode", horizontal=True,
                     )
 
@@ -6943,7 +6986,7 @@ def page_update_data():
                         st.caption("Elige el área de cada curso (un clic, sin necesidad de tabla editable):")
                         picked_areas = {}
                         for idx, row in missing_courses.iterrows():
-                            c1, c2, c3, c4 = st.columns([2, 1, 3, 2])
+                            c1, c2, c3, c4, c5 = st.columns([2, 1, 3, 2, 0.5])
                             c1.markdown(f"**{row['Materia']}**")
                             c2.markdown(str(row["Créditos"]))
                             c3.markdown(row["Nombre largo curso"])
@@ -6951,19 +6994,24 @@ def page_update_data():
                                 "Área", options=["— Selecciona —"] + AREA_OPTIONS,
                                 key=f"area_pick_{row['Materia']}", label_visibility="collapsed",
                             )
+                            with c5.popover("＋"):
+                                profs = sorted(cart_df.loc[cart_df["Materia"] == row["Materia"], "Profesor"].dropna().unique().tolist())
+                                st.caption("Profesor(es):")
+                                for p in profs:
+                                    st.markdown(f"- {p}")
                         if all(v != "— Selecciona —" for v in picked_areas.values()):
                             new_courses_df = missing_courses.assign(
                                 **{"Area del curso": missing_courses["Materia"].map(picked_areas)}
                             ).rename(columns={"Materia": "Código Materia"})
                     else:
                         st.download_button(
-                            "⬇️ Descargar Template_Cursos_Nuevos.xlsx (con los códigos ya puestos)",
+                            "⬇️ Descargar Template_cursos_nuevos.xlsx (con los códigos ya puestos)",
                             data=_build_prefilled_cursos_template(missing_courses["Materia"].tolist()),
-                            file_name="Template_Cursos_Nuevos.xlsx",
+                            file_name="Template_cursos_nuevos.xlsx",
                             key="cursos_template_dl",
                         )
                         up_new = st.file_uploader(
-                            "Template_Cursos_Nuevos.xlsx diligenciada", type=["xlsx"], key="cursos_nuevos_upload"
+                            "Template_cursos_nuevos.xlsx diligenciada", type=["xlsx"], key="cursos_nuevos_upload"
                         )
                         if up_new is not None:
                             try:
@@ -6986,7 +7034,7 @@ def page_update_data():
                     )
                     prof_fill_mode = st.radio(
                         "¿Cómo quieres completar los profesores?",
-                        ["Seleccionar aquí mismo", "Subir Template_Profesores_Nuevos.xlsx diligenciada"],
+                        ["Seleccionar aquí mismo", "Subir Template_profesores_nuevos.xlsx diligenciada"],
                         key="profesores_fill_mode", horizontal=True,
                     )
 
@@ -7029,11 +7077,11 @@ def page_update_data():
                                 p_dob = r6c2.text_input("Date of birth (DD/MM/YYYY)", key=f"prof_dob_{name}")
                                 p_exp = r6c3.text_input("Years Industry experience", key=f"prof_exp_{name}")
 
-                                st.markdown("**Cursos que dicta (según esta carga):**")
-                                courses_taught = cart_df.loc[
-                                    cart_df["Profesor"] == name, ["Materia", "Créditos", "Nombre largo curso"]
-                                ].drop_duplicates().reset_index(drop=True)
-                                st.dataframe(courses_taught, use_container_width=True, hide_index=True)
+                                with st.popover("＋ Cursos que dicta (según esta carga)"):
+                                    courses_taught = cart_df.loc[
+                                        cart_df["Profesor"] == name, ["Materia", "Créditos", "Nombre largo curso"]
+                                    ].drop_duplicates().reset_index(drop=True)
+                                    st.dataframe(courses_taught, use_container_width=True, hide_index=True)
 
                             row_required_ok = (
                                 p_id.strip() != "" and p_area != "— Selecciona —" and p_genero != "— Selecciona —"
@@ -7056,9 +7104,9 @@ def page_update_data():
                             new_profs_df = pd.DataFrame(list(picked_profs.values()))
                     else:
                         st.download_button(
-                            "⬇️ Descargar Template_Profesores_Nuevos.xlsx (con los nombres ya puestos)",
+                            "⬇️ Descargar Template_profesores_nuevos.xlsx (con los nombres ya puestos)",
                             data=_build_prefilled_profesores_template(missing_profs),
-                            file_name="Template_Profesores_Nuevos.xlsx",
+                            file_name="Template_profesores_nuevos.xlsx",
                             key="prof_template_dl",
                         )
                         st.caption(
@@ -7067,7 +7115,7 @@ def page_update_data():
                             "y súbela diligenciada abajo."
                         )
                         up_profs = st.file_uploader(
-                            "Template_Profesores_Nuevos.xlsx diligenciada", type=["xlsx"], key="profesores_nuevos_upload"
+                            "Template_profesores_nuevos.xlsx diligenciada", type=["xlsx"], key="profesores_nuevos_upload"
                         )
                         if up_profs is not None:
                             try:
@@ -7158,13 +7206,18 @@ with st.sidebar:
         )
         st.caption("Analytics Dashboard")
 
-    if pg is not pages[-1]:  # pages[-1] = Update Data — comparación por identidad, más confiable que el título
-        with st.container(key="nav_toggle"):
-            with st.expander("Other sections", expanded=False):
-                for page_obj in pages:
-                    st.page_link(page_obj)
+    if pg is pages[-1]:  # Update Data — botón grande, sin línea separadora
+        st.markdown('<div style="height:14px;"></div>', unsafe_allow_html=True)
+        with st.container(key="go_to_dashboard_btn"):
+            st.page_link(pages[0], label="Go to Faculty Dashboard", icon="📊", use_container_width=True)
+    else:
+        st.markdown("---")
 
-    st.markdown("---")
+if pg is not pages[-1]:  # pages[-1] = Update Data — comparación por identidad, más confiable que el título
+    with st.container(key="nav_toggle"):
+        with st.expander("Other sections", expanded=False):
+            for page_obj in pages:
+                st.page_link(page_obj)
 
 pg.run()
 
