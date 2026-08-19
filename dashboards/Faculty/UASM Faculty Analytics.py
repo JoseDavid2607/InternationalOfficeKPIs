@@ -40,6 +40,7 @@ try:
     from openpyxl.styles import Font, Border, Side, PatternFill, Alignment
     from openpyxl.utils import range_boundaries, get_column_letter
     from openpyxl.formula.translate import Translator
+    from openpyxl.worksheet.formula import ArrayFormula
     _OPENPYXL_OK = True
 except ImportError:
     _OPENPYXL_OK = False
@@ -5981,6 +5982,63 @@ _PLANTA_TEMPLATE_HEADER_ROW = 4     # fila 4 = nombres de columna en la template
 _PLANTA_TEMPLATE_DATA_ROW = 6       # los datos empiezan en la fila 6 (1-indexado)
 _PLANTA_TEMPLATE_START_COL = 1      # columna B (0-indexado) = primera columna de datos
 
+# Todas las templates (BD_PLANTA, BD_Cartelera, Cursos_Nuevos) comparten el
+# mismo layout: encabezados en la fila 4, datos desde la fila 6, columna B en adelante.
+def _read_generic_template(uploaded_file, header_row: int = 4, data_row: int = 6, start_col: int = 1) -> pd.DataFrame:
+    raw = pd.read_excel(uploaded_file, sheet_name=0, header=None)
+    headers = raw.iloc[header_row - 1, start_col:].tolist()
+    headers = [str(h).replace("\n", " ").strip() if pd.notna(h) else "" for h in headers]
+    data = raw.iloc[data_row - 1:, start_col:].copy()
+    data.columns = headers
+    data = data.dropna(how="all").reset_index(drop=True)
+    return data
+
+
+AREA_OPTIONS = [
+    "Marketing", "SCM & IT", "Strategy & Entrepreneurship", "Finance",
+    "Management", "Organizations", "Sustainability",
+]
+
+
+def _get_formula_text(cell) -> Tuple[Optional[str], bool]:
+    """Devuelve (texto_de_la_fórmula, es_array) de una celda. Algunas fórmulas
+    (XLOOKUP entrado con Ctrl+Shift+Enter) se guardan como ArrayFormula en vez
+    de string plano — hay que detectar cuál es para copiarlas bien."""
+    v = cell.value
+    if isinstance(v, ArrayFormula):
+        return v.text, True
+    if isinstance(v, str) and v.startswith("="):
+        return v, False
+    return None, False
+
+
+def _write_translated_formula(ws, col: int, row: int, tpl_text: str, is_array: bool, origin_ref: str, target_ref: str):
+    """Copia una fórmula existente (tpl_text, tomada de origin_ref) hacia
+    target_ref, ajustando referencias relativas/absolutas con Translator, y
+    la escribe respetando si es una fórmula normal o de matriz (ArrayFormula)."""
+    translated = Translator(tpl_text, origin=origin_ref).translate_formula(target_ref)
+    if is_array:
+        ws.cell(row=row, column=col, value=ArrayFormula(ref=target_ref, text=translated))
+    else:
+        ws.cell(row=row, column=col, value=translated)
+
+
+def _table_info(ws, table_name: str):
+    """Ubica una Tabla de Excel por nombre (case-insensitive) y devuelve
+    (nombre_real, min_col, min_row, max_col, last_row) usando el rango de la
+    tabla — NO ws.max_row, porque algunas hojas tienen filas con formato
+    "fantasma" más allá de los datos reales que inflan ws.max_row."""
+    try:
+        names = list(ws.tables.keys())
+    except AttributeError:
+        names = list(ws.tables)
+    match = next((n for n in names if n.strip().lower() == table_name.strip().lower()), None)
+    if not match:
+        return None
+    tbl = ws.tables[match]
+    min_col, min_row, max_col, last_row = range_boundaries(tbl.ref)
+    return match, min_col, min_row, max_col, last_row
+
 
 def _planta_fmt_date(v) -> str:
     """Normaliza una fecha de la template (datetime, serial de Excel, o texto) a DD/MM/YYYY."""
@@ -6228,6 +6286,168 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
 
 
 
+# ── BD_Cartelera ─────────────────────────────────────────────────────────
+def _read_cartelera_template(uploaded_file) -> pd.DataFrame:
+    """Template_BD_Cartelera: columnas B..H → Periodo, Campus, Materia, Secc,
+    Créditos, Nombre largo curso, Profesor."""
+    return _read_generic_template(uploaded_file)
+
+
+def _read_cursos_nuevos_template(uploaded_file) -> pd.DataFrame:
+    """Template_Cursos_Nuevos: columnas B..E → Código Materia, Créditos,
+    Nombre largo curso, Area del curso."""
+    return _read_generic_template(uploaded_file)
+
+
+@st.cache_data(ttl=60)
+def _load_cursos_area_map() -> Dict[str, str]:
+    """Código Materia (columna A de 'cursos') → Area del curso (columna D),
+    para saber en el preview qué cursos de la template ya existen y cuáles no."""
+    raw = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
+    dfc = pd.read_excel(raw, sheet_name="cursos")
+    dfc.columns = dfc.columns.str.strip()
+    key = dfc["Código Materia"].astype(str).str.strip()
+    return dict(zip(key, dfc["Area del curso"]))
+
+
+def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFrame) -> Tuple[bool, str]:
+    """1) Si hay cursos nuevos (no encontrados en 'cursos'), los agrega ahí
+    primero (A-D valores directos; E-F son fórmulas de matriz existentes que
+    se copian/trasladan igual que F/V en planta, con fondo #c1f4e5).
+    2) Agrega las filas de cartelera: A,C-G,L directos; B,H,I,J,K son fórmulas
+    (XLOOKUP) que ya existen en la Base — se copian/trasladan igual, y H
+    además queda con fondo #f1ceee. Como H es un XLOOKUP en vivo contra
+    'cursos', en cuanto el curso nuevo quede ahí, el área aparece sola —
+    no hace falta "volver" a llenarla a mano.
+    3) Sube el archivo completo actualizado a Drive."""
+    if not _OPENPYXL_OK:
+        return False, "Falta la librería `openpyxl` en el entorno."
+    token = _get_gspread_access_token()
+    if not token:
+        return False, (
+            "No hay credenciales configuradas para escribir en Drive. "
+            "Falta `st.secrets['gcp_service_account']`."
+        )
+    try:
+        raw_bytes = _download_drive_file_bytes(CARTELERA_FILE_ID)
+        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
+        if "cartelera" not in wb.sheetnames or "cursos" not in wb.sheetnames:
+            return False, "No encontré las hojas 'cartelera' y/o 'cursos' en BD_cartelera.xlsx."
+        ws_cart = wb["cartelera"]
+        ws_cursos = wb["cursos"]
+
+        base_font = Font(name="Arial", size=11, color="000000")
+        thin = Side(style="thin")
+        thin_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        area_fill = PatternFill(fill_type="solid", fgColor="F1CEEE")
+        cursos_fill = PatternFill(fill_type="solid", fgColor="C1F4E5")
+
+        n_new_courses = 0
+        # 1) Cursos nuevos → hoja 'cursos'
+        if new_courses_df is not None and not new_courses_df.empty:
+            info = _table_info(ws_cursos, "tabla_cursos")
+            if not info:
+                return False, "No encontré la Tabla de Excel 'tabla_cursos' en la hoja 'cursos'."
+            _, min_col_c, min_row_c, max_col_c, last_row_c = info
+            template_row_c = last_row_c
+            tpl_e_text, e_is_array = _get_formula_text(ws_cursos.cell(row=template_row_c, column=5))
+            tpl_f_text, f_is_array = _get_formula_text(ws_cursos.cell(row=template_row_c, column=6))
+            ef_ok = bool(tpl_e_text) and bool(tpl_f_text)
+
+            append_start_c = last_row_c + 1
+            for i, r in enumerate(new_courses_df.itertuples(index=False, name=None)):
+                rn = append_start_c + i
+                codigo, creditos, nombre, area = (r + ("", "", "", ""))[:4]
+                for col, val in [(1, codigo), (2, creditos), (3, nombre), (4, area)]:
+                    cell = ws_cursos.cell(row=rn, column=col, value=val)
+                    cell.font = base_font
+                    cell.border = thin_border
+                if ef_ok:
+                    _write_translated_formula(ws_cursos, 5, rn, tpl_e_text, e_is_array, f"E{template_row_c}", f"E{rn}")
+                    _write_translated_formula(ws_cursos, 6, rn, tpl_f_text, f_is_array, f"F{template_row_c}", f"F{rn}")
+                    for col in (5, 6):
+                        cell = ws_cursos.cell(row=rn, column=col)
+                        cell.font = base_font
+                        cell.border = thin_border
+                        cell.fill = cursos_fill
+                n_new_courses += 1
+
+            new_last_row_c = append_start_c + n_new_courses - 1
+            ws_cursos.tables[info[0]].ref = (
+                f"{get_column_letter(min_col_c)}{min_row_c}:{get_column_letter(max_col_c)}{new_last_row_c}"
+            )
+
+        # 2) Filas de cartelera
+        info_cart = _table_info(ws_cart, "tabla_cartelera")
+        if not info_cart:
+            return False, "No encontré la Tabla de Excel 'tabla_cartelera' en la hoja 'cartelera'."
+        match_cart, min_col_ct, min_row_ct, max_col_ct, last_row_ct = info_cart
+        template_row_ct = last_row_ct
+
+        calc_cols = {}  # columna -> (texto, es_array)
+        for col in (2, 8, 9, 10, 11):  # B, H, I, J, K
+            txt, is_arr = _get_formula_text(ws_cart.cell(row=template_row_ct, column=col))
+            calc_cols[col] = (txt, is_arr)
+
+        # Periodos presentes en la carga: borra filas existentes con esos periodos primero
+        periodos = set(str(p).strip() for p in cartelera_df["Periodo"].dropna().unique())
+        rows_to_delete = [
+            r for r in range(2, template_row_ct + 1)
+            if str(ws_cart.cell(row=r, column=1).value or "").strip() in periodos
+        ]
+        for r in sorted(rows_to_delete, reverse=True):
+            ws_cart.delete_rows(r)
+
+        info_cart2 = _table_info(ws_cart, "tabla_cartelera")
+        _, _, _, _, last_row_ct2 = info_cart2
+        append_start_ct = last_row_ct2 + 1
+        template_row_ct = last_row_ct2  # fila de la que se copian las fórmulas, tras el borrado
+
+        for i, r in enumerate(cartelera_df.itertuples(index=False, name=None)):
+            rn = append_start_ct + i
+            periodo, campus, materia, secc, creditos, nombre, profesor = (r + ("",) * 7)[:7]
+            direct = {1: periodo, 3: campus, 4: materia, 5: secc, 6: creditos, 7: nombre, 12: profesor}
+            for col, val in direct.items():
+                cell = ws_cart.cell(row=rn, column=col, value=val)
+                cell.font = base_font
+                cell.border = thin_border
+            for col, (txt, is_arr) in calc_cols.items():
+                if not txt:
+                    continue
+                col_letter = get_column_letter(col)
+                _write_translated_formula(ws_cart, col, rn, txt, is_arr, f"{col_letter}{template_row_ct}", f"{col_letter}{rn}")
+                cell = ws_cart.cell(row=rn, column=col)
+                cell.font = base_font
+                cell.border = thin_border
+                if col == 8:  # H — Area del curso
+                    cell.fill = area_fill
+
+        new_last_row_ct = append_start_ct + len(cartelera_df) - 1
+        ws_cart.tables[match_cart].ref = (
+            f"{get_column_letter(min_col_ct)}{min_row_ct}:{get_column_letter(max_col_ct)}{new_last_row_ct}"
+        )
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        ok, err = _drive_upload_file_bytes(CARTELERA_FILE_ID, buf.getvalue())
+        if not ok:
+            return False, f"Error al subir el archivo actualizado a Drive: {err}"
+
+        qual_load_cartelera.clear()
+        _download_drive_file_bytes.clear()
+        _load_cursos_area_map.clear()
+
+        msg = f"✓ BD_cartelera.xlsx actualizada — {len(cartelera_df)} filas en 'cartelera'"
+        if n_new_courses:
+            msg += f" y {n_new_courses} cursos nuevos en 'cursos'"
+        msg += "."
+        return True, msg
+    except Exception as e:
+        return False, f"Error al escribir en BD_cartelera.xlsx: {e}"
+
+
 def page_update_data():
     _render_header("Update Data", "Sube la Template para actualizar la BD maestra")
 
@@ -6325,12 +6545,116 @@ def page_update_data():
             else:
                 st.caption("⚠️ Hay un `gcp_service_account` en Secrets pero no se pudo autenticar con él — revisa el JSON.")
 
-    # ── BD_Cartelera (próximamente) ────────────────────────────────────
+    # ── BD_Cartelera ─────────────────────────────────────────────────────
     with tab_cartelera:
-        st.info(
-            "🚧 La actualización de BD_Cartelera desde su template todavía no está "
-            "implementada aquí — por ahora se sigue haciendo por el proceso anterior."
+        st.markdown("#### Actualizar BD_Cartelera")
+        st.caption(
+            "Sube `Template_BD_Cartelera.xlsx` diligenciada. Los datos deben "
+            "empezar en la fila 6, columnas B a H, igual que la plantilla oficial."
         )
+
+        up_cart = st.file_uploader("Template_BD_Cartelera.xlsx", type=["xlsx"], key="cartelera_upload")
+
+        if up_cart is not None:
+            try:
+                cart_df = _read_cartelera_template(up_cart)
+            except Exception as e:
+                st.error(f"No pude leer el archivo: {e}")
+                cart_df = None
+
+            if cart_df is not None and not cart_df.empty:
+                area_map = _load_cursos_area_map()
+                cart_df["Materia"] = cart_df["Materia"].astype(str).str.strip()
+                cart_df["Area del curso"] = cart_df["Materia"].map(area_map)
+                missing_mask = cart_df["Area del curso"].isna()
+
+                st.success(
+                    f"{len(cart_df)} filas detectadas. "
+                    f"{(~missing_mask).sum()} con área encontrada, {missing_mask.sum()} sin área."
+                )
+                st.dataframe(cart_df, use_container_width=True)
+
+                missing_courses = (
+                    cart_df.loc[missing_mask, ["Materia", "Créditos", "Nombre largo curso"]]
+                    .drop_duplicates(subset=["Materia"])
+                    .reset_index(drop=True)
+                )
+
+                new_courses_df = None
+                if missing_courses.empty:
+                    new_courses_df = pd.DataFrame(columns=["Materia", "Créditos", "Nombre largo curso", "Area del curso"])
+                else:
+                    st.warning(
+                        f"⚠️ {len(missing_courses)} curso(s) no están en la hoja 'cursos' — "
+                        "hay que asignarles un área antes de poder guardar."
+                    )
+                    fill_mode = st.radio(
+                        "¿Cómo quieres completar las áreas?",
+                        ["Seleccionar aquí mismo", "Subir Template_Cursos_Nuevos.xlsx diligenciada"],
+                        key="cartelera_fill_mode", horizontal=True,
+                    )
+
+                    if fill_mode == "Seleccionar aquí mismo":
+                        editable = missing_courses.copy()
+                        editable["Area del curso"] = ""
+                        edited = st.data_editor(
+                            editable,
+                            column_config={
+                                "Area del curso": st.column_config.SelectboxColumn(
+                                    options=AREA_OPTIONS, required=True
+                                ),
+                                "Materia": st.column_config.TextColumn(disabled=True),
+                                "Créditos": st.column_config.NumberColumn(disabled=True),
+                                "Nombre largo curso": st.column_config.TextColumn(disabled=True),
+                            },
+                            use_container_width=True, key="cartelera_missing_editor", hide_index=True,
+                        )
+                        if edited["Area del curso"].ne("").all():
+                            new_courses_df = edited.rename(columns={"Materia": "Código Materia"})
+                    else:
+                        st.markdown(
+                            "[📁 Abrir la carpeta de templates en Drive](https://drive.google.com/drive/folders/169oOSvEpEyGGK3UR5ASm-e2K0OJcgud8) "
+                            "→ descarga `Template_Cursos_Nuevos.xlsx`, diligénciala para estos "
+                            f"{len(missing_courses)} curso(s), y súbela aquí."
+                        )
+                        up_new = st.file_uploader(
+                            "Template_Cursos_Nuevos.xlsx diligenciada", type=["xlsx"], key="cursos_nuevos_upload"
+                        )
+                        if up_new is not None:
+                            try:
+                                nc = _read_cursos_nuevos_template(up_new)
+                                nc.columns = [c.strip() for c in nc.columns]
+                                new_courses_df = nc
+                                st.dataframe(new_courses_df, use_container_width=True)
+                            except Exception as e:
+                                st.error(f"No pude leer la template de cursos nuevos: {e}")
+
+                ready = new_courses_df is not None
+                if not ready:
+                    st.info("Completa el área de todos los cursos pendientes antes de guardar.")
+
+                if st.button("💾 Guardar en BD_Cartelera", type="primary", disabled=not ready):
+                    save_df = cart_df.drop(columns=["Area del curso"])
+                    with st.spinner("Escribiendo en Drive…"):
+                        ok, msg = push_cartelera_updates(save_df, new_courses_df)
+                    if ok:
+                        st.success(msg)
+                        st.balloons()
+                    else:
+                        st.error(msg)
+            elif cart_df is not None:
+                st.warning("No se detectaron filas de datos a partir de la fila 6.")
+
+        with st.expander("⚙️ Configuración requerida (una sola vez)"):
+            st.markdown(
+                "Usa la misma Service Account de la pestaña BD_PLANTA. Asegúrate "
+                "de haber compartido también `BD_cartelera.xlsx` "
+                f"(`{CARTELERA_FILE_ID}`) con su correo, con permiso de **Editor**."
+            )
+            if _get_gspread_client():
+                st.caption("✅ Conectado a Drive con permisos de escritura.")
+            else:
+                st.caption("⚠️ Revisa la configuración en la pestaña BD_PLANTA.")
 
     # ── BD_Faculty_Questionnaire (próximamente) ─────────────────────────
     with tab_quest:
