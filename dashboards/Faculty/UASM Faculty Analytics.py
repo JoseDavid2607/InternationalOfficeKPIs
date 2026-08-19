@@ -454,6 +454,22 @@ def qual_load_faculty_distribution() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
     df_ = pd.read_excel(raw, sheet_name="Faculty Distribution")
     df_.columns = df_.columns.str.strip()
+
+    # 'Faculty Distribution' solo trae 8 columnas base — Qualifications necesita
+    # 'Highest Degree' (y otros campos), que solo viven en 'Info. Profesores'.
+    # Mismo merge por ID normalizado que en demo_load_parttime().
+    raw2 = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    df_info = pd.read_excel(raw2, sheet_name="Info. Profesores")
+    df_info.columns = df_info.columns.str.strip()
+    if "ID" in df_.columns and "ID" in df_info.columns:
+        extra_cols = [c for c in df_info.columns
+                      if c not in ("Profesor", "ID", "AREA_PROFESOR", "GÉNERO", "TIPO", "P/S")]
+        df_info_extra = df_info[["ID"] + extra_cols].copy()
+        df_info_extra["_id_key"] = df_info_extra["ID"].map(_norm_id)
+        df_info_extra = df_info_extra.dropna(subset=["_id_key"]).drop_duplicates(subset=["_id_key"])
+        df_info_extra = df_info_extra.drop(columns=["ID"])
+        df_["_id_key"] = df_["ID"].map(_norm_id)
+        df_ = df_.merge(df_info_extra, on="_id_key", how="left").drop(columns=["_id_key"])
     return df_
 
 
@@ -2001,25 +2017,34 @@ def page_demographics():
             active_p = df[df["Periodo"].astype(str).eq(str(period_current))].copy()
 
         dcol_here = col_degree(df)
-        phd_for_regions = pd.DataFrame(columns=df.columns)
+        phd_now_all = pd.DataFrame(columns=df.columns)
         if dcol_here is not None and not active_p.empty:
             active_p["Degree_norm"] = normalize_degree(active_p[dcol_here])
             phd_now_all = active_p[active_p["Degree_norm"].eq("PhD")].copy()
-            region_col = "Region were degree was obtained" if "Region were degree was obtained" in phd_now_all.columns else None
-            if region_col:
-                reg = phd_now_all[region_col].astype(str).str.strip()
-                mask_valid_region = ~reg.eq("") & ~reg.str.upper().eq("TBD")
-                phd_for_regions = phd_now_all[mask_valid_region].copy()
 
-        total_phd_valid = int(phd_for_regions[IDCOL].nunique()) if not phd_for_regions.empty else 0
+        # Total de PhD: cuenta TODOS los PhD, sin importar si tienen la región
+        # diligenciada (antes dependía de eso y por eso mostraba 0 cuando la
+        # mayoría de los profesores nuevos tenían región en TBD).
+        total_phd_valid = int(phd_now_all[IDCOL].nunique()) if not phd_now_all.empty else 0
+
+        REGION_COL = "Region Where it was obtained"  # nombre real de la columna en Info. Profesores
+        region_col = REGION_COL if REGION_COL in phd_now_all.columns else None
+        if region_col:
+            reg = phd_now_all[region_col].astype(str).str.strip()
+            mask_valid_region = ~reg.eq("") & ~reg.str.upper().eq("TBD")
+            phd_for_regions = phd_now_all[mask_valid_region].copy()
+            phd_for_regions[region_col] = phd_for_regions[region_col].astype(str).str.strip()
+        else:
+            phd_for_regions = pd.DataFrame(columns=df.columns)
+
         phd_int = 0
-        if "International Degree" in phd_for_regions.columns:
-            phd_int = int(phd_for_regions[phd_for_regions["International Degree"].astype(str).str.strip().str.lower().eq("yes")][IDCOL].nunique())
+        if "International Degree?" in phd_now_all.columns:
+            phd_int = int(phd_now_all[phd_now_all["International Degree?"].astype(str).str.strip().str.lower().eq("yes")][IDCOL].nunique())
 
-        if not phd_for_regions.empty and "Region were degree was obtained" in phd_for_regions.columns:
-            reg_counts = (phd_for_regions.groupby("Region were degree was obtained")[IDCOL].nunique()
+        if not phd_for_regions.empty and region_col:
+            reg_counts = (phd_for_regions.groupby(region_col)[IDCOL].nunique()
                           .sort_values(ascending=False).reset_index()
-                          .rename(columns={"Region were degree was obtained": "Region", IDCOL: "Count"}))
+                          .rename(columns={region_col: "Region", IDCOL: "Count"}))
         else:
             reg_counts = pd.DataFrame({"Region": [], "Count": []})
 
@@ -2038,13 +2063,14 @@ def page_demographics():
                 out[new] = df_[match] if match else pd.Series([""] * len(df_), index=df_.index)
             return pd.DataFrame(out)
 
-        if not phd_for_regions.empty:
-            detalle_phd = pick_cols(phd_for_regions, {
+        detalle_source = phd_now_all if not phd_now_all.empty else phd_for_regions
+        if not detalle_source.empty:
+            detalle_phd = pick_cols(detalle_source, {
                 "Full Name": ["Full Name", "Full-Name", "Full_Name", "Profesor", "First Name"],
                 "Highest Earned Degree": ["Highest Earned Degree", "Highest Degree", "TÍTULO"],
-                "University": ["University", "University Name"],
-                "Region were degree was obtained": ["Region were degree was obtained", "Region"],
-                "Year": ["Year", "Year Earned ", "Year Degree", "Year Earned"],
+                "University": ["University", "University Name", "University2"],
+                "Region Where it was obtained": ["Region Where it was obtained", "Region"],
+                "Year": ["Year", "Year Earned ", "Year Degree", "Year Earned", "Highest Degree, Year Earned"],
             })
             popover = st.popover if hasattr(st, "popover") else st.expander
             with popover("🔎 Ver detalle de profesores con PhD"):
@@ -3453,8 +3479,8 @@ def page_qualifications():
     col_cred       = _get_any(df_car, "Créditos", "Creditos", "Credits")
     col_tipoC      = _get_any(df_car, "TIPO", "Tipo", "Tipo Ranking")
     col_areaCourse = _get_any(df_car, "Area del curso","Área del curso","Area del Curso","AREA DEL CURSO")
-    col_prof       = _get_any(df_car, "Profesor","PROFESOR","Docente")
-    col_code       = _get_any(df_car, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
+    col_prof       = _get_any(df_car, "Profesor(es)","Profesor","PROFESOR","Docente")
+    col_code       = _get_any(df_car, "Materia","Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
     col_name       = _get_any(df_car, "Nombre largo curso","Nombre Curso","Nombre del curso","Course Name")
     col_field      = _get_any(df_car, "Field","FIELD","Campo","Área de conocimiento")
     col_prog       = _get_any(df_car, "Program","PROGRAM","program")
@@ -3704,7 +3730,7 @@ def page_qualifications():
                 out.append(c); seen.add(c)
         # Fallback simple si nada matchea
         if not out:
-            for cand in ["Profesor", "PROFESOR", "Docente", "Nombre", "Name", "Profesor(a)"]:
+            for cand in ["Profesor(es)", "Profesor", "PROFESOR", "Docente", "Nombre", "Name", "Profesor(a)"]:
                 if cand in df.columns:
                     out.append(cand)
                     break
@@ -5683,7 +5709,7 @@ def page_qualifications():
         planta_ids = set(df_fd_sem.loc[df_fd_sem["_FTPT"] == "PLANTA", "_ID"].dropna().astype(str).unique().tolist())
 
         # -------- helpers de columnas en Cartelera (sobre df_car_scope) --------
-        col_prof_car = _get_any(df_car_scope, "Profesor","PROFESOR","Docente")
+        col_prof_car = _get_any(df_car_scope, "Profesor(es)","Profesor","PROFESOR","Docente")
         col_cred_car = _get_any(df_car_scope, "Créditos","Creditos","Credits")
         col_sem_car  = _get_any(df_car_scope, "Semestre","Periodo","Periodo Académico","Periodo academico")
         col_code_car = _get_any(df_car_scope, "Código Materia","Codigo Materia","CODIGO MATERIA","Código","Codigo","Course Code")
@@ -6534,6 +6560,127 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
         return False, f"Error al escribir en Faculty Distribution: {e}"
 
 
+def repair_cartelera_historical_calc_columns() -> Tuple[bool, str]:
+    """Reparación de una sola vez: las columnas B (Semestre), I (Field), J (Cod
+    program) y K (Program) de 'cartelera' llevaban una fórmula copiada que
+    nunca se recalculó — están vacías en TODA la hoja (no solo en las filas
+    nuevas), desde antes de que empezáramos a trabajar en este sistema. Este
+    repair recorre TODAS las filas existentes y rellena esas 4 columnas con el
+    mismo cálculo literal que ya usa push_cartelera_updates(), usando las
+    tablas de referencia reales del propio archivo. No toca H, M, N, O, P
+    (ya estaban bien) ni ninguna otra columna."""
+    if not _OPENPYXL_OK:
+        return False, "Falta la librería `openpyxl` en el entorno."
+    token = _get_gspread_access_token()
+    if not token:
+        return False, "No hay credenciales configuradas para escribir en Drive."
+    try:
+        raw_bytes = _download_drive_file_bytes(CARTELERA_FILE_ID)
+        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
+        if "cartelera" not in wb.sheetnames or "cursos" not in wb.sheetnames:
+            return False, "No encontré las hojas 'cartelera' y/o 'cursos' en BD_cartelera.xlsx."
+        ws_cart = wb["cartelera"]
+        ws_cursos = wb["cursos"]
+        ws_programas = wb["programas"] if "programas" in wb.sheetnames else None
+
+        base_font = Font(name="Arial", size=11, color="000000")
+        calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
+
+        semestre_map: Dict[str, object] = {}
+        for r in range(2, ws_cart.max_row + 1):
+            k = ws_cart.cell(row=r, column=30).value
+            if k is None:
+                continue
+            semestre_map[str(k).strip()] = ws_cart.cell(row=r, column=31).value
+
+        field_map: Dict[str, object] = {}
+        for r in range(2, ws_cursos.max_row + 1):
+            k = ws_cursos.cell(row=r, column=9).value
+            if k is None:
+                continue
+            field_map.setdefault(str(k).strip(), ws_cursos.cell(row=r, column=10).value)
+
+        codprog_map: Dict[str, object] = {}
+        for r in range(2, ws_cursos.max_row + 1):
+            k = ws_cursos.cell(row=r, column=12).value
+            if k is None:
+                continue
+            codprog_map.setdefault(str(k).strip(), ws_cursos.cell(row=r, column=13).value)
+
+        program_map: Dict[str, object] = {}
+        if ws_programas is not None:
+            for r in range(2, ws_programas.max_row + 1):
+                k = ws_programas.cell(row=r, column=1).value
+                if k is None:
+                    continue
+                program_map.setdefault(str(k).strip(), ws_programas.cell(row=r, column=3).value)
+
+        info = _table_info(ws_cart, "tabla_cartelera")
+        last_row = info[4] if info else ws_cart.max_row
+
+        n_fixed = 0
+        for r in range(2, last_row + 1):
+            periodo = ws_cart.cell(row=r, column=1).value
+            materia = ws_cart.cell(row=r, column=4).value
+            materia_key = str(materia).strip() if materia is not None else ""
+            h_val = ws_cart.cell(row=r, column=8).value
+
+            def _needs_fix(v):
+                # Vacío, texto de fórmula sin resolver, o ArrayFormula (fórmula
+                # de matriz tipo Ctrl+Shift+Enter) sin resolver — ambos casos
+                # existen en este archivo y nunca se recalcularon.
+                if v is None or v == "":
+                    return True
+                if isinstance(v, str) and v.startswith("="):
+                    return True
+                if isinstance(v, ArrayFormula):
+                    return True
+                return False
+
+            touched = False
+            if _needs_fix(ws_cart.cell(row=r, column=2).value):
+                cell = ws_cart.cell(row=r, column=2, value=semestre_map.get(str(periodo).strip(), ""))
+                cell.font = base_font
+                cell.fill = calc_fill
+                touched = True
+            if _needs_fix(ws_cart.cell(row=r, column=9).value):
+                cell = ws_cart.cell(row=r, column=9, value=field_map.get(str(h_val).strip(), ""))
+                cell.font = base_font
+                cell.fill = calc_fill
+                touched = True
+            if _needs_fix(ws_cart.cell(row=r, column=10).value):
+                cod_prog = codprog_map.get(materia_key[:4], "")
+                cell = ws_cart.cell(row=r, column=10, value=cod_prog)
+                cell.font = base_font
+                cell.fill = calc_fill
+                touched = True
+            if _needs_fix(ws_cart.cell(row=r, column=11).value):
+                cod_prog_existing = ws_cart.cell(row=r, column=10).value
+                cell = ws_cart.cell(row=r, column=11, value=program_map.get(str(cod_prog_existing).strip(), ""))
+                cell.font = base_font
+                cell.fill = calc_fill
+                touched = True
+            if touched:
+                n_fixed += 1
+
+        wb.calculation.fullCalcOnLoad = True
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        ok, err = _drive_upload_file_bytes(CARTELERA_FILE_ID, buf.getvalue())
+        if not ok:
+            return False, f"Error al subir el archivo reparado a Drive: {err}"
+
+        qual_load_cartelera.clear()
+        _download_drive_file_bytes.clear()
+        _load_cursos_area_map.clear()
+
+        return True, f"✓ Reparación completa — {n_fixed} fila(s) de 'cartelera' actualizadas (Semestre/Field/Cod program/Program)."
+    except Exception as e:
+        return False, f"Error al reparar 'cartelera': {e}"
+
+
 def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFrame,
                             profesor_lookup: Optional[Dict[str, Tuple]] = None,
                             area_map: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
@@ -6835,6 +6982,22 @@ def page_update_data():
     # ── BD_Cartelera ─────────────────────────────────────────────────────
     with tab_cartelera:
         st.markdown("#### Actualizar BD_Cartelera")
+
+        with st.expander("🔧 Reparar columnas históricas (Semestre, Field, Cod program, Program)"):
+            st.caption(
+                "Estas 4 columnas de 'cartelera' llevaban una fórmula copiada que nunca se "
+                "recalculó — están vacías en TODA la hoja desde antes de este sistema, no solo "
+                "en las filas nuevas. Esto es lo que hace que Qualifications muestre muy pocos "
+                "periodos disponibles. Ejecuta esto una vez para repararlas todas de una vez."
+            )
+            if st.button("Reparar ahora"):
+                with st.spinner("Reparando 'cartelera'…"):
+                    ok_r, msg_r = repair_cartelera_historical_calc_columns()
+                if ok_r:
+                    st.success(msg_r)
+                else:
+                    st.error(msg_r)
+
         st.caption(
             "Sube `Template_BD_Cartelera.xlsx` diligenciada. Los datos deben "
             "empezar en la fila 6, columnas B a H, igual que la plantilla oficial."
