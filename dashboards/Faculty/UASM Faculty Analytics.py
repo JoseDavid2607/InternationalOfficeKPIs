@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -116,6 +117,26 @@ st.markdown(
     ".st-key-nav_toggle div[data-testid='stExpanderDetails']{padding:2px 0 2px 4px !important;}"
     "</style>",
     unsafe_allow_html=True,
+)
+
+# Auto-desplaza las tablas anchas (muchas columnas de periodo) hacia la
+# derecha, para que el último periodo quede visible sin tener que hacer
+# scroll manual. components.html corre en un iframe (mismo origen), por eso
+# opera sobre window.parent.document para llegar al DOM real de la app.
+components.html(
+    """<script>
+    function scrollTablesRight() {
+        const doc = window.parent.document;
+        doc.querySelectorAll('[data-testid="stDataFrame"]').forEach(box => {
+            const scroller = box.querySelector('.dvn-scroller, [class*="scroll"]') || box;
+            scroller.scrollLeft = scroller.scrollWidth;
+        });
+    }
+    const _obs = new MutationObserver(() => scrollTablesRight());
+    _obs.observe(window.parent.document.body, {childList: true, subtree: true});
+    setInterval(scrollTablesRight, 700);
+    </script>""",
+    height=0,
 )
 
 # 2) HELPERS COMPARTIDOS
@@ -479,32 +500,36 @@ def page_composition():
     all_periods = df["Periodo"].astype(str).unique().tolist()
     sem_periods = sorted(
         [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)],
-        key=_period_sort_key, reverse=True,
-    )
+        key=_period_sort_key,
+    )  # cronológico — alimenta tablas/gráficas de evolución
     inter_periods = sorted(
         [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sIntersemestral', p)],
-        key=_period_sort_key, reverse=True,
+        key=_period_sort_key,
     )
-    years = sorted(pd.Series(all_periods).str[:4].unique().tolist(), reverse=True)
+    years = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 
     # Sidebar específico de esta página
     with st.sidebar:
         st.markdown("#### Timeframe")
         tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
 
+        sem_periods_desc = sorted(sem_periods, key=_period_sort_key, reverse=True)
+        inter_periods_desc = sorted(inter_periods, key=_period_sort_key, reverse=True)
+        years_desc = sorted(years, reverse=True)
+
         if tmode == "Semestral":
-            vis = [p.replace("-", "") for p in sem_periods]
+            vis = [p.replace("-", "") for p in sem_periods_desc]
             sel_vis = st.selectbox("Periodo", vis, index=0 if vis else 0,
                                     key="ft_comp_periodo_sem")
-            sel_period_internal = sem_periods[vis.index(sel_vis)] if vis else None
+            sel_period_internal = sem_periods_desc[vis.index(sel_vis)] if vis else None
             sel_period_label = sel_vis
         elif tmode == "Anual":
-            sel_period_internal = st.selectbox("Periodo", years, index=0 if years else 0,
+            sel_period_internal = st.selectbox("Periodo", years_desc, index=0 if years_desc else 0,
                                                 key="ft_comp_periodo_anual")
             sel_period_label = sel_period_internal
         else:
-            sel_period_internal = st.selectbox("Periodo", inter_periods,
-                                                index=0 if inter_periods else 0,
+            sel_period_internal = st.selectbox("Periodo", inter_periods_desc,
+                                                index=0 if inter_periods_desc else 0,
                                                 key="ft_comp_periodo_inter")
             sel_period_label = sel_period_internal
 
@@ -724,11 +749,6 @@ def page_composition():
             total_g = len(detail_df)
             pct_m = round(gen.get("Male", 0) / total_g * 100, 1) if total_g else 0
             pct_f = round(gen.get("Female", 0) / total_g * 100, 1) if total_g else 0
-            st.markdown(
-                f"<div style='text-align:right;font-size:14px;padding-top:6px;'>"
-                f"👨 {pct_m}% &nbsp;&nbsp; 👩 {pct_f}%</div>",
-                unsafe_allow_html=True,
-            )
             df_gen = pd.DataFrame({
                 "Gender": ["Male", "Female"], "P": [pct_m, pct_f], "Bar": [" ", " "],
             })
@@ -737,9 +757,9 @@ def page_composition():
                 color_discrete_map={"Male": "#003366", "Female": "#56d6c9"}, orientation="h",
             )
             fig_gen.update_traces(texttemplate='%{text} %{x}%', textposition="inside",
-                                   textfont_size=14, width=0.7)
+                                   textfont_size=16, width=0.7)
             fig_gen.update_layout(showlegend=False, xaxis_visible=False, yaxis_visible=False,
-                                   height=55, margin=dict(l=0, r=0, t=0, b=0))
+                                   height=80, margin=dict(l=0, r=0, t=0, b=0))
             st.plotly_chart(fig_gen, use_container_width=True)
 
     detail_cols = ["Periodo", "ID", "ID Nr.", "Full Name", "Academic Area",
@@ -756,15 +776,16 @@ def page_staffing():
     all_periods = sorted(df["Periodo"].astype(str).unique().tolist())
     sem_periods = sorted(
         [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)],
-        key=_period_sort_key, reverse=True,
-    )
+        key=_period_sort_key,
+    )  # cronológico (2020→2026) — así queda igual la tabla/gráficas de evolución
 
     # Sidebar específico de esta página
     with st.sidebar:
         st.markdown("#### Select Semester")
-        vis_opts = [p.replace("-", "") for p in sem_periods]
+        sem_periods_desc = sorted(sem_periods, key=_period_sort_key, reverse=True)  # solo para el desplegable
+        vis_opts = [p.replace("-", "") for p in sem_periods_desc]
         sel_vis = st.selectbox("", vis_opts, index=0 if vis_opts else None, key="ft_staff_periodo")
-        sel_period_internal = sem_periods[vis_opts.index(sel_vis)] if vis_opts else None
+        sel_period_internal = sem_periods_desc[vis_opts.index(sel_vis)] if vis_opts else None
         sel_period_label = sel_vis
 
     _render_header("Full-time Faculty Staffing Levels", "New entrants, leavers, and headcount evolution")
@@ -1360,10 +1381,11 @@ def page_area():
                 color_discrete_map=color_map_area,
             )
             fig_donut.update_traces(
-                textinfo="label+percent", textposition="outside",
+                textinfo="label+percent", textposition="inside", insidetextorientation="horizontal",
                 pull=[0.04] * len(donut_df), sort=False,
+                textfont=dict(size=15, color="white", family="Arial Black, Arial, sans-serif"),
             )
-            fig_donut.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10))
+            fig_donut.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10), height=420)
             st.plotly_chart(fig_donut, use_container_width=True)
 
             fname_donut = f"Donut_{'FT' if st.session_state.modo_faculty == 'Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ', '_')}.xlsx"
