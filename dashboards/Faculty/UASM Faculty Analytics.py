@@ -37,7 +37,7 @@ except ImportError as _e:
 
 try:
     import openpyxl
-    from openpyxl.styles import Font, Border, Side
+    from openpyxl.styles import Font, Border, Side, PatternFill, Alignment
     from openpyxl.utils import range_boundaries, get_column_letter
     from openpyxl.formula.translate import Translator
     _OPENPYXL_OK = True
@@ -6157,6 +6157,8 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
         red_font = Font(name="Arial", size=11, color="DC2626")
         thin = Side(style="thin")
         thin_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        fv_fill = PatternFill(fill_type="solid", fgColor="F1CEEE")
+        fv_align = Alignment(horizontal="right")
 
         for i, row_vals in enumerate(rows):
             rn = append_start + i
@@ -6175,6 +6177,9 @@ def push_planta_updates(new_rows_df: pd.DataFrame, periodo: str) -> Tuple[bool, 
                 cell = ws.cell(row=rn, column=c, value=val)
                 cell.font = font
                 cell.border = thin_border
+                if c in (6, 22):  # F (Full Name) y V (Age): relleno rosado + alineado a la derecha
+                    cell.fill = fv_fill
+                    cell.alignment = fv_align
 
         # 3.5) Extiende la Tabla de Excel "tabla_planta" para que incluya las
         # filas nuevas — sin esto, aunque las celdas queden vacías, Excel no
