@@ -114,6 +114,8 @@ st.markdown(
     ".st-key-nav_toggle a:hover{color:#00A896 !important;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     ".st-key-update_sidebar_group img{margin:0 auto;}"
+    ".st-key-update_sidebar_group a{transition:opacity .15s ease;}"
+    ".st-key-update_sidebar_group a:hover{opacity:0.7;}"
     ".st-key-go_to_dashboard_btn a{"
     "display:flex !important;align-items:center;justify-content:center;gap:10px;"
     "background:#004d47 !important;border:none !important;"
@@ -6967,6 +6969,9 @@ def page_update_data():
             "Descargar Template_cartelera.xlsx", data=_download_drive_file_bytes(TEMPLATE_CARTELERA_FILE_ID),
             file_name="Template_cartelera.xlsx", key="dl_template_cartelera", icon=":material/download:",
         )
+        _cart_periods = qual_load_cartelera()["Periodo"].dropna().unique().tolist()
+        last_cart_period = sorted(_cart_periods, key=_period_sort_key)[-1] if _cart_periods else "—"
+        st.caption(f"Último periodo registrado en la Base: **{last_cart_period}**")
 
         up_cart = st.file_uploader("Template_cartelera.xlsx", type=["xlsx"], key="cartelera_upload")
 
@@ -7255,21 +7260,30 @@ if not IS_UPDATE_PAGE:
 
 pg.run()
 
+PAGE_URL_PATHS = ["composition", "staffing", "area", "demographics", "activities", "qualifications"]
+
 if IS_UPDATE_PAGE:
     # Update Data: logo + título pegados justo encima del botón, todo el
     # grupo centrado a media altura del sidebar — nada arriba por separado.
-    return_page = pages[st.session_state.get("_return_page_idx", 0)]
+    # Logo y texto también quedan linkeados a la misma página de vuelta.
+    return_idx = st.session_state.get("_return_page_idx", 0)
+    return_page = pages[return_idx]
+    return_url = PAGE_URL_PATHS[return_idx] if return_idx < len(PAGE_URL_PATHS) else "composition"
     with st.sidebar:
         st.markdown('<div style="height:26vh;"></div>', unsafe_allow_html=True)
         with st.container(key="update_sidebar_group"):
-            st.image("imagenes/logo.png", width=65)
+            logo_b64 = base64.b64encode(open("imagenes/logo.png", "rb").read()).decode()
             st.markdown(
+                f'<a href="/{return_url}" target="_self" style="text-decoration:none;">'
+                f'<img src="data:image/png;base64,{logo_b64}" width="65" style="display:block;margin:0 auto;">'
                 '<div style="color:#004d47;font-size:22px;font-weight:800;'
                 'line-height:1.15;margin-top:8px;">UASM Faculty KPIs</div>'
-                '<div style="color:#6b7280;font-size:13px;margin-bottom:16px;">Analytics Dashboard</div>',
+                '<div style="color:#6b7280;font-size:13px;margin-bottom:16px;">Analytics Dashboard</div>'
+                '</a>',
                 unsafe_allow_html=True,
             )
-            st.page_link(return_page, label="Go to Faculty Dashboard", icon=":material/bar_chart:", use_container_width=True)
+            with st.container(key="go_to_dashboard_btn"):
+                st.page_link(return_page, label="Go to Faculty Dashboard", icon=":material/bar_chart:", use_container_width=True)
 else:
     # Resto de páginas: Download Database + botón de Update, uno al lado del otro, al fondo del sidebar
     with st.sidebar:
