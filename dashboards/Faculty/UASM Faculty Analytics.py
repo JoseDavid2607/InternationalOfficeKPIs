@@ -105,29 +105,27 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    ".st-key-nav_toggle{"
-    "position:fixed !important;top:0.3rem;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:auto !important;margin:0 !important;}"
-    ".st-key-nav_toggle div[data-testid='stExpander']{"
-    "border:none !important;background:transparent !important;box-shadow:none !important;"
-    "margin:0 !important;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary{"
-    "padding:2px 8px !important;font-size:11px !important;color:#B0B6BC !important;"
-    "font-weight:600;border-radius:8px;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary svg{color:#C7CCD1 !important;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover{color:#00A896 !important;"
-    "background:rgba(0,168,150,.08) !important;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover svg{color:#00A896 !important;}"
-    ".st-key-nav_toggle div[data-testid='stExpanderDetails']{"
-    "background:#FFFFFF;border:1px solid #D1E8E4;border-radius:10px;"
-    "box-shadow:0 4px 16px rgba(0,77,71,.12);padding:8px 12px !important;margin-top:2px;}"
+    ".st-key-nav_toggle{margin:2px 0 4px 0 !important;}"
+    ".st-key-nav_toggle a{"
+    "font-size:11px !important;color:#9CA3AF !important;font-weight:600 !important;"
+    "text-decoration:none !important;padding:2px 0 !important;}"
+    ".st-key-nav_toggle a:hover{color:#00A896 !important;}"
+    ".st-key-nav_toggle a svg{width:14px !important;height:14px !important;color:#C7CCD1 !important;}"
+    ".st-key-nav_toggle a:hover svg{color:#00A896 !important;}"
     ".st-key-go_to_dashboard_btn a{"
-    "display:flex !important;align-items:center;justify-content:center;gap:8px;"
-    "background:linear-gradient(135deg,#00A896,#004d47) !important;"
-    "color:#FFFFFF !important;font-size:18px !important;font-weight:800 !important;"
-    "border-radius:14px !important;padding:18px 10px !important;text-decoration:none !important;"
-    "box-shadow:0 4px 14px rgba(0,77,71,.25);transition:transform .15s ease;}"
-    ".st-key-go_to_dashboard_btn a:hover{transform:translateY(-2px);}"
+    "display:flex !important;align-items:center;justify-content:center;gap:10px;"
+    "background:#FFFFFF !important;border:2px solid #004d47 !important;"
+    "color:#004d47 !important;font-size:20px !important;font-weight:800 !important;"
+    "border-radius:14px !important;padding:20px 10px !important;text-decoration:none !important;"
+    "box-shadow:0 4px 14px rgba(0,77,71,.15);transition:transform .15s ease;}"
+    ".st-key-go_to_dashboard_btn a:hover{transform:translateY(-2px);background:#F0FAF8 !important;}"
+    ".st-key-go_to_update_btn a{"
+    "display:flex !important;align-items:center;justify-content:center;gap:6px;"
+    "background:#FFFFFF !important;border:1px solid #D1E8E4 !important;"
+    "color:#374151 !important;font-size:14px !important;font-weight:600 !important;"
+    "border-radius:10px !important;padding:12px 8px !important;text-decoration:none !important;"
+    "height:48px;box-shadow:0 1px 3px rgba(0,0,0,.04);}"
+    ".st-key-go_to_update_btn a:hover{background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -210,6 +208,7 @@ QUESTIONNAIRE_FILE_ID = "1u6YTILxGOEq7eq1RE_l5sPg-vM5Wu5jH"   # BD_faculty_quest
 TEMPLATE_PROFESORES_NUEVOS_FILE_ID = "1EEFfstkupiSD-2YyBPauO2WvzelZnYDl"  # Template_profesores_nuevos.xlsx (carpeta de templates)
 TEMPLATE_CURSOS_NUEVOS_FILE_ID = "1UGpwCGf3w3GByDm8Mj_1hJgNw0oYtqBb"  # Template_cursos_nuevos.xlsx (carpeta de templates)
 TEMPLATE_PLANTA_FILE_ID = "1bE5cNo1UUUjN34-L799U7KJQarefQl1h"  # Template_planta.xlsx (carpeta de templates)
+TEMPLATE_CARTELERA_FILE_ID = "1O5DV0ABy_-G1_t4pjfeZHUi-f9OFJprl"  # Template_cartelera.xlsx (carpeta de templates)
 
 # ── Autenticación (lectura y escritura vía Service Account) ────────────────
 # Requiere una service account de Google Cloud, compartida como Editor en los
@@ -2066,9 +2065,18 @@ def page_demographics():
                 "Region Where it was obtained": ["Region Where it was obtained", "Region were degree was obtained", "Region"],
                 "Year": ["Year", "Year Earned ", "Year Degree", "Year Earned", "Highest Degree, Year Earned"],
             })
-            popover = st.popover if hasattr(st, "popover") else st.expander
-            with popover("Ver detalle de profesores con PhD"):
-                st.dataframe(detalle_phd.reset_index(drop=True), use_container_width=True)
+            open_phd_detail = st.button("Ver detalle de profesores con PhD", key="open_phd_detail", use_container_width=True)
+            if open_phd_detail:
+                if hasattr(st, "dialog"):
+                    @st.dialog("Profesores con PhD", width="large")
+                    def _dlg_phd():
+                        st.dataframe(detalle_phd.reset_index(drop=True), use_container_width=True, hide_index=True)
+                        if st.button("Close", key="close_phd_detail"):
+                            st.rerun()
+                    _dlg_phd()
+                else:
+                    with st.expander("Profesores con PhD", expanded=True):
+                        st.dataframe(detalle_phd.reset_index(drop=True), use_container_width=True, hide_index=True)
 
 
     # Row 2: % International over time + nationalities
@@ -2128,9 +2136,18 @@ def page_demographics():
                 "Full Name": ["Full Name", "Full-Name", "Full_Name", "Profesor", "First Name"],
                 "Nationality": ["Nationality", "Country of Birth"],
             })
-            popover2 = st.popover if hasattr(st, "popover") else st.expander
-            with popover2("Ver detalle de nacionalidad (profesores)"):
-                st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True)
+            open_nat_detail = st.button("Ver detalle de nacionalidad (profesores)", key="open_nat_detail", use_container_width=True)
+            if open_nat_detail:
+                if hasattr(st, "dialog"):
+                    @st.dialog("Nacionalidad de profesores", width="large")
+                    def _dlg_nat():
+                        st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True, hide_index=True)
+                        if st.button("Close", key="close_nat_detail"):
+                            st.rerun()
+                    _dlg_nat()
+                else:
+                    with st.expander("Nacionalidad de profesores", expanded=True):
+                        st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True, hide_index=True)
 
 
 # 9) PÁGINA 5 — Full-time Faculty Activities
@@ -3407,7 +3424,6 @@ def page_qualifications():
         if not sens_mode:
             st.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
 
-        st.markdown('---')
         st.markdown("#### Timeframe")
         st.session_state.setdefault("time_mode", "Semestral")
         time_mode = st.radio("Timeframe", ["Semestral", "Anual", "Intersemestral"], key="time_mode", label_visibility="collapsed", horizontal=False)
@@ -6426,6 +6442,13 @@ def _build_prefilled_cursos_template(missing_codes: List[str]) -> bytes:
     return buf.getvalue()
 
 
+def _build_cursos_download() -> bytes:
+    """Devuelve la hoja 'cursos' completa (de BD_cartelera.xlsx) como .xlsx descargable."""
+    raw = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
+    dfc = pd.read_excel(raw, sheet_name="cursos")
+    return _xlsx_bytes(dfc, sheet_name="cursos")
+
+
 def _build_info_profesores_download() -> bytes:
     """Devuelve la hoja 'Info. Profesores' completa como un .xlsx descargable."""
     raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
@@ -6864,25 +6887,24 @@ def page_update_data():
 
     # ── BD_planta ───────────────────────────────────────────────────────
     with tab_planta:
-        st.markdown("#### Actualizar BD_planta")
+        col_h, col_info = st.columns([6, 0.6])
+        with col_h:
+            st.markdown("#### Actualizar BD_planta")
+        with col_info:
+            with st.popover("", icon=":material/help:"):
+                st.caption("Base de referencia con toda la información de profesores.")
+                st.download_button(
+                    "Descargar Base Info. Profesores", data=_build_info_profesores_download(),
+                    file_name="Info_Profesores.xlsx", key="dl_info_profesores",
+                    icon=":material/download:",
+                )
 
         last_period = sorted(df["Periodo"].dropna().unique().tolist(), key=_period_sort_key)[-1] if not df.empty else "—"
         st.caption(f"Último periodo registrado en la Base: **{last_period}**")
 
-        col_dl1, col_dl2 = st.columns(2)
-        with col_dl1:
-            st.download_button(
-                "⬇️ Descargar Template_planta.xlsx", data=_download_drive_file_bytes(TEMPLATE_PLANTA_FILE_ID),
-                file_name="Template_planta.xlsx", key="dl_template_planta",
-            )
-        with col_dl2:
-            st.download_button(
-                "⬇️ Descargar Base Info. Profesores", data=_build_info_profesores_download(),
-                file_name="Info_Profesores.xlsx", key="dl_info_profesores",
-            )
-        st.caption(
-            "La template ya trae el Periodo en cada fila (columna B) — no hace falta "
-            "escribirlo aparte. El número indicativo lo asigna la app sola."
+        st.download_button(
+            "Descargar Template_planta.xlsx", data=_download_drive_file_bytes(TEMPLATE_PLANTA_FILE_ID),
+            file_name="Template_planta.xlsx", key="dl_template_planta", icon=":material/download:",
         )
 
         up = st.file_uploader("Template_planta.xlsx diligenciada", type=["xlsx"], key="planta_upload")
@@ -6926,8 +6948,22 @@ def page_update_data():
 
     # ── BD_cartelera ─────────────────────────────────────────────────────
     with tab_cartelera:
-        st.markdown("#### Actualizar BD_cartelera")
+        col_h2, col_info2 = st.columns([6, 0.6])
+        with col_h2:
+            st.markdown("#### Actualizar BD_cartelera")
+        with col_info2:
+            with st.popover("", icon=":material/help:"):
+                st.caption("Hoja de referencia con los cursos y áreas ya cargados.")
+                st.download_button(
+                    "Descargar hoja de cursos", data=_build_cursos_download(),
+                    file_name="cursos.xlsx", key="dl_cursos_sheet",
+                    icon=":material/download:",
+                )
 
+        st.download_button(
+            "Descargar Template_cartelera.xlsx", data=_download_drive_file_bytes(TEMPLATE_CARTELERA_FILE_ID),
+            file_name="Template_cartelera.xlsx", key="dl_template_cartelera", icon=":material/download:",
+        )
         st.caption(
             "Sube `Template_cartelera.xlsx` diligenciada. Los datos deben "
             "empezar en la fila 6, columnas B a H, igual que la plantilla oficial."
@@ -7178,15 +7214,16 @@ def page_update_data():
 
 # Navegación multipágina — menú nativo oculto; desplegable sutil (flecha) con los enlaces
 pages = [
-    st.Page(page_composition, title="Composition", icon="🎓", url_path="composition", default=True),
-    st.Page(page_staffing, title="Staffing Levels", icon="📊", url_path="staffing"),
-    st.Page(page_area, title="By Area", icon="🏛️", url_path="area"),
-    st.Page(page_demographics, title="Demographics", icon="🧑‍🤝‍🧑", url_path="demographics"),
-    st.Page(page_activities, title="Activities", icon="🧭", url_path="activities"),
-    st.Page(page_qualifications, title="Qualifications", icon="📚", url_path="qualifications"),
-    st.Page(page_update_data, title="Update Data", icon="🔄", url_path="update-data"),
+    st.Page(page_composition, title="Composition", icon=":material/school:", url_path="composition", default=True),
+    st.Page(page_staffing, title="Staffing Levels", icon=":material/groups:", url_path="staffing"),
+    st.Page(page_area, title="By Area", icon=":material/account_tree:", url_path="area"),
+    st.Page(page_demographics, title="Demographics", icon=":material/diversity_3:", url_path="demographics"),
+    st.Page(page_activities, title="Activities", icon=":material/explore:", url_path="activities"),
+    st.Page(page_qualifications, title="Qualifications", icon=":material/menu_book:", url_path="qualifications"),
+    st.Page(page_update_data, title="Update Data", icon=":material/sync:", url_path="update-data"),
 ]
 pg = st.navigation(pages, position="hidden")
+IS_UPDATE_PAGE = pg is pages[-1]  # comparación por identidad, más confiable que el título
 
 
 def _period_sort_key(p):
@@ -7206,49 +7243,61 @@ with st.sidebar:
         )
         st.caption("Analytics Dashboard")
 
-    if pg is pages[-1]:  # Update Data — botón grande, sin línea separadora
-        st.markdown('<div style="height:14px;"></div>', unsafe_allow_html=True)
-        with st.container(key="go_to_dashboard_btn"):
-            st.page_link(pages[0], label="Go to Faculty Dashboard", icon="📊", use_container_width=True)
-    else:
+    if not IS_UPDATE_PAGE:
         st.markdown("---")
 
-if pg is not pages[-1]:  # pages[-1] = Update Data — comparación por identidad, más confiable que el título
+if not IS_UPDATE_PAGE:
+    # "Other sections": links uno al lado del otro, sin menú desplegable, sin Update Data
     with st.container(key="nav_toggle"):
-        with st.expander("Other sections", expanded=False):
-            for page_obj in pages:
+        nav_cols = st.columns(len(pages) - 1)
+        for col, page_obj in zip(nav_cols, pages[:-1]):
+            with col:
                 st.page_link(page_obj)
 
 pg.run()
 
-with st.sidebar:
-    with st.expander("⬇️ Download Database", expanded=False, icon="🗂️"):
-        _dl_periods = sorted(df["Periodo"].dropna().unique().tolist(), key=_period_sort_key, reverse=True)
-        dl_period = st.selectbox("Periodo", _dl_periods, index=0, key="dl_db_period")
-        dl_scope = st.radio("Incluir", ["Planta", "Cátedra", "Todo"], key="dl_db_scope", horizontal=True)
+if IS_UPDATE_PAGE:
+    # Update Data: solo el botón de volver, grande y claro, a media altura del sidebar
+    with st.sidebar:
+        st.markdown('<div style="height:32vh;"></div>', unsafe_allow_html=True)
+        with st.container(key="go_to_dashboard_btn"):
+            st.page_link(pages[0], label="Go to Faculty Dashboard", icon=":material/bar_chart:", use_container_width=True)
+else:
+    # Resto de páginas: Download Database + botón de Update, uno al lado del otro, al fondo del sidebar
+    with st.sidebar:
+        st.markdown("---")
+        col_dl, col_upd = st.columns(2)
+        with col_dl:
+            with st.expander("Download Database", expanded=False, icon=":material/download:"):
+                _dl_periods = sorted(df["Periodo"].dropna().unique().tolist(), key=_period_sort_key, reverse=True)
+                dl_period = st.selectbox("Periodo", _dl_periods, index=0, key="dl_db_period")
+                dl_scope = st.radio("Incluir", ["Planta", "Cátedra", "Todo"], key="dl_db_scope", horizontal=True)
 
-        def _build_db_download(period: str, scope: str) -> bytes:
-            buf = io.BytesIO()
-            with pd.ExcelWriter(buf) as writer:
-                if scope in ("Planta", "Todo"):
-                    df[df["Periodo"].astype(str) == str(period)].to_excel(writer, index=False, sheet_name="Planta")
-                if scope in ("Cátedra", "Todo"):
-                    df_cat = demo_load_parttime()
-                    period_nodash = str(period).replace("-", "")
-                    df_cat[df_cat["Periodo"].astype(str) == period_nodash].to_excel(
-                        writer, index=False, sheet_name="Catedra"
-                    )
-                # Cartelera completa del periodo (incluye Field/Program y el
-                # desglose de créditos P/S/OTHER/SA/PA/IP/SP ya calculados).
-                df_cart_all = qual_load_cartelera()
-                period_nodash = str(period).replace("-", "")
-                cart_mask = df_cart_all["Periodo"].astype(str).isin([str(period), period_nodash])
-                df_cart_all[cart_mask].to_excel(writer, index=False, sheet_name="Cartelera")
-            buf.seek(0)
-            return buf.getvalue()
+                def _build_db_download(period: str, scope: str) -> bytes:
+                    buf = io.BytesIO()
+                    with pd.ExcelWriter(buf) as writer:
+                        if scope in ("Planta", "Todo"):
+                            df[df["Periodo"].astype(str) == str(period)].to_excel(writer, index=False, sheet_name="Planta")
+                        if scope in ("Cátedra", "Todo"):
+                            df_cat = demo_load_parttime()
+                            period_nodash = str(period).replace("-", "")
+                            df_cat[df_cat["Periodo"].astype(str) == period_nodash].to_excel(
+                                writer, index=False, sheet_name="Catedra"
+                            )
+                        # Cartelera completa del periodo (incluye Field/Program y el
+                        # desglose de créditos P/S/OTHER/SA/PA/IP/SP ya calculados).
+                        df_cart_all = qual_load_cartelera()
+                        period_nodash = str(period).replace("-", "")
+                        cart_mask = df_cart_all["Periodo"].astype(str).isin([str(period), period_nodash])
+                        df_cart_all[cart_mask].to_excel(writer, index=False, sheet_name="Cartelera")
+                    buf.seek(0)
+                    return buf.getvalue()
 
-        st.download_button(
-            "Descargar", data=_build_db_download(dl_period, dl_scope),
-            file_name=f"BD_{dl_scope}_{dl_period}.xlsx".replace(" ", "_"),
-            key="dl_db_btn", use_container_width=True,
-        )
+                st.download_button(
+                    "Descargar", data=_build_db_download(dl_period, dl_scope),
+                    file_name=f"BD_{dl_scope}_{dl_period}.xlsx".replace(" ", "_"),
+                    key="dl_db_btn", use_container_width=True,
+                )
+        with col_upd:
+            with st.container(key="go_to_update_btn"):
+                st.page_link(pages[-1], label="Update", icon=":material/sync:", use_container_width=True)
