@@ -851,7 +851,7 @@ def page_staffing():
         styles = pd.DataFrame('', index=df_.index, columns=df_.columns)
         if len(df_.columns) > 0 and 'Final' in df_.index:
             last_col = df_.columns[-1]
-            styles.loc['Final', last_col] = 'background-color:#dff7f2; color:#004d47; font-weight:700;'
+            styles.loc['Final', last_col] = 'background-color:#dff7f2; color:#00A896; font-weight:700;'
         return styles
 
     styled_summary = (
@@ -861,7 +861,9 @@ def page_staffing():
         .apply(_highlight_final_latest, axis=None)
         .format(precision=0)
     )
-    st.dataframe(styled_summary, use_container_width=True)
+    with st.container(key="tct_staff_summary"):
+        st.dataframe(styled_summary, use_container_width=True)
+    _scroll_table_right_once("tct_staff_summary")
 
     sum_left, sum_right = st.columns([1, 5])
     with sum_left:
@@ -1998,8 +2000,13 @@ def page_demographics():
         # mayoría de los profesores nuevos tenían región en TBD).
         total_phd_valid = int(phd_now_all[IDCOL].nunique()) if not phd_now_all.empty else 0
 
-        REGION_COL = "Region Where it was obtained"  # nombre real de la columna en Info. Profesores
-        region_col = REGION_COL if REGION_COL in phd_now_all.columns else None
+        # planta usa el nombre viejo con el error de tipeo original ("were" en
+        # vez de "Where"); Info. Profesores ya lo tiene bien escrito — se
+        # aceptan ambos para que funcione igual en Full-time y Part-time.
+        region_col = next(
+            (c for c in ["Region Where it was obtained", "Region were degree was obtained"]
+             if c in phd_now_all.columns), None
+        )
         if region_col:
             reg = phd_now_all[region_col].astype(str).str.strip()
             mask_valid_region = ~reg.eq("") & ~reg.str.upper().eq("TBD")
@@ -2009,8 +2016,10 @@ def page_demographics():
             phd_for_regions = pd.DataFrame(columns=df.columns)
 
         phd_int = 0
-        if "International Degree?" in phd_now_all.columns:
-            phd_int = int(phd_now_all[phd_now_all["International Degree?"].astype(str).str.strip().str.lower().eq("yes")][IDCOL].nunique())
+        intl_col = next((c for c in ["International Degree?", "International Degree"]
+                          if c in phd_now_all.columns), None)
+        if intl_col:
+            phd_int = int(phd_now_all[phd_now_all[intl_col].astype(str).str.strip().str.lower().eq("yes")][IDCOL].nunique())
 
         if not phd_for_regions.empty and region_col:
             reg_counts = (phd_for_regions.groupby(region_col)[IDCOL].nunique()
@@ -2040,7 +2049,7 @@ def page_demographics():
                 "Full Name": ["Full Name", "Full-Name", "Full_Name", "Profesor", "First Name"],
                 "Highest Earned Degree": ["Highest Earned Degree", "Highest Degree", "TÍTULO"],
                 "University": ["University", "University Name", "University2"],
-                "Region Where it was obtained": ["Region Where it was obtained", "Region"],
+                "Region Where it was obtained": ["Region Where it was obtained", "Region were degree was obtained", "Region"],
                 "Year": ["Year", "Year Earned ", "Year Degree", "Year Earned", "Highest Degree, Year Earned"],
             })
             popover = st.popover if hasattr(st, "popover") else st.expander
@@ -3944,7 +3953,7 @@ def page_qualifications():
                             .apply(style_percent_tables, id_col="Academic Area", axis=None)
                             .hide(axis="index")
                         )
-                        st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                        st.dataframe(styled_tbl, use_container_width=True)
                     else:
                         # ===== Tabla: Needed (dos columnas) + Impact (siempre) SIN TOTAL =====
                         # union de índices para no perder filas
