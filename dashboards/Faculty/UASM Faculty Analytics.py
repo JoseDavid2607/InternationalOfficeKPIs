@@ -174,6 +174,7 @@ PROFESORES_FILE_ID = "1ncnUk_8VsDt1I0Hui9g0VyoTkA-8P376"      # BD_profesores.xl
 CARTELERA_FILE_ID = "14Hongi8a180XTvuZGUf3soixgQpFp0Wl"       # BD_cartelera.xlsx   → hojas: cartelera, programas, cursos, qualifications
 QUESTIONNAIRE_FILE_ID = "1u6YTILxGOEq7eq1RE_l5sPg-vM5Wu5jH"   # BD_faculty_questionnaire.xlsx → hoja: Faculty_questionnaire
 TEMPLATE_PROFESORES_NUEVOS_FILE_ID = "1EEFfstkupiSD-2YyBPauO2WvzelZnYDl"  # Template_Profesores_Nuevos.xlsx (carpeta de templates)
+TEMPLATE_CURSOS_NUEVOS_FILE_ID = "1UGpwCGf3w3GByDm8Mj_1hJgNw0oYtqBb"  # Template_Cursos_Nuevos.xlsx (carpeta de templates)
 
 # ── Autenticación (lectura y escritura vía Service Account) ────────────────
 # Requiere una service account de Google Cloud, compartida como Editor en los
@@ -6000,6 +6001,16 @@ AREA_OPTIONS = [
     "MANAGEMENT", "MARKETING", "FINANCE", "SCM & IT",
 ]
 
+# Listas de valores reales encontrados en 'Info. Profesores', para los
+# desplegables de la sección "Profesores nuevos" (mismo patrón que AREA_OPTIONS).
+GENERO_OPTIONS = ["Male", "Female"]
+TIPO_OPTIONS = ["IP", "OTHER", "PA", "SA", "SP"]
+PS_OPTIONS = ["P", "S"]
+PLANTA_CATEDRA_OPTIONS = ["Planta", "Cátedra", "Otra"]
+HIGHEST_DEGREE_OPTIONS = ["Bachelor", "Master", "Ph.D.", "Specialization"]
+REGION_OPTIONS = ["Africa", "Asia", "Europe", "Latin America", "North America", "Oceania"]
+INTL_DEGREE_OPTIONS = ["Yes", "No"]
+
 
 def _get_formula_text(cell) -> Tuple[Optional[str], bool]:
     """Devuelve (texto_de_la_fórmula, es_array) de una celda. Algunas fórmulas
@@ -6338,6 +6349,19 @@ def _load_profesores_lookup() -> Dict[str, Tuple]:
     return dict(zip(key, vals))
 
 
+def _build_prefilled_cursos_template(missing_codes: List[str]) -> bytes:
+    """Descarga la Template_Cursos_Nuevos.xlsx real y prellena la columna
+    Código Materia (B) con los códigos que no se encontraron, desde la fila 6."""
+    raw = _download_drive_file_bytes(TEMPLATE_CURSOS_NUEVOS_FILE_ID)
+    wb = openpyxl.load_workbook(io.BytesIO(raw))
+    ws = wb[wb.sheetnames[0]]
+    for i, code in enumerate(missing_codes):
+        ws.cell(row=6 + i, column=2, value=code)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def _build_prefilled_profesores_template(missing_names: List[str]) -> bytes:
     """Descarga la Template_Profesores_Nuevos.xlsx real y prellena la columna
     Profesor (B) con los nombres que no se encontraron, desde la fila 6."""
@@ -6355,9 +6379,9 @@ def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
     """Agrega profesores nuevos a la hoja 'Info. Profesores' de
     BD_profesores.xlsx. Columnas A-F, H-Q, S vienen directo de la template
     (los campos opcionales que queden vacíos se completan con "TBD", igual
-    que la convención ya usada en el resto del archivo). R (Age) no tiene
-    fórmula real en esta hoja hoy — se deja como "TBD" con fondo #caedfb
-    hasta que se defina cómo calcularla (ver aviso en el chat)."""
+    que la convención ya usada en el resto del archivo). R (Age) SÍ tiene
+    fórmula real (DATEDIF sobre Date of birth) — se copia y traslada igual
+    que F/V en planta, con fondo #caedfb."""
     if not _OPENPYXL_OK:
         return False, "Falta la librería `openpyxl` en el entorno."
     token = _get_gspread_access_token()
@@ -6377,6 +6401,10 @@ def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
 
         base_font = Font(name="Arial", size=11, color="000000")
         age_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
+
+        tpl_age_text, age_is_array = _get_formula_text(ws.cell(row=last_row, column=18))
+        age_template_row = last_row
+        age_ok = bool(tpl_age_text)
 
         # Template B..T → Info.Profesores A,B,C,D,E,F,(H sin destino=PLANTA_CATEDRA),G,H,I,J,K,L,M,N,O,P,Q,S
         col_map = {
@@ -6406,8 +6434,12 @@ def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
                     val = "TBD" if tpl_idx not in required_idx else val
                 cell = ws.cell(row=rn, column=dest_col, value=val)
                 cell.font = base_font
-            # R — Age: sin fórmula real disponible en la Base hoy; queda "TBD" con fondo #caedfb
-            age_cell = ws.cell(row=rn, column=18, value="TBD")
+            # R — Age: fórmula real copiada/trasladada (o "TBD" si no había de dónde copiarla)
+            if age_ok:
+                _write_translated_formula(ws, 18, rn, tpl_age_text, age_is_array, f"R{age_template_row}", f"R{rn}")
+            else:
+                ws.cell(row=rn, column=18, value="TBD")
+            age_cell = ws.cell(row=rn, column=18)
             age_cell.font = base_font
             age_cell.fill = age_fill
             n_written += 1
@@ -6747,10 +6779,11 @@ def page_update_data():
                                 **{"Area del curso": missing_courses["Materia"].map(picked_areas)}
                             ).rename(columns={"Materia": "Código Materia"})
                     else:
-                        st.markdown(
-                            "[📁 Abrir la carpeta de templates en Drive](https://drive.google.com/drive/folders/169oOSvEpEyGGK3UR5ASm-e2K0OJcgud8) "
-                            "→ descarga `Template_Cursos_Nuevos.xlsx`, diligénciala para estos "
-                            f"{len(missing_courses)} curso(s), y súbela aquí."
+                        st.download_button(
+                            "⬇️ Descargar Template_Cursos_Nuevos.xlsx (con los códigos ya puestos)",
+                            data=_build_prefilled_cursos_template(missing_courses["Materia"].tolist()),
+                            file_name="Template_Cursos_Nuevos.xlsx",
+                            key="cursos_template_dl",
                         )
                         up_new = st.file_uploader(
                             "Template_Cursos_Nuevos.xlsx diligenciada", type=["xlsx"], key="cursos_nuevos_upload"
@@ -6774,28 +6807,93 @@ def page_update_data():
                         f"⚠️ {len(missing_profs)} profesor(es) no están en 'Info. Profesores' — "
                         "hay que completarlos antes de poder guardar."
                     )
-                    st.download_button(
-                        "⬇️ Descargar Template_Profesores_Nuevos.xlsx (con los nombres ya puestos)",
-                        data=_build_prefilled_profesores_template(missing_profs),
-                        file_name="Template_Profesores_Nuevos.xlsx",
-                        key="prof_template_dl",
+                    prof_fill_mode = st.radio(
+                        "¿Cómo quieres completar los profesores?",
+                        ["Seleccionar aquí mismo", "Subir Template_Profesores_Nuevos.xlsx diligenciada"],
+                        key="profesores_fill_mode", horizontal=True,
                     )
-                    st.caption(
-                        "Completa la información de cada profesor (deja **TBD** en lo que no sepas, "
-                        "excepto en ID, AREA_PROFESOR, GÉNERO, TIPO, P/S y PLANTA_CATEDRA — esas son obligatorias) "
-                        "y súbela diligenciada abajo."
-                    )
-                    up_profs = st.file_uploader(
-                        "Template_Profesores_Nuevos.xlsx diligenciada", type=["xlsx"], key="profesores_nuevos_upload"
-                    )
-                    if up_profs is not None:
-                        try:
-                            npf = _read_profesores_nuevos_template(up_profs)
-                            npf.columns = [c.strip() for c in npf.columns]
-                            new_profs_df = npf
-                            st.dataframe(new_profs_df, use_container_width=True)
-                        except Exception as e:
-                            st.error(f"No pude leer la template de profesores nuevos: {e}")
+
+                    if prof_fill_mode == "Seleccionar aquí mismo":
+                        st.caption(
+                            "Completa cada profesor. Los campos marcados con **\\*** son obligatorios "
+                            "(desplegable = un clic; el resto es texto libre, y puedes dejarlo vacío → queda como TBD)."
+                        )
+                        picked_profs = {}
+                        all_required_filled = True
+                        for name in missing_profs:
+                            with st.expander(f"👤 {name}", expanded=True):
+                                r1c1, r1c2, r1c3 = st.columns(3)
+                                p_id = r1c1.text_input("ID / Cédula *", key=f"prof_id_{name}")
+                                p_area = r1c2.selectbox("AREA_PROFESOR *", ["— Selecciona —"] + AREA_OPTIONS, key=f"prof_area_{name}")
+                                p_genero = r1c3.selectbox("GÉNERO *", ["— Selecciona —"] + GENERO_OPTIONS, key=f"prof_genero_{name}")
+
+                                r2c1, r2c2, r2c3 = st.columns(3)
+                                p_tipo = r2c1.selectbox("TIPO *", ["— Selecciona —"] + TIPO_OPTIONS, key=f"prof_tipo_{name}")
+                                p_ps = r2c2.selectbox("P/S *", ["— Selecciona —"] + PS_OPTIONS, key=f"prof_ps_{name}")
+                                p_planta = r2c3.selectbox("PLANTA_CATEDRA *", ["— Selecciona —"] + PLANTA_CATEDRA_OPTIONS, key=f"prof_planta_{name}")
+
+                                r3c1, r3c2, r3c3 = st.columns(3)
+                                p_fecha_ingreso = r3c1.text_input("Date of First Appointment (DD/MM/YYYY)", key=f"prof_fecha_ing_{name}")
+                                p_degree = r3c2.text_input("Highest Earned Degree", key=f"prof_degree_{name}")
+                                p_year = r3c3.text_input("Highest Degree, Year Earned", key=f"prof_year_{name}")
+
+                                r4c1, r4c2, r4c3 = st.columns(3)
+                                p_hd = r4c1.selectbox("Highest Degree", ["— (deja TBD) —"] + HIGHEST_DEGREE_OPTIONS, key=f"prof_hd_{name}")
+                                p_univ = r4c2.text_input("University", key=f"prof_univ_{name}")
+                                p_region = r4c3.selectbox("Region Where it was obtained", ["— (deja TBD) —"] + REGION_OPTIONS, key=f"prof_region_{name}")
+
+                                r5c1, r5c2, r5c3 = st.columns(3)
+                                p_intl = r5c1.selectbox("International Degree?", ["— (deja TBD) —"] + INTL_DEGREE_OPTIONS, key=f"prof_intl_{name}")
+                                p_resp = r5c2.text_input("Normal Professional Responsibilities", key=f"prof_resp_{name}")
+                                p_basis = r5c3.text_input("Basis for qualification", key=f"prof_basis_{name}")
+
+                                r6c1, r6c2, r6c3 = st.columns(3)
+                                p_nat = r6c1.text_input("Nationality", key=f"prof_nat_{name}")
+                                p_dob = r6c2.text_input("Date of birth (DD/MM/YYYY)", key=f"prof_dob_{name}")
+                                p_exp = r6c3.text_input("Years Industry experience", key=f"prof_exp_{name}")
+
+                            row_required_ok = (
+                                p_id.strip() != "" and p_area != "— Selecciona —" and p_genero != "— Selecciona —"
+                                and p_tipo != "— Selecciona —" and p_ps != "— Selecciona —" and p_planta != "— Selecciona —"
+                            )
+                            all_required_filled = all_required_filled and row_required_ok
+                            picked_profs[name] = {
+                                "Profesor": name, "ID": p_id, "AREA_PROFESOR": p_area, "GÉNERO": p_genero,
+                                "TIPO": p_tipo, "P/S": p_ps, "PLANTA_CATEDRA": p_planta,
+                                "Date of First Appointment to the School": p_fecha_ingreso,
+                                "Highest Earned Degree": p_degree, "Highest Degree, Year Earned": p_year,
+                                "Highest Degree": "" if p_hd.startswith("—") else p_hd,
+                                "University": p_univ,
+                                "Region Where it was obtained": "" if p_region.startswith("—") else p_region,
+                                "International Degree?": "" if p_intl.startswith("—") else p_intl,
+                                "Normal Professional Responsibilities": p_resp, "Basis for qualification": p_basis,
+                                "Nationality": p_nat, "Date of birth": p_dob, "Years Industry experience": p_exp,
+                            }
+                        if all_required_filled:
+                            new_profs_df = pd.DataFrame(list(picked_profs.values()))
+                    else:
+                        st.download_button(
+                            "⬇️ Descargar Template_Profesores_Nuevos.xlsx (con los nombres ya puestos)",
+                            data=_build_prefilled_profesores_template(missing_profs),
+                            file_name="Template_Profesores_Nuevos.xlsx",
+                            key="prof_template_dl",
+                        )
+                        st.caption(
+                            "Completa la información de cada profesor (deja **TBD** en lo que no sepas, "
+                            "excepto en ID, AREA_PROFESOR, GÉNERO, TIPO, P/S y PLANTA_CATEDRA — esas son obligatorias) "
+                            "y súbela diligenciada abajo."
+                        )
+                        up_profs = st.file_uploader(
+                            "Template_Profesores_Nuevos.xlsx diligenciada", type=["xlsx"], key="profesores_nuevos_upload"
+                        )
+                        if up_profs is not None:
+                            try:
+                                npf = _read_profesores_nuevos_template(up_profs)
+                                npf.columns = [c.strip() for c in npf.columns]
+                                new_profs_df = npf
+                                st.dataframe(new_profs_df, use_container_width=True)
+                            except Exception as e:
+                                st.error(f"No pude leer la template de profesores nuevos: {e}")
 
                 ready = new_courses_df is not None and new_profs_df is not None
                 if not ready:
