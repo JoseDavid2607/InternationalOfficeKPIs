@@ -6060,6 +6060,20 @@ def _read_generic_template(uploaded_file, header_row: int = 4, data_row: int = 6
     return data
 
 
+def _validate_template_columns(df: pd.DataFrame, required_cols: List[str], template_label: str):
+    """Revisa que el archivo tenga la forma esperada de esa template — si no,
+    lanza un error claro (lo captura el try/except del uploader y lo muestra
+    con st.error) en vez de dejar que reviente más adelante con un error
+    críptico de pandas/KeyError."""
+    missing = [c for c in required_cols if c not in df.columns]
+    if df.empty or missing:
+        detalle = f" Columnas esperadas que no encontré: {', '.join(missing)}." if missing else " El archivo está vacío."
+        raise ValueError(
+            f"Este archivo no parece ser la {template_label} — usa la plantilla oficial "
+            f"descargada desde esta misma sección.{detalle}"
+        )
+
+
 AREA_OPTIONS = [
     "ORGANIZATIONS", "SUSTAINABILITY", "STRATEGY & ENTREPRENEURSHIP",
     "MANAGEMENT", "MARKETING", "FINANCE", "SCM & IT",
@@ -6189,7 +6203,7 @@ def _planta_note_style(note: str) -> Optional[str]:
 
 
 def _read_planta_template(uploaded_file) -> pd.DataFrame:
-    """Lee la Template_BD_PLANTA.xlsx tal como la define el layout original:
+    """Lee la Template_planta.xlsx tal como la define el layout original:
     encabezados en la fila 4, datos desde la fila 6, empezando en la columna B."""
     raw = pd.read_excel(uploaded_file, sheet_name=0, header=None)
     headers = raw.iloc[_PLANTA_TEMPLATE_HEADER_ROW - 1, _PLANTA_TEMPLATE_START_COL:].tolist()
@@ -6197,6 +6211,7 @@ def _read_planta_template(uploaded_file) -> pd.DataFrame:
     data = raw.iloc[_PLANTA_TEMPLATE_DATA_ROW - 1:, _PLANTA_TEMPLATE_START_COL:].copy()
     data.columns = headers
     data = data.dropna(how="all").reset_index(drop=True)
+    _validate_template_columns(data, ["First Name", "Last Name", "ID Nr."], "Template_planta.xlsx")
     return data
 
 
@@ -6397,13 +6412,17 @@ def _read_cartelera_template(uploaded_file) -> pd.DataFrame:
         "Full Course Name": "Nombre largo curso",
         "Professor": "Profesor",
     }
-    return df_.rename(columns={k: v for k, v in rename_map.items() if k in df_.columns})
+    df_ = df_.rename(columns={k: v for k, v in rename_map.items() if k in df_.columns})
+    _validate_template_columns(df_, ["Periodo", "Materia", "Profesor"], "Template_cartelera.xlsx")
+    return df_
 
 
 def _read_cursos_nuevos_template(uploaded_file) -> pd.DataFrame:
     """Template_Cursos_Nuevos: columnas B..E → Código Materia, Créditos,
     Nombre largo curso, Area del curso."""
-    return _read_generic_template(uploaded_file)
+    df_ = _read_generic_template(uploaded_file)
+    _validate_template_columns(df_, ["Código Materia", "Nombre largo curso"], "Template_cursos_nuevos.xlsx")
+    return df_
 
 
 @st.cache_data(ttl=60)
@@ -6424,7 +6443,9 @@ def _read_profesores_nuevos_template(uploaded_file) -> pd.DataFrame:
     Earned Degree, Highest Degree Year Earned, Highest Degree, University,
     Region, International Degree?, Normal Professional Resp., Basis for
     qualification, Nationality, Date of birth, Years Industry experience."""
-    return _read_generic_template(uploaded_file)
+    df_ = _read_generic_template(uploaded_file)
+    _validate_template_columns(df_, ["Profesor", "ID", "AREA_PROFESOR"], "Template_profesores_nuevos.xlsx")
+    return df_
 
 
 # Columnas que NUNCA pueden quedar en TBD/blanco al cargar profesores nuevos.
@@ -6603,6 +6624,98 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
         return True, f"✓ Faculty Distribution actualizada — {n_written} fila(s) nueva(s)."
     except Exception as e:
         return False, f"Error al escribir en Faculty Distribution: {e}"
+
+
+def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
+    """Agrega profesores nuevos a la hoja 'Info. Profesores' de
+    BD_profesores.xlsx. Columnas A-F, H-Q, S vienen directo de la template
+    (los campos opcionales que queden vacíos se completan con "TBD", igual
+    que la convención ya usada en el resto del archivo). R (Age) SÍ tiene
+    fórmula real (DATEDIF sobre Date of birth) — se copia y traslada igual
+    que F/V en planta, con fondo #caedfb."""
+    if not _OPENPYXL_OK:
+        return False, "Falta la librería `openpyxl` en el entorno."
+    token = _get_gspread_access_token()
+    if not token:
+        return False, "No hay credenciales configuradas para escribir en Drive."
+    try:
+        raw_bytes = _download_drive_file_bytes(PROFESORES_FILE_ID)
+        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
+        if "Info. Profesores" not in wb.sheetnames:
+            return False, "No encontré la hoja 'Info. Profesores' en BD_profesores.xlsx."
+        ws = wb["Info. Profesores"]
+
+        info = _table_info(ws, "tabla_profesores")
+        if not info:
+            return False, "No encontré la Tabla de Excel 'tabla_profesores'."
+        match, min_col, min_row, max_col, last_row = info
+
+        base_font = Font(name="Arial", size=11, color="000000")
+        age_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
+
+        tpl_age_text, age_is_array = _get_formula_text(ws.cell(row=last_row, column=18))
+        age_template_row = last_row
+        age_ok = bool(tpl_age_text)
+
+        # Template B..T → Info.Profesores A,B,C,D,E,F,(H sin destino=PLANTA_CATEDRA),G,H,I,J,K,L,M,N,O,P,Q,S
+        col_map = {
+            0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6,        # Profesor,ID,AREA_PROFESOR,GÉNERO,TIPO,P/S
+            # idx 6 = PLANTA_CATEDRA -> sin columna destino en Info. Profesores, se omite
+            7: 7, 8: 8, 9: 9, 10: 10, 11: 11, 12: 12,
+            13: 13, 14: 14, 15: 15, 16: 16, 17: 17, 18: 19,  # ...hasta S (Years Industry exp -> col 19)
+        }
+        required_idx = {0: "Profesor", 1: "ID", 2: "AREA_PROFESOR", 3: "GÉNERO", 4: "TIPO", 5: "P/S"}
+
+        append_start = last_row + 1
+        n_written = 0
+        for i, r in enumerate(new_profs_df.itertuples(index=False, name=None)):
+            rn = append_start + i
+            missing_required = [
+                label for idx, label in required_idx.items()
+                if idx >= len(r) or r[idx] is None or (isinstance(r[idx], float) and pd.isna(r[idx])) or str(r[idx]).strip() == ""
+            ]
+            if missing_required:
+                return False, (
+                    f"Fila {i+1} de la template de profesores: faltan campos obligatorios "
+                    f"({', '.join(missing_required)}). No se guardó nada — corrige y vuelve a subir."
+                )
+            for tpl_idx, dest_col in col_map.items():
+                val = r[tpl_idx] if tpl_idx < len(r) else None
+                if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() == "":
+                    val = "TBD" if tpl_idx not in required_idx else val
+                cell = ws.cell(row=rn, column=dest_col, value=val)
+                cell.font = base_font
+            # R — Age: fórmula real copiada/trasladada (o "TBD" si no había de dónde copiarla)
+            if age_ok:
+                _write_translated_formula(ws, 18, rn, tpl_age_text, age_is_array, f"R{age_template_row}", f"R{rn}")
+            else:
+                ws.cell(row=rn, column=18, value="TBD")
+            age_cell = ws.cell(row=rn, column=18)
+            age_cell.font = base_font
+            age_cell.fill = age_fill
+            n_written += 1
+
+        if n_written == 0:
+            return True, "No había profesores nuevos que agregar."
+
+        new_last_row = append_start + n_written - 1
+        ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
+
+        wb.calculation.fullCalcOnLoad = True
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        ok, err = _drive_upload_file_bytes(PROFESORES_FILE_ID, buf.getvalue())
+        if not ok:
+            return False, f"Error al subir el archivo actualizado a Drive: {err}"
+
+        _download_drive_file_bytes.clear()
+        _load_profesores_lookup.clear()
+
+        return True, f"✓ Info. Profesores actualizada — {n_written} profesor(es) nuevo(s)."
+    except Exception as e:
+        return False, f"Error al escribir en Info. Profesores: {e}"
 
 
 def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFrame,
@@ -7026,26 +7139,34 @@ def page_update_data():
                     )
 
                     if fill_mode == "Seleccionar aquí mismo":
-                        st.caption("Elige el área de cada curso (un clic, sin necesidad de tabla editable):")
-                        picked_areas = {}
-                        for idx, row in missing_courses.iterrows():
-                            c1, c2, c3, c4, c5 = st.columns([2, 1, 3, 2, 0.5])
-                            c1.markdown(f"**{row['Materia']}**")
-                            c2.markdown(str(row["Créditos"]))
-                            c3.markdown(row["Nombre largo curso"])
-                            picked_areas[row["Materia"]] = c4.selectbox(
-                                "Área", options=["— Selecciona —"] + AREA_OPTIONS,
-                                key=f"area_pick_{row['Materia']}", label_visibility="collapsed",
-                            )
-                            with c5.popover("＋"):
+                        editable_courses = missing_courses.copy()
+                        editable_courses["Area del curso"] = None
+                        edited_courses = st.data_editor(
+                            editable_courses,
+                            column_config={
+                                "Materia": st.column_config.TextColumn("Código Materia", disabled=True),
+                                "Créditos": st.column_config.NumberColumn(disabled=True),
+                                "Nombre largo curso": st.column_config.TextColumn(disabled=True),
+                                "Area del curso": st.column_config.SelectboxColumn(
+                                    "Area del curso", options=AREA_OPTIONS, required=True,
+                                ),
+                            },
+                            hide_index=True, use_container_width=True, key="missing_courses_editor",
+                        )
+
+                        with st.popover("＋ Ver profesor(es) y área por curso", use_container_width=True):
+                            for _, row in missing_courses.iterrows():
                                 profs = sorted(cart_df.loc[cart_df["Materia"] == row["Materia"], "Profesor"].dropna().unique().tolist())
-                                st.caption("Profesor(es):")
-                                for p in profs:
-                                    st.markdown(f"- {p}")
-                        if all(v != "— Selecciona —" for v in picked_areas.values()):
-                            new_courses_df = missing_courses.assign(
-                                **{"Area del curso": missing_courses["Materia"].map(picked_areas)}
-                            ).rename(columns={"Materia": "Código Materia"})
+                                pc1, pc2 = st.columns([1, 3])
+                                pc1.markdown(f"**{row['Materia']}**")
+                                with pc2:
+                                    for p in profs:
+                                        info = prof_lookup.get(str(p).strip().upper())
+                                        area_txt = info[1] if info else "—"
+                                        st.markdown(f"{p} · *{area_txt}*")
+
+                        if edited_courses["Area del curso"].notna().all():
+                            new_courses_df = edited_courses.rename(columns={"Materia": "Código Materia"})
                     else:
                         st.download_button(
                             "⬇️ Descargar Template_cursos_nuevos.xlsx (con los códigos ya puestos)",
@@ -7082,23 +7203,41 @@ def page_update_data():
                     )
 
                     if prof_fill_mode == "Seleccionar aquí mismo":
-                        st.caption(
-                            "Completa cada profesor. Los campos marcados con **\\*** son obligatorios "
-                            "(desplegable = un clic; el resto es texto libre, y puedes dejarlo vacío → queda como TBD)."
-                        )
+                        def _req_label(text: str, key: str, is_empty) -> None:
+                            color = "#DC2626" if is_empty(st.session_state.get(key, "")) else "#374151"
+                            st.markdown(
+                                f"<div style='font-size:14px;color:{color};font-weight:600;margin-bottom:2px;'>{text} *</div>",
+                                unsafe_allow_html=True,
+                            )
+
+                        _empty_txt = lambda v: str(v).strip() == ""
+                        _empty_sel = lambda v: v in (None, "", "— Selecciona —")
+
                         picked_profs = {}
                         all_required_filled = True
                         for name in missing_profs:
                             with st.expander(f"👤 {name}", expanded=True):
                                 r1c1, r1c2, r1c3 = st.columns(3)
-                                p_id = r1c1.text_input("ID / Cédula *", key=f"prof_id_{name}")
-                                p_area = r1c2.selectbox("AREA_PROFESOR *", ["— Selecciona —"] + AREA_OPTIONS, key=f"prof_area_{name}")
-                                p_genero = r1c3.selectbox("GÉNERO *", ["— Selecciona —"] + GENERO_OPTIONS, key=f"prof_genero_{name}")
+                                with r1c1:
+                                    _req_label("ID / Cédula", f"prof_id_{name}", _empty_txt)
+                                    p_id = st.text_input("ID / Cédula", key=f"prof_id_{name}", label_visibility="collapsed")
+                                with r1c2:
+                                    _req_label("AREA_PROFESOR", f"prof_area_{name}", _empty_sel)
+                                    p_area = st.selectbox("AREA_PROFESOR", ["— Selecciona —"] + AREA_OPTIONS, key=f"prof_area_{name}", label_visibility="collapsed")
+                                with r1c3:
+                                    _req_label("GÉNERO", f"prof_genero_{name}", _empty_sel)
+                                    p_genero = st.selectbox("GÉNERO", ["— Selecciona —"] + GENERO_OPTIONS, key=f"prof_genero_{name}", label_visibility="collapsed")
 
                                 r2c1, r2c2, r2c3 = st.columns(3)
-                                p_tipo = r2c1.selectbox("TIPO *", ["— Selecciona —"] + TIPO_OPTIONS, key=f"prof_tipo_{name}")
-                                p_ps = r2c2.selectbox("P/S *", ["— Selecciona —"] + PS_OPTIONS, key=f"prof_ps_{name}")
-                                p_planta = r2c3.selectbox("PLANTA_CATEDRA *", ["— Selecciona —"] + PLANTA_CATEDRA_OPTIONS, key=f"prof_planta_{name}")
+                                with r2c1:
+                                    _req_label("TIPO", f"prof_tipo_{name}", _empty_sel)
+                                    p_tipo = st.selectbox("TIPO", ["— Selecciona —"] + TIPO_OPTIONS, key=f"prof_tipo_{name}", label_visibility="collapsed")
+                                with r2c2:
+                                    _req_label("P/S", f"prof_ps_{name}", _empty_sel)
+                                    p_ps = st.selectbox("P/S", ["— Selecciona —"] + PS_OPTIONS, key=f"prof_ps_{name}", label_visibility="collapsed")
+                                with r2c3:
+                                    _req_label("PLANTA_CATEDRA", f"prof_planta_{name}", _empty_sel)
+                                    p_planta = st.selectbox("PLANTA_CATEDRA", ["— Selecciona —"] + PLANTA_CATEDRA_OPTIONS, key=f"prof_planta_{name}", label_visibility="collapsed")
 
                                 r3c1, r3c2, r3c3 = st.columns(3)
                                 p_fecha_ingreso = r3c1.text_input("Date of First Appointment (DD/MM/YYYY)", key=f"prof_fecha_ing_{name}")
@@ -7120,7 +7259,7 @@ def page_update_data():
                                 p_dob = r6c2.text_input("Date of birth (DD/MM/YYYY)", key=f"prof_dob_{name}")
                                 p_exp = r6c3.text_input("Years Industry experience", key=f"prof_exp_{name}")
 
-                                with st.popover("＋ Cursos que dicta (según esta carga)"):
+                                with st.popover("＋ Cursos que dicta (según esta carga)", use_container_width=True):
                                     courses_taught = cart_df.loc[
                                         cart_df["Profesor"] == name, ["Materia", "Créditos", "Nombre largo curso"]
                                     ].drop_duplicates().reset_index(drop=True)
