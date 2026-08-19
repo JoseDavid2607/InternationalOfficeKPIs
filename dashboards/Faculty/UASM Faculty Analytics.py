@@ -393,6 +393,22 @@ def demo_load_parttime() -> pd.DataFrame:
     df_.loc[~is_inter, "Periodo"] = sem.str[:4] + sem.str[-2:]
     df_.loc[is_inter, "Periodo"] = sem.str[:4] + " Intersemestral"
 
+    # 'Faculty Distribution' solo trae 8 columnas (Semestre, Profesor, ID,
+    # AREA_PROFESOR, GÉNERO, TIPO, P/S, PLANTA_CATEDRA) — insuficiente para el
+    # análisis de demografía completo (título, nacionalidad, fecha de
+    # nacimiento, universidad, etc.). Se trae TODA la información adicional
+    # desde 'Info. Profesores', unida por ID.
+    raw2 = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    df_info = pd.read_excel(raw2, sheet_name="Info. Profesores")
+    df_info.columns = df_info.columns.str.strip()
+    if "ID" in df_.columns and "ID" in df_info.columns:
+        extra_cols = [c for c in df_info.columns
+                      if c not in ("Profesor", "ID", "AREA_PROFESOR", "GÉNERO", "TIPO", "P/S")]
+        df_info_extra = df_info[["ID"] + extra_cols].drop_duplicates(subset=["ID"])
+        df_["ID"] = pd.to_numeric(df_["ID"], errors="coerce")
+        df_info_extra["ID"] = pd.to_numeric(df_info_extra["ID"], errors="coerce")
+        df_ = df_.merge(df_info_extra, on="ID", how="left")
+
     if "ID Nr." not in df_.columns and "ID" in df_.columns:
         df_ = df_.rename(columns={"ID": "ID Nr."})
     if "AREA_PROFESOR" not in df_.columns and "Academic Area" in df_.columns:
@@ -6378,10 +6394,13 @@ def _build_prefilled_profesores_template(missing_names: List[str]) -> bytes:
 def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[bool, str]:
     """Agrega a 'Faculty Distribution' (BD_profesores.xlsx) una fila por cada
     ID único que quedó en la cartelera recién cargada, agrupado por periodo:
-    A=Periodo, C=ID (valores directos); B,D,E,F,G,H son fórmulas que ya
-    existen en la Base (XLOOKUP/IF) — se copian/trasladan igual que en los
-    demás casos, con fondo #caedfb. No agrega un (Periodo, ID) que ya
-    exista en la hoja."""
+    A=Periodo, C=ID (valores directos). B,D,E,F,G,H se escriben como VALOR
+    LITERAL (no como fórmula copiada) — se calculan en Python con la misma
+    lógica que ya tenían esas fórmulas (lookup contra 'Info. Profesores' y
+    'planta'), con fondo #caedfb. Se dejó de copiar la fórmula porque
+    openpyxl no la recalcula sola: la app (que lee con pandas) veía esas
+    columnas en blanco hasta que alguien abría el archivo manualmente en
+    Excel. No agrega un (Periodo, ID) que ya exista en la hoja."""
     if not _OPENPYXL_OK:
         return False, "Falta la librería `openpyxl` en el entorno."
     token = _get_gspread_access_token()
@@ -6392,7 +6411,11 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
         wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
         if "Faculty Distribution" not in wb.sheetnames:
             return False, "No encontré la hoja 'Faculty Distribution' en BD_profesores.xlsx."
+        if "Info. Profesores" not in wb.sheetnames or "planta" not in wb.sheetnames:
+            return False, "No encontré 'Info. Profesores' y/o 'planta' en BD_profesores.xlsx."
         ws = wb["Faculty Distribution"]
+        ws_info = wb["Info. Profesores"]
+        ws_planta = wb["planta"]
 
         info = _table_info(ws, "tabla_faculty_distribution")
         if not info:
@@ -6402,37 +6425,69 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
         base_font = Font(name="Arial", size=11, color="000000")
         calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
 
+        # ── Tablas de referencia reales, leídas del propio archivo ──
+        # Info. Profesores: A=Profesor,B=ID,C=AREA_PROFESOR,D=GÉNERO,E=TIPO,F=P/S
+        info_lookup: Dict[str, Tuple] = {}
+        for r in range(2, ws_info.max_row + 1):
+            pid = ws_info.cell(row=r, column=2).value
+            if pid is None:
+                continue
+            key = str(pid).strip()
+            info_lookup[key] = (
+                ws_info.cell(row=r, column=1).value,  # Profesor
+                ws_info.cell(row=r, column=3).value,  # AREA_PROFESOR
+                ws_info.cell(row=r, column=4).value,  # GÉNERO
+                ws_info.cell(row=r, column=5).value,  # TIPO
+                ws_info.cell(row=r, column=6).value,  # P/S
+            )
+
+        # planta: A=Periodo,C=ID Nr.,X=Faculty Qualific.(24),Y=P/S(25)
+        planta_lookup: Dict[Tuple[str, str], Tuple] = {}
+        for r in range(2, ws_planta.max_row + 1):
+            pid = ws_planta.cell(row=r, column=3).value
+            per = ws_planta.cell(row=r, column=1).value
+            if pid is None or per is None:
+                continue
+            key = (str(per).strip(), str(pid).strip())
+            planta_lookup[key] = (
+                ws_planta.cell(row=r, column=24).value,  # Faculty Qualific. (TIPO en planta)
+                ws_planta.cell(row=r, column=25).value,  # P/S
+            )
+
         existing_pairs = set()
         for r in range(2, last_row + 1):
             p = str(ws.cell(row=r, column=1).value or "").strip()
             i = str(ws.cell(row=r, column=3).value or "").strip()
             existing_pairs.add((p, i))
 
-        template_row = last_row
-        calc_cols = {}
-        for col in (2, 4, 5, 6, 7, 8):  # B,D,E,F,G,H
-            txt, is_arr = _get_formula_text(ws.cell(row=template_row, column=col))
-            calc_cols[col] = (txt, is_arr)
-
         append_start = last_row + 1
         n_written = 0
         for periodo, ids in periodo_to_ids.items():
             for prof_id in ids:
-                pair = (str(periodo).strip(), str(prof_id).strip())
+                periodo_s, id_s = str(periodo).strip(), str(prof_id).strip()
+                pair = (periodo_s, id_s)
                 if pair in existing_pairs:
                     continue
                 rn = append_start + n_written
                 for col, val in [(1, periodo), (3, prof_id)]:
                     cell = ws.cell(row=rn, column=col, value=val)
                     cell.font = base_font
-                for col, (txt, is_arr) in calc_cols.items():
-                    if not txt:
-                        continue
-                    col_letter = get_column_letter(col)
-                    _write_translated_formula(ws, col, rn, txt, is_arr, f"{col_letter}{template_row}", f"{col_letter}{rn}")
-                    cell = ws.cell(row=rn, column=col)
+
+                info_row = info_lookup.get(id_s, (None, None, None, None, None))
+                profesor, area_prof, genero, tipo_info, ps_info = info_row
+                planta_vals = planta_lookup.get((periodo_s, id_s))
+                planta_catedra = "PLANTA" if planta_vals is not None else "CÁTEDRA"
+                if planta_vals is not None:
+                    tipo_val, ps_val = planta_vals
+                else:
+                    tipo_val, ps_val = tipo_info, ps_info
+
+                calc_vals = {2: profesor, 4: area_prof, 5: genero, 6: tipo_val, 7: ps_val, 8: planta_catedra}
+                for col, val in calc_vals.items():
+                    cell = ws.cell(row=rn, column=col, value=val)
                     cell.font = base_font
                     cell.fill = calc_fill
+
                 existing_pairs.add(pair)
                 n_written += 1
 
@@ -6458,95 +6513,6 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
         return False, f"Error al escribir en Faculty Distribution: {e}"
 
 
-def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
-    """Agrega profesores nuevos a la hoja 'Info. Profesores' de
-    BD_profesores.xlsx. Columnas A-F, H-Q, S vienen directo de la template
-    (los campos opcionales que queden vacíos se completan con "TBD", igual
-    que la convención ya usada en el resto del archivo). R (Age) SÍ tiene
-    fórmula real (DATEDIF sobre Date of birth) — se copia y traslada igual
-    que F/V en planta, con fondo #caedfb."""
-    if not _OPENPYXL_OK:
-        return False, "Falta la librería `openpyxl` en el entorno."
-    token = _get_gspread_access_token()
-    if not token:
-        return False, "No hay credenciales configuradas para escribir en Drive."
-    try:
-        raw_bytes = _download_drive_file_bytes(PROFESORES_FILE_ID)
-        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
-        if "Info. Profesores" not in wb.sheetnames:
-            return False, "No encontré la hoja 'Info. Profesores' en BD_profesores.xlsx."
-        ws = wb["Info. Profesores"]
-
-        info = _table_info(ws, "tabla_profesores")
-        if not info:
-            return False, "No encontré la Tabla de Excel 'tabla_profesores'."
-        match, min_col, min_row, max_col, last_row = info
-
-        base_font = Font(name="Arial", size=11, color="000000")
-        age_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
-
-        tpl_age_text, age_is_array = _get_formula_text(ws.cell(row=last_row, column=18))
-        age_template_row = last_row
-        age_ok = bool(tpl_age_text)
-
-        # Template B..T → Info.Profesores A,B,C,D,E,F,(H sin destino=PLANTA_CATEDRA),G,H,I,J,K,L,M,N,O,P,Q,S
-        col_map = {
-            0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6,        # Profesor,ID,AREA_PROFESOR,GÉNERO,TIPO,P/S
-            # idx 6 = PLANTA_CATEDRA -> sin columna destino en Info. Profesores, se omite
-            7: 7, 8: 8, 9: 9, 10: 10, 11: 11, 12: 12,
-            13: 13, 14: 14, 15: 15, 16: 16, 17: 17, 18: 19,  # ...hasta S (Years Industry exp -> col 19)
-        }
-        required_idx = {0: "Profesor", 1: "ID", 2: "AREA_PROFESOR", 3: "GÉNERO", 4: "TIPO", 5: "P/S"}
-
-        append_start = last_row + 1
-        n_written = 0
-        for i, r in enumerate(new_profs_df.itertuples(index=False, name=None)):
-            rn = append_start + i
-            missing_required = [
-                label for idx, label in required_idx.items()
-                if idx >= len(r) or r[idx] is None or (isinstance(r[idx], float) and pd.isna(r[idx])) or str(r[idx]).strip() == ""
-            ]
-            if missing_required:
-                return False, (
-                    f"Fila {i+1} de la template de profesores: faltan campos obligatorios "
-                    f"({', '.join(missing_required)}). No se guardó nada — corrige y vuelve a subir."
-                )
-            for tpl_idx, dest_col in col_map.items():
-                val = r[tpl_idx] if tpl_idx < len(r) else None
-                if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() == "":
-                    val = "TBD" if tpl_idx not in required_idx else val
-                cell = ws.cell(row=rn, column=dest_col, value=val)
-                cell.font = base_font
-            # R — Age: fórmula real copiada/trasladada (o "TBD" si no había de dónde copiarla)
-            if age_ok:
-                _write_translated_formula(ws, 18, rn, tpl_age_text, age_is_array, f"R{age_template_row}", f"R{rn}")
-            else:
-                ws.cell(row=rn, column=18, value="TBD")
-            age_cell = ws.cell(row=rn, column=18)
-            age_cell.font = base_font
-            age_cell.fill = age_fill
-            n_written += 1
-
-        new_last_row = append_start + n_written - 1
-        ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
-
-        wb.calculation.fullCalcOnLoad = True
-        buf = io.BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-
-        ok, err = _drive_upload_file_bytes(PROFESORES_FILE_ID, buf.getvalue())
-        if not ok:
-            return False, f"Error al subir el archivo actualizado a Drive: {err}"
-
-        _download_drive_file_bytes.clear()
-        _load_profesores_lookup.clear()
-
-        return True, f"✓ Info. Profesores actualizada — {n_written} profesor(es) nuevo(s)."
-    except Exception as e:
-        return False, f"Error al escribir en Info. Profesores: {e}"
-
-
 def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFrame,
                             profesor_lookup: Optional[Dict[str, Tuple]] = None,
                             area_map: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
@@ -6554,14 +6520,16 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
     sin borde; E-F son fórmulas de matriz existentes, copiadas/trasladadas,
     con fondo #c1f4e5, sin borde).
     2) Agrega las filas de cartelera: A,C-G,L directos (sin fondo especial).
-    B,I,J,K,Q,R,S,T,U,V,W son fórmulas que ya existen en la Base — se
-    copian/trasladan igual, con fondo #caedfb. H (Area del curso) se busca
-    por Código Materia contra 'cursos' y se escribe como VALOR LITERAL
-    (no como fórmula, para que siempre se vea el valor sin depender de que
-    algo recalcule) con fondo #f1ceee. M,N,O,P (ID, AREA_PROFESOR, TIPO, P/S)
-    se buscan por nombre del profesor (columna L) contra 'Info. Profesores' y
-    se escriben como valor literal también, con fondo #f1ceee. Sin bordes en
-    ninguna celda nueva.
+    H (Area del curso) y M,N,O,P (ID, AREA_PROFESOR, TIPO, P/S) se buscan y
+    escriben como valor literal, con fondo #f1ceee. B,I,J,K,Q,R,S,T,U,V,W
+    TAMBIÉN se escriben como VALOR LITERAL (no como fórmula copiada) — se
+    calculan en Python usando las mismas tablas de referencia reales que usan
+    esas fórmulas (AD:AE de cartelera, D:E y L:M de cursos, A:C de
+    'programas'), con fondo #caedfb. Se dejó de copiar la fórmula porque
+    openpyxl no la recalcula: al escribir solo el texto de la fórmula, Excel
+    nunca la evalúa hasta que alguien abre el archivo manualmente, y hasta
+    entonces la app (que lee con pandas) veía esas columnas en blanco. Sin
+    bordes en ninguna celda nueva.
     3) Sube BD_cartelera.xlsx actualizado a Drive."""
     if not _OPENPYXL_OK:
         return False, "Falta la librería `openpyxl` en el entorno."
@@ -6578,6 +6546,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             return False, "No encontré las hojas 'cartelera' y/o 'cursos' en BD_cartelera.xlsx."
         ws_cart = wb["cartelera"]
         ws_cursos = wb["cursos"]
+        ws_programas = wb["programas"] if "programas" in wb.sheetnames else None
 
         base_font = Font(name="Arial", size=11, color="000000")
         area_fill = PatternFill(fill_type="solid", fgColor="F1CEEE")
@@ -6622,6 +6591,42 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                 f"{get_column_letter(min_col_c)}{min_row_c}:{get_column_letter(max_col_c)}{new_last_row_c}"
             )
 
+        # ── Tablas de referencia reales, leídas del propio archivo (no inventadas) ──
+        # AD:AE de 'cartelera' → Periodo crudo -> Semestre limpio
+        semestre_map: Dict[str, object] = {}
+        for r in range(2, ws_cart.max_row + 1):
+            k = ws_cart.cell(row=r, column=30).value
+            if k is None:
+                continue
+            semestre_map[str(k).strip()] = ws_cart.cell(row=r, column=31).value
+
+        # I:J de 'cursos' (tabla de referencia real Area del curso -> Field;
+        # NO se usa la columna E porque esa también es una fórmula que puede
+        # no estar resuelta si la fila se escribió por automatización)
+        field_map: Dict[str, object] = {}
+        for r in range(2, ws_cursos.max_row + 1):
+            k = ws_cursos.cell(row=r, column=9).value
+            if k is None:
+                continue
+            field_map.setdefault(str(k).strip(), ws_cursos.cell(row=r, column=10).value)
+
+        # L:M de 'cursos' → primeros 4 caracteres del código de materia -> Cod program
+        codprog_map: Dict[str, object] = {}
+        for r in range(2, ws_cursos.max_row + 1):
+            k = ws_cursos.cell(row=r, column=12).value
+            if k is None:
+                continue
+            codprog_map.setdefault(str(k).strip(), ws_cursos.cell(row=r, column=13).value)
+
+        # A:C de 'programas' → Cod program -> Program
+        program_map: Dict[str, object] = {}
+        if ws_programas is not None:
+            for r in range(2, ws_programas.max_row + 1):
+                k = ws_programas.cell(row=r, column=1).value
+                if k is None:
+                    continue
+                program_map.setdefault(str(k).strip(), ws_programas.cell(row=r, column=3).value)
+
         # 2) Filas de cartelera
         info_cart = _table_info(ws_cart, "tabla_cartelera")
         if not info_cart:
@@ -6639,44 +6644,71 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
 
         info_cart2 = _table_info(ws_cart, "tabla_cartelera")
         _, _, _, _, last_row_ct2 = info_cart2
-        template_row_ct = last_row_ct2  # fila de la que se copian las fórmulas, YA tras el borrado
         append_start_ct = last_row_ct2 + 1
-
-        calc_cols = {}  # columna -> (texto, es_array)  (H se excluye: se escribe como valor, no fórmula)
-        for col in (2, 9, 10, 11, 17, 18, 19, 20, 21, 22, 23):  # B,I,J,K,Q,R,S,T,U,V,W
-            txt, is_arr = _get_formula_text(ws_cart.cell(row=template_row_ct, column=col))
-            calc_cols[col] = (txt, is_arr)
 
         lookup = profesor_lookup or {}
         for i, r in enumerate(cartelera_df.itertuples(index=False, name=None)):
             rn = append_start_ct + i
             periodo, campus, materia, secc, creditos, nombre, profesor = (r + ("",) * 7)[:7]
+            materia_key = str(materia).strip()
             direct = {1: periodo, 3: campus, 4: materia, 5: secc, 6: creditos, 7: nombre, 12: profesor}
             for col, val in direct.items():
                 cell = ws_cart.cell(row=rn, column=col, value=val)
                 cell.font = base_font
 
+            # B — Semestre (limpio, vía tabla AD:AE)
+            b_cell = ws_cart.cell(row=rn, column=2, value=semestre_map.get(str(periodo).strip(), ""))
+            b_cell.font = base_font
+            b_cell.fill = calc_fill
+
             # H — Area del curso: valor literal buscado por Código Materia contra 'cursos'
-            h_val = full_area_map.get(str(materia).strip(), "")
+            h_val = full_area_map.get(materia_key, "")
             h_cell = ws_cart.cell(row=rn, column=8, value=h_val)
             h_cell.font = base_font
             h_cell.fill = area_fill
 
+            # I — Field (vía Area del curso -> cursos!D:E)
+            i_cell = ws_cart.cell(row=rn, column=9, value=field_map.get(str(h_val).strip(), ""))
+            i_cell.font = base_font
+            i_cell.fill = calc_fill
+
+            # J — Cod program (vía primeros 4 caracteres de Materia -> cursos!L:M)
+            cod_prog = codprog_map.get(materia_key[:4], "")
+            j_cell = ws_cart.cell(row=rn, column=10, value=cod_prog)
+            j_cell.font = base_font
+            j_cell.fill = calc_fill
+
+            # K — Program (vía Cod program -> programas!A:C)
+            k_cell = ws_cart.cell(row=rn, column=11, value=program_map.get(str(cod_prog).strip(), ""))
+            k_cell.font = base_font
+            k_cell.fill = calc_fill
+
             # M,N,O,P — ID, AREA_PROFESOR, TIPO, P/S (valor literal, buscado por nombre)
             prof_key = str(profesor).strip().upper()
             match_prof = lookup.get(prof_key)
+            tipo_val, ps_val = "", ""
             if match_prof:
                 for col, val in zip((13, 14, 15, 16), match_prof):
                     cell = ws_cart.cell(row=rn, column=col, value=val)
                     cell.font = base_font
                     cell.fill = area_fill
+                tipo_val, ps_val = str(match_prof[2]).strip().upper(), str(match_prof[3]).strip().upper()
 
-            for col, (txt, is_arr) in calc_cols.items():
-                if not txt:
-                    continue
-                col_letter = get_column_letter(col)
-                _write_translated_formula(ws_cart, col, rn, txt, is_arr, f"{col_letter}{template_row_ct}", f"{col_letter}{rn}")
-                cell = ws_cart.cell(row=rn, column=col)
+            # Q,R,S,T,U,V,W — desglose de créditos por P/S y TIPO (misma lógica que la fórmula real:
+            # Créditos si coincide con la etiqueta de la columna, si no 0)
+            creditos_num = pd.to_numeric(pd.Series([creditos]), errors="coerce").iloc[0]
+            creditos_num = 0 if pd.isna(creditos_num) else creditos_num
+            breakdown = {
+                17: creditos_num if ps_val == "P" else 0,        # Q
+                18: creditos_num if ps_val == "S" else 0,        # R
+                19: creditos_num if tipo_val == "OTHER" else 0,  # S
+                20: creditos_num if tipo_val == "SA" else 0,     # T
+                21: creditos_num if tipo_val == "PA" else 0,     # U
+                22: creditos_num if tipo_val == "IP" else 0,     # V
+                23: creditos_num if tipo_val == "SP" else 0,     # W
+            }
+            for col, val in breakdown.items():
+                cell = ws_cart.cell(row=rn, column=col, value=val)
                 cell.font = base_font
                 cell.fill = calc_fill
 
