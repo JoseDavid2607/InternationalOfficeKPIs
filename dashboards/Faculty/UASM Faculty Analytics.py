@@ -108,11 +108,11 @@ st.markdown(
     "border:none !important;background:transparent !important;box-shadow:none !important;"
     "margin:0 0 6px 0 !important;}"
     ".st-key-nav_toggle div[data-testid='stExpander'] summary{"
-    "padding:2px 0 !important;font-size:15px !important;color:#9CA3AF !important;"
-    "list-style:none;width:22px;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary::-webkit-details-marker{display:none;}"
-    ".st-key-nav_toggle div[data-testid='stExpander'] summary svg{display:none;}"
+    "padding:4px 2px !important;font-size:13px !important;color:#6B7280 !important;"
+    "font-weight:600;}"
+    ".st-key-nav_toggle div[data-testid='stExpander'] summary svg{color:#9CA3AF !important;}"
     ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover{color:#00A896 !important;}"
+    ".st-key-nav_toggle div[data-testid='stExpander'] summary:hover svg{color:#00A896 !important;}"
     ".st-key-nav_toggle div[data-testid='stExpanderDetails']{padding:2px 0 2px 4px !important;}"
     "</style>",
     unsafe_allow_html=True,
@@ -714,12 +714,39 @@ def page_composition():
         detail_df = active.copy()
         title_txt = f"### **{len(detail_df)}** Full-time Faculty in period **{sel_period_label}**"
 
-    st.markdown(title_txt)
+    col_title, col_gender = st.columns([3, 2])
+    with col_title:
+        st.markdown(title_txt)
+    with col_gender:
+        gender_col = "Gender" if "Gender" in detail_df.columns else None
+        if gender_col and len(detail_df):
+            gen = detail_df[gender_col].value_counts()
+            total_g = len(detail_df)
+            pct_m = round(gen.get("Male", 0) / total_g * 100, 1) if total_g else 0
+            pct_f = round(gen.get("Female", 0) / total_g * 100, 1) if total_g else 0
+            st.markdown(
+                f"<div style='text-align:right;font-size:14px;padding-top:6px;'>"
+                f"👨 {pct_m}% &nbsp;&nbsp; 👩 {pct_f}%</div>",
+                unsafe_allow_html=True,
+            )
+            df_gen = pd.DataFrame({
+                "Gender": ["Male", "Female"], "P": [pct_m, pct_f], "Bar": [" ", " "],
+            })
+            fig_gen = px.bar(
+                df_gen, x="P", y="Bar", color="Gender", text="Gender",
+                color_discrete_map={"Male": "#003366", "Female": "#56d6c9"}, orientation="h",
+            )
+            fig_gen.update_traces(texttemplate='%{text} %{x}%', textposition="inside",
+                                   textfont_size=14, width=0.7)
+            fig_gen.update_layout(showlegend=False, xaxis_visible=False, yaxis_visible=False,
+                                   height=55, margin=dict(l=0, r=0, t=0, b=0))
+            st.plotly_chart(fig_gen, use_container_width=True)
+
     detail_cols = ["Periodo", "ID", "ID Nr.", "Full Name", "Academic Area",
                    "Faculty Ranking", "Subcategorization", "Faculty Qualific.", "P/S",
                    "Highest Earned Degree", "Year", "University", "Normal professional Resp."]
     show_cols = [c for c in detail_cols if c in detail_df.columns]
-    st.dataframe(detail_df[show_cols], use_container_width=True)
+    st.dataframe(detail_df[show_cols], use_container_width=True, hide_index=True)
     _download_link("Descargar detalle (Excel)", detail_df[show_cols],
                    f"FT_Composition_Detail_{sel_period_label}.xlsx")
 
@@ -911,40 +938,11 @@ def page_staffing():
 
         st.plotly_chart(fig_line, use_container_width=True)
 
-    # Faculty details (semestre seleccionado)
-    st.markdown("### View Faculty details")
-
+    # Faculty details (semestre seleccionado) — el bloque de "View Faculty
+    # details" con número grande y gráfica de género se quitó de aquí: el
+    # género ahora se muestra en Composition. 'active' se mantiene porque
+    # alimenta la tabla completa de abajo.
     active = df[df["Periodo"].astype(str).eq(sel_period_internal)].copy()
-
-    st.markdown(
-        f"<div style='text-align:center;font-size:34px;font-weight:bold'>Active Full-time Faculty {sel_period_label}</div>",
-        unsafe_allow_html=True
-    )
-    total_act = active["ID"].nunique()
-
-    c0, c1 = st.columns([1, 2])
-    c0.markdown(f"<div style='text-align:right;font-size:56px;font-weight:bold'>{total_act}</div>",
-               unsafe_allow_html=True)
-
-    gen = active["Gender"].value_counts()
-    df_gen = pd.DataFrame({
-        "Gender": ["Male", "Female"],
-        "P": [
-            round(gen.get("Male", 0) / total_act * 100, 1) if total_act else 0,
-            round(gen.get("Female", 0) / total_act * 100, 1) if total_act else 0
-        ],
-        "Bar": [" ", " "]
-    })
-    figG = px.bar(
-        df_gen, x="P", y="Bar", color="Gender", text="Gender",
-        color_discrete_map={"Male": "#003366", "Female": "#56d6c9"},
-        orientation="h"
-    )
-    figG.update_traces(texttemplate='%{text} %{x}%', textposition="inside", textfont_size=20, width=0.7)
-    figG.update_layout(showlegend=False, xaxis_visible=False, yaxis_visible=False,
-                       height=100, margin=dict(l=10, r=10, t=10, b=10),
-                       yaxis=dict(domain=[0.2, 1]))
-    c1.plotly_chart(figG, use_container_width=True)
 
     # Full table
     st.markdown("### Complete Full-time table")
@@ -1359,8 +1357,13 @@ def page_area():
 
             fig_donut = px.pie(
                 donut_df, names="Area", values="Value", hole=0.45, color="Area",
-                color_discrete_map=color_map_area, category_orders={"Area": areas_palette_order},
+                color_discrete_map=color_map_area,
             )
+            fig_donut.update_traces(
+                textinfo="label+percent", textposition="outside",
+                pull=[0.04] * len(donut_df), sort=False,
+            )
+            fig_donut.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10))
             st.plotly_chart(fig_donut, use_container_width=True)
 
             fname_donut = f"Donut_{'FT' if st.session_state.modo_faculty == 'Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ', '_')}.xlsx"
@@ -7114,7 +7117,7 @@ with st.sidebar:
 
     if pg is not pages[-1]:  # pages[-1] = Update Data — comparación por identidad, más confiable que el título
         with st.container(key="nav_toggle"):
-            with st.expander("⌄", expanded=False):
+            with st.expander("Other sections", expanded=False):
                 for page_obj in pages:
                     st.page_link(page_obj)
 
