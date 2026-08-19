@@ -119,25 +119,33 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Auto-desplaza las tablas anchas (muchas columnas de periodo) hacia la
-# derecha, para que el último periodo quede visible sin tener que hacer
-# scroll manual. components.html corre en un iframe (mismo origen), por eso
-# opera sobre window.parent.document para llegar al DOM real de la app.
-components.html(
-    """<script>
-    function scrollTablesRight() {
-        const doc = window.parent.document;
-        doc.querySelectorAll('[data-testid="stDataFrame"]').forEach(box => {
-            const scroller = box.querySelector('.dvn-scroller, [class*="scroll"]') || box;
-            scroller.scrollLeft = scroller.scrollWidth;
-        });
-    }
-    const _obs = new MutationObserver(() => scrollTablesRight());
-    _obs.observe(window.parent.document.body, {childList: true, subtree: true});
-    setInterval(scrollTablesRight, 700);
-    </script>""",
-    height=0,
-)
+
+def _scroll_table_right_once(container_key: str):
+    """Desplaza UNA sola vez, justo al cargar, la tabla dentro del
+    st.container(key=container_key) hacia su borde derecho — para que el
+    último periodo quede visible sin scroll manual. Solo debe usarse en
+    tablas de continuidad temporal (columnas = periodos); reintenta unos
+    segundos por si la tabla tarda en pintarse, y luego se detiene solo, para
+    no pelear con el scroll manual del usuario."""
+    components.html(
+        f"""<script>
+        (function() {{
+            const doc = window.parent.document;
+            let tries = 0;
+            const t = setInterval(() => {{
+                tries++;
+                const box = doc.querySelector('.st-key-{container_key} [data-testid="stDataFrame"]');
+                if (box) {{
+                    const scroller = box.querySelector('.dvn-scroller, [class*="scroll"]') || box;
+                    scroller.scrollLeft = scroller.scrollWidth;
+                    if (scroller.scrollWidth > scroller.clientWidth) clearInterval(t);
+                }}
+                if (tries > 10) clearInterval(t);
+            }}, 200);
+        }})();
+        </script>""",
+        height=0,
+    )
 
 # 2) HELPERS COMPARTIDOS
 def _xlsx_bytes(df, sheet_name="Data"):
@@ -640,9 +648,11 @@ def page_composition():
             s.loc["Total", df_.columns[-1]] = "background-color:#dff7f2;color:#00A896;font-weight:700;"
         return s
 
-    st.dataframe(
-        pivot.style.apply(_bold_total, axis=None).apply(_highlight_last, axis=None).format(precision=0),
-        use_container_width=True)
+    with st.container(key="tct_comp_ranking"):
+        st.dataframe(
+            pivot.style.apply(_bold_total, axis=None).apply(_highlight_last, axis=None).format(precision=0),
+            use_container_width=True)
+    _scroll_table_right_once("tct_comp_ranking")
     _download_link("Descargar tabla (Excel)",
                    pivot.reset_index().rename(columns={"index": "Faculty Ranking"}),
                    f"FT_Composition_{tmode}.xlsx")
@@ -1266,7 +1276,9 @@ def page_area():
     )
 
     st.subheader(f"{st.session_state.modo_faculty} Faculty count")
-    st.dataframe(styled_area, use_container_width=True)
+    with st.container(key="tct_area_count"):
+        st.dataframe(styled_area, use_container_width=True)
+    _scroll_table_right_once("tct_area_count")
 
     pivot_download = pivot_area[col_order].reset_index()
     fname_pvt = f"Pivot_{'FT' if st.session_state.modo_faculty == 'Full-time' else 'PT'}_{tmode_now}.xlsx"
