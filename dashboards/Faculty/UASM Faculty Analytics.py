@@ -6384,9 +6384,20 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
 
 
 def _read_cartelera_template(uploaded_file) -> pd.DataFrame:
-    """Template_BD_Cartelera: columnas B..H → Periodo, Campus, Materia, Secc,
-    Créditos, Nombre largo curso, Profesor."""
-    return _read_generic_template(uploaded_file)
+    """Template_cartelera: columnas B..H → Period, Campus, Course, Sec,
+    Credits, Full Course Name, Professor (la template ahora trae los
+    encabezados en inglés; se renombran aquí a los nombres en español que
+    usa el resto del flujo de carga, sin tener que tocar cada referencia)."""
+    df_ = _read_generic_template(uploaded_file)
+    rename_map = {
+        "Period": "Periodo",
+        "Course": "Materia",
+        "Sec": "Secc",
+        "Credits": "Créditos",
+        "Full Course Name": "Nombre largo curso",
+        "Professor": "Profesor",
+    }
+    return df_.rename(columns={k: v for k, v in rename_map.items() if k in df_.columns})
 
 
 def _read_cursos_nuevos_template(uploaded_file) -> pd.DataFrame:
@@ -6928,18 +6939,10 @@ def page_update_data():
                 if notes_col and notes_col != "Notes":
                     tpl_df = tpl_df.rename(columns={notes_col: "Notes"})
 
-                st.markdown(
-                    "**Vista previa** — filas con `IN IN…` en azul y negrilla, "
-                    "`OUT IN…` en rojo (igual que quedarán en la Base):"
-                )
+                st.markdown("**Vista previa**")
                 st.dataframe(_style_planta_preview(tpl_df), use_container_width=True)
 
-                st.markdown(
-                    "Las columnas **F (Full Name)** y **V (Age)** de la Base "
-                    "quedan como fórmula — no se sobreescriben con la template."
-                )
-
-                if st.button("💾 Guardar en BD_planta", type="primary"):
+                if st.button("Guardar en BD_planta", type="primary", icon=":material/save:"):
                     with st.spinner("Escribiendo en Drive…"):
                         ok, msg = push_planta_updates(tpl_df)
                     if ok:
@@ -7170,7 +7173,7 @@ def page_update_data():
                 if not ready:
                     st.info("Completa las áreas y/o los profesores pendientes antes de guardar.")
 
-                if st.button("💾 Guardar en BD_Cartelera", type="primary", disabled=not ready):
+                if st.button("Guardar en BD_Cartelera", type="primary", disabled=not ready, icon=":material/save:"):
                     save_df = cart_df.drop(columns=["Area del curso"])
                     with st.spinner("Escribiendo en Drive…"):
                         combined_lookup = dict(prof_lookup)
