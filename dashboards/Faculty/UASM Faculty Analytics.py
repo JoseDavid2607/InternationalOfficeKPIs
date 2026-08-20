@@ -109,14 +109,14 @@ st.markdown(
     "position:fixed !important;top:0;"
     "left:calc(21rem + (100vw - 21rem) / 2);transform:translateX(-50%);"
     "z-index:999999;width:auto !important;margin:0 !important;"
-    "max-width:calc(100vw - 21rem - 2rem);}"
-    ".nav-row{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:center;"
-    "align-items:center;gap:2px;}"
+    "max-width:calc(100vw - 21rem - 2rem);overflow-x:auto;overflow-y:hidden;}"
+    ".nav-row{display:flex;flex-direction:row;flex-wrap:nowrap;justify-content:center;"
+    "align-items:center;gap:0;width:max-content;}"
     ".nav-row a{"
-    "display:inline-flex;align-items:center;white-space:nowrap;"
+    "display:inline-flex;align-items:center;white-space:nowrap;flex-shrink:0;"
     "background:rgba(0,77,71,0.04);border:none;border-radius:0;"
     "font-size:12px;color:#9CA3AF;font-weight:600;"
-    "text-decoration:none;padding:6px 12px;"
+    "text-decoration:none;padding:6px 10px;"
     "opacity:0.55;transition:opacity .15s ease,background .15s ease;}"
     ".nav-row a:hover{opacity:1;color:#00A896;background:rgba(0,168,150,0.08);}"
     ".st-key-update_sidebar_group{text-align:center;}"
@@ -7035,7 +7035,8 @@ def page_update_data():
                     icon=":material/download:",
                 )
 
-        last_period = sorted(df["Periodo"].dropna().unique().tolist(), key=_period_sort_key)[-1] if not df.empty else "—"
+        _planta_regular = [p for p in df["Periodo"].dropna().unique().tolist() if "Intersemestral" not in str(p)]
+        last_period = sorted(_planta_regular, key=_period_sort_key)[-1] if _planta_regular else "—"
         st.caption(f"Último periodo registrado en la Base: **{last_period}**")
 
         st.download_button(
@@ -7090,7 +7091,7 @@ def page_update_data():
 
         _cart_periods_raw = [
             p for p in qual_load_cartelera()["Semestre"].dropna().unique().tolist()
-            if re.fullmatch(r"(?:19|20)\d{2}(-?(10|20)|\s*Intersemestral)", str(p).strip())
+            if re.fullmatch(r"(?:19|20)\d{2}(10|20)", str(p).strip())
         ]
 
         def _with_dash(p: str) -> str:
@@ -7158,30 +7159,32 @@ def page_update_data():
 
                     if fill_mode == "Seleccionar aquí mismo":
                         picked_areas = {}
-                        for _, row in missing_courses.iterrows():
-                            with st.expander(f"📘 {row['Materia']}", expanded=True):
-                                c1, c2, c3 = st.columns([1, 3, 0.6])
-                                c1.markdown(f"**Créditos:** {row['Créditos']}")
-                                c2.markdown(row["Nombre largo curso"])
-                                with c3.popover("＋"):
-                                    profs = sorted(cart_df.loc[cart_df["Materia"] == row["Materia"], "Profesor"].dropna().unique().tolist())
-                                    st.caption("Profesor(es) y área:")
-                                    for p in profs:
-                                        info = prof_lookup.get(str(p).strip().upper())
-                                        area_txt = info[1] if info else "—"
-                                        st.markdown(f"{p} · *{area_txt}*")
+                        grid_cols = st.columns(2)
+                        for i, (_, row) in enumerate(missing_courses.iterrows()):
+                            with grid_cols[i % 2]:
+                                with st.expander(f"📘 {row['Materia']}", expanded=False):
+                                    c1, c2, c3 = st.columns([1, 3, 0.6])
+                                    c1.markdown(f"**Créditos:** {row['Créditos']}")
+                                    c2.markdown(row["Nombre largo curso"])
+                                    with c3.popover("＋"):
+                                        profs = sorted(cart_df.loc[cart_df["Materia"] == row["Materia"], "Profesor"].dropna().unique().tolist())
+                                        st.caption("Profesor(es) y área:")
+                                        for p in profs:
+                                            info = prof_lookup.get(str(p).strip().upper())
+                                            area_txt = info[1] if info else "—"
+                                            st.markdown(f"{p} · *{area_txt}*")
 
-                                area_key = f"area_pick_{row['Materia']}"
-                                is_empty = st.session_state.get(area_key, "— Selecciona —") == "— Selecciona —"
-                                color = "#DC2626" if is_empty else "#374151"
-                                st.markdown(
-                                    f"<div style='font-size:12px;color:{color};font-weight:600;'>Area *</div>",
-                                    unsafe_allow_html=True,
-                                )
-                                picked_areas[row["Materia"]] = st.selectbox(
-                                    "Area", options=["— Selecciona —"] + AREA_OPTIONS,
-                                    key=area_key, label_visibility="collapsed",
-                                )
+                                    area_key = f"area_pick_{row['Materia']}"
+                                    is_empty = st.session_state.get(area_key, "— Selecciona —") == "— Selecciona —"
+                                    color = "#DC2626" if is_empty else "#374151"
+                                    st.markdown(
+                                        f"<div style='font-size:12px;color:{color};font-weight:600;'>Area *</div>",
+                                        unsafe_allow_html=True,
+                                    )
+                                    picked_areas[row["Materia"]] = st.selectbox(
+                                        "Area", options=["— Selecciona —"] + AREA_OPTIONS,
+                                        key=area_key, label_visibility="collapsed",
+                                    )
 
                         if all(v != "— Selecciona —" for v in picked_areas.values()):
                             new_courses_df = missing_courses.assign(
@@ -7236,7 +7239,7 @@ def page_update_data():
                         picked_profs = {}
                         all_required_filled = True
                         for name in missing_profs:
-                            with st.expander(f"👤 {name}", expanded=True):
+                            with st.expander(f"👤 {name}", expanded=False):
                                 r1c1, r1c2, r1c3 = st.columns(3)
                                 with r1c1:
                                     _req_label("ID / Cédula", f"prof_id_{name}", _empty_txt)
