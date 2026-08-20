@@ -106,20 +106,21 @@ st.markdown(
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     ".st-key-nav_toggle{"
-    "position:fixed !important;top:0;"
-    "left:calc(21rem + (100vw - 21rem) / 2);transform:translateX(-50%);"
-    "z-index:999999;width:auto !important;margin:0 !important;"
-    "max-width:calc(100vw - 21rem - 2rem);overflow-x:auto;overflow-y:hidden;}"
+    "position:fixed !important;top:0;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:auto !important;margin:0 !important;}"
     ".nav-row{display:flex;flex-direction:row;flex-wrap:nowrap;justify-content:center;"
-    "align-items:center;gap:0;width:max-content;}"
+    "align-items:center;gap:0;}"
     ".nav-row a{"
     "display:inline-flex;align-items:center;white-space:nowrap;flex-shrink:0;"
-    "background:rgba(0,77,71,0.04);border:none;border-radius:0;"
-    "font-size:12px;color:#9CA3AF;font-weight:600;"
+    "background:rgba(0,77,71,0.05);border:none;border-radius:0;"
+    "font-size:12px;color:#6B7280;font-weight:400;"
     "text-decoration:none;padding:6px 10px;"
-    "opacity:0.55;transition:opacity .15s ease,background .15s ease;}"
+    "opacity:0.85;transition:opacity .15s ease,background .15s ease;}"
     ".nav-row a:hover{opacity:1;color:#00A896;background:rgba(0,168,150,0.08);}"
     ".st-key-update_sidebar_group{text-align:center;}"
+    "div[class*='st-key-course_box_bad_'] div[data-testid='stExpander'],"
+    "div[class*='st-key-prof_box_bad_'] div[data-testid='stExpander']{"
+    "border:1.5px solid #DC2626 !important;border-radius:8px !important;}"
     ".st-key-update_sidebar_group img{margin:0 auto;}"
     ".st-key-go_to_dashboard_btn a{"
     "display:flex !important;align-items:center;justify-content:center;gap:10px;text-align:center;"
@@ -7161,30 +7162,32 @@ def page_update_data():
                         picked_areas = {}
                         grid_cols = st.columns(2)
                         for i, (_, row) in enumerate(missing_courses.iterrows()):
+                            area_key = f"area_pick_{row['Materia']}"
+                            is_empty = st.session_state.get(area_key, "— Selecciona —") == "— Selecciona —"
+                            box_key = f"course_box_bad_{i}" if is_empty else f"course_box_ok_{i}"
                             with grid_cols[i % 2]:
-                                with st.expander(f"📘 {row['Materia']}", expanded=False):
-                                    c1, c2, c3 = st.columns([1, 3, 0.6])
-                                    c1.markdown(f"**Créditos:** {row['Créditos']}")
-                                    c2.markdown(row["Nombre largo curso"])
-                                    with c3.popover("＋"):
-                                        profs = sorted(cart_df.loc[cart_df["Materia"] == row["Materia"], "Profesor"].dropna().unique().tolist())
-                                        st.caption("Profesor(es) y área:")
-                                        for p in profs:
-                                            info = prof_lookup.get(str(p).strip().upper())
-                                            area_txt = info[1] if info else "—"
-                                            st.markdown(f"{p} · *{area_txt}*")
+                                with st.container(key=box_key):
+                                    with st.expander(f"{row['Materia']}", expanded=False, icon=":material/menu_book:"):
+                                        c1, c2, c3 = st.columns([1, 3, 0.6])
+                                        c1.markdown(f"**Créditos:** {row['Créditos']}")
+                                        c2.markdown(row["Nombre largo curso"])
+                                        with c3.popover("", icon=":material/person:"):
+                                            profs = sorted(cart_df.loc[cart_df["Materia"] == row["Materia"], "Profesor"].dropna().unique().tolist())
+                                            st.caption("Profesor(es) y área:")
+                                            for p in profs:
+                                                info = prof_lookup.get(str(p).strip().upper())
+                                                area_txt = info[1] if info else "—"
+                                                st.markdown(f"{p} · *{area_txt}*")
 
-                                    area_key = f"area_pick_{row['Materia']}"
-                                    is_empty = st.session_state.get(area_key, "— Selecciona —") == "— Selecciona —"
-                                    color = "#DC2626" if is_empty else "#374151"
-                                    st.markdown(
-                                        f"<div style='font-size:12px;color:{color};font-weight:600;'>Area *</div>",
-                                        unsafe_allow_html=True,
-                                    )
-                                    picked_areas[row["Materia"]] = st.selectbox(
-                                        "Area", options=["— Selecciona —"] + AREA_OPTIONS,
-                                        key=area_key, label_visibility="collapsed",
-                                    )
+                                        color = "#DC2626" if is_empty else "#374151"
+                                        st.markdown(
+                                            f"<div style='font-size:12px;color:{color};font-weight:600;'>Area *</div>",
+                                            unsafe_allow_html=True,
+                                        )
+                                        picked_areas[row["Materia"]] = st.selectbox(
+                                            "Area", options=["— Selecciona —"] + AREA_OPTIONS,
+                                            key=area_key, label_visibility="collapsed",
+                                        )
 
                         if all(v != "— Selecciona —" for v in picked_areas.values()):
                             new_courses_df = missing_courses.assign(
@@ -7238,55 +7241,65 @@ def page_update_data():
 
                         picked_profs = {}
                         all_required_filled = True
-                        for name in missing_profs:
-                            with st.expander(f"👤 {name}", expanded=False):
-                                r1c1, r1c2, r1c3 = st.columns(3)
-                                with r1c1:
-                                    _req_label("ID / Cédula", f"prof_id_{name}", _empty_txt)
-                                    p_id = st.text_input("ID / Cédula", key=f"prof_id_{name}", label_visibility="collapsed")
-                                with r1c2:
-                                    _req_label("AREA_PROFESOR", f"prof_area_{name}", _empty_sel)
-                                    p_area = st.selectbox("AREA_PROFESOR", ["— Selecciona —"] + AREA_OPTIONS, key=f"prof_area_{name}", label_visibility="collapsed")
-                                with r1c3:
-                                    _req_label("GÉNERO", f"prof_genero_{name}", _empty_sel)
-                                    p_genero = st.selectbox("GÉNERO", ["— Selecciona —"] + GENERO_OPTIONS, key=f"prof_genero_{name}", label_visibility="collapsed")
+                        for p_idx, name in enumerate(missing_profs):
+                            row_currently_ok = (
+                                not _empty_txt(st.session_state.get(f"prof_id_{name}", ""))
+                                and not _empty_sel(st.session_state.get(f"prof_area_{name}", ""))
+                                and not _empty_sel(st.session_state.get(f"prof_genero_{name}", ""))
+                                and not _empty_sel(st.session_state.get(f"prof_tipo_{name}", ""))
+                                and not _empty_sel(st.session_state.get(f"prof_ps_{name}", ""))
+                                and not _empty_sel(st.session_state.get(f"prof_planta_{name}", ""))
+                            )
+                            prof_box_key = f"prof_box_ok_{p_idx}" if row_currently_ok else f"prof_box_bad_{p_idx}"
+                            with st.container(key=prof_box_key):
+                                with st.expander(f"{name}", expanded=False, icon=":material/person:"):
+                                    r1c1, r1c2, r1c3 = st.columns(3)
+                                    with r1c1:
+                                        _req_label("ID / Cédula", f"prof_id_{name}", _empty_txt)
+                                        p_id = st.text_input("ID / Cédula", key=f"prof_id_{name}", label_visibility="collapsed")
+                                    with r1c2:
+                                        _req_label("AREA_PROFESOR", f"prof_area_{name}", _empty_sel)
+                                        p_area = st.selectbox("AREA_PROFESOR", ["— Selecciona —"] + AREA_OPTIONS, key=f"prof_area_{name}", label_visibility="collapsed")
+                                    with r1c3:
+                                        _req_label("GÉNERO", f"prof_genero_{name}", _empty_sel)
+                                        p_genero = st.selectbox("GÉNERO", ["— Selecciona —"] + GENERO_OPTIONS, key=f"prof_genero_{name}", label_visibility="collapsed")
 
-                                r2c1, r2c2, r2c3 = st.columns(3)
-                                with r2c1:
-                                    _req_label("TIPO", f"prof_tipo_{name}", _empty_sel)
-                                    p_tipo = st.selectbox("TIPO", ["— Selecciona —"] + TIPO_OPTIONS, key=f"prof_tipo_{name}", label_visibility="collapsed")
-                                with r2c2:
-                                    _req_label("P/S", f"prof_ps_{name}", _empty_sel)
-                                    p_ps = st.selectbox("P/S", ["— Selecciona —"] + PS_OPTIONS, key=f"prof_ps_{name}", label_visibility="collapsed")
-                                with r2c3:
-                                    _req_label("PLANTA_CATEDRA", f"prof_planta_{name}", _empty_sel)
-                                    p_planta = st.selectbox("PLANTA_CATEDRA", ["— Selecciona —"] + PLANTA_CATEDRA_OPTIONS, key=f"prof_planta_{name}", label_visibility="collapsed")
+                                    r2c1, r2c2, r2c3 = st.columns(3)
+                                    with r2c1:
+                                        _req_label("TIPO", f"prof_tipo_{name}", _empty_sel)
+                                        p_tipo = st.selectbox("TIPO", ["— Selecciona —"] + TIPO_OPTIONS, key=f"prof_tipo_{name}", label_visibility="collapsed")
+                                    with r2c2:
+                                        _req_label("P/S", f"prof_ps_{name}", _empty_sel)
+                                        p_ps = st.selectbox("P/S", ["— Selecciona —"] + PS_OPTIONS, key=f"prof_ps_{name}", label_visibility="collapsed")
+                                    with r2c3:
+                                        _req_label("PLANTA_CATEDRA", f"prof_planta_{name}", _empty_sel)
+                                        p_planta = st.selectbox("PLANTA_CATEDRA", ["— Selecciona —"] + PLANTA_CATEDRA_OPTIONS, key=f"prof_planta_{name}", label_visibility="collapsed")
 
-                                r3c1, r3c2, r3c3 = st.columns(3)
-                                p_fecha_ingreso = r3c1.text_input("Date of First Appointment (DD/MM/YYYY)", key=f"prof_fecha_ing_{name}")
-                                p_degree = r3c2.text_input("Highest Earned Degree", key=f"prof_degree_{name}")
-                                p_year = r3c3.text_input("Highest Degree, Year Earned", key=f"prof_year_{name}")
+                                    r3c1, r3c2, r3c3 = st.columns(3)
+                                    p_fecha_ingreso = r3c1.text_input("Date of First Appointment (DD/MM/YYYY)", key=f"prof_fecha_ing_{name}")
+                                    p_degree = r3c2.text_input("Highest Earned Degree", key=f"prof_degree_{name}")
+                                    p_year = r3c3.text_input("Highest Degree, Year Earned", key=f"prof_year_{name}")
 
-                                r4c1, r4c2, r4c3 = st.columns(3)
-                                p_hd = r4c1.selectbox("Highest Degree", ["— (deja TBD) —"] + HIGHEST_DEGREE_OPTIONS, key=f"prof_hd_{name}")
-                                p_univ = r4c2.text_input("University", key=f"prof_univ_{name}")
-                                p_region = r4c3.selectbox("Region Where it was obtained", ["— (deja TBD) —"] + REGION_OPTIONS, key=f"prof_region_{name}")
+                                    r4c1, r4c2, r4c3 = st.columns(3)
+                                    p_hd = r4c1.selectbox("Highest Degree", ["— (deja TBD) —"] + HIGHEST_DEGREE_OPTIONS, key=f"prof_hd_{name}")
+                                    p_univ = r4c2.text_input("University", key=f"prof_univ_{name}")
+                                    p_region = r4c3.selectbox("Region Where it was obtained", ["— (deja TBD) —"] + REGION_OPTIONS, key=f"prof_region_{name}")
 
-                                r5c1, r5c2, r5c3 = st.columns(3)
-                                p_intl = r5c1.selectbox("International Degree?", ["— (deja TBD) —"] + INTL_DEGREE_OPTIONS, key=f"prof_intl_{name}")
-                                p_resp = r5c2.text_input("Normal Professional Responsibilities", key=f"prof_resp_{name}")
-                                p_basis = r5c3.text_input("Basis for qualification", key=f"prof_basis_{name}")
+                                    r5c1, r5c2, r5c3 = st.columns(3)
+                                    p_intl = r5c1.selectbox("International Degree?", ["— (deja TBD) —"] + INTL_DEGREE_OPTIONS, key=f"prof_intl_{name}")
+                                    p_resp = r5c2.text_input("Normal Professional Responsibilities", key=f"prof_resp_{name}")
+                                    p_basis = r5c3.text_input("Basis for qualification", key=f"prof_basis_{name}")
 
-                                r6c1, r6c2, r6c3 = st.columns(3)
-                                p_nat = r6c1.text_input("Nationality", key=f"prof_nat_{name}")
-                                p_dob = r6c2.text_input("Date of birth (DD/MM/YYYY)", key=f"prof_dob_{name}")
-                                p_exp = r6c3.text_input("Years Industry experience", key=f"prof_exp_{name}")
+                                    r6c1, r6c2, r6c3 = st.columns(3)
+                                    p_nat = r6c1.text_input("Nationality", key=f"prof_nat_{name}")
+                                    p_dob = r6c2.text_input("Date of birth (DD/MM/YYYY)", key=f"prof_dob_{name}")
+                                    p_exp = r6c3.text_input("Years Industry experience", key=f"prof_exp_{name}")
 
-                                with st.popover("＋ Cursos que dicta (según esta carga)", use_container_width=True):
-                                    courses_taught = cart_df.loc[
-                                        cart_df["Profesor"] == name, ["Materia", "Créditos", "Nombre largo curso"]
-                                    ].drop_duplicates().reset_index(drop=True)
-                                    st.dataframe(courses_taught, use_container_width=True, hide_index=True)
+                                    with st.popover("Cursos que dicta (según esta carga)", use_container_width=True, icon=":material/menu_book:"):
+                                        courses_taught = cart_df.loc[
+                                            cart_df["Profesor"] == name, ["Materia", "Créditos", "Nombre largo curso"]
+                                        ].drop_duplicates().reset_index(drop=True)
+                                        st.dataframe(courses_taught, use_container_width=True, hide_index=True)
 
                             row_required_ok = (
                                 p_id.strip() != "" and p_area != "— Selecciona —" and p_genero != "— Selecciona —"
