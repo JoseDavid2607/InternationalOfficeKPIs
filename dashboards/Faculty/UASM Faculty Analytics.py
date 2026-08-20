@@ -6,9 +6,7 @@
 #  Página 4: Faculty Demographics
 #  Página 5: Full-time Faculty Activities
 #  Página 6: Faculty Qualifications
-#  Página 7: Update Data — sube las templates y escribe directo en los
-#            archivos .xlsx de Drive (BD_profesores.xlsx, BD_cartelera.xlsx)
-#            vía Service Account + Drive API.
+#  Página 7: Update Data
 # ===========================================================================
 from __future__ import annotations
 
