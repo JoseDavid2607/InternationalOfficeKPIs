@@ -6,9 +6,9 @@
 #  Página 4: Faculty Demographics
 #  Página 5: Full-time Faculty Activities
 #  Página 6: Faculty Qualifications
-#  Página 7: Update Data (BD_PLANTA — sube la Template y la escribe en el
-#            Google Sheet maestro, replicando la lógica que antes vivía
-#            en el modal "Update data" del HTML de KPIs)
+#  Página 7: Update Data — sube las templates y escribe directo en los
+#            archivos .xlsx de Drive (BD_profesores.xlsx, BD_cartelera.xlsx)
+#            vía Service Account + Drive API.
 # ===========================================================================
 from __future__ import annotations
 
@@ -28,7 +28,6 @@ import requests
 from typing import Optional, Tuple, List, Dict
 
 try:
-    import gspread
     from google.oauth2.service_account import Credentials
     _GSPREAD_OK = True
     _GSPREAD_IMPORT_ERR = None
@@ -64,14 +63,9 @@ st.markdown(
     "color:#56D6C9;text-transform:uppercase;margin-bottom:2px;}"
     ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
     ".sh-sub{font-size:13px;color:rgba(255,255,255,.75);margin-top:4px;text-align:center;}"
-    ".kpi-row{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;}"
-    ".kpi-card{flex:1;min-width:120px;background:#F8FFFE;border:1px solid #D1E8E4;"
-    "border-radius:10px;padding:12px 14px;text-align:center;"
-    "box-shadow:0 1px 4px rgba(0,77,71,.07);}"
     ".kv{font-size:28px;font-weight:800;color:#21877D;line-height:1.1;}"
     ".kl{font-size:11px;font-weight:600;color:#6B7280;"
     "text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}"
-    ".sec-sep{border:none;border-top:1px solid #D1E8E4;margin:16px 0;opacity:.6;}"
     ".period-label{text-align:center;font-weight:700;font-size:1.05rem;color:#21877D;}"
     "a.dl-min,a.dl-min:link,a.dl-min:visited{color:#00A896 !important;"
     "text-decoration:underline !important;font-size:13px;"
@@ -92,12 +86,6 @@ st.markdown(
     "#mode-pill [role='radio'][aria-checked='true']{"
     "background:#dff7f2;color:#004d47;border-color:#8fd7cc;}"
     "#mode-pill [data-baseweb='radio'] input{display:none !important;}"
-    ".modern-btn{background:#FFFFFF;border:1px solid #D1E8E4;"
-    "border-radius:10px;padding:12px 14px;color:#374151 !important;"
-    "font-size:14px;font-weight:600;text-decoration:none !important;"
-    "display:block;text-align:center;margin-bottom:10px;"
-    "transition:all .2s ease;box-shadow:0 1px 3px rgba(0,0,0,.04);}"
-    ".modern-btn:hover{background:#F8FFFE;border-color:#B7DCD6;}"
     "div[data-testid='stButton'] button{background:#FFFFFF !important;"
     "border:1px solid #D1E8E4 !important;border-radius:10px !important;"
     "color:#374151 !important;font-size:14px !important;"
@@ -229,20 +217,6 @@ _GSPREAD_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
-
-
-def _get_gspread_client():
-    if not _GSPREAD_OK:
-        return None
-    if "gcp_service_account" not in st.secrets:
-        return None
-    try:
-        creds = Credentials.from_service_account_info(
-            dict(st.secrets["gcp_service_account"]), scopes=_GSPREAD_SCOPES
-        )
-        return gspread.authorize(creds)
-    except Exception:
-        return None
 
 
 def _get_gspread_access_token() -> Optional[str]:
@@ -6082,6 +6056,11 @@ def _validate_template_columns(df: pd.DataFrame, required_cols: List[str], templ
         )
 
 
+# Estilo base compartido por las 4 funciones push_*_updates() que escriben en
+# los .xlsx de Drive — evita recrear el mismo Font 4 veces.
+_BASE_ARIAL_FONT = Font(name="Arial", size=11, color="000000") if _OPENPYXL_OK else None
+
+
 AREA_OPTIONS = [
     "ORGANIZATIONS", "SUSTAINABILITY", "STRATEGY & ENTREPRENEURSHIP",
     "MANAGEMENT", "MARKETING", "FINANCE", "SCM & IT",
@@ -6329,7 +6308,7 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
             and isinstance(tpl_formula_v, str) and tpl_formula_v.startswith("=")
         )
 
-        base_font = Font(name="Arial", size=11, color="000000")
+        base_font = _BASE_ARIAL_FONT
         blue_bold_font = Font(name="Arial", size=11, color="1D4ED8", bold=True)
         red_font = Font(name="Arial", size=11, color="DC2626")
         thin = Side(style="thin")
@@ -6456,10 +6435,6 @@ def _read_profesores_nuevos_template(uploaded_file) -> pd.DataFrame:
     return df_
 
 
-# Columnas que NUNCA pueden quedar en TBD/blanco al cargar profesores nuevos.
-_PROFESORES_REQUIRED = ["ID", "AREA_PROFESOR", "GÉNERO", "TIPO", "P/S"]
-
-
 @st.cache_data(ttl=60)
 def _load_profesores_lookup() -> Dict[str, Tuple]:
     """Profesor (columna A de 'Info. Profesores', normalizado) → (ID,
@@ -6543,7 +6518,7 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
             return False, "No encontré la Tabla de Excel 'tabla_faculty_distribution'."
         match, min_col, min_row, max_col, last_row = info
 
-        base_font = Font(name="Arial", size=11, color="000000")
+        base_font = _BASE_ARIAL_FONT
         calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
 
         # ── Tablas de referencia reales, leídas del propio archivo ──
@@ -6658,7 +6633,7 @@ def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
             return False, "No encontré la Tabla de Excel 'tabla_profesores'."
         match, min_col, min_row, max_col, last_row = info
 
-        base_font = Font(name="Arial", size=11, color="000000")
+        base_font = _BASE_ARIAL_FONT
         age_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
 
         tpl_age_text, age_is_array = _get_formula_text(ws.cell(row=last_row, column=18))
@@ -6761,7 +6736,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
         ws_cursos = wb["cursos"]
         ws_programas = wb["programas"] if "programas" in wb.sheetnames else None
 
-        base_font = Font(name="Arial", size=11, color="000000")
+        base_font = _BASE_ARIAL_FONT
         area_fill = PatternFill(fill_type="solid", fgColor="F1CEEE")
         cursos_fill = PatternFill(fill_type="solid", fgColor="C1F4E5")
         calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
