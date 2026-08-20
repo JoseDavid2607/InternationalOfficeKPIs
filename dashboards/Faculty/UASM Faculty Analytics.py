@@ -109,23 +109,16 @@ st.markdown(
     "position:fixed !important;top:0;"
     "left:calc(21rem + (100vw - 21rem) / 2);transform:translateX(-50%);"
     "z-index:999999;width:auto !important;margin:0 !important;"
-    "max-width:calc(100vw - 21rem - 2rem);overflow-x:auto;}"
-    ".st-key-nav_toggle div[data-testid='stVerticalBlock']{"
-    "display:flex !important;flex-wrap:nowrap;justify-content:center;gap:2px;}"
-    ".st-key-nav_toggle a{"
-    "display:inline-flex !important;align-items:center;white-space:nowrap;"
-    "background:rgba(0,77,71,0.04) !important;border:none !important;border-radius:0 !important;"
-    "font-size:12px !important;color:#9CA3AF !important;font-weight:600 !important;"
-    "text-decoration:none !important;padding:6px 12px !important;"
+    "max-width:calc(100vw - 21rem - 2rem);}"
+    ".nav-row{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:center;"
+    "align-items:center;gap:2px;}"
+    ".nav-row a{"
+    "display:inline-flex;align-items:center;white-space:nowrap;"
+    "background:rgba(0,77,71,0.04);border:none;border-radius:0;"
+    "font-size:12px;color:#9CA3AF;font-weight:600;"
+    "text-decoration:none;padding:6px 12px;"
     "opacity:0.55;transition:opacity .15s ease,background .15s ease;}"
-    ".st-key-nav_toggle a:hover{opacity:1;color:#00A896 !important;"
-    "background:rgba(0,168,150,0.08) !important;}"
-    ".st-key-nav_toggle div[data-testid='stPopover'] button{"
-    "background:rgba(0,77,71,0.04) !important;border:none !important;border-radius:0 !important;"
-    "font-size:12px !important;color:#9CA3AF !important;font-weight:600 !important;"
-    "padding:6px 12px !important;box-shadow:none !important;opacity:0.55;}"
-    ".st-key-nav_toggle div[data-testid='stPopover'] button:hover{"
-    "opacity:1;color:#00A896 !important;background:rgba(0,168,150,0.08) !important;}"
+    ".nav-row a:hover{opacity:1;color:#00A896;background:rgba(0,168,150,0.08);}"
     ".st-key-update_sidebar_group{text-align:center;}"
     ".st-key-update_sidebar_group img{margin:0 auto;}"
     ".st-key-go_to_dashboard_btn a{"
@@ -7094,11 +7087,18 @@ def page_update_data():
                     icon=":material/download:",
                 )
 
-        _cart_periods = [
-            p for p in qual_load_cartelera()["Periodo"].dropna().unique().tolist()
+        _cart_periods_raw = [
+            p for p in qual_load_cartelera()["Semestre"].dropna().unique().tolist()
             if re.fullmatch(r"(?:19|20)\d{2}(-?(10|20)|\s*Intersemestral)", str(p).strip())
         ]
-        last_cart_period = sorted(_cart_periods, key=_period_sort_key)[-1] if _cart_periods else "—"
+
+        def _with_dash(p: str) -> str:
+            s = str(p).strip()
+            if "Intersemestral" in s or "-" in s:
+                return s
+            return f"{s[:4]}-{s[4:]}" if len(s) == 6 else s
+
+        last_cart_period = _with_dash(sorted(_cart_periods_raw, key=_period_sort_key)[-1]) if _cart_periods_raw else "—"
         st.caption(f"Último periodo registrado en la Base: **{last_cart_period}**")
 
         st.download_button(
@@ -7158,11 +7158,18 @@ def page_update_data():
                     if fill_mode == "Seleccionar aquí mismo":
                         picked_areas = {}
                         for _, row in missing_courses.iterrows():
-                            c1, c2, c3, c4 = st.columns([2, 1, 3, 2])
-                            c1.markdown(f"**{row['Materia']}**")
-                            c2.markdown(str(row["Créditos"]))
-                            c3.markdown(row["Nombre largo curso"])
-                            with c4:
+                            with st.expander(f"📘 {row['Materia']}", expanded=True):
+                                c1, c2, c3 = st.columns([1, 3, 0.6])
+                                c1.markdown(f"**Créditos:** {row['Créditos']}")
+                                c2.markdown(row["Nombre largo curso"])
+                                with c3.popover("＋"):
+                                    profs = sorted(cart_df.loc[cart_df["Materia"] == row["Materia"], "Profesor"].dropna().unique().tolist())
+                                    st.caption("Profesor(es) y área:")
+                                    for p in profs:
+                                        info = prof_lookup.get(str(p).strip().upper())
+                                        area_txt = info[1] if info else "—"
+                                        st.markdown(f"{p} · *{area_txt}*")
+
                                 area_key = f"area_pick_{row['Materia']}"
                                 is_empty = st.session_state.get(area_key, "— Selecciona —") == "— Selecciona —"
                                 color = "#DC2626" if is_empty else "#374151"
@@ -7174,17 +7181,6 @@ def page_update_data():
                                     "Area", options=["— Selecciona —"] + AREA_OPTIONS,
                                     key=area_key, label_visibility="collapsed",
                                 )
-
-                        with st.popover("＋ Ver profesor(es) y área por curso", use_container_width=True):
-                            for _, row in missing_courses.iterrows():
-                                profs = sorted(cart_df.loc[cart_df["Materia"] == row["Materia"], "Profesor"].dropna().unique().tolist())
-                                pc1, pc2 = st.columns([1, 3])
-                                pc1.markdown(f"**{row['Materia']}**")
-                                with pc2:
-                                    for p in profs:
-                                        info = prof_lookup.get(str(p).strip().upper())
-                                        area_txt = info[1] if info else "—"
-                                        st.markdown(f"{p} · *{area_txt}*")
 
                         if all(v != "— Selecciona —" for v in picked_areas.values()):
                             new_courses_df = missing_courses.assign(
@@ -7419,16 +7415,22 @@ if not IS_UPDATE_PAGE:
         st.markdown("---")
 
     # "Other sections": flotante, sobre la página principal (no el sidebar),
-    # con los emojis originales, en recuadros sutiles de ancho automático.
-    # Si hay más de 4, el resto queda detrás de "More…".
+    # HTML puro en una fila flex real — así queda horizontal sin depender de
+    # adivinar cómo Streamlit anida sus propios contenedores internamente.
+    NAV_ITEMS = [
+        ("🎓", "Composition", "composition"),
+        ("📊", "Staffing Levels", "staffing"),
+        ("🏛️", "By Area", "area"),
+        ("🧑‍🤝‍🧑", "Demographics", "demographics"),
+        ("🧭", "Activities", "activities"),
+        ("📚", "Qualifications", "qualifications"),
+    ]
     with st.container(key="nav_toggle"):
-        visible_pages, overflow_pages = pages[:-1][:4], pages[:-1][4:]
-        for page_obj in visible_pages:
-            st.page_link(page_obj)
-        if overflow_pages:
-            with st.popover("More…"):
-                for page_obj in overflow_pages:
-                    st.page_link(page_obj)
+        links_html = "".join(
+            f'<a href="/{path}" target="_self">{icon}&nbsp;{title}</a>'
+            for icon, title, path in NAV_ITEMS
+        )
+        st.markdown(f'<div class="nav-row">{links_html}</div>', unsafe_allow_html=True)
 
 pg.run()
 
