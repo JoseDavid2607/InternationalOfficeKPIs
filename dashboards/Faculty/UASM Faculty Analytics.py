@@ -95,22 +95,17 @@ st.markdown(
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     ".st-key-nav_toggle{"
     "position:fixed !important;top:0;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:auto !important;margin:0 !important;"
-    "display:flex;flex-wrap:nowrap;white-space:nowrap;}"
-    ".st-key-nav_toggle div[data-testid='stPageLink']{"
-    "display:inline-block !important;width:auto !important;}"
-    ".st-key-nav_toggle div[data-testid='stPageLink'] a{"
-    "display:inline-flex !important;align-items:center;white-space:nowrap;"
-    "background:rgba(0,77,71,0.05) !important;border:none !important;border-radius:0 !important;"
-    "font-size:12px !important;color:#6B7280 !important;font-weight:400 !important;"
-    "text-decoration:none !important;padding:6px 10px !important;"
+    "z-index:999999;width:max-content !important;margin:0 !important;}"
+    ".nav-row{display:flex;flex-direction:row;flex-wrap:nowrap;white-space:nowrap;}"
+    ".nav-row a{"
+    "display:inline-flex;align-items:center;white-space:nowrap;flex-shrink:0;"
+    "background:rgba(0,77,71,0.05);border:none;border-radius:0;"
+    "font-size:12px;color:#6B7280;font-weight:400;"
+    "text-decoration:none;padding:6px 10px;"
     "opacity:0.85;transition:opacity .15s ease,background .15s ease;}"
-    ".st-key-nav_toggle div[data-testid='stPageLink'] a:hover{"
-    "opacity:1;color:#00A896 !important;background:rgba(0,168,150,0.08) !important;}"
-    ".st-key-nav_toggle div[data-testid='stPageLink'] a[disabled]{"
-    "opacity:1 !important;color:#004d47 !important;font-weight:700 !important;"
-    "background:rgba(0,77,71,0.09) !important;box-shadow:inset 0 -2px 0 #00A896;"
-    "cursor:default !important;}"
+    ".nav-row a:hover{opacity:1;color:#00A896;background:rgba(0,168,150,0.08);}"
+    ".nav-row a.active{opacity:1;color:#004d47;font-weight:700;"
+    "background:rgba(0,77,71,0.09);box-shadow:inset 0 -2px 0 #00A896;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     "div[class*='st-key-course_box_bad_'] div[data-testid='stExpander'],"
     "div[class*='st-key-prof_box_bad_'] div[data-testid='stExpander']{"
@@ -1740,7 +1735,7 @@ def page_demographics():
                     .format(precision=0, na_rep="")
                     .hide(axis="index")
                 )
-                st.dataframe(styled_table, use_container_width=True, height=48 + 33 * (len(table_df) + 1))
+                st.dataframe(styled_table, use_container_width=True, height=48 + 33 * (len(table_df) + 1), hide_index=True)
 
         else:  # Part-time
             active = df.copy()
@@ -1858,7 +1853,7 @@ def page_demographics():
                 .apply(style_tbd, axis=None)
                 .hide(axis="index")
             )
-            st.dataframe(styled_table, use_container_width=True, height=48 + 33 * (len(display_df) + 1))
+            st.dataframe(styled_table, use_container_width=True, height=48 + 33 * (len(display_df) + 1), hide_index=True)
 
 
     # Side KPI charts
@@ -7427,15 +7422,25 @@ if not IS_UPDATE_PAGE:
             st.caption("Analytics Dashboard")
         st.markdown("---")
 
-    # "Other sections": flotante, sobre la página principal (no el sidebar).
-    # Usa st.page_link (no <a href> a mano) porque el enlace crudo asumía
-    # que la app vive en la raíz del dominio — si Streamlit Cloud la sirve
-    # bajo otra ruta, esos enlaces daban "Page not found". st.page_link
-    # siempre resuelve la URL real, sin importar dónde esté desplegada.
+    # "Other sections": flotante, sobre la página principal. HTML puro con
+    # flex (st.columns se apila vertical en contenedores angostos, que es
+    # justo este caso). La página default (Composition) usa "/" — Streamlit
+    # solo registra esa ruta ahí, "/composition" da "Page not found".
+    NAV_ITEMS = [
+        ("🎓", "Composition", ""),
+        ("📊", "Staffing Levels", "staffing"),
+        ("🏛️", "By Area", "area"),
+        ("🧑‍🤝‍🧑", "Demographics", "demographics"),
+        ("🧭", "Activities", "activities"),
+        ("📚", "Qualifications", "qualifications"),
+    ]
     _current_idx = pages.index(pg)
     with st.container(key="nav_toggle"):
-        for i, page_obj in enumerate(pages[:-1]):
-            st.page_link(page_obj, disabled=(i == _current_idx))
+        parts = []
+        for i, (icon, title, path) in enumerate(NAV_ITEMS):
+            cls = " class=\"active\"" if i == _current_idx else ""
+            parts.append(f'<a href="/{path}" target="_self"{cls}>{icon}&nbsp;{title}</a>')
+        st.markdown(f'<div class="nav-row">{"".join(parts)}</div>', unsafe_allow_html=True)
 
 pg.run()
 
