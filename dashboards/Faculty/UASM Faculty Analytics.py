@@ -93,10 +93,8 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    ".st-key-nav_toggle{"
-    "position:fixed !important;top:0;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:max-content !important;margin:0 !important;}"
-    ".nav-row{display:flex;flex-direction:row;flex-wrap:nowrap;white-space:nowrap;}"
+    ".st-key-nav_toggle{width:100% !important;margin:0 0 8px 0 !important;}"
+    ".nav-row{display:flex;flex-direction:row;flex-wrap:nowrap;white-space:nowrap;justify-content:center;}"
     ".nav-row a{"
     "display:inline-flex;align-items:center;white-space:nowrap;flex-shrink:0;"
     "background:rgba(0,77,71,0.05);border:none;border-radius:0;"
@@ -644,7 +642,8 @@ def page_composition():
     def _highlight_last(df_):
         s = pd.DataFrame("", index=df_.index, columns=df_.columns)
         if len(df_.columns) > 0 and "Total" in df_.index:
-            s.loc["Total", df_.columns[-1]] = "background-color:#dff7f2;color:#00A896;font-weight:700;"
+            target = sel_period_label if sel_period_label in df_.columns else df_.columns[-1]
+            s.loc["Total", target] = "background-color:#dff7f2;color:#00A896;font-weight:700;"
         return s
 
     with st.container(key="tct_comp_ranking"):
@@ -743,10 +742,10 @@ def page_composition():
 
     if selected_ranking:
         detail_df = active[active["Faculty Ranking"] == selected_ranking].copy()
-        title_txt = f"### **{len(detail_df)}** **{selected_ranking}** in period **{sel_period_label}**"
+        title_txt = f"### **{len(detail_df)}** **{selected_ranking}**"
     else:
         detail_df = active.copy()
-        title_txt = f"### **{len(detail_df)}** Full-time Faculty in period **{sel_period_label}**"
+        title_txt = f"### **{len(detail_df)}** Full-time Faculty"
 
     col_title, col_gender = st.columns([3, 2])
     with col_title:
@@ -775,7 +774,9 @@ def page_composition():
                    "Faculty Ranking", "Subcategorization", "Faculty Qualific.", "P/S",
                    "Highest Earned Degree", "Year", "University", "Normal professional Resp."]
     show_cols = [c for c in detail_cols if c in detail_df.columns]
-    st.dataframe(detail_df[show_cols], use_container_width=True, hide_index=True)
+    detail_display = detail_df[show_cols].reset_index(drop=True)
+    detail_display.index += 1
+    st.dataframe(detail_display, use_container_width=True)
     _download_link("Descargar detalle (Excel)", detail_df[show_cols],
                    f"FT_Composition_Detail_{sel_period_label}.xlsx")
 
@@ -849,8 +850,9 @@ def page_staffing():
     def _highlight_final_latest(df_):
         styles = pd.DataFrame('', index=df_.index, columns=df_.columns)
         if len(df_.columns) > 0 and 'Final' in df_.index:
-            last_col = df_.columns[-1]
-            styles.loc['Final', last_col] = 'background-color:#dff7f2; color:#00A896; font-weight:700;'
+            candidates = [sel_period_label, sel_period_label.replace("-", ""), sel_period_internal]
+            target = next((c for c in candidates if c in df_.columns), df_.columns[-1])
+            styles.loc['Final', target] = 'background-color:#dff7f2; color:#00A896; font-weight:700;'
         return styles
 
     styled_summary = (
@@ -1264,7 +1266,10 @@ def page_area():
     def style_total_lastcell(df_):
         styles = pd.DataFrame("", index=df_.index, columns=df_.columns)
         if len(df_.columns) > 0 and "Total" in df_.index:
-            styles.loc["Total", df_.columns[-1]] = "background-color:#dff7f2; color:#00A896; font-weight:700;"
+            _sel = st.session_state.get("sel_tf_label", "")
+            candidates = [_sel, str(_sel).replace("-", "")]
+            target = next((c for c in candidates if c in df_.columns), df_.columns[-1])
+            styles.loc["Total", target] = "background-color:#dff7f2; color:#00A896; font-weight:700;"
         return styles
 
 
@@ -1397,7 +1402,8 @@ def page_area():
                 pull=[0.04] * len(donut_df), sort=False,
                 textfont=dict(size=15, color="white", family="Arial Black, Arial, sans-serif"),
             )
-            fig_donut.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10), height=420)
+            fig_donut.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10), height=420,
+                                     uniformtext_minsize=15, uniformtext_mode="show")
             st.plotly_chart(fig_donut, use_container_width=True)
 
             fname_donut = f"Donut_{'FT' if st.session_state.modo_faculty == 'Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ', '_')}.xlsx"
@@ -1417,7 +1423,9 @@ def page_area():
     count_label = int(detail[IDCOL].nunique()) if IDCOL in detail.columns else len(detail_out)
     faculty_word = "full-time" if st.session_state.modo_faculty == "Full-time" else "part-time"
     st.markdown(f"### There are {count_label} {faculty_word} Faculty in **{sel_label}**")
-    st.dataframe(detail_out, use_container_width=True, hide_index=True)
+    detail_out = detail_out.reset_index(drop=True)
+    detail_out.index += 1
+    st.dataframe(detail_out, use_container_width=True)
 
     fname_det = f"Detail_{'FT' if st.session_state.modo_faculty == 'Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ', '_')}.xlsx"
     _download_link("Descargar tabla (Excel)", detail_out, fname_det)
@@ -1832,8 +1840,10 @@ def page_demographics():
             def style_last_col(df_):
                 styles = pd.DataFrame('', index=df_.index, columns=df_.columns)
                 if keys:
+                    _sel = st.session_state.get("sel_tf_label", "")
+                    target = _sel if _sel in keys else keys[-1]
                     mask = df_["Category"].isin(GROUPS_PT)
-                    styles.loc[mask, keys[-1]] = f'background-color:{blue_light}; color:{blue_dark}; font-weight:800;'
+                    styles.loc[mask, target] = f'background-color:{blue_light}; color:{blue_dark}; font-weight:800;'
                 return styles
 
             def style_tbd(df_):
@@ -1968,16 +1978,26 @@ def page_demographics():
 
 
     with row1_left:
-        df_pct_phd = pd.DataFrame({"Label": labels_ts, "Percent": phd_ts})
-        title_phd = "% of Full-time Faculty with PhD" if mode_now == "Full-time" else "% of Part-time Professors with PhD"
-        fig_phd = px.line(df_pct_phd, x="Label", y="Percent", markers=True, text="Percent", title=title_phd)
-        fig_phd.update_traces(line=dict(color="#00A896", width=3), marker=dict(size=7, color="#00A896"),
-                              texttemplate="%{y:.1f}%", textposition="top center")
-        fig_phd.update_xaxes(type="category", categoryorder="array", categoryarray=labels_ts, tickangle=0, title=None)
-        fig_phd.update_yaxes(range=[y_min_phd, y_max_phd], title=None)
-        _highlight_band(fig_phd, period_current, labels_ts, color=COLORS["highlight"])
-        fig_phd.update_layout(height=line_h, margin=dict(l=10, r=10, t=40, b=40), showlegend=False)
-        st.plotly_chart(fig_phd, use_container_width=True)
+        df_pct_combo = pd.DataFrame({
+            "Label": labels_ts + labels_ts,
+            "Percent": list(phd_ts) + list(intl_ts),
+            "Metric": ["% PhD"] * len(labels_ts) + ["% International"] * len(labels_ts),
+        })
+        title_combo = (
+            "% PhD & % International — Full-time Faculty" if mode_now == "Full-time"
+            else "% PhD & % International — Part-time Faculty"
+        )
+        fig_combo = px.line(
+            df_pct_combo, x="Label", y="Percent", color="Metric", markers=True, text="Percent",
+            title=title_combo, color_discrete_map={"% PhD": "#00A896", "% International": "#2E6FC4"},
+        )
+        fig_combo.update_traces(texttemplate="%{y:.1f}%", textposition="top center")
+        fig_combo.update_xaxes(type="category", categoryorder="array", categoryarray=labels_ts, tickangle=0, title=None)
+        fig_combo.update_yaxes(range=[0, max(y_max_phd, 40)], title=None)
+        _highlight_band(fig_combo, period_current, labels_ts, color=COLORS["highlight"])
+        fig_combo.update_layout(height=line_h, margin=dict(l=10, r=10, t=40, b=40),
+                                 legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, title=None))
+        st.plotly_chart(fig_combo, use_container_width=True)
 
     with row1_right:
         if period_current is None:
@@ -2066,73 +2086,71 @@ def page_demographics():
 
     # Row 2: % International over time + nationalities
     st.markdown("---")
-    row2_left, row2_right = st.columns([6, 4])
-
-    if mode_now == "Part-time":
-        y_min_int, y_max_int, line_h2, bar_h2 = 0, 10, 260, 220
-    else:
-        y_min_int, y_max_int, line_h2, bar_h2 = 0, 40, 350, 300
-    if tmode_ts == "Intersemestral":
-        y_min_int, y_max_int = 0, 100
-
-    with row2_left:
-        df_pct_int = pd.DataFrame({"Label": labels_ts, "Percent": intl_ts})
-        title_int = "% of International Full-time Faculty" if mode_now == "Full-time" else "% of International Part-time Faculty"
-        fig_int = px.line(df_pct_int, x="Label", y="Percent", markers=True, text="Percent", title=title_int)
-        fig_int.update_traces(line=dict(color="#2EC4B6", width=3), marker=dict(size=7, color="#2EC4B6"),
-                              texttemplate="%{y:.1f}%", textposition="top center")
-        fig_int.update_xaxes(type="category", categoryorder="array", categoryarray=labels_ts, tickangle=0, title=None)
-        fig_int.update_yaxes(range=[y_min_int, y_max_int], title=None)
-        _highlight_band(fig_int, period_current, labels_ts, color=COLORS["highlight"])
-        fig_int.update_layout(height=line_h2, margin=dict(l=10, r=10, t=40, b=40), showlegend=False)
-        st.plotly_chart(fig_int, use_container_width=True)
-
-    with row2_right:
-        nat_col = col_nationality(df)
-        intl_now = pd.DataFrame(columns=df.columns)
-        if nat_col and period_current:
-            if tmode_ts == "Anual":
-                active_p2 = filter_for_timeframe(df, "Anual", sel_year=int(period_current))
-            else:
-                active_p2 = df[df["Periodo"].astype(str).eq(str(period_current))].copy()
-
-            nat = active_p2[nat_col].astype(str).str.strip()
-            is_valid = ~nat.eq("Colombian") & ~nat.str.upper().eq("TBD") & ~nat.eq("")
-            intl_now = active_p2[is_valid].copy()
-
-            nat_counts = (intl_now.groupby(nat_col)[IDCOL].nunique().sort_values(ascending=False)
-                          .reset_index().rename(columns={nat_col: "Nationality", IDCOL: "Count"}))
-            total_intl = int(intl_now[IDCOL].nunique()) if not intl_now.empty else 0
-            n_nats = int(nat_counts["Nationality"].nunique()) if not nat_counts.empty else 0
+    # Nacionalidades del periodo actual (para el mapa de burbujas de abajo)
+    nat_col = col_nationality(df)
+    intl_now = pd.DataFrame(columns=df.columns)
+    if nat_col and period_current:
+        if tmode_ts == "Anual":
+            active_p2 = filter_for_timeframe(df, "Anual", sel_year=int(period_current))
         else:
-            nat_counts = pd.DataFrame({"Nationality": [], "Count": []})
-            total_intl = n_nats = 0
+            active_p2 = df[df["Periodo"].astype(str).eq(str(period_current))].copy()
 
-        title_nat = f"{total_intl} international Faculty. {n_nats} different nationalities"
-        fig_nat = px.bar(nat_counts, x="Count", y="Nationality", orientation="h", title=title_nat, text="Count")
-        fig_nat.update_traces(marker_color="#2EC4B6", textposition="outside", texttemplate="%{text}")
-        fig_nat.update_xaxes(title=None, dtick=1)
-        fig_nat.update_yaxes(title=None, autorange="reversed")
-        fig_nat.update_layout(height=bar_h2, margin=dict(l=10, r=10, t=50, b=6))
-        st.plotly_chart(fig_nat, use_container_width=True)
+        nat = active_p2[nat_col].astype(str).str.strip()
+        is_valid = ~nat.eq("Colombian") & ~nat.str.upper().eq("TBD") & ~nat.eq("")
+        intl_now = active_p2[is_valid].copy()
 
-        if not intl_now.empty:
-            detalle_nat = pick_cols(intl_now, {
-                "Full Name": ["Full Name", "Full-Name", "Full_Name", "Profesor", "First Name"],
-                "Nationality": ["Nationality", "Country of Birth"],
-            })
-            open_nat_detail = st.button("Ver detalle de nacionalidad (profesores)", key="open_nat_detail", use_container_width=True)
-            if open_nat_detail:
-                if hasattr(st, "dialog"):
-                    @st.dialog("Nacionalidad de profesores", width="large")
-                    def _dlg_nat():
-                        st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True, hide_index=True)
-                        if st.button("Close", key="close_nat_detail"):
-                            st.rerun()
-                    _dlg_nat()
-                else:
-                    with st.expander("Nacionalidad de profesores", expanded=True):
-                        st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True, hide_index=True)
+        nat_counts = (intl_now.groupby(nat_col)[IDCOL].nunique().sort_values(ascending=False)
+                      .reset_index().rename(columns={nat_col: "Nationality", IDCOL: "Count"}))
+        total_intl = int(intl_now[IDCOL].nunique()) if not intl_now.empty else 0
+        n_nats = int(nat_counts["Nationality"].nunique()) if not nat_counts.empty else 0
+    else:
+        nat_counts = pd.DataFrame({"Nationality": [], "Count": []})
+        total_intl = n_nats = 0
+
+    # Nacionalidad (gentilicio) -> país, para poder ubicar la burbuja en el mapa
+    _NATIONALITY_TO_COUNTRY = {
+        "American": "United States", "Argentinian": "Argentina", "Australian": "Australia",
+        "Brazilian": "Brazil", "British": "United Kingdom", "Bulgarian": "Bulgaria",
+        "Canadian": "Canada", "Chilean": "Chile", "Dominican": "Dominican Republic",
+        "Egyptian": "Egypt", "French": "France", "German": "Germany", "Indian": "India",
+        "Italian": "Italy", "Kenyan": "Kenya", "New Zealander": "New Zealand",
+        "Peruvian": "Peru", "Philippine": "Philippines", "Portuguese": "Portugal",
+        "Russian": "Russia", "South African": "South Africa", "Spanish": "Spain",
+        "Turkish": "Turkey", "Venezuelan": "Venezuela", "Dutch": "Netherlands",
+        "Belgian": "Belgium", "Finnish": "Finland", "Mexican": "Mexico",
+    }
+    nat_counts["Country"] = nat_counts["Nationality"].map(_NATIONALITY_TO_COUNTRY)
+    map_df = nat_counts.dropna(subset=["Country"])
+
+    title_nat = f"{total_intl} international Faculty. {n_nats} different nationalities"
+    fig_nat = px.scatter_geo(
+        map_df, locations="Country", locationmode="country names", size="Count",
+        hover_name="Nationality", hover_data={"Count": True, "Country": False},
+        title=title_nat, projection="natural earth", color_discrete_sequence=["#2E6FC4"],
+    )
+    fig_nat.update_traces(marker=dict(color="#2E6FC4", opacity=0.75, line=dict(width=1, color="#FFFFFF")))
+    fig_nat.update_geos(showcountries=True, countrycolor="#E5E7EB", showland=True, landcolor="#F8FFFE",
+                         showocean=True, oceancolor="#EAF6F4", bgcolor="rgba(0,0,0,0)")
+    fig_nat.update_layout(height=380, margin=dict(l=10, r=10, t=50, b=6))
+    st.plotly_chart(fig_nat, use_container_width=True)
+
+    if not intl_now.empty:
+        detalle_nat = pick_cols(intl_now, {
+            "Full Name": ["Full Name", "Full-Name", "Full_Name", "Profesor", "First Name"],
+            "Nationality": ["Nationality", "Country of Birth"],
+        })
+        open_nat_detail = st.button("Ver detalle de nacionalidad (profesores)", key="open_nat_detail", use_container_width=True)
+        if open_nat_detail:
+            if hasattr(st, "dialog"):
+                @st.dialog("Nacionalidad de profesores", width="large")
+                def _dlg_nat():
+                    st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True, hide_index=True)
+                    if st.button("Close", key="close_nat_detail"):
+                        st.rerun()
+                _dlg_nat()
+            else:
+                with st.expander("Nacionalidad de profesores", expanded=True):
+                    st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True, hide_index=True)
 
 
 # 9) PÁGINA 5 — Full-time Faculty Activities
@@ -5161,8 +5179,9 @@ def page_qualifications():
                     display_label = st.session_state.get('sel_label', 'Selected Period')
 
                     # Build detail table
+                    col_periodo_orig = _get_any(df_car, "Periodo")
                     wanted_map = {
-                        "Term": col_sem, "Course Code": col_code, "Credits": col_cred,
+                        "Period": col_periodo_orig or col_sem, "Course Code": col_code, "Credits": col_cred,
                         "Course Name": col_name, "Program": col_prog, "Professor": col_prof,
                         "Course Area": col_areaCourse, "Field": col_field, "Type": col_tipoC, "P/S": col_ps_C,
                     }
