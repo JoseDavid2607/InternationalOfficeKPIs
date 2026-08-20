@@ -93,7 +93,8 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    ".st-key-nav_toggle{width:100% !important;margin:0 0 8px 0 !important;}"
+    ".st-key-nav_toggle{width:100% !important;margin:0 0 8px 0 !important;"
+    "position:sticky !important;top:0;z-index:999;background:#FFFFFF;}"
     ".nav-row{display:flex;flex-direction:row;flex-wrap:nowrap;white-space:nowrap;justify-content:center;}"
     ".nav-row a{"
     "display:inline-flex;align-items:center;white-space:nowrap;flex-shrink:0;"
@@ -642,7 +643,8 @@ def page_composition():
     def _highlight_last(df_):
         s = pd.DataFrame("", index=df_.index, columns=df_.columns)
         if len(df_.columns) > 0 and "Total" in df_.index:
-            target = sel_period_label if sel_period_label in df_.columns else df_.columns[-1]
+            candidates = [sel_period_internal, sel_period_label]
+            target = next((c for c in candidates if c in df_.columns), df_.columns[-1])
             s.loc["Total", target] = "background-color:#dff7f2;color:#00A896;font-weight:700;"
         return s
 
@@ -1398,7 +1400,7 @@ def page_area():
                 color_discrete_map=color_map_area,
             )
             fig_donut.update_traces(
-                textinfo="label+percent", textposition="inside", insidetextorientation="horizontal",
+                texttemplate="%{label}<br>%{percent}", textposition="inside", insidetextorientation="horizontal",
                 pull=[0.04] * len(donut_df), sort=False,
                 textfont=dict(size=15, color="white", family="Arial Black, Arial, sans-serif"),
             )
@@ -1967,7 +1969,7 @@ def page_demographics():
     else:
         period_current = None
 
-    row1_left, row1_right = st.columns([6, 4])
+    row1_left, row1_right = st.columns([2, 1])
 
     if mode_now == "Part-time":
         y_min_phd, y_max_phd, line_h, bar_h = 0, 30, 280, 220
@@ -2083,68 +2085,67 @@ def page_demographics():
                     with st.expander("Profesores con PhD", expanded=True):
                         st.dataframe(detalle_phd.reset_index(drop=True), use_container_width=True, hide_index=True)
 
+        # Nacionalidades del periodo actual (para el mapa de burbujas de abajo)
+        nat_col = col_nationality(df)
+        intl_now = pd.DataFrame(columns=df.columns)
+        if nat_col and period_current:
+            if tmode_ts == "Anual":
+                active_p2 = filter_for_timeframe(df, "Anual", sel_year=int(period_current))
+            else:
+                active_p2 = df[df["Periodo"].astype(str).eq(str(period_current))].copy()
 
-    # Row 2: % International over time + nationalities
-    st.markdown("---")
-    # Nacionalidades del periodo actual (para el mapa de burbujas de abajo)
-    nat_col = col_nationality(df)
-    intl_now = pd.DataFrame(columns=df.columns)
-    if nat_col and period_current:
-        if tmode_ts == "Anual":
-            active_p2 = filter_for_timeframe(df, "Anual", sel_year=int(period_current))
+            nat = active_p2[nat_col].astype(str).str.strip()
+            is_valid = ~nat.eq("Colombian") & ~nat.str.upper().eq("TBD") & ~nat.eq("")
+            intl_now = active_p2[is_valid].copy()
+
+            nat_counts = (intl_now.groupby(nat_col)[IDCOL].nunique().sort_values(ascending=False)
+                          .reset_index().rename(columns={nat_col: "Nationality", IDCOL: "Count"}))
+            total_intl = int(intl_now[IDCOL].nunique()) if not intl_now.empty else 0
+            n_nats = int(nat_counts["Nationality"].nunique()) if not nat_counts.empty else 0
         else:
-            active_p2 = df[df["Periodo"].astype(str).eq(str(period_current))].copy()
+            nat_counts = pd.DataFrame({"Nationality": [], "Count": []})
+            total_intl = n_nats = 0
 
-        nat = active_p2[nat_col].astype(str).str.strip()
-        is_valid = ~nat.eq("Colombian") & ~nat.str.upper().eq("TBD") & ~nat.eq("")
-        intl_now = active_p2[is_valid].copy()
+        # Nacionalidad (gentilicio) -> país, para poder ubicar la burbuja en el mapa
+        _NATIONALITY_TO_COUNTRY = {
+            "American": "United States", "Argentinian": "Argentina", "Australian": "Australia",
+            "Brazilian": "Brazil", "British": "United Kingdom", "Bulgarian": "Bulgaria",
+            "Canadian": "Canada", "Chilean": "Chile", "Dominican": "Dominican Republic",
+            "Egyptian": "Egypt", "French": "France", "German": "Germany", "Indian": "India",
+            "Italian": "Italy", "Kenyan": "Kenya", "New Zealander": "New Zealand",
+            "Peruvian": "Peru", "Philippine": "Philippines", "Portuguese": "Portugal",
+            "Russian": "Russia", "South African": "South Africa", "Spanish": "Spain",
+            "Turkish": "Turkey", "Venezuelan": "Venezuela", "Dutch": "Netherlands",
+            "Belgian": "Belgium", "Finnish": "Finland", "Mexican": "Mexico",
+        }
+        nat_counts["Country"] = nat_counts["Nationality"].map(_NATIONALITY_TO_COUNTRY)
+        map_df = nat_counts.dropna(subset=["Country"])
 
-        nat_counts = (intl_now.groupby(nat_col)[IDCOL].nunique().sort_values(ascending=False)
-                      .reset_index().rename(columns={nat_col: "Nationality", IDCOL: "Count"}))
-        total_intl = int(intl_now[IDCOL].nunique()) if not intl_now.empty else 0
-        n_nats = int(nat_counts["Nationality"].nunique()) if not nat_counts.empty else 0
-    else:
-        nat_counts = pd.DataFrame({"Nationality": [], "Count": []})
-        total_intl = n_nats = 0
+        title_nat = f"{total_intl} international Faculty. {n_nats} different nationalities"
+        fig_nat = px.scatter_geo(
+            map_df, locations="Country", locationmode="country names", size="Count",
+            text="Nationality", hover_name="Nationality", hover_data={"Count": True, "Country": False},
+            title=title_nat, projection="natural earth", color_discrete_sequence=["#2E6FC4"],
+        )
+        fig_nat.update_traces(marker=dict(color="#2E6FC4", opacity=0.75, line=dict(width=1, color="#FFFFFF")),
+                               mode="markers+text", textposition="top center",
+                               textfont=dict(size=10, color="#374151"))
+        fig_nat.update_geos(showcountries=True, countrycolor="#E5E7EB", showland=True, landcolor="#F8FFFE",
+                             showocean=True, oceancolor="#EAF6F4", bgcolor="rgba(0,0,0,0)")
+        fig_nat.update_layout(height=380, margin=dict(l=10, r=10, t=50, b=6))
+        st.plotly_chart(fig_nat, use_container_width=True)
 
-    # Nacionalidad (gentilicio) -> país, para poder ubicar la burbuja en el mapa
-    _NATIONALITY_TO_COUNTRY = {
-        "American": "United States", "Argentinian": "Argentina", "Australian": "Australia",
-        "Brazilian": "Brazil", "British": "United Kingdom", "Bulgarian": "Bulgaria",
-        "Canadian": "Canada", "Chilean": "Chile", "Dominican": "Dominican Republic",
-        "Egyptian": "Egypt", "French": "France", "German": "Germany", "Indian": "India",
-        "Italian": "Italy", "Kenyan": "Kenya", "New Zealander": "New Zealand",
-        "Peruvian": "Peru", "Philippine": "Philippines", "Portuguese": "Portugal",
-        "Russian": "Russia", "South African": "South Africa", "Spanish": "Spain",
-        "Turkish": "Turkey", "Venezuelan": "Venezuela", "Dutch": "Netherlands",
-        "Belgian": "Belgium", "Finnish": "Finland", "Mexican": "Mexico",
-    }
-    nat_counts["Country"] = nat_counts["Nationality"].map(_NATIONALITY_TO_COUNTRY)
-    map_df = nat_counts.dropna(subset=["Country"])
-
-    title_nat = f"{total_intl} international Faculty. {n_nats} different nationalities"
-    fig_nat = px.scatter_geo(
-        map_df, locations="Country", locationmode="country names", size="Count",
-        hover_name="Nationality", hover_data={"Count": True, "Country": False},
-        title=title_nat, projection="natural earth", color_discrete_sequence=["#2E6FC4"],
-    )
-    fig_nat.update_traces(marker=dict(color="#2E6FC4", opacity=0.75, line=dict(width=1, color="#FFFFFF")))
-    fig_nat.update_geos(showcountries=True, countrycolor="#E5E7EB", showland=True, landcolor="#F8FFFE",
-                         showocean=True, oceancolor="#EAF6F4", bgcolor="rgba(0,0,0,0)")
-    fig_nat.update_layout(height=380, margin=dict(l=10, r=10, t=50, b=6))
-    st.plotly_chart(fig_nat, use_container_width=True)
-
-    if not intl_now.empty:
-        detalle_nat = pick_cols(intl_now, {
-            "Full Name": ["Full Name", "Full-Name", "Full_Name", "Profesor", "First Name"],
-            "Nationality": ["Nationality", "Country of Birth"],
-        })
-        open_nat_detail = st.button("Ver detalle de nacionalidad (profesores)", key="open_nat_detail", use_container_width=True)
-        if open_nat_detail:
-            if hasattr(st, "dialog"):
-                @st.dialog("Nacionalidad de profesores", width="large")
-                def _dlg_nat():
-                    st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True, hide_index=True)
+        if not intl_now.empty:
+            detalle_nat = pick_cols(intl_now, {
+                "Full Name": ["Full Name", "Full-Name", "Full_Name", "Profesor", "First Name"],
+                "Nationality": ["Nationality", "Country of Birth"],
+            })
+            open_nat_detail = st.button("Ver detalle de nacionalidad (profesores)", key="open_nat_detail", use_container_width=True)
+            if open_nat_detail:
+                if hasattr(st, "dialog"):
+                    @st.dialog("Nacionalidad de profesores", width="large")
+                    def _dlg_nat():
+                        st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True, hide_index=True)
                     if st.button("Close", key="close_nat_detail"):
                         st.rerun()
                 _dlg_nat()
