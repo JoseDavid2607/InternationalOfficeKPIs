@@ -93,19 +93,23 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    ".block-container{padding-top:0.5rem !important;}"
-    ".st-key-nav_toggle{width:100% !important;margin:0 0 8px 0 !important;"
-    "position:sticky !important;top:0;z-index:999;background:#FFFFFF;}"
-    ".nav-row{display:flex;flex-direction:row;flex-wrap:nowrap;white-space:nowrap;justify-content:center;}"
+    ".block-container{padding-top:1rem !important;}"
+    ".st-key-nav_toggle{width:100%;margin:0 0 10px 0;}"
+    ".nav-row{display:flex;flex-wrap:wrap;gap:4px;align-items:center;}"
     ".nav-row a{"
-    "display:inline-flex;align-items:center;white-space:nowrap;flex-shrink:0;"
-    "background:rgba(0,77,71,0.05);border:none;border-radius:0;"
-    "font-size:12px;color:#6B7280;font-weight:400;"
+    "display:inline-flex;align-items:center;white-space:nowrap;"
+    "background:rgba(0,77,71,0.05);border:none;border-radius:6px;"
+    "font-size:13px;color:#6B7280;font-weight:400;"
     "text-decoration:none;padding:6px 10px;"
     "opacity:0.85;transition:opacity .15s ease,background .15s ease;}"
     ".nav-row a:hover{opacity:1;color:#00A896;background:rgba(0,168,150,0.08);}"
     ".nav-row a.active{opacity:1;color:#004d47;font-weight:700;"
     "background:rgba(0,77,71,0.09);box-shadow:inset 0 -2px 0 #00A896;}"
+    ".nav-more{position:relative;display:inline-block;}"
+    ".nav-more-panel{display:none;position:absolute;top:110%;left:0;background:#FFFFFF;"
+    "border:1px solid #D1E8E4;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.12);"
+    "padding:6px;flex-direction:column;gap:2px;z-index:1000;min-width:160px;}"
+    ".nav-more-panel.show{display:flex;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     "div[class*='st-key-course_box_bad_'] div[data-testid='stExpander'],"
     "div[class*='st-key-prof_box_bad_'] div[data-testid='stExpander']{"
@@ -7467,11 +7471,9 @@ if not IS_UPDATE_PAGE:
             st.caption("Analytics Dashboard")
         st.markdown("---")
 
-    # "Other sections": flotante, sobre la página principal. HTML puro con
-    # flex (st.columns se apila vertical en contenedores angostos, que es
-    # justo este caso). Navega con JS usando window.location.origin (el
-    # dominio real que ve el navegador) en vez de una ruta absoluta a mano
-    # — así no importa bajo qué ruta esté servida la app realmente.
+    # "Other sections": simple, en el flujo normal, arriba de la página.
+    # Navega con JS usando window.location.origin (el dominio real que ve
+    # el navegador) en vez de una ruta absoluta a mano.
     NAV_ITEMS = [
         ("🎓", "Composition", ""),
         ("📊", "Staffing Levels", "staffing"),
@@ -7481,12 +7483,24 @@ if not IS_UPDATE_PAGE:
         ("📚", "Qualifications", "qualifications"),
     ]
     _current_idx = pages.index(pg)
+
+    def _nav_link(i, icon, title, path):
+        active_cls = ' class="active"' if i == _current_idx else ""
+        onclick = f"window.location.assign(window.location.origin+'/{path}');return false;"
+        return f'<a href="javascript:void(0)" onclick="{onclick}"{active_cls}>{icon}&nbsp;{title}</a>'
+
     with st.container(key="nav_toggle"):
-        parts = []
-        for i, (icon, title, path) in enumerate(NAV_ITEMS):
-            cls = " class=\\\"active\\\"" if i == _current_idx else ""
-            onclick = f"window.location.assign(window.location.origin+'/{path}');return false;"
-            parts.append(f'<a href="javascript:void(0)" onclick="{onclick}"{cls}>{icon}&nbsp;{title}</a>')
+        visible_items, overflow_items = NAV_ITEMS[:4], NAV_ITEMS[4:]
+        parts = [_nav_link(i, *item) for i, item in enumerate(visible_items)]
+        if overflow_items:
+            more_links = "".join(_nav_link(i + 4, *item) for i, item in enumerate(overflow_items))
+            parts.append(
+                '<span class="nav-more">'
+                '<a href="javascript:void(0)" '
+                "onclick=\"this.nextElementSibling.classList.toggle('show');return false;\">More…</a>"
+                f'<span class="nav-more-panel">{more_links}</span>'
+                '</span>'
+            )
         st.markdown(f'<div class="nav-row">{"".join(parts)}</div>', unsafe_allow_html=True)
 
 pg.run()
