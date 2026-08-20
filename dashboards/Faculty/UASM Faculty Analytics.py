@@ -106,12 +106,19 @@ st.markdown(
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     ".st-key-nav_toggle{"
-    "position:fixed !important;top:0.3rem;left:50%;transform:translateX(-50%);"
+    "position:fixed !important;top:0.5rem;"
+    "left:calc(21rem + (100vw - 21rem) / 2);transform:translateX(-50%);"
     "z-index:999999;width:auto !important;margin:0 !important;}"
+    ".st-key-nav_toggle div[data-testid='stVerticalBlock']{"
+    "display:flex !important;flex-wrap:wrap;justify-content:center;gap:8px;}"
     ".st-key-nav_toggle a{"
-    "font-size:13px !important;color:#6B7280 !important;font-weight:600 !important;"
-    "text-decoration:none !important;padding:4px 6px !important;}"
-    ".st-key-nav_toggle a:hover{color:#00A896 !important;}"
+    "display:inline-flex !important;align-items:center;white-space:nowrap;"
+    "background:#FFFFFF !important;border:1px solid #D1E8E4 !important;"
+    "font-size:13px !important;color:#374151 !important;font-weight:600 !important;"
+    "text-decoration:none !important;padding:7px 16px !important;border-radius:999px !important;"
+    "box-shadow:0 1px 4px rgba(0,0,0,.06);}"
+    ".st-key-nav_toggle a:hover{color:#00A896 !important;border-color:#00A896 !important;"
+    "background:#F0FAF8 !important;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     ".st-key-update_sidebar_group img{margin:0 auto;}"
     ".st-key-go_to_dashboard_btn a{"
@@ -7392,13 +7399,11 @@ if not IS_UPDATE_PAGE:
             st.caption("Analytics Dashboard")
         st.markdown("---")
 
-    # "Other sections": flotante, bien arriba de la página (fuera del sidebar),
-    # con los emojis originales.
+    # "Other sections": flotante, sobre la página principal (no el sidebar),
+    # con los emojis originales, en pastillas sólidas de ancho automático.
     with st.container(key="nav_toggle"):
-        nav_cols = st.columns(len(pages) - 1)
-        for col, page_obj in zip(nav_cols, pages[:-1]):
-            with col:
-                st.page_link(page_obj)
+        for page_obj in pages[:-1]:
+            st.page_link(page_obj)
 
 pg.run()
 
