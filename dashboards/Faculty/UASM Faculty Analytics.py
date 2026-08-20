@@ -95,18 +95,22 @@ st.markdown(
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     ".st-key-nav_toggle{"
     "position:fixed !important;top:0;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:auto !important;margin:0 !important;}"
-    ".nav-row{display:flex;flex-direction:row;flex-wrap:nowrap;justify-content:center;"
-    "align-items:center;gap:0;}"
-    ".nav-row a{"
-    "display:inline-flex;align-items:center;white-space:nowrap;flex-shrink:0;"
-    "background:rgba(0,77,71,0.05);border:none;border-radius:0;"
-    "font-size:12px;color:#6B7280;font-weight:400;"
-    "text-decoration:none;padding:6px 10px;"
+    "z-index:999999;width:auto !important;margin:0 !important;"
+    "display:flex;flex-wrap:nowrap;white-space:nowrap;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink']{"
+    "display:inline-block !important;width:auto !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink'] a{"
+    "display:inline-flex !important;align-items:center;white-space:nowrap;"
+    "background:rgba(0,77,71,0.05) !important;border:none !important;border-radius:0 !important;"
+    "font-size:12px !important;color:#6B7280 !important;font-weight:400 !important;"
+    "text-decoration:none !important;padding:6px 10px !important;"
     "opacity:0.85;transition:opacity .15s ease,background .15s ease;}"
-    ".nav-row a:hover{opacity:1;color:#00A896;background:rgba(0,168,150,0.08);}"
-    ".nav-row a.active{opacity:1;color:#004d47;font-weight:700;"
-    "background:rgba(0,77,71,0.09);box-shadow:inset 0 -2px 0 #00A896;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink'] a:hover{"
+    "opacity:1;color:#00A896 !important;background:rgba(0,168,150,0.08) !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink'] a[disabled]{"
+    "opacity:1 !important;color:#004d47 !important;font-weight:700 !important;"
+    "background:rgba(0,77,71,0.09) !important;box-shadow:inset 0 -2px 0 #00A896;"
+    "cursor:default !important;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     "div[class*='st-key-course_box_bad_'] div[data-testid='stExpander'],"
     "div[class*='st-key-prof_box_bad_'] div[data-testid='stExpander']{"
@@ -1002,8 +1006,7 @@ def page_staffing():
 
     with st.expander("Show complete table"):
         _download_link("Descargar tabla completa (Excel)", full, f"FT_Complete_Table_{sel_period_label}.xlsx")
-        full.index += 1
-        st.dataframe(full, use_container_width=False)
+        st.dataframe(full, use_container_width=False, hide_index=True)
 
     # Professor trajectory (PLANTA only)
     def _c(df0, *names):
@@ -1419,7 +1422,7 @@ def page_area():
     count_label = int(detail[IDCOL].nunique()) if IDCOL in detail.columns else len(detail_out)
     faculty_word = "full-time" if st.session_state.modo_faculty == "Full-time" else "part-time"
     st.markdown(f"### There are {count_label} {faculty_word} Faculty in **{sel_label}**")
-    st.dataframe(detail_out, use_container_width=True)
+    st.dataframe(detail_out, use_container_width=True, hide_index=True)
 
     fname_det = f"Detail_{'FT' if st.session_state.modo_faculty == 'Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ', '_')}.xlsx"
     _download_link("Descargar tabla (Excel)", detail_out, fname_det)
@@ -4685,7 +4688,8 @@ def page_qualifications():
                                       f"credit_sums_{_slugify(dim_label)}_{_slugify(display_label)}.xlsx",
                                       key=f"dl_credit_sums_{_slugify(dim_label)}_{_slugify(display_label)}",
                                       label=f"⬇️ Download table {display_label} (Excel)")
-                st.dataframe(tbl_out.style.format("{:,.0f}"), use_container_width=True)
+                _tbl_out_display = tbl_out.reset_index().rename(columns={"index": dim_label})
+                st.dataframe(_tbl_out_display.style.format("{:,.0f}", subset=tbl_out.columns), use_container_width=True, hide_index=True)
 
                 # ===== Selector propio de dimensión (independiente del gráfico superior) =====
                 # Construye lista de miembros visibles en esta tabla
@@ -6102,6 +6106,20 @@ def _write_translated_formula(ws, col: int, row: int, tpl_text: str, is_array: b
         ws.cell(row=row, column=col, value=translated)
 
 
+def _needs_fix(v) -> bool:
+    """True si una celda está vacía, o si aún tiene el texto de una fórmula
+    (normal o de matriz) sin resolver — openpyxl nunca calcula fórmulas, así
+    que cualquier celda así se ve en blanco en pandas/Streamlit hasta que
+    alguien la reemplace por su valor literal ya calculado."""
+    if v is None or v == "":
+        return True
+    if isinstance(v, str) and v.startswith("="):
+        return True
+    if isinstance(v, ArrayFormula):
+        return True
+    return False
+
+
 def _table_info(ws, table_name: str):
     """Ubica una Tabla de Excel por nombre (case-insensitive) y devuelve
     (nombre_real, min_col, min_row, max_col, last_row) usando el rango de la
@@ -7040,7 +7058,7 @@ def page_update_data():
                     tpl_df = tpl_df.rename(columns={notes_col: "Notes"})
 
                 st.markdown("**Vista previa**")
-                st.dataframe(_style_planta_preview(tpl_df), use_container_width=True)
+                st.dataframe(_style_planta_preview(tpl_df), use_container_width=True, hide_index=True)
 
                 if st.button("Guardar en BD_planta", type="primary", icon=":material/save:"):
                     with st.spinner("Escribiendo en Drive…"):
@@ -7112,7 +7130,8 @@ def page_update_data():
                     f"{(~missing_area_mask).sum()} con área encontrada, {missing_area_mask.sum()} sin área · "
                     f"{(~missing_prof_mask).sum()} con profesor encontrado, {missing_prof_mask.sum()} sin profesor."
                 )
-                st.dataframe(cart_df, use_container_width=True)
+                st.markdown("**Vista previa**")
+                st.dataframe(cart_df, use_container_width=True, hide_index=True)
 
                 # ============== CURSOS NUEVOS (área) ==============
                 missing_courses = (
@@ -7185,7 +7204,7 @@ def page_update_data():
                                 nc = _read_cursos_nuevos_template(up_new)
                                 nc.columns = [c.strip() for c in nc.columns]
                                 new_courses_df = nc
-                                st.dataframe(new_courses_df, use_container_width=True)
+                                st.dataframe(new_courses_df, use_container_width=True, hide_index=True)
                             except Exception as e:
                                 st.error(f"No pude leer la template de cursos nuevos: {e}")
 
@@ -7317,7 +7336,7 @@ def page_update_data():
                                 npf = _read_profesores_nuevos_template(up_profs)
                                 npf.columns = [c.strip() for c in npf.columns]
                                 new_profs_df = npf
-                                st.dataframe(new_profs_df, use_container_width=True)
+                                st.dataframe(new_profs_df, use_container_width=True, hide_index=True)
                             except Exception as e:
                                 st.error(f"No pude leer la template de profesores nuevos: {e}")
 
@@ -7408,24 +7427,15 @@ if not IS_UPDATE_PAGE:
             st.caption("Analytics Dashboard")
         st.markdown("---")
 
-    # "Other sections": flotante, sobre la página principal (no el sidebar),
-    # HTML puro en una fila flex real — así queda horizontal sin depender de
-    # adivinar cómo Streamlit anida sus propios contenedores internamente.
-    NAV_ITEMS = [
-        ("🎓", "Composition", "composition"),
-        ("📊", "Staffing Levels", "staffing"),
-        ("🏛️", "By Area", "area"),
-        ("🧑‍🤝‍🧑", "Demographics", "demographics"),
-        ("🧭", "Activities", "activities"),
-        ("📚", "Qualifications", "qualifications"),
-    ]
+    # "Other sections": flotante, sobre la página principal (no el sidebar).
+    # Usa st.page_link (no <a href> a mano) porque el enlace crudo asumía
+    # que la app vive en la raíz del dominio — si Streamlit Cloud la sirve
+    # bajo otra ruta, esos enlaces daban "Page not found". st.page_link
+    # siempre resuelve la URL real, sin importar dónde esté desplegada.
     _current_idx = pages.index(pg)
     with st.container(key="nav_toggle"):
-        parts = []
-        for i, (icon, title, path) in enumerate(NAV_ITEMS):
-            cls = " class=\"active\"" if i == _current_idx else ""
-            parts.append(f'<a href="/{path}" target="_self"{cls}>{icon}&nbsp;{title}</a>')
-        st.markdown(f'<div class="nav-row">{"".join(parts)}</div>', unsafe_allow_html=True)
+        for i, page_obj in enumerate(pages[:-1]):
+            st.page_link(page_obj, disabled=(i == _current_idx))
 
 pg.run()
 
