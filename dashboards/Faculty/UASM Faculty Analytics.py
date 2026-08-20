@@ -93,8 +93,9 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    ".st-key-nav_toggle{width:100% !important;margin:-4.5rem 0 8px 0 !important;"
-    "position:sticky !important;top:0;z-index:999;background:#FFFFFF;padding-top:1rem;}"
+    ".block-container{padding-top:0.5rem !important;}"
+    ".st-key-nav_toggle{width:100% !important;margin:0 0 8px 0 !important;"
+    "position:sticky !important;top:0;z-index:999;background:#FFFFFF;}"
     ".nav-row{display:flex;flex-direction:row;flex-wrap:nowrap;white-space:nowrap;justify-content:center;}"
     ".nav-row a{"
     "display:inline-flex;align-items:center;white-space:nowrap;flex-shrink:0;"
@@ -1394,6 +1395,7 @@ def page_area():
         else:
             dist = df_donut.groupby("AREA_PROFESOR")[IDCOL].nunique().sort_values(ascending=False)
             donut_df = pd.DataFrame({"Area": dist.index, "Value": dist.values})
+            donut_df["Area"] = donut_df["Area"].astype(str).str.replace(" & ", " &<br>", regex=False)
 
             _SOFT_DONUT_PALETTE = [
                 "#8FBFB8", "#A7D8CF", "#F2B880", "#B7A3D1", "#F4C79A",
@@ -1871,7 +1873,9 @@ def page_demographics():
                 .apply(style_tbd, axis=None)
                 .hide(axis="index")
             )
-            st.dataframe(styled_table, use_container_width=True, height=48 + 33 * (len(display_df) + 1), hide_index=True)
+            with st.container(key="tct_demo_parttime"):
+                st.dataframe(styled_table, use_container_width=True, height=48 + 33 * (len(display_df) + 1), hide_index=True)
+            _scroll_table_right_once("tct_demo_parttime")
 
 
     # Side KPI charts
@@ -2001,18 +2005,24 @@ def page_demographics():
             title=title_combo, color_discrete_map={"% PhD": "#00A896", "% International": "#2E6FC4"},
         )
         fig_combo.update_traces(texttemplate="%{y:.1f}%", textposition="top center")
+        for trace in fig_combo.data:
+            if trace.name == "% International":
+                trace.yaxis = "y2"
         fig_combo.update_xaxes(type="category", categoryorder="array", categoryarray=labels_ts, tickangle=0, title=None)
-        fig_combo.update_yaxes(range=[0, max(y_max_phd, 40)], title=None)
+        fig_combo.update_layout(
+            yaxis=dict(range=[y_min_phd, y_max_phd], title="% PhD"),
+            yaxis2=dict(range=[0, 40], title="% International", overlaying="y", side="right"),
+        )
         _highlight_band(fig_combo, period_current, labels_ts, color=COLORS["highlight"])
         # Anotación al final de cada línea con su valor: "XX.X% ... with PhD" / "XX.X% ... International Faculty"
         if labels_ts:
             last_phd = phd_ts[-1] if len(phd_ts) else 0
             last_int = intl_ts[-1] if len(intl_ts) else 0
-            fig_combo.add_annotation(x=labels_ts[-1], y=last_phd, text=f"{last_phd:.1f}% ... with PhD",
+            fig_combo.add_annotation(x=labels_ts[-1], y=last_phd, yref="y", text=f"{last_phd:.1f}% ... with PhD",
                                       showarrow=False, xanchor="left", xshift=8, font=dict(color="#00A896", size=12))
-            fig_combo.add_annotation(x=labels_ts[-1], y=last_int, text=f"{last_int:.1f}% ... International Faculty",
+            fig_combo.add_annotation(x=labels_ts[-1], y=last_int, yref="y2", text=f"{last_int:.1f}% ... International Faculty",
                                       showarrow=False, xanchor="left", xshift=8, yshift=-14, font=dict(color="#2E6FC4", size=12))
-        fig_combo.update_layout(height=line_h, margin=dict(l=10, r=60, t=40, b=60),
+        fig_combo.update_layout(height=line_h + 80, margin=dict(l=10, r=90, t=40, b=60),
                                  legend=dict(orientation="h", yanchor="top", y=-0.15, x=0.5, xanchor="center", title=None))
         st.plotly_chart(fig_combo, use_container_width=True)
 
@@ -2087,7 +2097,7 @@ def page_demographics():
                 "Region Where it was obtained": ["Region Where it was obtained", "Region were degree was obtained", "Region"],
                 "Year": ["Year", "Year Earned ", "Year Degree", "Year Earned", "Highest Degree, Year Earned"],
             })
-            open_phd_detail = st.button("Ver detalle de profesores con PhD", key="open_phd_detail", use_container_width=True)
+            open_phd_detail = st.button("Show PhDs", key="open_phd_detail", use_container_width=True)
             if open_phd_detail:
                 if hasattr(st, "dialog"):
                     @st.dialog("Profesores con PhD", width="large")
@@ -2155,7 +2165,7 @@ def page_demographics():
                 "Full Name": ["Full Name", "Full-Name", "Full_Name", "Profesor", "First Name"],
                 "Nationality": ["Nationality", "Country of Birth"],
             })
-            open_nat_detail = st.button("Ver detalle de nacionalidad (profesores)", key="open_nat_detail", use_container_width=True)
+            open_nat_detail = st.button("Show Nationalities", key="open_nat_detail", use_container_width=True)
             if open_nat_detail:
                 if hasattr(st, "dialog"):
                     @st.dialog("Nacionalidad de profesores", width="large")
@@ -7474,9 +7484,9 @@ if not IS_UPDATE_PAGE:
     with st.container(key="nav_toggle"):
         parts = []
         for i, (icon, title, path) in enumerate(NAV_ITEMS):
-            cls = " class=\"active\"" if i == _current_idx else ""
-            onclick = f"window.location.href=window.location.origin+'/{path}';return false;"
-            parts.append(f'<a href="/{path}" onclick="{onclick}"{cls}>{icon}&nbsp;{title}</a>')
+            cls = " class=\\\"active\\\"" if i == _current_idx else ""
+            onclick = f"window.location.assign(window.location.origin+'/{path}');return false;"
+            parts.append(f'<a href="javascript:void(0)" onclick="{onclick}"{cls}>{icon}&nbsp;{title}</a>')
         st.markdown(f'<div class="nav-row">{"".join(parts)}</div>', unsafe_allow_html=True)
 
 pg.run()
