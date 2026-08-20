@@ -105,6 +105,8 @@ st.markdown(
     "text-decoration:none;padding:6px 10px;"
     "opacity:0.85;transition:opacity .15s ease,background .15s ease;}"
     ".nav-row a:hover{opacity:1;color:#00A896;background:rgba(0,168,150,0.08);}"
+    ".nav-row a.active{opacity:1;color:#004d47;font-weight:700;"
+    "background:rgba(0,77,71,0.09);box-shadow:inset 0 -2px 0 #00A896;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     "div[class*='st-key-course_box_bad_'] div[data-testid='stExpander'],"
     "div[class*='st-key-prof_box_bad_'] div[data-testid='stExpander']{"
@@ -7417,12 +7419,13 @@ if not IS_UPDATE_PAGE:
         ("🧭", "Activities", "activities"),
         ("📚", "Qualifications", "qualifications"),
     ]
+    _current_idx = pages.index(pg)
     with st.container(key="nav_toggle"):
-        links_html = "".join(
-            f'<a href="/{path}" target="_self">{icon}&nbsp;{title}</a>'
-            for icon, title, path in NAV_ITEMS
-        )
-        st.markdown(f'<div class="nav-row">{links_html}</div>', unsafe_allow_html=True)
+        parts = []
+        for i, (icon, title, path) in enumerate(NAV_ITEMS):
+            cls = " class=\"active\"" if i == _current_idx else ""
+            parts.append(f'<a href="/{path}" target="_self"{cls}>{icon}&nbsp;{title}</a>')
+        st.markdown(f'<div class="nav-row">{"".join(parts)}</div>', unsafe_allow_html=True)
 
 pg.run()
 
@@ -7475,20 +7478,11 @@ else:
                     buf.seek(0)
                     return buf.getvalue()
 
-                # Perezoso a propósito: NO se arma el archivo (ni se toca Drive)
-                # hasta que el usuario pida prepararlo — así el sidebar nunca
-                # depende de la Cartelera completa para poder cargar la página.
-                if st.button("Prepare download", key="dl_db_prepare", use_container_width=True):
-                    with st.spinner("Preparando…"):
-                        st.session_state["_dl_db_bytes"] = _build_db_download(dl_period, dl_scope)
-                        st.session_state["_dl_db_name"] = f"BD_{dl_scope}_{dl_period}.xlsx".replace(" ", "_")
-
-                if "_dl_db_bytes" in st.session_state:
-                    st.download_button(
-                        "Download", data=st.session_state["_dl_db_bytes"],
-                        file_name=st.session_state.get("_dl_db_name", "BD_download.xlsx"),
-                        key="dl_db_btn", use_container_width=True,
-                    )
+                st.download_button(
+                    "Download", data=_build_db_download(dl_period, dl_scope),
+                    file_name=f"BD_{dl_scope}_{dl_period}.xlsx".replace(" ", "_"),
+                    key="dl_db_btn", use_container_width=True,
+                )
         with col_upd:
             with st.container(key="go_to_update_btn"):
                 st.page_link(pages[-1], label="Update", icon=":material/sync:", use_container_width=True)
