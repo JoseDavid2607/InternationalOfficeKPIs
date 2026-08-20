@@ -106,19 +106,20 @@ st.markdown(
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     ".st-key-nav_toggle{"
-    "position:fixed !important;top:0.5rem;"
+    "position:fixed !important;top:0;"
     "left:calc(21rem + (100vw - 21rem) / 2);transform:translateX(-50%);"
-    "z-index:999999;width:auto !important;margin:0 !important;}"
+    "z-index:999999;width:auto !important;margin:0 !important;"
+    "max-width:calc(100vw - 21rem - 2rem);overflow-x:auto;}"
     ".st-key-nav_toggle div[data-testid='stVerticalBlock']{"
-    "display:flex !important;flex-wrap:wrap;justify-content:center;gap:8px;}"
+    "display:flex !important;flex-wrap:nowrap;justify-content:center;gap:2px;}"
     ".st-key-nav_toggle a{"
     "display:inline-flex !important;align-items:center;white-space:nowrap;"
-    "background:#FFFFFF !important;border:1px solid #D1E8E4 !important;"
-    "font-size:13px !important;color:#374151 !important;font-weight:600 !important;"
-    "text-decoration:none !important;padding:7px 16px !important;border-radius:999px !important;"
-    "box-shadow:0 1px 4px rgba(0,0,0,.06);}"
-    ".st-key-nav_toggle a:hover{color:#00A896 !important;border-color:#00A896 !important;"
-    "background:#F0FAF8 !important;}"
+    "background:rgba(0,77,71,0.04) !important;border:none !important;border-radius:0 !important;"
+    "font-size:12px !important;color:#9CA3AF !important;font-weight:600 !important;"
+    "text-decoration:none !important;padding:6px 12px !important;"
+    "opacity:0.55;transition:opacity .15s ease,background .15s ease;}"
+    ".st-key-nav_toggle a:hover{opacity:1;color:#00A896 !important;"
+    "background:rgba(0,168,150,0.08) !important;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     ".st-key-update_sidebar_group img{margin:0 auto;}"
     ".st-key-go_to_dashboard_btn a{"
@@ -7087,7 +7088,10 @@ def page_update_data():
                     icon=":material/download:",
                 )
 
-        _cart_periods = qual_load_cartelera()["Periodo"].dropna().unique().tolist()
+        _cart_periods = [
+            p for p in qual_load_cartelera()["Periodo"].dropna().unique().tolist()
+            if re.fullmatch(r"(?:19|20)\d{2}(-?(10|20)|\s*Intersemestral)", str(p).strip())
+        ]
         last_cart_period = sorted(_cart_periods, key=_period_sort_key)[-1] if _cart_periods else "—"
         st.caption(f"Último periodo registrado en la Base: **{last_cart_period}**")
 
@@ -7146,20 +7150,24 @@ def page_update_data():
                     )
 
                     if fill_mode == "Seleccionar aquí mismo":
-                        editable_courses = missing_courses.copy()
-                        editable_courses["Area del curso"] = None
-                        edited_courses = st.data_editor(
-                            editable_courses,
-                            column_config={
-                                "Materia": st.column_config.TextColumn("Código Materia", disabled=True),
-                                "Créditos": st.column_config.NumberColumn(disabled=True),
-                                "Nombre largo curso": st.column_config.TextColumn(disabled=True),
-                                "Area del curso": st.column_config.SelectboxColumn(
-                                    "Area del curso", options=AREA_OPTIONS, required=True,
-                                ),
-                            },
-                            hide_index=True, use_container_width=True, key="missing_courses_editor",
-                        )
+                        picked_areas = {}
+                        for _, row in missing_courses.iterrows():
+                            c1, c2, c3, c4 = st.columns([2, 1, 3, 2])
+                            c1.markdown(f"**{row['Materia']}**")
+                            c2.markdown(str(row["Créditos"]))
+                            c3.markdown(row["Nombre largo curso"])
+                            with c4:
+                                area_key = f"area_pick_{row['Materia']}"
+                                is_empty = st.session_state.get(area_key, "— Selecciona —") == "— Selecciona —"
+                                color = "#DC2626" if is_empty else "#374151"
+                                st.markdown(
+                                    f"<div style='font-size:12px;color:{color};font-weight:600;'>Area *</div>",
+                                    unsafe_allow_html=True,
+                                )
+                                picked_areas[row["Materia"]] = st.selectbox(
+                                    "Area", options=["— Selecciona —"] + AREA_OPTIONS,
+                                    key=area_key, label_visibility="collapsed",
+                                )
 
                         with st.popover("＋ Ver profesor(es) y área por curso", use_container_width=True):
                             for _, row in missing_courses.iterrows():
@@ -7172,8 +7180,10 @@ def page_update_data():
                                         area_txt = info[1] if info else "—"
                                         st.markdown(f"{p} · *{area_txt}*")
 
-                        if edited_courses["Area del curso"].notna().all():
-                            new_courses_df = edited_courses.rename(columns={"Materia": "Código Materia"})
+                        if all(v != "— Selecciona —" for v in picked_areas.values()):
+                            new_courses_df = missing_courses.assign(
+                                **{"Area del curso": missing_courses["Materia"].map(picked_areas)}
+                            ).rename(columns={"Materia": "Código Materia"})
                     else:
                         st.download_button(
                             "⬇️ Descargar Template_cursos_nuevos.xlsx (con los códigos ya puestos)",
@@ -7381,8 +7391,11 @@ if not IS_UPDATE_PAGE:
 
 
 def _period_sort_key(p):
-    s = str(p)
-    return (int(s[:4]), 30 if "Intersemestral" in s else int(s[-2:].replace("-", "")))
+    s = str(p).strip()
+    try:
+        return (int(s[:4]), 30 if "Intersemestral" in s else int(s[-2:].replace("-", "")))
+    except (ValueError, IndexError):
+        return (-1, -1)  # valores no reconocibles (vacíos, ruido de datos) quedan al final al ordenar
 
 
 if not IS_UPDATE_PAGE:
