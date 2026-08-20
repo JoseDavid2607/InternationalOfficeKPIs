@@ -6882,7 +6882,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             h_creditos = 0 if pd.isna(h_creditos) else h_creditos
 
             if _needs_fix(ws_cart.cell(row=r, column=2).value):
-                c = ws_cart.cell(row=r, column=2, value=semestre_map.get(str(h_periodo).strip(), ""))
+                c = ws_cart.cell(row=r, column=2, value=semestre_map.get(str(h_periodo).strip(), h_periodo))
                 c.font = base_font; c.fill = calc_fill
             if _needs_fix(ws_cart.cell(row=r, column=9).value):
                 c = ws_cart.cell(row=r, column=9, value=field_map.get(str(h_area).strip(), ""))
@@ -6923,8 +6923,9 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                 cell = ws_cart.cell(row=rn, column=col, value=val)
                 cell.font = base_font
 
-            # B — Semestre (limpio, vía tabla AD:AE)
-            b_cell = ws_cart.cell(row=rn, column=2, value=semestre_map.get(str(periodo).strip(), ""))
+            # B — Semestre (limpio vía tabla AD:AE; si el periodo no está ahí
+            # registrado, se deja al menos el Periodo crudo — nunca en blanco)
+            b_cell = ws_cart.cell(row=rn, column=2, value=semestre_map.get(str(periodo).strip(), periodo))
             b_cell.font = base_font
             b_cell.fill = calc_fill
 
