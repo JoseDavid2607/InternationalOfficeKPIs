@@ -120,6 +120,12 @@ st.markdown(
     "opacity:0.55;transition:opacity .15s ease,background .15s ease;}"
     ".st-key-nav_toggle a:hover{opacity:1;color:#00A896 !important;"
     "background:rgba(0,168,150,0.08) !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button{"
+    "background:rgba(0,77,71,0.04) !important;border:none !important;border-radius:0 !important;"
+    "font-size:12px !important;color:#9CA3AF !important;font-weight:600 !important;"
+    "padding:6px 12px !important;box-shadow:none !important;opacity:0.55;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button:hover{"
+    "opacity:1;color:#00A896 !important;background:rgba(0,168,150,0.08) !important;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     ".st-key-update_sidebar_group img{margin:0 auto;}"
     ".st-key-go_to_dashboard_btn a{"
@@ -7413,10 +7419,16 @@ if not IS_UPDATE_PAGE:
         st.markdown("---")
 
     # "Other sections": flotante, sobre la página principal (no el sidebar),
-    # con los emojis originales, en pastillas sólidas de ancho automático.
+    # con los emojis originales, en recuadros sutiles de ancho automático.
+    # Si hay más de 4, el resto queda detrás de "More…".
     with st.container(key="nav_toggle"):
-        for page_obj in pages[:-1]:
+        visible_pages, overflow_pages = pages[:-1][:4], pages[:-1][4:]
+        for page_obj in visible_pages:
             st.page_link(page_obj)
+        if overflow_pages:
+            with st.popover("More…"):
+                for page_obj in overflow_pages:
+                    st.page_link(page_obj)
 
 pg.run()
 
