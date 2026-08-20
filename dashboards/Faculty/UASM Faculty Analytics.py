@@ -6,7 +6,9 @@
 #  Página 4: Faculty Demographics
 #  Página 5: Full-time Faculty Activities
 #  Página 6: Faculty Qualifications
-#  Página 7: Update Data
+#  Página 7: Update Data — sube las templates y escribe directo en los
+#            archivos .xlsx de Drive (BD_profesores.xlsx, BD_cartelera.xlsx)
+#            vía Service Account + Drive API.
 # ===========================================================================
 from __future__ import annotations
 
@@ -7473,11 +7475,20 @@ else:
                     buf.seek(0)
                     return buf.getvalue()
 
-                st.download_button(
-                    "Download", data=_build_db_download(dl_period, dl_scope),
-                    file_name=f"BD_{dl_scope}_{dl_period}.xlsx".replace(" ", "_"),
-                    key="dl_db_btn", use_container_width=True,
-                )
+                # Perezoso a propósito: NO se arma el archivo (ni se toca Drive)
+                # hasta que el usuario pida prepararlo — así el sidebar nunca
+                # depende de la Cartelera completa para poder cargar la página.
+                if st.button("Prepare download", key="dl_db_prepare", use_container_width=True):
+                    with st.spinner("Preparando…"):
+                        st.session_state["_dl_db_bytes"] = _build_db_download(dl_period, dl_scope)
+                        st.session_state["_dl_db_name"] = f"BD_{dl_scope}_{dl_period}.xlsx".replace(" ", "_")
+
+                if "_dl_db_bytes" in st.session_state:
+                    st.download_button(
+                        "Download", data=st.session_state["_dl_db_bytes"],
+                        file_name=st.session_state.get("_dl_db_name", "BD_download.xlsx"),
+                        key="dl_db_btn", use_container_width=True,
+                    )
         with col_upd:
             with st.container(key="go_to_update_btn"):
                 st.page_link(pages[-1], label="Update", icon=":material/sync:", use_container_width=True)
