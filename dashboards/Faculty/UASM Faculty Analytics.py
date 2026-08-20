@@ -93,8 +93,8 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    ".st-key-nav_toggle{width:100% !important;margin:0 0 8px 0 !important;"
-    "position:sticky !important;top:0;z-index:999;background:#FFFFFF;}"
+    ".st-key-nav_toggle{width:100% !important;margin:-4.5rem 0 8px 0 !important;"
+    "position:sticky !important;top:0;z-index:999;background:#FFFFFF;padding-top:1rem;}"
     ".nav-row{display:flex;flex-direction:row;flex-wrap:nowrap;white-space:nowrap;justify-content:center;}"
     ".nav-row a{"
     "display:inline-flex;align-items:center;white-space:nowrap;flex-shrink:0;"
@@ -1395,14 +1395,20 @@ def page_area():
             dist = df_donut.groupby("AREA_PROFESOR")[IDCOL].nunique().sort_values(ascending=False)
             donut_df = pd.DataFrame({"Area": dist.index, "Value": dist.values})
 
+            _SOFT_DONUT_PALETTE = [
+                "#8FBFB8", "#A7D8CF", "#F2B880", "#B7A3D1", "#F4C79A",
+                "#7FA8C9", "#9BCBB0", "#E8A18C", "#8FA3BF", "#C3CBD6",
+            ]
+            soft_color_map = {a: _SOFT_DONUT_PALETTE[i % len(_SOFT_DONUT_PALETTE)] for i, a in enumerate(donut_df["Area"])}
+
             fig_donut = px.pie(
                 donut_df, names="Area", values="Value", hole=0.45, color="Area",
-                color_discrete_map=color_map_area,
+                color_discrete_map=soft_color_map,
             )
             fig_donut.update_traces(
                 texttemplate="%{label}<br>%{percent}", textposition="inside", insidetextorientation="horizontal",
                 pull=[0.04] * len(donut_df), sort=False,
-                textfont=dict(size=15, color="white", family="Arial Black, Arial, sans-serif"),
+                textfont=dict(size=15, color="#1F2937", family="Arial, sans-serif"),
             )
             fig_donut.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10), height=420,
                                      uniformtext_minsize=15, uniformtext_mode="show")
@@ -1830,7 +1836,7 @@ def page_demographics():
                     lambda x: "" if pd.isna(x) else f"{x:.1f}")
                 display_df.loc[~mask_avg, c] = pd.to_numeric(table_df.loc[~mask_avg, c], errors="coerce").fillna(0).astype(int).map(str)
 
-            blue_light, blue_dark = "#e6f0fb", "#184a90"
+            blue_light, blue_dark = "#dff7f2", "#00A896"
             red_light, red_dark = "#f8d7da", "#721c24"
 
             def style_gray(df_):
@@ -1972,12 +1978,13 @@ def page_demographics():
     row1_left, row1_right = st.columns([2, 1])
 
     if mode_now == "Part-time":
-        y_min_phd, y_max_phd, line_h, bar_h = 0, 30, 280, 220
+        y_min_phd, y_max_phd, bar_h = 0, 30, 220
     else:
-        y_min_phd, y_max_phd, line_h, bar_h = 70, 100, 280, 220
+        y_min_phd, y_max_phd, bar_h = 70, 100, 220
     if tmode_ts == "Intersemestral":
         y_min_phd, y_max_phd = 0, 100
 
+    line_h = bar_h + 380 + 60  # iguala la altura combinada de la barra de región + el mapa apilados a la derecha
 
     with row1_left:
         df_pct_combo = pd.DataFrame({
@@ -1997,8 +2004,16 @@ def page_demographics():
         fig_combo.update_xaxes(type="category", categoryorder="array", categoryarray=labels_ts, tickangle=0, title=None)
         fig_combo.update_yaxes(range=[0, max(y_max_phd, 40)], title=None)
         _highlight_band(fig_combo, period_current, labels_ts, color=COLORS["highlight"])
-        fig_combo.update_layout(height=line_h, margin=dict(l=10, r=10, t=40, b=40),
-                                 legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, title=None))
+        # Anotación al final de cada línea con su valor: "XX.X% ... with PhD" / "XX.X% ... International Faculty"
+        if labels_ts:
+            last_phd = phd_ts[-1] if len(phd_ts) else 0
+            last_int = intl_ts[-1] if len(intl_ts) else 0
+            fig_combo.add_annotation(x=labels_ts[-1], y=last_phd, text=f"{last_phd:.1f}% ... with PhD",
+                                      showarrow=False, xanchor="left", xshift=8, font=dict(color="#00A896", size=12))
+            fig_combo.add_annotation(x=labels_ts[-1], y=last_int, text=f"{last_int:.1f}% ... International Faculty",
+                                      showarrow=False, xanchor="left", xshift=8, yshift=-14, font=dict(color="#2E6FC4", size=12))
+        fig_combo.update_layout(height=line_h, margin=dict(l=10, r=60, t=40, b=60),
+                                 legend=dict(orientation="h", yanchor="top", y=-0.15, x=0.5, xanchor="center", title=None))
         st.plotly_chart(fig_combo, use_container_width=True)
 
     with row1_right:
@@ -7444,8 +7459,9 @@ if not IS_UPDATE_PAGE:
 
     # "Other sections": flotante, sobre la página principal. HTML puro con
     # flex (st.columns se apila vertical en contenedores angostos, que es
-    # justo este caso). La página default (Composition) usa "/" — Streamlit
-    # solo registra esa ruta ahí, "/composition" da "Page not found".
+    # justo este caso). Navega con JS usando window.location.origin (el
+    # dominio real que ve el navegador) en vez de una ruta absoluta a mano
+    # — así no importa bajo qué ruta esté servida la app realmente.
     NAV_ITEMS = [
         ("🎓", "Composition", ""),
         ("📊", "Staffing Levels", "staffing"),
@@ -7459,7 +7475,8 @@ if not IS_UPDATE_PAGE:
         parts = []
         for i, (icon, title, path) in enumerate(NAV_ITEMS):
             cls = " class=\"active\"" if i == _current_idx else ""
-            parts.append(f'<a href="/{path}" target="_self"{cls}>{icon}&nbsp;{title}</a>')
+            onclick = f"window.location.href=window.location.origin+'/{path}';return false;"
+            parts.append(f'<a href="/{path}" onclick="{onclick}"{cls}>{icon}&nbsp;{title}</a>')
         st.markdown(f'<div class="nav-row">{"".join(parts)}</div>', unsafe_allow_html=True)
 
 pg.run()
