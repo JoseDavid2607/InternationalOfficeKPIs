@@ -96,6 +96,7 @@ st.markdown(
     ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
     "z-index:999999;width:auto;}"
     ".st-key-nav_toggle div[data-testid='column']{width:auto !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     "div[class*='st-key-course_box_bad_'] div[data-testid='stExpander'],"
     "div[class*='st-key-prof_box_bad_'] div[data-testid='stExpander']{"
