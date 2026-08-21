@@ -6161,6 +6161,10 @@ def _table_info(ws, table_name: str):
     except AttributeError:
         names = list(ws.tables)
     match = next((n for n in names if n.strip().lower() == table_name.strip().lower()), None)
+    if not match and len(names) == 1:
+        # Respaldo: si el nombre no calzó exacto (espacio invisible, etc.)
+        # pero solo hay una tabla en la hoja, es casi seguro que es esa.
+        match = names[0]
     if not match:
         return None
     tbl = ws.tables[match]
