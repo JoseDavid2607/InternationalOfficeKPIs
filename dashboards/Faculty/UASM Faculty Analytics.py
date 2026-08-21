@@ -6498,14 +6498,17 @@ def _load_profesores_lookup() -> Dict[str, Tuple]:
     return dict(zip(key, vals))
 
 
-def _build_prefilled_cursos_template(missing_codes: List[str]) -> bytes:
-    """Descarga la Template_cursos_nuevos.xlsx real y prellena la columna
-    Código Materia (B) con los códigos que no se encontraron, desde la fila 6."""
+def _build_prefilled_cursos_template(missing_rows: pd.DataFrame) -> bytes:
+    """Descarga la Template_cursos_nuevos.xlsx real y prellena Código Materia
+    (B), Créditos (C) y Nombre largo curso (D) con lo que ya se conoce,
+    desde la fila 6."""
     raw = _download_drive_file_bytes(TEMPLATE_CURSOS_NUEVOS_FILE_ID)
     wb = openpyxl.load_workbook(io.BytesIO(raw))
     ws = wb[wb.sheetnames[0]]
-    for i, code in enumerate(missing_codes):
-        ws.cell(row=6 + i, column=2, value=code)
+    for i, (_, row) in enumerate(missing_rows.iterrows()):
+        ws.cell(row=6 + i, column=2, value=row["Materia"])
+        ws.cell(row=6 + i, column=3, value=row["Créditos"])
+        ws.cell(row=6 + i, column=4, value=row["Nombre largo curso"])
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -7222,10 +7225,10 @@ def page_update_data():
                             ).rename(columns={"Materia": "Código Materia"})
                     else:
                         st.download_button(
-                            "⬇️ Descargar Template_cursos_nuevos.xlsx (con los códigos ya puestos)",
-                            data=_build_prefilled_cursos_template(missing_courses["Materia"].tolist()),
+                            "Descargar Template_cursos_nuevos.xlsx (con los datos ya puestos)",
+                            data=_build_prefilled_cursos_template(missing_courses),
                             file_name="Template_cursos_nuevos.xlsx",
-                            key="cursos_template_dl",
+                            key="cursos_template_dl", icon=":material/download:",
                         )
                         up_new = st.file_uploader(
                             "Template_cursos_nuevos.xlsx diligenciada", type=["xlsx"], key="cursos_nuevos_upload"
@@ -7238,6 +7241,8 @@ def page_update_data():
                                 st.dataframe(new_courses_df, use_container_width=True, hide_index=True)
                             except Exception as e:
                                 st.error(f"No pude leer la template de cursos nuevos: {e}")
+
+                st.markdown("---")
 
                 # ============== PROFESORES NUEVOS ==============
                 missing_profs = sorted(cart_df.loc[missing_prof_mask, "Profesor"].dropna().unique().tolist())
@@ -7349,15 +7354,10 @@ def page_update_data():
                             new_profs_df = pd.DataFrame(list(picked_profs.values()))
                     else:
                         st.download_button(
-                            "⬇️ Descargar Template_profesores_nuevos.xlsx (con los nombres ya puestos)",
+                            "Descargar Template_profesores_nuevos.xlsx (con los nombres ya puestos)",
                             data=_build_prefilled_profesores_template(missing_profs),
                             file_name="Template_profesores_nuevos.xlsx",
-                            key="prof_template_dl",
-                        )
-                        st.caption(
-                            "Completa la información de cada profesor (deja **TBD** en lo que no sepas, "
-                            "excepto en ID, AREA_PROFESOR, GÉNERO, TIPO, P/S y PLANTA_CATEDRA — esas son obligatorias) "
-                            "y súbela diligenciada abajo."
+                            key="prof_template_dl", icon=":material/download:",
                         )
                         up_profs = st.file_uploader(
                             "Template_profesores_nuevos.xlsx diligenciada", type=["xlsx"], key="profesores_nuevos_upload"
