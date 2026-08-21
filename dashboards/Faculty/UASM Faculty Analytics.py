@@ -7454,12 +7454,11 @@ if not IS_UPDATE_PAGE:
             st.caption("Analytics Dashboard")
         st.markdown("---")
 
-    # "Other sections": simple, nativo de Streamlit — sin HTML ni JS.
-    with st.expander("Other sections", expanded=False):
-        nav_cols = st.columns(6)
-        for col, page_obj in zip(nav_cols, pages[:-1]):
-            with col:
-                st.page_link(page_obj)
+    # "Other sections": simple, nativo de Streamlit, siempre visible.
+    nav_cols = st.columns(6)
+    for col, page_obj in zip(nav_cols, pages[:-1]):
+        with col:
+            st.page_link(page_obj)
 
 pg.run()
 
