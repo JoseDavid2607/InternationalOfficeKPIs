@@ -6155,21 +6155,41 @@ def _table_info(ws, table_name: str):
     """Ubica una Tabla de Excel por nombre (case-insensitive) y devuelve
     (nombre_real, min_col, min_row, max_col, last_row) usando el rango de la
     tabla — NO ws.max_row, porque algunas hojas tienen filas con formato
-    "fantasma" más allá de los datos reales que inflan ws.max_row."""
+    "fantasma" más allá de los datos reales que inflan ws.max_row.
+
+    Si openpyxl no detecta NINGUNA tabla registrada en la hoja (puede pasar
+    si un guardado anterior dejó la definición de la Tabla dañada, aunque
+    Excel la siga mostrando bien porque es más tolerante), se calcula un
+    rango equivalente directo desde los datos: encabezados en la fila 1,
+    y la última fila con datos reales en la columna A. `match` queda como
+    None en ese caso — el código que llama a esto debe evitar actualizar
+    `ws.tables[match].ref` cuando match es None."""
     try:
         names = list(ws.tables.keys())
     except AttributeError:
         names = list(ws.tables)
     match = next((n for n in names if n.strip().lower() == table_name.strip().lower()), None)
     if not match and len(names) == 1:
-        # Respaldo: si el nombre no calzó exacto (espacio invisible, etc.)
+        # Respaldo 1: si el nombre no calzó exacto (espacio invisible, etc.)
         # pero solo hay una tabla en la hoja, es casi seguro que es esa.
         match = names[0]
-    if not match:
-        return None
-    tbl = ws.tables[match]
-    min_col, min_row, max_col, last_row = range_boundaries(tbl.ref)
-    return match, min_col, min_row, max_col, last_row
+    if match:
+        tbl = ws.tables[match]
+        min_col, min_row, max_col, last_row = range_boundaries(tbl.ref)
+        return match, min_col, min_row, max_col, last_row
+    if not names:
+        # Respaldo 2: no hay ninguna Tabla registrada — inferir el rango
+        # directo de los datos reales, sin depender de un objeto Tabla.
+        max_col = 1
+        for c in range(1, ws.max_column + 1):
+            if ws.cell(row=1, column=c).value not in (None, ""):
+                max_col = c
+        last_row = 1
+        for r in range(2, ws.max_row + 1):
+            if ws.cell(row=r, column=1).value not in (None, ""):
+                last_row = r
+        return None, 1, 1, max_col, last_row
+    return None
 
 
 def _planta_fmt_date(v) -> str:
@@ -6649,7 +6669,8 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
             return True, "✓ Faculty Distribution: no había IDs nuevos que agregar (ya estaban todos)."
 
         new_last_row = append_start + n_written - 1
-        ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
+        if match:
+            ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
 
         wb.calculation.fullCalcOnLoad = True
         buf = io.BytesIO()
@@ -6740,7 +6761,8 @@ def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
             return True, "No había profesores nuevos que agregar."
 
         new_last_row = append_start + n_written - 1
-        ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
+        if match:
+            ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
 
         wb.calculation.fullCalcOnLoad = True
         buf = io.BytesIO()
@@ -6833,9 +6855,10 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                 n_new_courses += 1
 
             new_last_row_c = append_start_c + n_new_courses - 1
-            ws_cursos.tables[info[0]].ref = (
-                f"{get_column_letter(min_col_c)}{min_row_c}:{get_column_letter(max_col_c)}{new_last_row_c}"
-            )
+            if info[0]:
+                ws_cursos.tables[info[0]].ref = (
+                    f"{get_column_letter(min_col_c)}{min_row_c}:{get_column_letter(max_col_c)}{new_last_row_c}"
+                )
 
         # ── Tablas de referencia reales, leídas del propio archivo (no inventadas) ──
         # AD:AE de 'cartelera' → Periodo crudo -> Semestre limpio
@@ -7015,9 +7038,10 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                 cell.fill = calc_fill
 
         new_last_row_ct = append_start_ct + len(cartelera_df) - 1
-        ws_cart.tables[match_cart].ref = (
-            f"{get_column_letter(min_col_ct)}{min_row_ct}:{get_column_letter(max_col_ct)}{new_last_row_ct}"
-        )
+        if match_cart:
+            ws_cart.tables[match_cart].ref = (
+                f"{get_column_letter(min_col_ct)}{min_row_ct}:{get_column_letter(max_col_ct)}{new_last_row_ct}"
+            )
 
         wb.calculation.fullCalcOnLoad = True
         buf = io.BytesIO()
