@@ -55,7 +55,7 @@ st.set_page_config(
 # CSS compartido por todas las páginas
 st.markdown(
     "<style>"
-    ".suite-header{display:flex;flex-direction:column;margin-top:-35px;align-items:center;"
+    ".suite-header{display:flex;flex-direction:column;align-items:center;"
     "padding:16px 24px 12px;"
     "background:linear-gradient(135deg,#004d47 0%,#21877D 60%,#2EC4B6 100%);"
     "border-radius:12px;box-shadow:0 2px 8px rgba(0,77,71,.18);margin-bottom:14px;}"
@@ -93,23 +93,6 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    ".block-container{padding-top:1rem !important;}"
-    ".st-key-nav_toggle{width:100%;margin:0 0 10px 0;}"
-    ".nav-row{display:flex;flex-wrap:wrap;gap:4px;align-items:center;}"
-    ".nav-row a{"
-    "display:inline-flex;align-items:center;white-space:nowrap;"
-    "background:rgba(0,77,71,0.05);border:none;border-radius:6px;"
-    "font-size:13px;color:#6B7280;font-weight:400;"
-    "text-decoration:none;padding:6px 10px;"
-    "opacity:0.85;transition:opacity .15s ease,background .15s ease;}"
-    ".nav-row a:hover{opacity:1;color:#00A896;background:rgba(0,168,150,0.08);}"
-    ".nav-row a.active{opacity:1;color:#004d47;font-weight:700;"
-    "background:rgba(0,77,71,0.09);box-shadow:inset 0 -2px 0 #00A896;}"
-    ".nav-more{position:relative;display:inline-block;}"
-    ".nav-more-panel{display:none;position:absolute;top:110%;left:0;background:#FFFFFF;"
-    "border:1px solid #D1E8E4;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.12);"
-    "padding:6px;flex-direction:column;gap:2px;z-index:1000;min-width:160px;}"
-    ".nav-more-panel.show{display:flex;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     "div[class*='st-key-course_box_bad_'] div[data-testid='stExpander'],"
     "div[class*='st-key-prof_box_bad_'] div[data-testid='stExpander']{"
@@ -7471,37 +7454,12 @@ if not IS_UPDATE_PAGE:
             st.caption("Analytics Dashboard")
         st.markdown("---")
 
-    # "Other sections": simple, en el flujo normal, arriba de la página.
-    # Navega con JS usando window.location.origin (el dominio real que ve
-    # el navegador) en vez de una ruta absoluta a mano.
-    NAV_ITEMS = [
-        ("🎓", "Composition", ""),
-        ("📊", "Staffing Levels", "staffing"),
-        ("🏛️", "By Area", "area"),
-        ("🧑‍🤝‍🧑", "Demographics", "demographics"),
-        ("🧭", "Activities", "activities"),
-        ("📚", "Qualifications", "qualifications"),
-    ]
-    _current_idx = pages.index(pg)
-
-    def _nav_link(i, icon, title, path):
-        active_cls = ' class="active"' if i == _current_idx else ""
-        onclick = f"window.location.assign(window.location.origin+'/{path}');return false;"
-        return f'<a href="javascript:void(0)" onclick="{onclick}"{active_cls}>{icon}&nbsp;{title}</a>'
-
-    with st.container(key="nav_toggle"):
-        visible_items, overflow_items = NAV_ITEMS[:4], NAV_ITEMS[4:]
-        parts = [_nav_link(i, *item) for i, item in enumerate(visible_items)]
-        if overflow_items:
-            more_links = "".join(_nav_link(i + 4, *item) for i, item in enumerate(overflow_items))
-            parts.append(
-                '<span class="nav-more">'
-                '<a href="javascript:void(0)" '
-                "onclick=\"this.nextElementSibling.classList.toggle('show');return false;\">More…</a>"
-                f'<span class="nav-more-panel">{more_links}</span>'
-                '</span>'
-            )
-        st.markdown(f'<div class="nav-row">{"".join(parts)}</div>', unsafe_allow_html=True)
+    # "Other sections": simple, nativo de Streamlit — sin HTML ni JS.
+    with st.expander("Other sections", expanded=False):
+        nav_cols = st.columns(6)
+        for col, page_obj in zip(nav_cols, pages[:-1]):
+            with col:
+                st.page_link(page_obj)
 
 pg.run()
 
