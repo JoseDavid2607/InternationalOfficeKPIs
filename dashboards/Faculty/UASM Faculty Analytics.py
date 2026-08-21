@@ -94,10 +94,10 @@ st.markdown(
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:max-content;max-width:96vw;}"
+    "z-index:999999;width:70vw;max-width:900px;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
-    "display:flex !important;flex-wrap:nowrap !important;width:max-content !important;"
-    "justify-content:center !important;gap:14px !important;}"
+    "display:flex !important;flex-wrap:nowrap !important;width:100% !important;"
+    "justify-content:space-between !important;gap:8px !important;}"
     ".st-key-nav_toggle div[data-testid='column']{width:auto !important;min-width:fit-content !important;flex:none !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;}"
@@ -1995,19 +1995,18 @@ def page_demographics():
         fig_combo.add_trace(go.Scatter(
             x=labels_ts, y=phd_ts, name="% PhD", mode="lines+markers+text",
             line=dict(color="#00A896", width=3), marker=dict(size=7, color="#00A896"),
-            text=[f"{v:.1f}%" for v in phd_ts], textposition="top center", yaxis="y",
+            text=[f"{v:.1f}%" for v in phd_ts], textposition="top center",
         ))
         fig_combo.add_trace(go.Scatter(
             x=labels_ts, y=intl_ts, name="% International", mode="lines+markers+text",
             line=dict(color="#2E6FC4", width=3), marker=dict(size=7, color="#2E6FC4"),
-            text=[f"{v:.1f}%" for v in intl_ts], textposition="top center", yaxis="y2",
+            text=[f"{v:.1f}%" for v in intl_ts], textposition="top center",
         ))
         fig_combo.update_layout(
             title=title_combo,
             xaxis=dict(type="category", categoryorder="array", categoryarray=labels_ts,
                        range=[-0.5, max(len(labels_ts) - 0.5, 0.5)], tickangle=-45),
-            yaxis=dict(range=[y_min_phd, y_max_phd], title="% PhD"),
-            yaxis2=dict(range=[0, 40], title="% International", overlaying="y", side="right"),
+            yaxis=dict(range=[0, 100], title="%"),
         )
         _highlight_band(fig_combo, period_current, labels_ts, color=COLORS["highlight"])
         # Anotación al final de cada línea con su valor: "XX.X% ... with PhD" / "XX.X% ... International Faculty"
@@ -2016,7 +2015,7 @@ def page_demographics():
             last_int = intl_ts[-1] if len(intl_ts) else 0
             fig_combo.add_annotation(x=labels_ts[-1], y=last_phd, yref="y", text=f"{last_phd:.1f}% ... with PhD",
                                       showarrow=False, xanchor="left", xshift=8, font=dict(color="#00A896", size=12))
-            fig_combo.add_annotation(x=labels_ts[-1], y=last_int, yref="y2", text=f"{last_int:.1f}% ... International Faculty",
+            fig_combo.add_annotation(x=labels_ts[-1], y=last_int, yref="y", text=f"{last_int:.1f}% ... International Faculty",
                                       showarrow=False, xanchor="left", xshift=8, yshift=-14, font=dict(color="#2E6FC4", size=12))
         fig_combo.update_layout(height=line_h + 80, margin=dict(l=10, r=90, t=40, b=60),
                                  legend=dict(orientation="h", yanchor="top", y=-0.15, x=0.5, xanchor="center", title=None))
