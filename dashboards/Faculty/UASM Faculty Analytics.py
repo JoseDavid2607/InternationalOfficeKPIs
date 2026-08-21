@@ -95,7 +95,7 @@ st.markdown(
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
     "z-index:999999;width:auto;}"
-    ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{justify-content:space-between;gap:12px;}"
+    ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{justify-content:space-between !important;gap:12px !important;}"
     ".st-key-nav_toggle div[data-testid='column']{width:auto !important;min-width:fit-content !important;flex:none !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;}"
@@ -1985,26 +1985,25 @@ def page_demographics():
     line_h = bar_h + 380 + 140  # iguala la altura combinada de la barra de región + el mapa, y un poco más
 
     with row1_left:
-        df_pct_combo = pd.DataFrame({
-            "Label": labels_ts + labels_ts,
-            "Percent": list(phd_ts) + list(intl_ts),
-            "Metric": ["% PhD"] * len(labels_ts) + ["% International"] * len(labels_ts),
-        })
         title_combo = (
             "% PhD & % International — Full-time Faculty" if mode_now == "Full-time"
             else "% PhD & % International — Part-time Faculty"
         )
-        fig_combo = px.line(
-            df_pct_combo, x="Label", y="Percent", color="Metric", markers=True, text="Percent",
-            title=title_combo, color_discrete_map={"% PhD": "#00A896", "% International": "#2E6FC4"},
-        )
-        fig_combo.update_traces(texttemplate="%{y:.1f}%", textposition="top center")
-        for trace in fig_combo.data:
-            if trace.name == "% International":
-                trace.yaxis = "y2"
-        fig_combo.update_xaxes(type="category", categoryorder="array", categoryarray=labels_ts,
-                                tickmode="array", tickvals=labels_ts, tickangle=-45, title=None)
+        fig_combo = go.Figure()
+        fig_combo.add_trace(go.Scatter(
+            x=labels_ts, y=phd_ts, name="% PhD", mode="lines+markers+text",
+            line=dict(color="#00A896", width=3), marker=dict(size=7, color="#00A896"),
+            text=[f"{v:.1f}%" for v in phd_ts], textposition="top center", yaxis="y",
+        ))
+        fig_combo.add_trace(go.Scatter(
+            x=labels_ts, y=intl_ts, name="% International", mode="lines+markers+text",
+            line=dict(color="#2E6FC4", width=3), marker=dict(size=7, color="#2E6FC4"),
+            text=[f"{v:.1f}%" for v in intl_ts], textposition="top center", yaxis="y2",
+        ))
         fig_combo.update_layout(
+            title=title_combo,
+            xaxis=dict(type="category", categoryorder="array", categoryarray=labels_ts,
+                       tickmode="array", tickvals=labels_ts, tickangle=-45),
             yaxis=dict(range=[y_min_phd, y_max_phd], title="% PhD"),
             yaxis2=dict(range=[0, 40], title="% International", overlaying="y", side="right"),
         )
@@ -2098,8 +2097,6 @@ def page_demographics():
                     @st.dialog("Profesores con PhD", width="large")
                     def _dlg_phd():
                         st.dataframe(detalle_phd.reset_index(drop=True), use_container_width=True, hide_index=True)
-                        if st.button("Close", key="close_phd_detail"):
-                            st.rerun()
                     _dlg_phd()
                 else:
                     with st.expander("Profesores con PhD", expanded=True):
@@ -2166,8 +2163,6 @@ def page_demographics():
                     @st.dialog("Nacionalidad de profesores", width="small")
                     def _dlg_nat():
                         st.dataframe(detalle_nat.reset_index(drop=True), use_container_width=True, hide_index=True)
-                        if st.button("Close", key="close_nat_detail"):
-                            st.rerun()
                     _dlg_nat()
                 else:
                     with st.expander("Nacionalidad de profesores", expanded=True):
