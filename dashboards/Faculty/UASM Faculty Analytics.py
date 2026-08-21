@@ -6565,6 +6565,72 @@ def _build_prefilled_profesores_template(missing_names: List[str]) -> bytes:
     return buf.getvalue()
 
 
+def repair_planta_catedra_cache() -> Tuple[bool, str]:
+    """Reparación de una sola vez: la columna PLANTA_CATEDRA de 'Faculty
+    Distribution' es una fórmula (=IF(COUNTIFS(planta!...)>0,"PLANTA","CÁTEDRA"))
+    cuyo valor en caché se perdió en guardados automatizados anteriores —
+    openpyxl no recalcula fórmulas, así que quedó en blanco para todos los
+    periodos históricos (solo el más reciente, escrito con valor literal,
+    se veía bien). Esta función calcula el valor real cruzando (Periodo, ID)
+    contra la hoja 'planta' y lo escribe como literal, para todas las filas
+    donde la celda siga siendo una fórmula sin resolver."""
+    if not _OPENPYXL_OK:
+        return False, "Falta la librería `openpyxl` en el entorno."
+    token = _get_gspread_access_token()
+    if not token:
+        return False, "No hay credenciales configuradas para escribir en Drive."
+    try:
+        raw_bytes = _download_drive_file_bytes(PROFESORES_FILE_ID)
+        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
+        ws_fd = wb["Faculty Distribution"]
+        ws_planta = wb["planta"]
+
+        headers_planta = [c.value for c in ws_planta[1]]
+        col_periodo_p = headers_planta.index("Periodo") + 1 if "Periodo" in headers_planta else 1
+        col_id_p = headers_planta.index("ID Nr.") + 1 if "ID Nr." in headers_planta else 3
+        planta_pairs = set()
+        for r in range(2, ws_planta.max_row + 1):
+            periodo = ws_planta.cell(row=r, column=col_periodo_p).value
+            idval = ws_planta.cell(row=r, column=col_id_p).value
+            if periodo is not None and idval is not None:
+                planta_pairs.add((str(periodo).strip(), str(idval).strip()))
+
+        headers_fd = [c.value for c in ws_fd[1]]
+        col_periodo_fd = headers_fd.index("Semestre") + 1
+        col_id_fd = headers_fd.index("ID") + 1
+        col_pc_fd = headers_fd.index("PLANTA_CATEDRA") + 1
+
+        n_fixed = 0
+        for r in range(2, ws_fd.max_row + 1):
+            periodo = ws_fd.cell(row=r, column=col_periodo_fd).value
+            if periodo is None:
+                continue
+            current = ws_fd.cell(row=r, column=col_pc_fd).value
+            if isinstance(current, str) and current.startswith("="):
+                idval = ws_fd.cell(row=r, column=col_id_fd).value
+                key = (str(periodo).strip(), str(idval).strip())
+                computed = "PLANTA" if key in planta_pairs else "CÁTEDRA"
+                cell = ws_fd.cell(row=r, column=col_pc_fd, value=computed)
+                cell.font = _BASE_ARIAL_FONT
+                n_fixed += 1
+
+        if n_fixed == 0:
+            return True, "No había filas con fórmula sin resolver — nada que reparar."
+
+        wb.calculation.fullCalcOnLoad = True
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        ok, err = _drive_upload_file_bytes(PROFESORES_FILE_ID, buf.getvalue())
+        if not ok:
+            return False, f"Error al subir el archivo reparado a Drive: {err}"
+
+        _download_drive_file_bytes.clear()
+        return True, f"✓ Reparadas {n_fixed} fila(s) de PLANTA_CATEDRA en Faculty Distribution."
+    except Exception as e:
+        return False, f"Error al reparar PLANTA_CATEDRA: {e}"
+
+
 def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[bool, str]:
     """Agrega a 'Faculty Distribution' (BD_profesores.xlsx) una fila por cada
     ID único que quedó en la cartelera recién cargada, agrupado por periodo:
@@ -7074,6 +7140,19 @@ def page_update_data():
         "directamente en el Google Sheet que alimenta todos los dashboards.</div>",
         unsafe_allow_html=True,
     )
+
+    with st.expander("🔧 Reparación de datos (uso puntual)", expanded=False):
+        st.caption(
+            "Corrige la columna PLANTA_CATEDRA de Faculty Distribution cuando quedó "
+            "en blanco para periodos históricos por un problema de fórmulas sin resolver."
+        )
+        if st.button("Reparar PLANTA_CATEDRA", icon=":material/build:"):
+            with st.spinner("Reparando…"):
+                ok, msg = repair_planta_catedra_cache()
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
     tab_planta, tab_cartelera, tab_quest = st.tabs(
         ["BD_planta", "BD_cartelera", "BD_Faculty_Questionnaire"]
