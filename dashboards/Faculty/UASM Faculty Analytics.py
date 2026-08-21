@@ -93,6 +93,9 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
+    ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:auto;}"
+    ".st-key-nav_toggle div[data-testid='column']{width:auto !important;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     "div[class*='st-key-course_box_bad_'] div[data-testid='stExpander'],"
     "div[class*='st-key-prof_box_bad_'] div[data-testid='stExpander']{"
@@ -7455,10 +7458,11 @@ if not IS_UPDATE_PAGE:
         st.markdown("---")
 
     # "Other sections": simple, nativo de Streamlit, siempre visible.
-    nav_cols = st.columns(6)
-    for col, page_obj in zip(nav_cols, pages[:-1]):
-        with col:
-            st.page_link(page_obj)
+    with st.container(key="nav_toggle"):
+        nav_cols = st.columns(6)
+        for col, page_obj in zip(nav_cols, pages[:-1]):
+            with col:
+                st.page_link(page_obj)
 
 pg.run()
 
