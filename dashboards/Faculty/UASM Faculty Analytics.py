@@ -6847,293 +6847,6 @@ def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
         return False, f"Error al escribir en Info. Profesores: {e}"
 
 
-def _build_bsq_report_tables(df_fd_period: pd.DataFrame):
-    """Replica independiente de las tablas 7 y 8 de BSQ Compensation en
-    Qualifications ('Participating and Supporting Faculty Counts' y 'Faculty
-    Counts by Qualification Types'), para un DataFrame de Faculty Distribution
-    ya filtrado a un solo periodo. No depende del estado de la página en vivo."""
-    def _resolve(df, target):
-        t = target.strip().casefold()
-        for c in df.columns:
-            if c.strip().casefold() == t:
-                return c
-        return None
-
-    def _get_any(df, *cands):
-        for c in cands:
-            if _resolve(df, c):
-                return c
-        return None
-
-    def normalize_ps(val):
-        v = str(val).strip().lower()
-        if v in {"p", "participating", "participante", "participating faculty"}:
-            return "P"
-        if v in {"s", "supporting", "soporte", "supporting faculty"}:
-            return "S"
-        return ""
-
-    def normalize_tipo(val):
-        v = str(val).strip().lower()
-        if v in {"sa", "scholarly academics", "scholarly academic"}:
-            return "SA"
-        if v in {"pa", "practice academics", "practice academic"}:
-            return "PA"
-        if v in {"sp", "scholarly practitioners", "scholarly practitioner"}:
-            return "SP"
-        if v in {"ip", "instructional practitioners", "instructional practitioner"}:
-            return "IP"
-        if v in {"o", "other", "others", "otro", "otros"}:
-            return "OTHER"
-        m = re.search(r"\b(sa|pa|sp|ip|o|other)\b", v)
-        if m:
-            code = m.group(1).upper()
-            return "OTHER" if code in {"O", "OTHER"} else code
-        return "OTHER"
-
-    def _norm_gender(x):
-        v = str(x).strip().lower()
-        if v in {"male", "masculino", "m", "hombre"}:
-            return "Male"
-        if v in {"female", "femenino", "f", "mujer"}:
-            return "Female"
-        return "Other"
-
-    def _is_doctoral(x):
-        v = str(x).strip().lower().replace(".", "")
-        return ("phd" in v) or ("doctor" in v)
-
-    def _ensure_pid(df):
-        out = df.copy()
-        idc = _get_any(out, "ID", "ID Nr.", "Documento")
-        namec = _get_any(out, "Profesor", "PROFESOR", "Docente", "Nombre")
-        if idc and idc in out:
-            out["_PID"] = out[idc].astype(str).str.strip()
-        elif namec and namec in out:
-            out["_PID"] = out[namec].astype(str).str.strip().str.lower()
-        else:
-            out["_PID"] = out.index.astype(str)
-        return out
-
-    col_ps_fd = _get_any(df_fd_period, "P/S", "PS")
-    col_tipo_fd = _get_any(df_fd_period, "TIPO", "Qualification Type")
-    col_genero = _get_any(df_fd_period, "GÉNERO", "GENERO", "Genero", "Gender")
-    col_degree = _get_any(df_fd_period, "Highest Degree", "HighestDegree", "DEGREE", "Grado máximo", "Grado")
-    col_ftpt = _get_any(df_fd_period, "PLANTA_CATEDRA", "Planta_Catedra", "Planta/Catedra", "Full/Part")
-
-    empty7 = pd.DataFrame(columns=["Row", "Male", "Female", "Other", "Total"])
-    empty8 = pd.DataFrame(columns=["Row", "SA", "PA", "SP", "IP", "OTHER", "TOTAL"])
-    if not all([col_genero, col_degree, col_ftpt, col_ps_fd, col_tipo_fd]) or df_fd_period.empty:
-        return empty7, empty8
-
-    df_bsq = _ensure_pid(df_fd_period).assign(
-        Gender=df_fd_period[col_genero].map(_norm_gender),
-        IsDoctoral=df_fd_period[col_degree].map(_is_doctoral),
-        FTPT_raw=df_fd_period[col_ftpt],
-        PS_raw=df_fd_period[col_ps_fd].map(normalize_ps),
-        TIPO_raw=df_fd_period[col_tipo_fd].map(normalize_tipo),
-    )
-    df_bsq["FTPT"] = df_bsq["FTPT_raw"].fillna("").astype(str).str.strip().str.upper()
-    for old, new in {"Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U", "Ñ": "N"}.items():
-        df_bsq["FTPT"] = df_bsq["FTPT"].str.replace(old, new, regex=False)
-    df_bsq["PS"] = df_bsq["PS_raw"]
-    df_bsq["TIPO"] = df_bsq["TIPO_raw"]
-    df_bsq = df_bsq.drop(columns=["FTPT_raw", "PS_raw", "TIPO_raw"])
-
-    def _first_non_empty(series):
-        vals = series.fillna("").astype(str).str.strip().tolist()
-        for v in vals:
-            if v != "":
-                return v
-        return vals[0] if vals else ""
-
-    def _first_not_other(series):
-        vals = series.fillna("").astype(str).str.strip().tolist()
-        for v in vals:
-            if v != "" and v.upper() != "OTHER":
-                return v
-        return vals[0] if vals else ""
-
-    def _make_fac_row(g):
-        return pd.Series({
-            "Gender": _first_non_empty(g["Gender"]),
-            "IsDoctoral": bool(g["IsDoctoral"].any()),
-            "FTPT": _first_non_empty(g["FTPT"]),
-            "PS": _first_non_empty(g["PS"]),
-            "TIPO": _first_not_other(g["TIPO"]),
-        })
-
-    df_fac = df_bsq.groupby("_PID", as_index=True).apply(_make_fac_row).reset_index()
-
-    def _count_by_gender(mask):
-        sub = df_fac.loc[mask]
-        male = int((sub["Gender"] == "Male").sum())
-        female = int((sub["Gender"] == "Female").sum())
-        other = int((sub["Gender"] == "Other").sum())
-        return {"Male": male, "Female": female, "Other": other, "Total": male + female + other}
-
-    tbl7 = pd.DataFrame([
-        {"Row": "a. Total number of participating faculty members", **_count_by_gender(df_fac["PS"] == "P")},
-        {"Row": "b. Total number of participating faculty members with doctoral degrees",
-         **_count_by_gender((df_fac["PS"] == "P") & (df_fac["IsDoctoral"]))},
-        {"Row": "c. Total number of supporting faculty members", **_count_by_gender(df_fac["PS"] == "S")},
-        {"Row": "d. Total number of supporting faculty members with doctoral degrees",
-         **_count_by_gender((df_fac["PS"] == "S") & (df_fac["IsDoctoral"]))},
-    ])
-
-    cats = ["SA", "PA", "SP", "IP", "OTHER"]
-
-    def _row_qual(ps_code, ftpt_code):
-        m = (df_fac["PS"] == ps_code) & (df_fac["FTPT"] == ftpt_code)
-        sub = df_fac[m]
-        counts = {c: int((sub["TIPO"] == c).sum()) for c in cats}
-        return {**counts, "TOTAL": sum(counts.values())}
-
-    r8a, r8b = _row_qual("P", "PLANTA"), _row_qual("P", "CATEDRA")
-    r8c = {k: r8a.get(k, 0) + r8b.get(k, 0) for k in cats + ["TOTAL"]}
-    r8d, r8e = _row_qual("S", "PLANTA"), _row_qual("S", "CATEDRA")
-    r8f = {k: r8d.get(k, 0) + r8e.get(k, 0) for k in cats + ["TOTAL"]}
-
-    tbl8 = pd.DataFrame([
-        {"Row": "a. Full-time Participating faculty members", **r8a},
-        {"Row": "b. Part-time Participating faculty members", **r8b},
-        {"Row": "c. Total Participating faculty members", **r8c},
-        {"Row": "d. Full-time Supporting faculty members", **r8d},
-        {"Row": "e. Part-time Supporting faculty members", **r8e},
-        {"Row": "f. Total Supporting faculty members", **r8f},
-    ])[["Row"] + cats + ["TOTAL"]]
-
-    return tbl7, tbl8
-
-
-def _build_academic_area_pct_table(df_cart_period: pd.DataFrame) -> pd.DataFrame:
-    """Replica independiente de la tabla 'Academic Area / %P / %S / %SA /
-    %OTHER' de Qualifications, para un DataFrame de cartelera ya filtrado a
-    un solo periodo. No depende del estado de la página en vivo."""
-    def _resolve(df, target):
-        t = target.strip().casefold()
-        for c in df.columns:
-            if c.strip().casefold() == t:
-                return c
-        return None
-
-    def _get_any(df, *cands):
-        for c in cands:
-            if _resolve(df, c):
-                return c
-        return None
-
-    def normalize_ps(val):
-        v = str(val).strip().lower()
-        if v in {"p", "participating", "participante", "participating faculty"}:
-            return "P"
-        if v in {"s", "supporting", "soporte", "supporting faculty"}:
-            return "S"
-        return ""
-
-    def normalize_tipo(val):
-        v = str(val).strip().lower()
-        if v in {"sa", "scholarly academics", "scholarly academic"}:
-            return "SA"
-        if v in {"pa", "practice academics", "practice academic"}:
-            return "PA"
-        if v in {"sp", "scholarly practitioners", "scholarly practitioner"}:
-            return "SP"
-        if v in {"ip", "instructional practitioners", "instructional practitioner"}:
-            return "IP"
-        if v in {"o", "other", "others", "otro", "otros"}:
-            return "OTHER"
-        m = re.search(r"\b(sa|pa|sp|ip|o|other)\b", v)
-        if m:
-            code = m.group(1).upper()
-            return "OTHER" if code in {"O", "OTHER"} else code
-        return "OTHER"
-
-    col_cred = _get_any(df_cart_period, "Créditos", "Creditos", "Credits")
-    col_tipo = _get_any(df_cart_period, "Type", "Tipo", "TIPO")
-    col_ps = _get_any(df_cart_period, "P/S", "PS")
-    col_area = _get_any(df_cart_period, "Course Area", "Area del curso", "Área")
-    if not all([col_cred, col_tipo, col_ps, col_area]) or df_cart_period.empty:
-        return pd.DataFrame(columns=["Academic Area", "%P", "%S", "%SA", "%OTHER"])
-
-    d = df_cart_period.copy()
-    d["_CRED"] = pd.to_numeric(d[col_cred], errors="coerce").fillna(0.0)
-    d["_TIPO"] = d[col_tipo].astype(str).map(normalize_tipo)
-    d["_PS"] = d[col_ps].astype(str).map(normalize_ps)
-    d["_AREA"] = d[col_area].astype(str).str.strip()
-
-    agg_tipo = d.groupby("_AREA")["_CRED"].sum().to_frame("_total")
-    tipo_pivot = d.groupby(["_AREA", "_TIPO"])["_CRED"].sum().unstack(fill_value=0.0)
-    for k in ["SA", "PA", "SP", "IP", "OTHER"]:
-        if k not in tipo_pivot.columns:
-            tipo_pivot[k] = 0.0
-    ps_pivot = d.groupby(["_AREA", "_PS"])["_CRED"].sum().unstack(fill_value=0.0)
-    for k in ["P", "S"]:
-        if k not in ps_pivot.columns:
-            ps_pivot[k] = 0.0
-
-    den_ps = (ps_pivot["P"] + ps_pivot["S"]).replace(0, pd.NA)
-    p_share = (ps_pivot["P"] / den_ps) * 100
-    denom_q = tipo_pivot.sum(axis=1).replace(0, pd.NA)
-
-    out = pd.DataFrame({
-        "Academic Area": tipo_pivot.index,
-        "%P": p_share,
-        "%S": 100 - p_share,
-        "%SA": (tipo_pivot["SA"] / denom_q) * 100,
-        "%OTHER": (tipo_pivot["OTHER"] / denom_q) * 100,
-    }).fillna(0.0).round(1).reset_index(drop=True)
-
-    tot_p, tot_s = ps_pivot["P"].sum(), ps_pivot["S"].sum()
-    tot_den = tot_p + tot_s
-    p_tot = (tot_p / tot_den * 100) if tot_den else 0.0
-    tipo_sums = tipo_pivot.sum(axis=0)
-    denom_tot = float(tipo_sums.sum())
-    total_row = pd.DataFrame([{
-        "Academic Area": "TOTAL",
-        "%P": round(p_tot, 1), "%S": round(100 - p_tot, 1),
-        "%SA": round((tipo_sums["SA"] / denom_tot * 100) if denom_tot else 0.0, 1),
-        "%OTHER": round((tipo_sums["OTHER"] / denom_tot * 100) if denom_tot else 0.0, 1),
-    }])
-    return pd.concat([out, total_row], ignore_index=True)
-
-
-def _build_cartelera_save_report(target_period: str, new_courses_df: pd.DataFrame, new_profs_df: pd.DataFrame) -> bytes:
-    """Reporte de 5 hojas generado justo después de guardar Cartelera con éxito:
-    1) Profesores (Faculty Distribution completa, filtrada al periodo subido)
-    2) Profesores nuevos agregados en esta carga
-    3) Cartelera completa (sin filtrar)
-    4) Cursos nuevos agregados en esta carga
-    5) Qualifications — las 3 tablas dinámicas de la página (Academic Area
-       %P/%S/%SA/%OTHER, y las 2 de BSQ Compensation), para el mismo periodo"""
-    raw_fd = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_fd = pd.read_excel(raw_fd, sheet_name="Faculty Distribution")
-    df_fd_period = df_fd[df_fd["Semestre"].astype(str).str.strip() == str(target_period).strip()].copy()
-
-    raw_cart = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
-    df_cart_full = pd.read_excel(raw_cart, sheet_name="cartelera")
-    period_nodash = str(target_period).strip().replace("-", "")
-    cart_period_mask = df_cart_full["Periodo"].astype(str).str.strip().isin([str(target_period).strip(), period_nodash])
-    df_cart_period = df_cart_full[cart_period_mask].copy()
-
-    tbl_area = _build_academic_area_pct_table(df_cart_period)
-    tbl7, tbl8 = _build_bsq_report_tables(df_fd_period)
-
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf) as writer:
-        df_fd_period.to_excel(writer, index=False, sheet_name="Profesores")
-        (new_profs_df if new_profs_df is not None else pd.DataFrame()).to_excel(
-            writer, index=False, sheet_name="Profesores Nuevos")
-        df_cart_full.to_excel(writer, index=False, sheet_name="Cartelera")
-        (new_courses_df if new_courses_df is not None else pd.DataFrame()).to_excel(
-            writer, index=False, sheet_name="Cursos Nuevos")
-        tbl_area.to_excel(writer, index=False, sheet_name="Qualifications", startrow=0)
-        tbl7.to_excel(writer, index=False, sheet_name="Qualifications", startrow=len(tbl_area) + 3)
-        tbl8.to_excel(writer, index=False, sheet_name="Qualifications", startrow=len(tbl_area) + len(tbl7) + 6)
-    buf.seek(0)
-    return buf.getvalue()
-
-
 def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFrame,
                             profesor_lookup: Optional[Dict[str, Tuple]] = None,
                             area_map: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
@@ -7427,6 +7140,19 @@ def page_update_data():
         "directamente en el Google Sheet que alimenta todos los dashboards.</div>",
         unsafe_allow_html=True,
     )
+
+    with st.expander("🔧 Reparación de datos (uso puntual)", expanded=False):
+        st.caption(
+            "Corrige la columna PLANTA_CATEDRA de Faculty Distribution cuando quedó "
+            "en blanco para periodos históricos por un problema de fórmulas sin resolver."
+        )
+        if st.button("Reparar PLANTA_CATEDRA", icon=":material/build:"):
+            with st.spinner("Reparando…"):
+                ok, msg = repair_planta_catedra_cache()
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
     tab_planta, tab_cartelera, tab_quest = st.tabs(
         ["BD_planta", "BD_cartelera", "BD_Faculty_Questionnaire"]
@@ -7788,24 +7514,6 @@ def page_update_data():
                             else:
                                 st.error(msg_fd)
                         st.balloons()
-
-                        target_period = sorted(periodo_to_ids.keys(), key=_period_sort_key)[-1] if periodo_to_ids else None
-                        if target_period:
-                            with st.spinner("Preparando reporte…"):
-                                report_bytes = _build_cartelera_save_report(target_period, new_courses_df, new_profs_df)
-                            st.markdown(
-                                "<style>div[data-testid='stDownloadButton'] button{"
-                                "background-color:#16A34A !important;color:#FFFFFF !important;"
-                                "border:none !important;font-weight:700 !important;}"
-                                "div[data-testid='stDownloadButton'] button:hover{background-color:#15803D !important;}</style>",
-                                unsafe_allow_html=True,
-                            )
-                            st.download_button(
-                                "Descargar reporte en Excel", data=report_bytes,
-                                file_name=f"Reporte_Cartelera_{target_period}.xlsx".replace(" ", "_"),
-                                key="dl_cartelera_report", icon=":material/download:",
-                                use_container_width=True,
-                            )
                     else:
                         st.error(msg)
             elif cart_df is not None:
