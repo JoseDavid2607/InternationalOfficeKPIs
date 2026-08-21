@@ -94,8 +94,10 @@ st.markdown(
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
     ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:auto;}"
-    ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{justify-content:space-between !important;gap:12px !important;}"
+    "z-index:999999;width:max-content;max-width:96vw;}"
+    ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
+    "display:flex !important;flex-wrap:nowrap !important;width:max-content !important;"
+    "justify-content:center !important;gap:14px !important;}"
     ".st-key-nav_toggle div[data-testid='column']{width:auto !important;min-width:fit-content !important;flex:none !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;}"
@@ -2003,7 +2005,7 @@ def page_demographics():
         fig_combo.update_layout(
             title=title_combo,
             xaxis=dict(type="category", categoryorder="array", categoryarray=labels_ts,
-                       tickmode="array", tickvals=labels_ts, tickangle=-45),
+                       range=[-0.5, max(len(labels_ts) - 0.5, 0.5)], tickangle=-45),
             yaxis=dict(range=[y_min_phd, y_max_phd], title="% PhD"),
             yaxis2=dict(range=[0, 40], title="% International", overlaying="y", side="right"),
         )
