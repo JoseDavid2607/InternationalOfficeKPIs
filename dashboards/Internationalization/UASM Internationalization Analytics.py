@@ -183,6 +183,7 @@ MOVILIDAD_FILE_ID = "1zkxMmITgSfpjb1o2AKxKDyqhYdRcpwJw"    # BD_movilidad.xlsx
 
 # EIV (International Summer School) — Reportes/EIV
 EIV_CURSOS_FILE_ID = "1qZin81h9oQ4SfxadcNpdjzSO6w3ADKZr"   # BD_cursos.xlsx → Profesor, Universidad, País Universidad, Ciclo
+EIV_LISTAS_FILE_ID = "1BpREXyP3KHIARxik6ah_av9R9wV_ElL3"   # BD_listas.xlsx (EIV) → listas, programas
 
 # Seminars — Reportes/Seminars
 SEMINARS_FILE_ID = "1YFSUmZ95Md9qHoHvc114Eed-oA_uqjST"     # BD_seminarios.xlsx
@@ -192,12 +193,13 @@ PARTICIPANTES_FILE_ID = "18HDQDbaPqdTeEHFcPUDCRTw_bahhcNWa"   # BD_participantes
 # International Weeks — Reportes/INT_WEEKS
 WEEKS_LISTAS_FILE_ID = "1Gxev_FWI_mfav3dVWaZczC49F_68Qj9f"  # BD_listas.xlsx → estudiantes UASM asistentes (Producto=universidad, Programa)
 WEEKS_SEMANAS_FILE_ID = "1UXmTsOp1X9DKA_OpFy7kmg4fz2_uQT-W" # BD_semanas.xlsx → semanas ofrecidas por la Facultad
+WEEKS_PRESUPUESTO_FILE_ID = "1835F0CN4QoDgmCoShnbB7xvAnXOwexKO"  # BD_presupuesto.xlsx (INT_WEEKS) → budget, TRM
 
 # URLs de los reportes externos (HTML estáticos ya existentes). Configúralas
 # aquí cuando tengas la URL pública de publicación (p.ej. GitHub Pages).
-EIV_REPORT_URL = ""
+EIV_REPORT_URL = "https://internationalofficekpis-ftht3w3ub2wumm5ta2dhox.streamlit.app"
 SEMINARS_REPORT_URL = "https://internationalofficekpis-jp3mpck5jkobwvkhhsjeil.streamlit.app"
-WEEKS_REPORT_URL = ""
+WEEKS_REPORT_URL = "https://internationalofficekpis-4idfdrqqhyvktr65mttkf6.streamlit.app"
 
 _GSPREAD_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -365,6 +367,14 @@ def load_eiv_cursos() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300)
+def load_eiv_listas() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(EIV_LISTAS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="listas")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
 def load_seminarios() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(SEMINARS_FILE_ID))
     df_ = pd.read_excel(raw, sheet_name="seminarios")
@@ -400,6 +410,14 @@ def load_weeks_listas() -> pd.DataFrame:
 def load_weeks_semanas() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(WEEKS_SEMANAS_FILE_ID))
     df_ = pd.read_excel(raw, sheet_name="Semanas Internacionales")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_weeks_budget() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(WEEKS_PRESUPUESTO_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="budget")
     df_.columns = df_.columns.str.strip()
     return df_
 
@@ -659,11 +677,21 @@ def page_visiting():
     )
 
     if prof_col and country_col:
-        col1, col2 = st.columns(2)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             _kpi("Visiting Faculty (this edition)", df_eiv[prof_col].nunique())
         with col2:
             _kpi("Countries of Origin", df_eiv[country_col].nunique())
+
+        df_eiv_listas = load_eiv_listas()
+        # Cursos únicos (colapsa el bootcamp co-dictado por 2 profesores)
+        cursos_unicos = df_eiv.drop_duplicates(subset=["Curso"])
+        total_capacidad = pd.to_numeric(cursos_unicos.get("Capacidad"), errors="coerce").fillna(0).sum()
+        total_inscritos = len(df_eiv_listas)
+        with col3:
+            _kpi("Students Enrolled", f"{total_inscritos:,}")
+        with col4:
+            _kpi("Occupancy", f"{(total_inscritos/total_capacidad*100):.1f}%" if total_capacidad else "—")
 
         univ_col = "Universidad" if "Universidad" in df_eiv.columns else None
 
@@ -889,13 +917,24 @@ def page_weeks():
     city_col = "Ubicación" if "Ubicación" in df_semanas.columns else None
 
     if name_col:
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             _kpi("Weeks Offered", len(df_semanas))
         with col2:
             _kpi("Countries", df_semanas[country_col].nunique() if country_col else "—")
         with col3:
             _kpi("Total Attendees", int(df_semanas[asist_col].sum()) if asist_col else "—")
+        with col4:
+            df_budget = load_weeks_budget()
+            week_col = "international week" if "international week" in df_budget.columns else None
+            if week_col and "tipo" in df_budget.columns and "presupuestado" in df_budget.columns:
+                ingresos = df_budget[df_budget["tipo"] == "ingreso"]["presupuestado"].sum()
+                egresos = df_budget[df_budget["tipo"] == "gasto"]["presupuestado"].abs().sum()
+                balance = ingresos - egresos
+                margin = (balance / ingresos * 100) if ingresos else 0
+                _kpi("Margin", f"{margin:.1f}%")
+            else:
+                _kpi("Margin", "—")
 
         display_cols = [c for c in [id_col, name_col, prof_col, fechas_col, asist_col, city_col, country_col]
                          if c and c in df_semanas.columns]
