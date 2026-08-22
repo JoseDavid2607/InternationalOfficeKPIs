@@ -91,6 +91,14 @@ st.markdown(
     ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;font-size:13px !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a p{white-space:nowrap !important;overflow:visible !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover']{width:auto !important;min-width:fit-content !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button{"
+    "background:transparent !important;border:none !important;box-shadow:none !important;"
+    "color:#6941A8 !important;font-size:13px !important;font-weight:400 !important;"
+    "height:auto !important;padding:2px 4px !important;white-space:nowrap !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button:hover{"
+    "background:transparent !important;color:#4A2E7D !important;text-decoration:underline;}"
+    ".st-key-nav_toggle div[data-testid='stPopoverBody'] div[data-testid='stPageLink'] a{font-size:13px !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -330,10 +338,6 @@ def load_weeks_semanas() -> pd.DataFrame:
 
 # ── 5) PÁGINA — Faculty (International Full-Time Faculty) ──────────────
 def page_faculty():
-    _render_header(
-        "International Full-Time Faculty",
-        "Country of birth and dual nationality of the School of Management's full-time faculty, from BD_profesores.",
-    )
     df = load_faculty_distribution()
 
     if "PLANTA_CATEDRA" in df.columns:
@@ -345,11 +349,18 @@ def page_faculty():
     dual_col = next((c for c in ["Double Nationality", "Doble Nacionalidad"] if c in df.columns), None)
     id_col = "ID" if "ID" in df.columns else None
 
+    _render_header(
+        "International Full-Time Faculty",
+        "Country of birth and dual nationality of the School of Management's full-time faculty, from BD_profesores.",
+    )
+
     if nat_col is None or id_col is None or df.empty:
         st.info("No pude encontrar las columnas necesarias (Country of Birth / ID) en BD_profesores.xlsx.")
         return
 
-    mode = st.radio("View by", ["Year", "Period"], horizontal=True, key="fac_mode")
+    with st.sidebar:
+        st.markdown("#### Timeframe")
+        mode = st.radio("View by", ["Year", "Period"], key="fac_mode")
 
     if mode == "Period":
         keys = sorted(df["Periodo"].dropna().unique().tolist(), key=_period_sort_key)
@@ -371,8 +382,8 @@ def page_faculty():
         return
 
     labels = [c[1] for c in cols_def]
-    default_snap = labels[-1]
-    snap_label = st.selectbox("Snapshot for map & highlight", labels, index=len(labels) - 1, key="fac_snapshot")
+    with st.sidebar:
+        snap_label = st.selectbox("Periodo (snapshot for map & highlight)", labels[::-1], index=0, key="fac_snapshot")
 
     total_counts, intl_counts, nat_lists, dual_counts_list, dual_nat_lists = [], [], [], [], []
     for key, label, rows in cols_def:
@@ -746,7 +757,7 @@ with st.container(key="nav_toggle"):
             st.page_link(page_obj)
     if overflow_pages:
         with nav_cols[-1]:
-            with st.popover("More sections ▾", use_container_width=False):
+            with st.popover("More", use_container_width=False):
                 for page_obj in overflow_pages:
                     st.page_link(page_obj)
 
