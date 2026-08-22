@@ -85,20 +85,20 @@ st.markdown(
     ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
     "z-index:999999;width:82vw;max-width:1050px;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
-    "display:flex !important;flex-wrap:nowrap !important;width:100% !important;"
-    "justify-content:space-between !important;gap:6px !important;overflow-x:auto;}"
+    "display:flex !important;flex-wrap:wrap !important;width:100% !important;"
+    "justify-content:center !important;gap:4px 18px !important;}"
     ".st-key-nav_toggle div[data-testid='column']{width:auto !important;min-width:fit-content !important;flex:none !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
-    ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;font-size:13px !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;font-size:13px !important;padding:6px 4px !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a p{white-space:nowrap !important;overflow:visible !important;}"
-    ".st-key-nav_toggle div[data-testid='stPopover']{width:auto !important;min-width:fit-content !important;}"
-    ".st-key-nav_toggle div[data-testid='stPopover'] button{"
+    ".st-key-nav_toggle div[data-testid='stButton']{width:auto !important;min-width:fit-content !important;}"
+    ".st-key-nav_toggle div[data-testid='stButton'] button{"
     "background:transparent !important;border:none !important;box-shadow:none !important;"
     "color:#6941A8 !important;font-size:13px !important;font-weight:400 !important;"
-    "height:auto !important;padding:2px 4px !important;white-space:nowrap !important;}"
-    ".st-key-nav_toggle div[data-testid='stPopover'] button:hover{"
+    "height:auto !important;width:auto !important;padding:6px 4px !important;white-space:nowrap !important;"
+    "min-width:fit-content !important;}"
+    ".st-key-nav_toggle div[data-testid='stButton'] button:hover{"
     "background:transparent !important;color:#4A2E7D !important;text-decoration:underline;}"
-    ".st-key-nav_toggle div[data-testid='stPopoverBody'] div[data-testid='stPageLink'] a{font-size:13px !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -130,14 +130,11 @@ def _pending_card(label: str, note: str = ""):
     )
 
 
-def _report_link_card(title: str, subtitle: str, url: str, button_label: str):
-    col1, col2 = st.columns([3, 1])
+def _section_title_with_link(title: str, url: str, button_label: str, level: str = "###"):
+    """Título de sub-sección con el botón 'Go to report' justo al lado, en la misma fila."""
+    col1, col2 = st.columns([4, 1])
     with col1:
-        st.markdown(
-            f'<div class="report-link-card"><div><h4>{title}</h4>'
-            f'<div style="color:#6B7280;font-size:12.5px;margin-top:2px;">{subtitle}</div></div></div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"{level} {title}")
     with col2:
         if url:
             st.link_button(button_label, url, use_container_width=True)
@@ -274,33 +271,23 @@ _NATIONALITY_TO_COUNTRY = {
 
 # ── 4) CARGA DE DATOS ────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
-def load_faculty_distribution() -> pd.DataFrame:
-    """Faculty Distribution + columnas extra (Nationality, Double Nationality,
-    Highest Degree, etc.) traídas de 'Info. Profesores', unidas por ID
-    normalizado — mismo patrón que Faculty Analytics."""
+def load_planta_fulltime() -> pd.DataFrame:
+    """Roster de planta (full-time) leído directamente de la hoja 'planta' de
+    BD_profesores.xlsx — trae ya 'Country of Birth'/'Nationality' y 'Double
+    Nationality' propias, sin necesidad de merge (mismo patrón que
+    demo_load_fulltime() en Faculty Analytics)."""
     raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_ = pd.read_excel(raw, sheet_name="Faculty Distribution")
+    df_ = pd.read_excel(raw, sheet_name="planta")
     df_.columns = df_.columns.str.strip()
 
-    raw2 = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_info = pd.read_excel(raw2, sheet_name="Info. Profesores")
-    df_info.columns = df_info.columns.str.strip()
-
-    if "ID" in df_.columns and "ID" in df_info.columns:
-        extra_cols = [c for c in df_info.columns
-                      if c not in ("Profesor", "ID", "AREA_PROFESOR", "GÉNERO", "TIPO", "P/S")]
-        df_info_extra = df_info[["ID"] + extra_cols].copy()
-        df_info_extra["_id_key"] = df_info_extra["ID"].map(_norm_id)
-        df_info_extra = df_info_extra.dropna(subset=["_id_key"]).drop_duplicates(subset=["_id_key"])
-        df_info_extra = df_info_extra.drop(columns=["ID"])
-        df_["_id_key"] = df_["ID"].map(_norm_id)
-        df_ = df_.merge(df_info_extra, on="_id_key", how="left").drop(columns=["_id_key"])
-
-    sem = df_["Semestre"].astype(str).str.strip()
+    sem = df_["Semestre"].astype(str).str.strip() if "Semestre" in df_.columns else df_.iloc[:, 0].astype(str).str.strip()
     is_inter = sem.str.contains("inter", case=False, na=False)
     df_.loc[~is_inter, "Periodo"] = sem.str[:4] + "-" + sem.str[-2:]
     df_.loc[is_inter, "Periodo"] = sem.str[:4] + " Intersemestral"
     df_["Año"] = sem.str[:4]
+
+    if "ID Nr." in df_.columns and "ID" not in df_.columns:
+        df_ = df_.rename(columns={"ID Nr.": "ID"})
     return df_
 
 
@@ -338,12 +325,7 @@ def load_weeks_semanas() -> pd.DataFrame:
 
 # ── 5) PÁGINA — Faculty (International Full-Time Faculty) ──────────────
 def page_faculty():
-    df = load_faculty_distribution()
-
-    if "PLANTA_CATEDRA" in df.columns:
-        col_ft = df["PLANTA_CATEDRA"].astype(str).str.strip()
-        col_ft = col_ft.str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("ascii")
-        df = df[col_ft.str.upper().eq("PLANTA")].copy()
+    df = load_planta_fulltime()
 
     nat_col = next((c for c in ["Country of Birth", "Nationality"] if c in df.columns), None)
     dual_col = next((c for c in ["Double Nationality", "Doble Nacionalidad"] if c in df.columns), None)
@@ -351,11 +333,11 @@ def page_faculty():
 
     _render_header(
         "International Full-Time Faculty",
-        "Country of birth and dual nationality of the School of Management's full-time faculty, from BD_profesores.",
+        "Country of birth and dual nationality of the School of Management's full-time faculty, from the planta roster in BD_profesores.",
     )
 
     if nat_col is None or id_col is None or df.empty:
-        st.info("No pude encontrar las columnas necesarias (Country of Birth / ID) en BD_profesores.xlsx.")
+        st.info("No pude encontrar las columnas necesarias (Country of Birth / ID) en la hoja 'planta' de BD_profesores.xlsx.")
         return
 
     with st.sidebar:
@@ -403,12 +385,16 @@ def page_faculty():
             dual_counts_list.append(0)
             dual_nat_lists.append(pd.Series(dtype=int))
 
-    # ---- Tabla 1: Total / Intl / # nacionalidades / lista ----
+    pct_intl = [round((intl_counts[i] / total_counts[i] * 100), 1) if total_counts[i] else 0.0
+                for i in range(len(labels))]
+
+    # ---- Tabla 1: Total / Intl / % / # nacionalidades / lista ----
     st.markdown("### International Full-Time Faculty")
     max_nat = max((len(n) for n in nat_lists), default=0)
-    table1 = {"": ["Total Faculty", "International Full-time Faculty", "Number of nationalities"]}
+    table1 = {"": ["Total Faculty", "International Full-time Faculty", "% International",
+                   "Number of nationalities"]}
     for i, label in enumerate(labels):
-        table1[label] = [total_counts[i], intl_counts[i], len(nat_lists[i])]
+        table1[label] = [total_counts[i], intl_counts[i], f"{pct_intl[i]}%", len(nat_lists[i])]
     df_table1 = pd.DataFrame(table1)
     st.dataframe(df_table1, use_container_width=True, hide_index=True)
 
@@ -427,51 +413,79 @@ def page_faculty():
         file_name="International_Faculty.xlsx", key="dl_fac_table1",
     )
 
-    # ---- Trend chart ----
+    # ---- Trend chart: % international over time ----
     st.markdown("### International Faculty Over Time")
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=labels, y=intl_counts, mode="lines+markers+text",
-        line=dict(color=_PURPLE_MID, width=3, shape="spline"),
-        marker=dict(
-            size=[13 if l == snap_label else 7 for l in labels],
-            color=[_PURPLE_ACCENT if l == snap_label else _PURPLE_MID for l in labels],
-        ),
-        text=intl_counts, textposition="top center", textfont=dict(size=10),
-    ))
-    fig.update_layout(
-        margin=dict(t=10, r=16, b=36, l=36), xaxis=dict(type="category"),
-        yaxis=dict(gridcolor="#EFEBEE"), plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)", height=280,
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    col_trend, col_donut = st.columns([2, 1])
+    with col_trend:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=labels, y=intl_counts, mode="lines+markers+text", name="International Faculty",
+            line=dict(color=_PURPLE_MID, width=3, shape="spline"),
+            marker=dict(
+                size=[13 if l == snap_label else 7 for l in labels],
+                color=[_PURPLE_ACCENT if l == snap_label else _PURPLE_MID for l in labels],
+            ),
+            text=intl_counts, textposition="top center", textfont=dict(size=10),
+        ))
+        fig.update_layout(
+            margin=dict(t=10, r=16, b=36, l=36), xaxis=dict(type="category"),
+            yaxis=dict(gridcolor="#EFEBEE", title="International Faculty"),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=300,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    with col_donut:
+        snap_idx = labels.index(snap_label)
+        donut_df = pd.DataFrame({
+            "Group": ["International", "Domestic"],
+            "Count": [intl_counts[snap_idx], total_counts[snap_idx] - intl_counts[snap_idx]],
+        })
+        fig_donut = px.pie(
+            donut_df, names="Group", values="Count", hole=0.55,
+            color="Group", color_discrete_map={"International": _PURPLE_ACCENT, "Domestic": "#E5DDF2"},
+            title=f"{snap_label} snapshot",
+        )
+        fig_donut.update_traces(textinfo="label+percent", textfont=dict(size=11))
+        fig_donut.update_layout(height=300, margin=dict(t=40, r=10, b=10, l=10), showlegend=False)
+        st.plotly_chart(fig_donut, use_container_width=True)
 
-    # ---- Nationality bubble map for snapshot ----
+    # ---- Nationality bubble map + bar chart for snapshot ----
     st.markdown(f"### Nationalities Represented — {snap_label}")
-    snap_idx = labels.index(snap_label)
     snap_nat = nat_lists[snap_idx]
     map_df = snap_nat.rename("Count").reset_index().rename(columns={nat_col: "Nationality"})
     map_df["Country"] = map_df["Nationality"].map(_NATIONALITY_TO_COUNTRY)
-    map_df = map_df.dropna(subset=["Country"])
+    map_df_geo = map_df.dropna(subset=["Country"])
 
-    if not map_df.empty:
-        fig_nat = px.scatter_geo(
-            map_df, locations="Country", locationmode="country names", size="Count",
-            text="Nationality", hover_name="Nationality", hover_data={"Count": True, "Country": False},
-            projection="natural earth",
-        )
-        fig_nat.update_traces(
-            marker=dict(color=_PURPLE_ACCENT, opacity=0.8, line=dict(width=1, color="#FFFFFF")),
-            mode="markers+text", textposition="top center", textfont=dict(size=10, color="#3B2560"),
-        )
-        fig_nat.update_geos(
-            showcountries=True, countrycolor="#E5DDF2", showland=True, landcolor=_PURPLE_BG_TINT,
-            showocean=True, oceancolor="#EDE7F7", bgcolor="rgba(0,0,0,0)",
-        )
-        fig_nat.update_layout(height=380, margin=dict(l=10, r=10, t=10, b=6))
-        st.plotly_chart(fig_nat, use_container_width=True)
-    else:
-        st.info("No hay nacionalidades internacionales mapeables para este snapshot.")
+    col_map, col_bar = st.columns([2, 1])
+    with col_map:
+        if not map_df_geo.empty:
+            fig_nat = px.scatter_geo(
+                map_df_geo, locations="Country", locationmode="country names", size="Count",
+                text="Nationality", hover_name="Nationality", hover_data={"Count": True, "Country": False},
+                projection="natural earth",
+            )
+            fig_nat.update_traces(
+                marker=dict(color=_PURPLE_ACCENT, opacity=0.8, line=dict(width=1, color="#FFFFFF")),
+                mode="markers+text", textposition="top center", textfont=dict(size=10, color="#3B2560"),
+            )
+            fig_nat.update_geos(
+                showcountries=True, countrycolor="#E5DDF2", showland=True, landcolor=_PURPLE_BG_TINT,
+                showocean=True, oceancolor="#EDE7F7", bgcolor="rgba(0,0,0,0)",
+            )
+            fig_nat.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=6))
+            st.plotly_chart(fig_nat, use_container_width=True)
+        else:
+            st.info("No hay nacionalidades internacionales mapeables para este snapshot.")
+    with col_bar:
+        if not map_df.empty:
+            fig_bar = px.bar(
+                map_df.sort_values("Count"), x="Count", y="Nationality", orientation="h",
+                color_discrete_sequence=[_PURPLE_MID],
+            )
+            fig_bar.update_layout(
+                margin=dict(t=10, r=16, b=26, l=10), plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)", height=360, yaxis=dict(title=""), xaxis=dict(title="Faculty"),
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
 
     # ---- Tabla 2: Dual nationality ----
     st.markdown("### Full-Time Faculty with Dual Nationality")
@@ -511,10 +525,8 @@ def page_visiting():
     country_col = next((c for c in ["País Universidad", "Pais Universidad"] if c in df_eiv.columns), None)
     ciclo_col = "Ciclo" if "Ciclo" in df_eiv.columns else None
 
-    st.markdown("#### International Summer School (EIV) — Visiting Faculty")
-    _report_link_card(
-        "International Summer School (EIV)", "Full detail, satisfaction, and expense reports",
-        EIV_REPORT_URL, "Go to EIV report →",
+    _section_title_with_link(
+        "International Summer School (EIV) — Visiting Faculty", EIV_REPORT_URL, "Go to EIV report →",
     )
 
     if prof_col and country_col:
@@ -524,25 +536,46 @@ def page_visiting():
         with col2:
             _kpi("Countries of Origin", df_eiv[country_col].nunique())
 
+        col_chart, col_table = st.columns([3, 2])
+        by_country = df_eiv.groupby(country_col)[prof_col].nunique().sort_values(ascending=False).reset_index(
+            name="Faculty")
+        with col_chart:
+            st.markdown("##### Faculty by Country of Origin")
+            fig_c = px.bar(
+                by_country.sort_values("Faculty"), x="Faculty", y=country_col, orientation="h",
+                color_discrete_sequence=[_PURPLE_MID],
+            )
+            fig_c.update_layout(
+                margin=dict(t=6, r=16, b=26, l=140), plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)", height=max(220, 32 * len(by_country)), yaxis=dict(title=""),
+            )
+            st.plotly_chart(fig_c, use_container_width=True)
+        with col_table:
+            st.markdown("##### Detail")
+            st.dataframe(by_country, use_container_width=True, hide_index=True)
+
         if ciclo_col:
             by_ciclo = df_eiv.groupby(ciclo_col)[prof_col].nunique().reset_index(name="Visiting Faculty")
             st.markdown("##### Visiting Faculty by Cycle")
-            st.dataframe(by_ciclo, use_container_width=True, hide_index=True)
-
-        by_country = df_eiv.groupby(country_col)[prof_col].nunique().sort_values(ascending=False).reset_index(
-            name="Faculty")
-        st.markdown("##### Faculty by Country of Origin")
-        st.dataframe(by_country, use_container_width=True, hide_index=True)
+            col_ch2, col_tb2 = st.columns([3, 2])
+            with col_ch2:
+                fig_cy = px.bar(by_ciclo, x=ciclo_col, y="Visiting Faculty",
+                                 color_discrete_sequence=[_PURPLE_ACCENT])
+                fig_cy.update_layout(
+                    margin=dict(t=6, r=16, b=26, l=36), plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)", height=260, xaxis=dict(type="category"),
+                )
+                st.plotly_chart(fig_cy, use_container_width=True)
+            with col_tb2:
+                st.dataframe(by_ciclo, use_container_width=True, hide_index=True)
     else:
         st.info("No pude encontrar las columnas necesarias (Profesor / País Universidad) en BD_cursos.xlsx (EIV).")
 
     st.markdown("---")
 
     # ---- Seminars ----
-    st.markdown("#### International Seminars")
-    _report_link_card(
-        "International Seminars", "Full seminar-by-seminar detail and speaker profiles",
-        SEMINARS_REPORT_URL, "Go to Seminars report →",
+    _section_title_with_link(
+        "International Seminars", SEMINARS_REPORT_URL, "Go to Seminars report →",
     )
 
     df_sem = load_seminarios()
@@ -565,18 +598,32 @@ def page_visiting():
             by_year = df_sem[year_col].dropna().astype(str).value_counts().sort_index()
             by_year = by_year[~by_year.index.str.contains("REF", case=False, na=False)]
             if not by_year.empty:
+                by_year_df = by_year.rename("Seminars").reset_index().rename(columns={"index": "Year"})
                 st.markdown("##### Seminars by Year")
-                st.dataframe(
-                    by_year.rename("Seminars").reset_index().rename(columns={"index": "Year"}),
-                    use_container_width=True, hide_index=True,
-                )
+                col_cy, col_ty = st.columns([3, 2])
+                with col_cy:
+                    fig_y = px.bar(by_year_df, x="Year", y="Seminars", color_discrete_sequence=[_PURPLE_MID])
+                    fig_y.update_layout(
+                        margin=dict(t=6, r=16, b=26, l=36), plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)", height=260, xaxis=dict(type="category"),
+                    )
+                    st.plotly_chart(fig_y, use_container_width=True)
+                with col_ty:
+                    st.dataframe(by_year_df, use_container_width=True, hide_index=True)
 
         area_col = "Área" if "Área" in df_sem.columns else None
         if area_col:
             by_area = df_sem[area_col].dropna().value_counts().reset_index()
             by_area.columns = ["Area", "Seminars"]
             st.markdown("##### Seminars by Area")
-            st.dataframe(by_area, use_container_width=True, hide_index=True)
+            col_ca, col_ta = st.columns([3, 2])
+            with col_ca:
+                fig_a = px.pie(by_area, names="Area", values="Seminars", hole=0.5)
+                fig_a.update_traces(textinfo="percent+label", textfont=dict(size=10))
+                fig_a.update_layout(height=320, margin=dict(t=10, r=10, b=10, l=10), showlegend=False)
+                st.plotly_chart(fig_a, use_container_width=True)
+            with col_ta:
+                st.dataframe(by_area, use_container_width=True, hide_index=True)
     else:
         st.info("No pude encontrar las columnas de conferencistas en BD_seminarios.xlsx.")
 
@@ -587,13 +634,11 @@ def page_weeks():
         "International Weeks",
         "UASM graduate-program students attending International Weeks abroad, and International Weeks or activities offered by the School.",
     )
-    _report_link_card(
-        "International Weeks", "Full participant lists, surveys, and budget detail",
-        WEEKS_REPORT_URL, "Go to Weeks report →",
-    )
 
     # ---- Students attending int'l weeks abroad ----
-    st.markdown("### Students Attending International Weeks Abroad")
+    _section_title_with_link(
+        "Students Attending International Weeks Abroad", WEEKS_REPORT_URL, "Go to Weeks report →",
+    )
     df_listas = load_weeks_listas()
     univ_col = "Producto" if "Producto" in df_listas.columns else None
     prog_col = "Programa" if "Programa" in df_listas.columns else None
@@ -617,7 +662,31 @@ def page_weeks():
                 "University Breakdown": ", ".join(f"{u} ({n})" for u, n in univ_counts.items()),
             })
         table_students = pd.DataFrame(rows).sort_values("Students", ascending=False)
-        st.dataframe(table_students, use_container_width=True, hide_index=True)
+
+        col_chart, col_table = st.columns([3, 2])
+        with col_chart:
+            st.markdown("##### Students by Program")
+            fig_p = px.bar(
+                table_students.sort_values("Students"), x="Students", y="Program", orientation="h",
+                color_discrete_sequence=[_PURPLE_MID],
+            )
+            fig_p.update_layout(
+                margin=dict(t=6, r=16, b=26, l=180), plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)", height=max(220, 34 * len(table_students)), yaxis=dict(title=""),
+            )
+            st.plotly_chart(fig_p, use_container_width=True)
+        with col_table:
+            st.markdown("##### Detail")
+            st.dataframe(table_students, use_container_width=True, hide_index=True)
+
+        univ_counts_all = df_listas[univ_col].value_counts().reset_index()
+        univ_counts_all.columns = ["University", "Students"]
+        st.markdown("##### Students by Host University")
+        fig_u = px.pie(univ_counts_all, names="University", values="Students", hole=0.5)
+        fig_u.update_traces(textinfo="percent+label", textfont=dict(size=10))
+        fig_u.update_layout(height=340, margin=dict(t=10, r=10, b=10, l=10), showlegend=False)
+        st.plotly_chart(fig_u, use_container_width=True)
+
         st.download_button(
             "Download as Excel", data=_xlsx_bytes(table_students, "International_Weeks_by_Program"),
             file_name="International_Weeks_by_Program.xlsx", key="dl_weeks_students",
@@ -651,16 +720,31 @@ def page_weeks():
                          if c and c in df_semanas.columns]
         st.dataframe(df_semanas[display_cols], use_container_width=True, hide_index=True)
 
+        col_ca, col_cb = st.columns(2)
         if country_col:
-            by_country = df_semanas[country_col].value_counts().reset_index()
-            by_country.columns = ["Country", "Weeks"]
-            fig = px.bar(by_country, x="Weeks", y="Country", orientation="h",
-                         color_discrete_sequence=[_PURPLE_MID])
-            fig.update_layout(
-                margin=dict(t=6, r=16, b=26, l=140), plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)", height=max(220, 40 * len(by_country)),
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            with col_ca:
+                by_country = df_semanas[country_col].value_counts().reset_index()
+                by_country.columns = ["Country", "Weeks"]
+                st.markdown("##### Weeks by Country")
+                fig = px.bar(by_country, x="Weeks", y="Country", orientation="h",
+                             color_discrete_sequence=[_PURPLE_MID])
+                fig.update_layout(
+                    margin=dict(t=6, r=16, b=26, l=120), plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)", height=max(220, 40 * len(by_country)), yaxis=dict(title=""),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        if asist_col and name_col:
+            with col_cb:
+                st.markdown("##### Attendees by Week")
+                fig_at = px.bar(
+                    df_semanas.sort_values(asist_col), x=asist_col, y=name_col, orientation="h",
+                    color_discrete_sequence=[_PURPLE_ACCENT],
+                )
+                fig_at.update_layout(
+                    margin=dict(t=6, r=16, b=26, l=160), plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)", height=max(220, 40 * len(df_semanas)), yaxis=dict(title=""),
+                )
+                st.plotly_chart(fig_at, use_container_width=True)
 
         st.download_button(
             "Download as Excel", data=_xlsx_bytes(df_semanas[display_cols], "International_Weeks_Offered"),
@@ -746,19 +830,24 @@ with st.sidebar:
         st.caption("Internationalization Analytics")
     st.markdown("---")
 
-_NAV_VISIBLE = 6  # cuántas secciones caben directamente antes de agrupar el resto en "More sections"
+_NAV_VISIBLE = 6  # cuántas secciones caben directamente antes de agrupar el resto bajo "More"
 with st.container(key="nav_toggle"):
     visible_pages = pages[:_NAV_VISIBLE]
     overflow_pages = pages[_NAV_VISIBLE:]
-    n_cols = len(visible_pages) + (1 if overflow_pages else 0)
+    show_more = st.session_state.get("nav_show_more", False)
+
+    shown_pages = visible_pages + (overflow_pages if show_more else [])
+    n_cols = len(shown_pages) + (1 if overflow_pages else 0)
     nav_cols = st.columns(n_cols)
-    for col, page_obj in zip(nav_cols, visible_pages):
+
+    for col, page_obj in zip(nav_cols, shown_pages):
         with col:
             st.page_link(page_obj)
+
     if overflow_pages:
         with nav_cols[-1]:
-            with st.popover("More", use_container_width=False):
-                for page_obj in overflow_pages:
-                    st.page_link(page_obj)
+            if st.button("Less" if show_more else "More", key="nav_more_toggle"):
+                st.session_state.nav_show_more = not show_more
+                st.rerun()
 
 pg.run()
