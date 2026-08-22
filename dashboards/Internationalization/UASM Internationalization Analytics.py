@@ -186,6 +186,8 @@ EIV_CURSOS_FILE_ID = "1qZin81h9oQ4SfxadcNpdjzSO6w3ADKZr"   # BD_cursos.xlsx → 
 
 # Seminars — Reportes/Seminars
 SEMINARS_FILE_ID = "1YFSUmZ95Md9qHoHvc114Eed-oA_uqjST"     # BD_seminarios.xlsx
+CONFERENCISTAS_FILE_ID = "1oEgAJg2pXC6U1arLe2daMp7gPdRKgARm"  # BD_conferencistas.xlsx
+PARTICIPANTES_FILE_ID = "18HDQDbaPqdTeEHFcPUDCRTw_bahhcNWa"   # BD_participantes.xlsx
 
 # International Weeks — Reportes/INT_WEEKS
 WEEKS_LISTAS_FILE_ID = "1Gxev_FWI_mfav3dVWaZczC49F_68Qj9f"  # BD_listas.xlsx → estudiantes UASM asistentes (Producto=universidad, Programa)
@@ -194,7 +196,7 @@ WEEKS_SEMANAS_FILE_ID = "1UXmTsOp1X9DKA_OpFy7kmg4fz2_uQT-W" # BD_semanas.xlsx �
 # URLs de los reportes externos (HTML estáticos ya existentes). Configúralas
 # aquí cuando tengas la URL pública de publicación (p.ej. GitHub Pages).
 EIV_REPORT_URL = ""
-SEMINARS_REPORT_URL = "https://drive.google.com/drive/folders/1Ookhuo8RtJoPcETGTyeagzjQuhs9w-xM?usp=sharing"
+SEMINARS_REPORT_URL = "https://internationalofficekpis-jp3mpck5jkobwvkhhsjeil.streamlit.app"
 WEEKS_REPORT_URL = ""
 
 _GSPREAD_SCOPES = [
@@ -366,6 +368,22 @@ def load_eiv_cursos() -> pd.DataFrame:
 def load_seminarios() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(SEMINARS_FILE_ID))
     df_ = pd.read_excel(raw, sheet_name="seminarios")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_conferencistas() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(CONFERENCISTAS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="conferencistas")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_participantes() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(PARTICIPANTES_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="participantes")
     df_.columns = df_.columns.str.strip()
     return df_
 
@@ -737,56 +755,58 @@ def page_visiting():
     _section_title_with_link(
         "International Seminars", SEMINARS_REPORT_URL, "Go to Seminars report →",
     )
+    st.caption(
+        "A quick summary across Seminars, Speakers, and Participants — see the full "
+        "report for search, per-seminar detail, and downloadable tables."
+    )
 
     df_sem = load_seminarios()
+    df_conf = load_conferencistas()
+    df_part = load_participantes()
+
     year_col = "Año" if "Año" in df_sem.columns else None
-    speaker_cols = [c for c in df_sem.columns if c.strip().lower().startswith("conferencista")]
+    cat_col = "Categoría" if "Categoría" in df_sem.columns else None
+    conf_name_col = "Nombre Completo" if "Nombre Completo" in df_conf.columns else None
+    conf_univ_col = "Nombre Universidad origen" if "Nombre Universidad origen" in df_conf.columns else None
 
-    if speaker_cols:
-        speakers = set()
-        for c in speaker_cols:
-            vals = df_sem[c].dropna().astype(str).str.strip()
-            speakers.update(v for v in vals if v and v.upper() != "NA")
-
-        col1, col2 = st.columns(2)
+    if conf_name_col:
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            _kpi("Total Seminars (all years)", len(df_sem))
+            _kpi("Seminars", len(df_sem))
         with col2:
-            _kpi("Speakers", len(speakers))
+            _kpi("Speakers", df_conf[conf_name_col].dropna().nunique())
+        with col3:
+            _kpi("Universities Represented", df_conf[conf_univ_col].dropna().nunique() if conf_univ_col else "—")
+        with col4:
+            _kpi("Participants", len(df_part))
 
-        if year_col:
-            by_year = df_sem[year_col].dropna().astype(str).value_counts().sort_index()
-            by_year = by_year[~by_year.index.str.contains("REF", case=False, na=False)]
-            if not by_year.empty:
-                by_year_df = by_year.reset_index()
-                by_year_df.columns = ["Year", "Seminars"]
-                st.markdown("##### Seminars by Year")
-                col_cy, col_ty = st.columns([3, 2])
-                with col_cy:
+        col_year, col_cat = st.columns(2)
+        with col_year:
+            if year_col:
+                by_year = df_sem[year_col].dropna().astype(str).value_counts().sort_index()
+                by_year = by_year[~by_year.index.str.contains("REF", case=False, na=False)]
+                if not by_year.empty:
+                    by_year_df = by_year.reset_index()
+                    by_year_df.columns = ["Year", "Seminars"]
+                    st.markdown("##### Seminars by Year")
                     fig_y = px.bar(by_year_df, x="Year", y="Seminars", color_discrete_sequence=[_PURPLE_MID])
                     fig_y.update_layout(
                         margin=dict(t=6, r=16, b=26, l=36), plot_bgcolor="rgba(0,0,0,0)",
                         paper_bgcolor="rgba(0,0,0,0)", height=260, xaxis=dict(type="category"),
                     )
                     st.plotly_chart(fig_y, use_container_width=True)
-                with col_ty:
-                    st.dataframe(by_year_df, use_container_width=True, hide_index=True)
-
-        area_col = "Área" if "Área" in df_sem.columns else None
-        if area_col:
-            by_area = df_sem[area_col].dropna().value_counts().reset_index()
-            by_area.columns = ["Area", "Seminars"]
-            st.markdown("##### Seminars by Area")
-            col_ca, col_ta = st.columns([3, 2])
-            with col_ca:
-                fig_a = px.pie(by_area, names="Area", values="Seminars", hole=0.5)
-                fig_a.update_traces(textinfo="percent+label", textfont=dict(size=10))
-                fig_a.update_layout(height=320, margin=dict(t=10, r=10, b=10, l=10), showlegend=False)
-                st.plotly_chart(fig_a, use_container_width=True)
-            with col_ta:
-                st.dataframe(by_area, use_container_width=True, hide_index=True)
+        with col_cat:
+            if cat_col:
+                by_cat = df_sem[cat_col].dropna().value_counts().reset_index()
+                by_cat.columns = ["Category", "Seminars"]
+                st.markdown("##### By Category")
+                fig_c = px.pie(by_cat, names="Category", values="Seminars", hole=0.5,
+                                color_discrete_sequence=[_PURPLE_DEEP, _PURPLE_MID, _PURPLE_ACCENT, "#C9B4E8"])
+                fig_c.update_traces(textinfo="percent+label", textfont=dict(size=10))
+                fig_c.update_layout(height=260, margin=dict(t=10, r=10, b=10, l=10), showlegend=False)
+                st.plotly_chart(fig_c, use_container_width=True)
     else:
-        st.info("No pude encontrar las columnas de conferencistas en BD_seminarios.xlsx.")
+        st.info("No pude encontrar las columnas necesarias en BD_conferencistas.xlsx.")
 
 
 # ── 7) PÁGINA — International Weeks ──────────────────────────────────────
