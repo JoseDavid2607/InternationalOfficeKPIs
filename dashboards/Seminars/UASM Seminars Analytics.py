@@ -370,15 +370,24 @@ def build_dataset() -> List[dict]:
             "modalidad": norm_modalidad(r.get("Modalidad")),
         })
 
+    def _clean_text_g(v, default="Unknown"):
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return default
+        txt = str(v).strip()
+        return txt if txt else default
+
     speakers_by_sem: Dict[str, List[dict]] = {}
     for _, r in conf_df.iterrows():
         sem = r.get("Seminario que dirigió")
         if pd.isna(sem) or pd.isna(r.get("Nombre Completo")):
             continue
         speakers_by_sem.setdefault(sem, []).append({
-            "nombre": r.get("Nombre Completo"), "genero": r.get("Genero"),
-            "nacionalidad": r.get("Nacionalidad"), "universidad": r.get("Nombre Universidad origen"),
-            "paisUniversidad": r.get("País Universidad origen"), "region": r.get("Ubicación"),
+            "nombre": _clean_text_g(r.get("Nombre Completo"), ""),
+            "genero": _clean_text_g(r.get("Genero")),
+            "nacionalidad": _clean_text_g(r.get("Nacionalidad")),
+            "universidad": _clean_text_g(r.get("Nombre Universidad origen")),
+            "paisUniversidad": _clean_text_g(r.get("País Universidad origen")),
+            "region": _clean_text_g(r.get("Ubicación")),
         })
 
     seen_ids: Dict[str, int] = {}
@@ -397,8 +406,16 @@ def build_dataset() -> List[dict]:
                 f"records could not be split automatically and are shown only under the "
                 f"first occurrence."
             )
-        speakers = [r.get(f"Conferencista {i}") for i in range(1, 6)]
-        speakers = [s for s in speakers if s and str(s).strip() and str(s).strip() != "NA"]
+        def _clean_speaker(v):
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return None
+            txt = str(v).strip()
+            if not txt or txt.upper() == "NA":
+                return None
+            return txt
+
+        speakers = [_clean_speaker(r.get(f"Conferencista {i}")) for i in range(1, 6)]
+        speakers = [s for s in speakers if s]
 
         date_val = r.get("Fecha")
         date_val = date_val if (date_val is not None and not pd.isna(date_val)) else None
@@ -412,13 +429,20 @@ def build_dataset() -> List[dict]:
                 hora_str = str(hora_raw)
 
         plist = participants_by_sem.get(raw_id, []) if seen_ids[raw_id] == 1 else []
+
+        def _clean_text(v, default=None):
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return default
+            txt = str(v).strip()
+            return txt if txt else default
+
         seminars.append({
-            "id": sid, "categoria": r.get("Categoría") or "Other",
-            "nombre": r.get("Nombre del seminario") or "Untitled seminar",
+            "id": sid, "categoria": _clean_text(r.get("Categoría"), "Other"),
+            "nombre": _clean_text(r.get("Nombre del seminario"), "Untitled seminar"),
             "speakers": speakers, "fecha": fmt_date(date_val), "hora": hora_str,
             "anio": r.get("Año"), "semestre": semester_of(date_val),
-            "modalidad": norm_modalidad(r.get("Modalidad")), "lugar": r.get("Lugar"),
-            "area": r.get("Área"), "participantsCount": len(plist), "participants": plist,
+            "modalidad": norm_modalidad(r.get("Modalidad")), "lugar": _clean_text(r.get("Lugar"), "TBD"),
+            "area": _clean_text(r.get("Área"), "Unknown"), "participantsCount": len(plist), "participants": plist,
             "speakerDetails": speakers_by_sem.get(raw_id, []), "dataNote": data_note,
         })
     return seminars
@@ -587,24 +611,14 @@ def page_dashboard():
         max_cat = max((n for _, n in cats), default=1)
         for label, n in cats:
             pct = n / max_cat * 100 if max_cat else 0
-            logo_tag = cat_logo_tag(label, height=26)
             st.markdown(
-                f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
-                + (logo_tag if logo_tag else '') +
-                f'<div style="flex:1;">'
                 f'<div style="font-size:12.5px;display:flex;justify-content:space-between;">'
                 f'<span>{label}</span><span style="font-family:monospace;color:{cat_color(label)};'
                 f'font-weight:600;">{n}</span></div>'
-                f'<div style="height:7px;border-radius:4px;background:{BG};overflow:hidden;">'
-                f'<div style="height:100%;border-radius:4px;width:{pct}%;background:{cat_color(label)};"></div></div>'
-                f'</div></div>',
+                f'<div style="height:7px;border-radius:4px;background:{BG};overflow:hidden;margin-bottom:10px;">'
+                f'<div style="height:100%;border-radius:4px;width:{pct}%;background:{cat_color(label)};"></div></div>',
                 unsafe_allow_html=True,
             )
-        logos_html = "".join(
-            cat_logo_tag(c, height=32) for c, _ in cats if cat_logo_tag(c)
-        )
-        if logos_html:
-            st.markdown(f'<div style="margin-top:8px;">{logos_html}</div>', unsafe_allow_html=True)
     with col_mod:
         st.markdown("##### Delivery Format")
         _donut(count_by(sems, lambda s: s["modalidad"]), [SEM, SPK, PAR, AMBER], height=230)
@@ -753,26 +767,16 @@ def page_search():
         st.caption("Not yet held — attendance isn't recorded, so these are shown separately from search.")
         for s in upcoming:
             speaker_str = f' · {", ".join(s["speakers"])}' if s["speakers"] else ""
-            logo_tag = cat_logo_tag(s["categoria"], height=18)
             st.markdown(
-                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
-                + (logo_tag if logo_tag else '') +
-                f'<div><div style="font-size:13px;font-weight:600;">{s["nombre"]}</div>'
-                f'<div style="font-family:monospace;font-size:11px;color:{MUTED};">'
-                f'{s["categoria"]} · {s["fecha"]}{speaker_str}</div></div></div>',
+                f'**{s["nombre"]}**  \n<span style="font-family:monospace;font-size:11px;color:{MUTED};">'
+                f'{s["categoria"]} · {s["fecha"]}{speaker_str}</span>',
                 unsafe_allow_html=True,
             )
 
 
 def _render_seminar_detail(s: dict):
     st.markdown("---")
-    logo_tag = cat_logo_tag(s["categoria"], height=36)
-    st.markdown(
-        f'<div style="display:flex;align-items:center;gap:12px;">'
-        + (logo_tag if logo_tag else '') +
-        f'<span class="domain-badge sem">{s["categoria"]}</span></div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<span class="domain-badge sem">{s["categoria"]}</span>', unsafe_allow_html=True)
     st.markdown(f"## {s['nombre']}")
 
     fcol1, fcol2, fcol3, fcol4 = st.columns(4)
