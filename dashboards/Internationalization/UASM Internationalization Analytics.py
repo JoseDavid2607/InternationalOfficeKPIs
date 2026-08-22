@@ -735,10 +735,19 @@ with st.sidebar:
         st.caption("Internationalization Analytics")
     st.markdown("---")
 
+_NAV_VISIBLE = 6  # cuántas secciones caben directamente antes de agrupar el resto en "More sections"
 with st.container(key="nav_toggle"):
-    nav_cols = st.columns(len(pages))
-    for col, page_obj in zip(nav_cols, pages):
+    visible_pages = pages[:_NAV_VISIBLE]
+    overflow_pages = pages[_NAV_VISIBLE:]
+    n_cols = len(visible_pages) + (1 if overflow_pages else 0)
+    nav_cols = st.columns(n_cols)
+    for col, page_obj in zip(nav_cols, visible_pages):
         with col:
             st.page_link(page_obj)
+    if overflow_pages:
+        with nav_cols[-1]:
+            with st.popover("More sections ▾", use_container_width=False):
+                for page_obj in overflow_pages:
+                    st.page_link(page_obj)
 
 pg.run()
