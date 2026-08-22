@@ -85,20 +85,24 @@ st.markdown(
     ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
     "z-index:999999;width:82vw;max-width:1050px;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
-    "display:flex !important;flex-wrap:wrap !important;width:100% !important;"
-    "justify-content:center !important;gap:4px 18px !important;}"
+    "display:flex !important;flex-wrap:nowrap !important;width:100% !important;"
+    "justify-content:center !important;gap:18px !important;overflow:visible;}"
     ".st-key-nav_toggle div[data-testid='column']{width:auto !important;min-width:fit-content !important;flex:none !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;font-size:13px !important;padding:6px 4px !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a p{white-space:nowrap !important;overflow:visible !important;}"
-    ".st-key-nav_toggle div[data-testid='stButton']{width:auto !important;min-width:fit-content !important;}"
-    ".st-key-nav_toggle div[data-testid='stButton'] button{"
+    ".st-key-nav_toggle div[data-testid='stPopover']{width:auto !important;min-width:fit-content !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button{"
     "background:transparent !important;border:none !important;box-shadow:none !important;"
     "color:#6941A8 !important;font-size:13px !important;font-weight:400 !important;"
-    "height:auto !important;width:auto !important;padding:6px 4px !important;white-space:nowrap !important;"
-    "min-width:fit-content !important;}"
-    ".st-key-nav_toggle div[data-testid='stButton'] button:hover{"
+    "height:auto !important;width:auto !important;min-width:fit-content !important;"
+    "padding:6px 4px !important;white-space:nowrap !important;gap:2px !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button:hover{"
     "background:transparent !important;color:#4A2E7D !important;text-decoration:underline;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button svg{width:11px !important;height:11px !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopoverBody']{padding:8px 4px !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopoverBody'] div[data-testid='stPageLink'] a{"
+    "font-size:13px !important;padding:4px 10px !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -170,7 +174,7 @@ WEEKS_SEMANAS_FILE_ID = "1UXmTsOp1X9DKA_OpFy7kmg4fz2_uQT-W" # BD_semanas.xlsx �
 # URLs de los reportes externos (HTML estáticos ya existentes). Configúralas
 # aquí cuando tengas la URL pública de publicación (p.ej. GitHub Pages).
 EIV_REPORT_URL = ""
-SEMINARS_REPORT_URL = ""
+SEMINARS_REPORT_URL = "https://drive.google.com/drive/folders/1Ookhuo8RtJoPcETGTyeagzjQuhs9w-xM?usp=sharing"
 WEEKS_REPORT_URL = ""
 
 _GSPREAD_SCOPES = [
@@ -282,8 +286,7 @@ def load_planta_fulltime() -> pd.DataFrame:
 
     sem = df_["Semestre"].astype(str).str.strip() if "Semestre" in df_.columns else df_.iloc[:, 0].astype(str).str.strip()
     is_inter = sem.str.contains("inter", case=False, na=False)
-    df_.loc[~is_inter, "Periodo"] = sem.str[:4] + "-" + sem.str[-2:]
-    df_.loc[is_inter, "Periodo"] = sem.str[:4] + " Intersemestral"
+    df_["Periodo"] = np.where(is_inter, sem.str[:4] + " Intersemestral", sem.str[:4] + "-" + sem.str[-2:])
     df_["Año"] = sem.str[:4]
 
     if "ID Nr." in df_.columns and "ID" not in df_.columns:
@@ -834,20 +837,17 @@ _NAV_VISIBLE = 6  # cuántas secciones caben directamente antes de agrupar el re
 with st.container(key="nav_toggle"):
     visible_pages = pages[:_NAV_VISIBLE]
     overflow_pages = pages[_NAV_VISIBLE:]
-    show_more = st.session_state.get("nav_show_more", False)
-
-    shown_pages = visible_pages + (overflow_pages if show_more else [])
-    n_cols = len(shown_pages) + (1 if overflow_pages else 0)
+    n_cols = len(visible_pages) + (1 if overflow_pages else 0)
     nav_cols = st.columns(n_cols)
 
-    for col, page_obj in zip(nav_cols, shown_pages):
+    for col, page_obj in zip(nav_cols, visible_pages):
         with col:
             st.page_link(page_obj)
 
     if overflow_pages:
         with nav_cols[-1]:
-            if st.button("Less" if show_more else "More", key="nav_more_toggle"):
-                st.session_state.nav_show_more = not show_more
-                st.rerun()
+            with st.popover("More", use_container_width=False):
+                for page_obj in overflow_pages:
+                    st.page_link(page_obj)
 
 pg.run()
