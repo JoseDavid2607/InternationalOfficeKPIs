@@ -100,9 +100,29 @@ st.markdown(
     ".st-key-nav_toggle div[data-testid='stPopover'] button:hover{"
     "background:transparent !important;color:#4A2E7D !important;text-decoration:underline;}"
     ".st-key-nav_toggle div[data-testid='stPopover'] button svg{display:none !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] svg{display:none !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] [data-testid='stIconMaterial']{display:none !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button{gap:0 !important;}"
     ".st-key-nav_toggle div[data-testid='stPopoverBody']{padding:8px 4px !important;}"
     ".st-key-nav_toggle div[data-testid='stPopoverBody'] div[data-testid='stPageLink'] a{"
     "font-size:13px !important;padding:4px 10px !important;}"
+    ".st-key-update_sidebar_group{text-align:center;}"
+    ".st-key-update_sidebar_group img{margin:0 auto;}"
+    ".st-key-go_to_dashboard_btn a{"
+    "display:flex !important;align-items:center;justify-content:center;gap:10px;text-align:center;"
+    f"background:{_PURPLE_DEEP} !important;border:none !important;"
+    "color:#FFFFFF !important;font-size:20px !important;font-weight:800 !important;"
+    "border-radius:14px !important;padding:20px 10px !important;text-decoration:none !important;"
+    "box-shadow:0 4px 14px rgba(74,46,125,.25);transition:transform .15s ease;}"
+    ".st-key-go_to_dashboard_btn a span{color:#FFFFFF !important;}"
+    f".st-key-go_to_dashboard_btn a:hover{{transform:translateY(-2px);background:{_PURPLE_MID} !important;}}"
+    ".st-key-go_to_update_btn a{"
+    "display:flex !important;align-items:center;justify-content:center;gap:6px;"
+    "background:#FFFFFF !important;border:1px solid #E1D5F2 !important;"
+    "color:#374151 !important;font-size:14px !important;font-weight:600 !important;"
+    "border-radius:10px !important;padding:12px 8px !important;text-decoration:none !important;"
+    "height:48px;box-shadow:0 1px 3px rgba(0,0,0,.04);}"
+    ".st-key-go_to_update_btn a:hover{background:#FBF9FE !important;border-color:#C9B4E8 !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -312,13 +332,25 @@ def load_planta_fulltime() -> pd.DataFrame:
 
     if "ID Nr." in df_.columns and "ID" not in df_.columns:
         df_ = df_.rename(columns={"ID Nr.": "ID"})
-    if "Full Name" not in df_.columns:
-        fn = df_.get("First Name", "").astype(str).fillna("") if "First Name" in df_.columns else ""
-        ln = df_.get("Last Name", "").astype(str).fillna("") if "Last Name" in df_.columns else ""
-        if isinstance(fn, str) and isinstance(ln, str):
-            df_["Full Name"] = df_.get("Profesor", df_.get("Nombre", ""))
+
+    # Resolución robusta del nombre del profesor: intenta First+Last Name,
+    # luego cualquier columna de nombre completo conocida, y si nada aplica
+    # usa el ID como último recurso — nunca deja la columna vacía/None.
+    if "First Name" in df_.columns or "Last Name" in df_.columns:
+        fn = df_["First Name"].astype(str).fillna("") if "First Name" in df_.columns else ""
+        ln = df_["Last Name"].astype(str).fillna("") if "Last Name" in df_.columns else ""
+        fn = fn if isinstance(fn, pd.Series) else pd.Series([""] * len(df_), index=df_.index)
+        ln = ln if isinstance(ln, pd.Series) else pd.Series([""] * len(df_), index=df_.index)
+        df_["Full Name"] = (fn + " " + ln).str.strip()
+    elif "Full Name" not in df_.columns:
+        name_src = next((c for c in ["Profesor", "Nombre", "Nombre completo", "Full Name"] if c in df_.columns), None)
+        if name_src:
+            df_["Full Name"] = df_[name_src].astype(str)
         else:
-            df_["Full Name"] = (fn + " " + ln).str.strip()
+            df_["Full Name"] = df_.get("ID", pd.Series(range(len(df_)), index=df_.index)).astype(str)
+
+    df_["Full Name"] = df_["Full Name"].astype(str).str.strip()
+    df_.loc[df_["Full Name"].isin(["", "nan", "None"]), "Full Name"] = df_["ID"].astype(str) if "ID" in df_.columns else "—"
     return df_
 
 
@@ -456,27 +488,10 @@ def page_faculty():
     df_table1 = pd.DataFrame(table1_rows, columns=[""] + labels)
     st.dataframe(_style_highlight_column(df_table1, snap_label), use_container_width=True, hide_index=True)
 
-    col_dl1, col_btn1 = st.columns([3, 2])
-    with col_dl1:
-        st.download_button(
-            "Download as Excel", data=_xlsx_bytes(df_table1, "International_Faculty"),
-            file_name="International_Faculty.xlsx", key="dl_fac_table1",
-        )
-    with col_btn1:
-        if st.button("Show Nationalities", key="btn_show_nat", use_container_width=True):
-            st.session_state["_show_nat_dialog"] = True
-
-    if st.session_state.get("_show_nat_dialog") and hasattr(st, "dialog"):
-        @st.dialog(f"International Faculty — {snap_label}", width="large")
-        def _dlg_nat():
-            detail_cols = [c for c in [name_col, nat_col] if c]
-            detail = intl_rows_by_col[snap_idx][detail_cols].drop_duplicates().reset_index(drop=True)
-            detail.columns = ["Professor" if c == name_col else "Nationality" for c in detail_cols]
-            st.dataframe(detail, use_container_width=True, hide_index=True)
-            if st.button("Close", key="close_nat_dialog"):
-                st.session_state["_show_nat_dialog"] = False
-                st.rerun()
-        _dlg_nat()
+    st.download_button(
+        "Download as Excel", data=_xlsx_bytes(df_table1, "International_Faculty"),
+        file_name="International_Faculty.xlsx", key="dl_fac_table1",
+    )
 
     # ---- Trend chart: % international over time ----
     st.markdown("### International Faculty Over Time")
@@ -551,6 +566,9 @@ def page_faculty():
             )
             st.plotly_chart(fig_bar, use_container_width=True)
 
+    if st.button("Show Nationalities", key="btn_show_nat", use_container_width=True):
+        st.session_state["_faculty_dialog"] = "nat"
+
     # ---- Tabla combinada: dual nationality — resumen + lista ----
     st.markdown("### Full-Time Faculty with Dual Nationality")
     max_dual = max((len(n) for n in dual_nat_lists), default=0)
@@ -564,28 +582,45 @@ def page_faculty():
     df_table2 = pd.DataFrame(table2_rows, columns=[""] + labels)
     st.dataframe(_style_highlight_column(df_table2, snap_label), use_container_width=True, hide_index=True)
 
-    col_dl2, col_btn2 = st.columns([3, 2])
-    with col_dl2:
-        st.download_button(
-            "Download as Excel", data=_xlsx_bytes(df_table2, "Dual_Nationality_Faculty"),
-            file_name="Dual_Nationality_Faculty.xlsx", key="dl_fac_table2",
-        )
-    with col_btn2:
-        if st.button("Show Dual Nationality Faculty", key="btn_show_dual", use_container_width=True):
-            st.session_state["_show_dual_dialog"] = True
+    st.download_button(
+        "Download as Excel", data=_xlsx_bytes(df_table2, "Dual_Nationality_Faculty"),
+        file_name="Dual_Nationality_Faculty.xlsx", key="dl_fac_table2",
+    )
 
-    if st.session_state.get("_show_dual_dialog") and hasattr(st, "dialog"):
+    if st.button("Show Dual Nationality Faculty", key="btn_show_dual", use_container_width=True):
+        st.session_state["_faculty_dialog"] = "dual"
+
+    # ---- Diálogos de detalle (mutuamente excluyentes: solo uno a la vez) ----
+    def _clean_detail(df_in: pd.DataFrame, cols: list, rename_map: dict) -> pd.DataFrame:
+        out = df_in[cols].drop_duplicates().reset_index(drop=True)
+        out = out.rename(columns=rename_map)
+        for c in out.columns:
+            out[c] = out[c].astype(str).replace({"None": "—", "nan": "—", "": "—"})
+        return out
+
+    active_dialog = st.session_state.get("_faculty_dialog")
+    if active_dialog == "nat" and hasattr(st, "dialog"):
+        @st.dialog(f"International Faculty — {snap_label}", width="large")
+        def _dlg_nat():
+            cols = [c for c in [name_col, nat_col] if c]
+            rename_map = {c: ("Professor" if c == name_col else "Nationality") for c in cols}
+            detail = _clean_detail(intl_rows_by_col[snap_idx], cols, rename_map)
+            st.dataframe(detail, use_container_width=True, hide_index=True)
+            if st.button("Close", key="close_nat_dialog"):
+                st.session_state["_faculty_dialog"] = None
+                st.rerun()
+        _dlg_nat()
+    elif active_dialog == "dual" and hasattr(st, "dialog"):
         @st.dialog(f"Dual Nationality Faculty — {snap_label}", width="large")
         def _dlg_dual():
-            detail_cols = [c for c in [name_col, dual_col] if c]
-            detail = dual_rows_by_col[snap_idx][detail_cols].drop_duplicates().reset_index(drop=True)
-            detail.columns = ["Professor" if c == name_col else "Double Nationality" for c in detail_cols]
+            cols = [c for c in [name_col, dual_col] if c]
+            rename_map = {c: ("Professor" if c == name_col else "Double Nationality") for c in cols}
+            detail = _clean_detail(dual_rows_by_col[snap_idx], cols, rename_map)
             st.dataframe(detail, use_container_width=True, hide_index=True)
             if st.button("Close", key="close_dual_dialog"):
-                st.session_state["_show_dual_dialog"] = False
+                st.session_state["_faculty_dialog"] = None
                 st.rerun()
         _dlg_dual()
-
 
 
 # ── 6) PÁGINA — Visiting Faculty & International Seminars ──────────────
@@ -925,7 +960,21 @@ page_agreements = _make_pending_page(
 )
 
 
-# ── 9) NAVEGACIÓN ─────────────────────────────────────────────────────────
+# ── 9) PÁGINA — Update Data ──────────────────────────────────────────────
+def page_update_data():
+    _render_header(
+        "Update Data",
+        "Upload templates and refresh the Google Drive source files behind this dashboard.",
+    )
+    _pending_card(
+        "The update workflow for Internationalization is pending.",
+        "This will mirror Faculty Analytics' Update Data page (template downloads, "
+        "validation, and direct writes to Drive) once the source templates for "
+        "BD_convenios, BD_movilidad, BD_cursos, BD_seminarios, and BD_listas are defined.",
+    )
+
+
+# ── 10) NAVEGACIÓN ────────────────────────────────────────────────────────
 pages = [
     st.Page(page_faculty, title="Faculty", icon="🌎", url_path="faculty", default=True),
     st.Page(page_visiting, title="Visiting Faculty", icon="🧑‍🏫", url_path="visiting"),
@@ -937,40 +986,71 @@ pages = [
     st.Page(page_program_mobility, title="Mobility by Program", icon="🧭", url_path="program-mobility"),
     st.Page(page_phd, title="PhD Mobility", icon="🎯", url_path="phd"),
     st.Page(page_agreements, title="Agreements", icon="📄", url_path="agreements"),
+    st.Page(page_update_data, title="Update Data", icon="🔄", url_path="update-data"),
 ]
 pg = st.navigation(pages, position="hidden")
+IS_UPDATE_PAGE = pg is pages[-1]
+main_pages = pages[:-1]
 
-with st.sidebar:
-    col_logo, col_title = st.columns([1, 3])
-    with col_logo:
-        try:
-            st.image("imagenes/logo.png", width=65)
-        except Exception:
-            pass
-    with col_title:
-        st.markdown(
-            '<div style="padding-top:10px;color:#4A2E7D;font-size:22px;'
-            'font-weight:800;line-height:1.1;">UASM Intl. KPIs</div>',
-            unsafe_allow_html=True,
-        )
-        st.caption("Internationalization Analytics")
-    st.markdown("---")
+if not IS_UPDATE_PAGE:
+    st.session_state["_return_page_idx"] = main_pages.index(pg)
 
-_NAV_VISIBLE = 6  # cuántas secciones caben directamente antes de agrupar el resto bajo "More"
-with st.container(key="nav_toggle"):
-    visible_pages = pages[:_NAV_VISIBLE]
-    overflow_pages = pages[_NAV_VISIBLE:]
-    n_cols = len(visible_pages) + (1 if overflow_pages else 0)
-    nav_cols = st.columns(n_cols)
+if IS_UPDATE_PAGE:
+    return_idx = st.session_state.get("_return_page_idx", 0)
+    return_page = main_pages[return_idx]
+    with st.sidebar:
+        st.markdown('<div style="height:26vh;"></div>', unsafe_allow_html=True)
+        with st.container(key="update_sidebar_group"):
+            try:
+                st.image("imagenes/logo.png", width=65)
+            except Exception:
+                pass
+            st.markdown(
+                '<div style="color:#4A2E7D;font-size:22px;font-weight:800;'
+                'line-height:1.15;margin-top:8px;">UASM Intl. KPIs</div>'
+                '<div style="color:#6b7280;font-size:13px;margin-bottom:16px;">Internationalization Analytics</div>',
+                unsafe_allow_html=True,
+            )
+            with st.container(key="go_to_dashboard_btn"):
+                st.page_link(return_page, label="Go to Dashboard", icon=":material/bar_chart:", use_container_width=True)
+else:
+    with st.sidebar:
+        col_logo, col_title = st.columns([1, 3])
+        with col_logo:
+            try:
+                st.image("imagenes/logo.png", width=65)
+            except Exception:
+                pass
+        with col_title:
+            st.markdown(
+                '<div style="padding-top:10px;color:#4A2E7D;font-size:22px;'
+                'font-weight:800;line-height:1.1;">UASM Intl. KPIs</div>',
+                unsafe_allow_html=True,
+            )
+            st.caption("Internationalization Analytics")
+        st.markdown("---")
 
-    for col, page_obj in zip(nav_cols, visible_pages):
-        with col:
-            st.page_link(page_obj)
+    _NAV_VISIBLE = 6  # cuántas secciones caben directamente antes de agrupar el resto bajo "More"
+    with st.container(key="nav_toggle"):
+        visible_pages = main_pages[:_NAV_VISIBLE]
+        overflow_pages = main_pages[_NAV_VISIBLE:]
+        n_cols = len(visible_pages) + (1 if overflow_pages else 0)
+        nav_cols = st.columns(n_cols)
 
-    if overflow_pages:
-        with nav_cols[-1]:
-            with st.popover("More...", use_container_width=False):
-                for page_obj in overflow_pages:
-                    st.page_link(page_obj)
+        for col, page_obj in zip(nav_cols, visible_pages):
+            with col:
+                st.page_link(page_obj)
+
+        if overflow_pages:
+            with nav_cols[-1]:
+                with st.popover("More...", use_container_width=False):
+                    for page_obj in overflow_pages:
+                        st.page_link(page_obj)
 
 pg.run()
+
+if not IS_UPDATE_PAGE:
+    with st.sidebar:
+        st.markdown("---")
+        with st.container(key="go_to_update_btn"):
+            st.page_link(pages[-1], label="Update Data", icon=":material/sync:", use_container_width=True)
