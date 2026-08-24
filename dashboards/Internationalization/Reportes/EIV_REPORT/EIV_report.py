@@ -92,7 +92,7 @@ st.markdown(
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
     "display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;width:auto !important;"
     "justify-content:center !important;align-items:center !important;gap:14px !important;"
-    "overflow-x:auto;overflow-y:hidden;max-width:96vw;}"
+    "overflow:visible;max-width:96vw;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock'] > div{"
     "flex:0 0 auto !important;width:auto !important;min-width:0 !important;}"
     ".st-key-nav_toggle div[data-testid='column'], .st-key-nav_toggle div[data-testid='stColumn']{"
@@ -122,6 +122,17 @@ st.markdown(
     "transition:opacity .15s ease;}"
     ".st-key-side_arrows a p{font-size:26px;}"
     ".st-key-side_arrows a:hover{opacity:1;}"
+    ".st-key-cover_enter_btn div[data-testid='stButton'] button{"
+    f"background:{PINK} !important;border:none !important;color:#fff !important;"
+    "font-size:16px !important;font-weight:700 !important;height:52px !important;"
+    "box-shadow:0 4px 14px rgba(230,17,102,.28) !important;}"
+    ".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{background:#B00D50 !important;}"
+    ".st-key-go_to_datacenter_btn a{"
+    f"display:flex !important;align-items:center;justify-content:center;gap:6px;"
+    f"background:{PINK} !important;border:none !important;border-radius:10px !important;"
+    "color:#fff !important;font-weight:700 !important;height:44px !important;text-decoration:none !important;}"
+    ".st-key-go_to_datacenter_btn a span{color:#fff !important;}"
+    ".st-key-go_to_datacenter_btn a:hover{background:#B00D50 !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -230,7 +241,7 @@ def _style_courses_table(disp: pd.DataFrame):
             if str(d.loc[i, "Block"]) in ("1", "3"):
                 for c in d.columns:
                     if c != "Occupancy":
-                        s.loc[i, c] += "background:#F7F5F6;"
+                        s.loc[i, c] += "background-color:#F7F5F6;"
             is_last_in_block = (i == d.index[-1]) or (d.loc[i, "Block"] != d.loc[d.index[d.index.get_loc(i) + 1], "Block"])
             if is_last_in_block and i != d.index[-1]:
                 for c in d.columns:
@@ -730,30 +741,28 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
 
 # ── 8) PÁGINA — Data Center ──────────────────────────────────────────────
 # ── 8) PÁGINA — Cover (portada, sin sidebar ni nav) ──────────────────────
+# ── 8) PÁGINA — Cover (portada, funciona como Data Center — sin sidebar) ──
 def page_cover():
-    st.markdown(
-        '<div style="display:flex;flex-direction:column;align-items:center;'
-        'justify-content:center;min-height:70vh;text-align:center;padding-top:6vh;">',
-        unsafe_allow_html=True,
-    )
-    try:
-        _show_eiv_logo(260)
-    except Exception:
-        pass
-    st.markdown(
-        f'<div style="font-size:34px;font-weight:800;color:{INK};margin-top:18px;">'
-        'International Summer School</div>'
-        f'<div style="font-size:16px;color:{MUTED};max-width:560px;margin:10px auto 0;line-height:1.5;">'
-        "Analytics for the 2026 edition of EIV — enrollment, course evaluation, faculty "
-        "satisfaction, and financial performance across every visiting-faculty course.</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='height:4vh;'></div>", unsafe_allow_html=True)
+    col_l, col_mid, col_r = st.columns([1, 2, 1])
+    with col_mid:
+        try:
+            _show_eiv_logo(260)
+        except Exception:
+            pass
+        st.markdown(
+            f'<div style="text-align:center;font-size:34px;font-weight:800;color:{INK};margin-top:18px;">'
+            'International Summer School</div>'
+            f'<div style="text-align:center;font-size:16px;color:{MUTED};margin:10px auto 0;line-height:1.5;">'
+            "Analytics for the 2026 edition of EIV — enrollment, course evaluation, faculty "
+            "satisfaction, and financial performance across every visiting-faculty course.</div>",
+            unsafe_allow_html=True,
+        )
 
-    _, col_center, _ = st.columns([1, 2, 1])
-    with col_center:
-        if st.button("Enter the Report →", key="cover_enter", use_container_width=True):
-            st.switch_page(pages[1])
+        st.markdown("<div style='height:26px;'></div>", unsafe_allow_html=True)
+        with st.container(key="cover_enter_btn"):
+            if st.button("Enter the Report →", key="cover_enter", use_container_width=True):
+                st.switch_page(pages[1])
 
         st.markdown(
             f'<div style="text-align:center;margin-top:34px;font-family:monospace;'
@@ -761,38 +770,27 @@ def page_cover():
             "Data sources used</div>",
             unsafe_allow_html=True,
         )
-        file_ids = {
-            "BD_cursos.xlsx": CURSOS_FILE_ID, "BD_listas.xlsx": LISTAS_FILE_ID,
-            "BD_evaluacion_curso.xlsx": EVALUACION_FILE_ID, "BD_satisfaccionEIV.xlsx": SATISFACCION_FILE_ID,
-            "BD_gastos.xlsx": GASTOS_FILE_ID, "BD_electivas.xlsx": ELECTIVAS_FILE_ID,
-        }
-        for fname, fid in file_ids.items():
+        files = [
+            ("BD_cursos.xlsx", "Courses & 2026 capacity", CURSOS_FILE_ID),
+            ("BD_listas.xlsx", "Enrollment, program catalog & final grades", LISTAS_FILE_ID),
+            ("BD_evaluacion_curso.xlsx", "Course evaluation — frequencies & comments", EVALUACION_FILE_ID),
+            ("BD_satisfaccionEIV.xlsx", "Faculty satisfaction survey", SATISFACCION_FILE_ID),
+            ("BD_gastos.xlsx", "Expenses & actual spend", GASTOS_FILE_ID),
+            ("BD_electivas.xlsx", "International electives (not yet assigned to a section)", ELECTIVAS_FILE_ID),
+        ]
+        for fname, desc, fid in files:
             fc1, fc2 = st.columns([5, 1])
             with fc1:
-                st.markdown(f'<span style="font-size:12.5px;color:{MUTED};">{fname}</span>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<span style="font-size:12.5px;color:{INK};">{fname}</span><br>'
+                    f'<span style="font-size:11px;color:{MUTED};">{desc}</span>',
+                    unsafe_allow_html=True,
+                )
             with fc2:
                 st.download_button(
                     "⇩", data=_download_drive_file_bytes(fid), file_name=fname,
                     key=f"cover_dl_{fname}", use_container_width=True,
                 )
-
-
-# ── 9) PÁGINA — Data Center ───────────────────────────────────────────────
-def page_datacenter():
-    d = compute_all()
-    _render_header("Data Center", "Verification of the sources powering this report.")
-    files = [
-        ("BD_cursos.xlsx", "Courses & 2026 capacity"),
-        ("BD_listas.xlsx", "Enrollment, program catalog & final grades"),
-        ("BD_evaluacion_curso.xlsx", "Course evaluation — frequencies & comments"),
-        ("BD_satisfaccionEIV.xlsx", "Faculty satisfaction survey"),
-        ("BD_gastos.xlsx", "Expenses & actual spend"),
-        ("BD_electivas.xlsx", "International electives (not yet assigned to a section)"),
-    ]
-    for fname, desc in files:
-        st.markdown(f"**{fname}** — {desc}  \n:material/check_circle: Loaded")
-    st.markdown(f"**{len(files)} sources loaded** · {d['total_inscritos']} enrollments · {len(d['cmap'])} courses")
-    st.page_link(pages[2], label="Enter the Report →", icon=":material/arrow_forward:")
 
 
 # ── 9) PÁGINA — Overview (Historical Evolution) ──────────────────────────
@@ -872,13 +870,15 @@ def page_overview():
     # sobre el total histórico de esa edición.
     year_totals = {p["year"]: p["val"] for p in HIST_PARTICIPANTS}
     year_totals[2026] = total
-    cat_df = pd.DataFrame([{
+    cat_df_long = pd.DataFrame([{
         "Year": c["year"],
         "UASM GR": round(c["EPOS"] / 100 * year_totals.get(c["year"], total)),
         "UASM UG": round(c["PRE"] / 100 * year_totals.get(c["year"], total)),
         "Other UG/GR": round(c["OTHER"] / 100 * year_totals.get(c["year"], total)),
         "External": round(c["EXTERNAL"] / 100 * year_totals.get(c["year"], total)),
     } for c in cat_all])
+    cat_df = cat_df_long.set_index("Year").T.rename_axis("Category").reset_index()
+    cat_df.columns = [str(c) for c in cat_df.columns]
     st.dataframe(cat_df, use_container_width=True, hide_index=True)
     st.download_button("Download as Excel", data=_xlsx_bytes(cat_df, "Historical_Composition"),
                         file_name="Historical_Composition.xlsx", key="dl_hist_cat")
@@ -928,10 +928,6 @@ def page_summary():
         all_unis = sorted({u for info in by_country.values() for u in info["unis"]})
         _kpi("Universities", len(all_unis), "accent")
         st.markdown("**Universities**" + (f" — {focus}" if focus else ""))
-        if focus:
-            if st.button("↺ Return to all countries", key="reset_country_focus", use_container_width=True):
-                st.session_state["summary_map"] = {"selection": {"points": []}}
-                st.rerun()
         unis_to_show = sorted(by_country[focus]["unis"]) if focus and focus in by_country else all_unis
         with st.container(height=260):
             for u in unis_to_show:
@@ -967,6 +963,8 @@ def page_summary():
                             showocean=True, oceancolor="#FAF8FA", bgcolor="rgba(0,0,0,0)", projection_type="natural earth")
         fig_map.update_layout(margin=dict(t=6, r=6, b=6, l=6), height=420, showlegend=False, paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig_map, use_container_width=True, on_select="rerun", selection_mode="points", key="summary_map")
+        if focus:
+            st.caption("Double click the map to view all countries again.")
 
     st.markdown("### Courses by Block")
     tabla_f = tabla[tabla["pais"].str.contains(focus, case=False, na=False)] if focus else tabla
@@ -978,13 +976,16 @@ def page_summary():
 
     col_tbl, col_donut = st.columns([3, 1])
     with col_tbl:
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            _kpi("Visiting Faculty", total_profs, "accent")
-        with c2:
-            _kpi("% Male", f"{male_pct:.0f}%")
-        with c3:
-            _kpi("% Female", f"{female_pct:.0f}%")
+        st.markdown(
+            f'<div style="display:flex;justify-content:flex-end;align-items:flex-end;gap:26px;margin-bottom:6px;">'
+            f'<div style="text-align:right;"><div style="font-size:14px;font-weight:700;color:{INK};">{male_pct:.0f}%</div>'
+            f'<div class="kl">% Male</div></div>'
+            f'<div style="text-align:right;"><div style="font-size:14px;font-weight:700;color:{INK};">{female_pct:.0f}%</div>'
+            f'<div class="kl">% Female</div></div>'
+            f'<div style="text-align:right;"><div class="kv accent">{total_profs}</div>'
+            f'<div class="kl">Visiting Faculty</div></div></div>',
+            unsafe_allow_html=True,
+        )
         if focus:
             st.caption(f"Filtered to courses taught by faculty from **{focus}**.")
         display_cols = ["bloque", "curso", "profesor", "area", "universidad", "pais", "modalidad", "inscritos", "cupos", "ocupacion"]
@@ -1000,7 +1001,7 @@ def page_summary():
         fig_area = go.Figure(go.Pie(
             labels=area_counts.index, values=area_counts.values, hole=0.55,
             marker=dict(colors=[BLUE, PURPLE, PINK, GREEN, "#F2994A", "#3FA34D", "#8C7F87"]),
-            textinfo="label+value", textfont=dict(size=10),
+            textinfo="label+value", textfont=dict(size=13), pull=[0.03] * len(area_counts),
         ))
         fig_area.update_layout(margin=dict(t=10, r=10, b=10, l=10), showlegend=False,
                                 paper_bgcolor="rgba(0,0,0,0)", height=460)
@@ -1112,25 +1113,26 @@ def page_dashboard():
                **{t: f"{col_totals[t] / grand_total * 100:.1f}%" for t in tipos}, "Total": "100.0%"}
     comp_df = pd.concat([comp_df, pd.DataFrame([total_row, pct_row])], ignore_index=True)
 
-    st.dataframe(comp_df, use_container_width=True, hide_index=True, height=420)
-
     pct_vals = {t: col_totals[t] / grand_total * 100 for t in tipos}
     lo, hi = min(pct_vals.values()), max(pct_vals.values())
     span = (hi - lo) or 1
-    st.caption("% of Total, by program type")
-    badge_cols = st.columns(len(tipos))
-    for col, t in zip(badge_cols, tipos):
-        pct = pct_vals[t]
-        scaled = (pct - lo) / span * 100
-        color = color_scale(scaled)
-        with col:
-            st.markdown(
-                f'<div style="text-align:center;background:{color};color:#fff;border-radius:8px;'
-                f'padding:10px 6px;"><div style="font-size:17px;font-weight:800;">{pct:.1f}%</div>'
-                f'<div style="font-size:10.5px;opacity:.9;">{PROGRAM_TYPE_LABELS.get(t, t)}</div></div>',
-                unsafe_allow_html=True,
-            )
+    pct_idx = comp_df.index[-1]
 
+    def _style_comp(row: pd.Series):
+        if row.name != pct_idx:
+            return [""] * len(row)
+        out = []
+        for c in row.index:
+            if c in tipos:
+                scaled = (pct_vals[c] - lo) / span * 100
+                # background-color (no shorthand): el renderer de st.dataframe
+                # no siempre respeta 'background' de forma fiable con colores sólidos.
+                out.append(f"background-color:{color_scale(scaled)};color:#fff;font-weight:700;")
+            else:
+                out.append("font-weight:700;")
+        return out
+
+    st.dataframe(comp_df.style.apply(_style_comp, axis=1), use_container_width=True, hide_index=True, height=420)
     st.download_button("Download as Excel", data=_xlsx_bytes(comp_df, "Enrollment_Composition"),
                         file_name="Enrollment_Composition.xlsx", key="dl_enrollment_comp")
 
@@ -1173,6 +1175,7 @@ def page_financial():
 
     df["_budget"] = pd.to_numeric(df[budget_col], errors="coerce")
     df["_actual"] = pd.to_numeric(df[actual_col], errors="coerce")
+    df["_concepto"] = df["Concepto"].astype(str).str.replace(r"\r?\n", " ", regex=True).str.strip()
 
     total_budget = df["_budget"].fillna(0).sum()
     reconciled = df.dropna(subset=["_actual"])
@@ -1188,7 +1191,6 @@ def page_financial():
         _kpi("Difference", ("+" if diff >= 0 else "") + _fmt_cop(diff), "accent")
 
     st.markdown("##### Budget by Concept")
-    df["_concepto"] = df["Concepto"].astype(str).str.replace(r"\r?\n", " ", regex=True).str.strip()
     by_concept = df.groupby("_concepto")["_budget"].sum().sort_values(ascending=False)
     by_concept = by_concept[by_concept > 0]
     fig = go.Figure(go.Bar(
@@ -1966,8 +1968,7 @@ def page_conclusions():
 
 # ── 17) NAVEGACIÓN ────────────────────────────────────────────────────────
 pages = [
-    st.Page(page_cover, title="Cover", icon="🌐", url_path="cover", default=True),
-    st.Page(page_datacenter, title="Data Center", icon="🗄️", url_path="datacenter"),
+    st.Page(page_cover, title="Data Center", icon="🌐", url_path="cover", default=True),
     st.Page(page_overview, title="Overview", icon="📈", url_path="overview"),
     st.Page(page_summary, title="Summary", icon="🌍", url_path="summary"),
     st.Page(page_dashboard, title="Dashboard", icon="📊", url_path="dashboard"),
@@ -1978,8 +1979,7 @@ pages = [
 ]
 pg = st.navigation(pages, position="hidden")
 IS_COVER = pg is pages[0]
-IS_DATACENTER = pg is pages[1]
-nav_pages = pages[2:]
+nav_pages = pages[1:]
 _NAV_VISIBLE = 5
 
 if IS_COVER:
@@ -2000,10 +2000,11 @@ if not IS_COVER:
             unsafe_allow_html=True,
         )
         st.caption("International Summer School · Facultad de Administración")
-        st.page_link(pages[1], label="Go to Data Center", icon=":material/home:")
+        with st.container(key="go_to_datacenter_btn"):
+            st.page_link(pages[0], label="Go to Data Center", icon=":material/home:")
         st.markdown("---")
 
-if not IS_COVER and not IS_DATACENTER:
+if not IS_COVER:
     with st.container(key="nav_toggle"):
         visible_pages = nav_pages[:_NAV_VISIBLE]
         overflow_pages = nav_pages[_NAV_VISIBLE:]
@@ -2027,9 +2028,9 @@ if not IS_COVER and not IS_DATACENTER:
     with st.container(key="side_arrows"):
         arrow_l, arrow_r = st.columns(2)
         with arrow_l:
-            st.page_link(_prev_pg, label="‹", icon=None)
+            st.page_link(_prev_pg, label="‹", icon=" ")
         with arrow_r:
-            st.page_link(_next_pg, label="›", icon=None)
+            st.page_link(_next_pg, label="›", icon=" ")
 
 pg.run()
 
