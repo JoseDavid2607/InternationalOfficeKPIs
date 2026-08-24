@@ -54,12 +54,12 @@ st.markdown(
     "<style>"
     f".suite-header{{display:flex;flex-direction:column;align-items:center;"
     "padding:16px 24px 12px;"
-    f"background:linear-gradient(135deg,{INK} 0%,{PINK} 100%);"
+    f"background:{PINK};"
     "border-radius:12px;box-shadow:0 2px 8px rgba(230,17,102,.18);margin-bottom:14px;}}"
     f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
     "color:#FBD6E4;text-transform:uppercase;margin-bottom:2px;}}"
     ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
-    ".sh-sub{font-size:13px;color:rgba(255,255,255,.80);margin-top:4px;text-align:center;}"
+    ".sh-sub{font-size:13px;color:#fff;margin-top:4px;text-align:center;}"
     f".kv{{font-size:24px;font-weight:700;line-height:1.1;font-family:monospace;color:{INK};}}"
     f".kv.accent{{color:{PINK};}}"
     f".kl{{font-size:11px;font-weight:600;color:{MUTED};"
@@ -104,6 +104,15 @@ st.markdown(
     "padding:6px 4px !important;white-space:nowrap !important;}"
     f".st-key-nav_toggle div[data-testid='stPopover'] button:hover{{color:{INK} !important;}}"
     ".st-key-nav_toggle div[data-testid='stPopover'] button svg{display:none !important;}"
+    ".st-key-side_arrow_left, .st-key-side_arrow_right{position:fixed;top:50%;transform:translateY(-50%);z-index:999998;}"
+    ".st-key-side_arrow_left{left:8px;} .st-key-side_arrow_right{right:8px;}"
+    ".st-key-side_arrow_left a, .st-key-side_arrow_right a{"
+    "display:flex !important;align-items:center;justify-content:center;"
+    "width:38px;height:38px;border-radius:50%;background:#FFFFFF;"
+    f"border:1px solid {LINE};box-shadow:0 2px 8px rgba(0,0,0,.08);"
+    f"font-size:20px;font-weight:700;color:{PINK} !important;text-decoration:none;}}"
+    ".st-key-side_arrow_left a p, .st-key-side_arrow_right a p{font-size:20px;font-weight:700;}"
+    ".st-key-side_arrow_left a:hover, .st-key-side_arrow_right a:hover{background:#FCE9F1;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -161,6 +170,36 @@ def color_scale(pct: float) -> str:
     a, b = stops[seg], stops[seg + 1]
     rgb = tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
     return f"rgb({rgb[0]},{rgb[1]},{rgb[2]})"
+
+
+def occ_color(pct: float) -> str:
+    """Rojo desde 20% (o menos) hasta verde en 100%, para la barra de ocupación."""
+    return color_scale(max(0.0, (pct - 20) / 80 * 100))
+
+
+MODALITY_BADGE_COLORS = {"Online": "#DCEEF9", "On Campus": "#DEF3E6", "Bootcamp": "#FCEADA"}
+
+
+def _style_courses_table(disp: pd.DataFrame):
+    """Barras de ocupación (rojo→verde), badge de color por modalidad, y
+    borde grueso entre bloques — todo vía pandas Styler."""
+    def _style(d: pd.DataFrame) -> pd.DataFrame:
+        s = pd.DataFrame("", index=d.index, columns=d.columns)
+        for i in d.index:
+            pct = d.loc[i, "Occupancy"]
+            color = occ_color(pct)
+            s.loc[i, "Occupancy"] = f"background:linear-gradient(90deg,{color} {pct:.0f}%,#F3F1F2 {pct:.0f}%);"
+            mod = d.loc[i, "Modality"]
+            badge = MODALITY_BADGE_COLORS.get(mod)
+            if badge:
+                s.loc[i, "Modality"] = f"background:{badge};border-radius:4px;font-weight:600;"
+            is_last_in_block = (i == d.index[-1]) or (d.loc[i, "Block"] != d.loc[d.index[d.index.get_loc(i) + 1], "Block"])
+            if is_last_in_block and i != d.index[-1]:
+                for c in d.columns:
+                    s.loc[i, c] += f"border-bottom:3px solid {INK};"
+        return s
+    fmt = {"Occupancy": lambda v: f"{v:.1f}%"}
+    return disp.style.apply(_style, axis=None).format(fmt)
 
 
 # ── 3) FILE IDs (Google Drive) — carpeta Reportes/EIV ─────────────────────
@@ -684,10 +723,17 @@ def page_overview():
         x=[p["year"] for p in with_seats], y=[p["seats"] for p in with_seats], name="Available capacity",
         marker=dict(color="rgba(18,189,251,0.10)", line=dict(color=BLUE, width=1.6)), width=0.6,
     ))
+    point_text = []
+    for p in serie:
+        if p.get("seats"):
+            occ = p["val"] / p["seats"] * 100
+            point_text.append(f'{p["val"]} ({occ:.0f}% occ.)')
+        else:
+            point_text.append(str(p["val"]))
     fig.add_trace(go.Scatter(
         x=[p["year"] for p in serie], y=[p["val"] for p in serie], mode="lines+markers+text",
         name="Participants (seats)", line=dict(color=INK, width=3, shape="spline"),
-        marker=dict(size=7, color=INK), text=[p["val"] for p in serie], textposition="top center",
+        marker=dict(size=7, color=INK), text=point_text, textposition="top center",
         textfont=dict(size=10.5, color=INK),
     ))
     fig.update_layout(
@@ -702,7 +748,6 @@ def page_overview():
         "Year": p["year"], "Participants (seats)": p["val"], "Available capacity": p.get("seats") or "",
         "Occupancy %": round(p["val"] / p["seats"] * 100, 1) if p.get("seats") else "",
     } for p in serie])
-    st.dataframe(hist_df, use_container_width=True, hide_index=True)
     st.download_button("Download as Excel", data=_xlsx_bytes(hist_df, "Historical_Participants"),
                         file_name="Historical_Participants.xlsx", key="dl_hist_part")
 
@@ -732,9 +777,17 @@ def page_overview():
     )
     st.plotly_chart(fig2, use_container_width=True)
 
+    # Total de participantes por año (para convertir % -> # de inscritos por
+    # categoría); 2026 usa el conteo real, los años anteriores se estiman
+    # sobre el total histórico de esa edición.
+    year_totals = {p["year"]: p["val"] for p in HIST_PARTICIPANTS}
+    year_totals[2026] = total
     cat_df = pd.DataFrame([{
-        "Year": c["year"], "UASM GR": round(c["EPOS"], 1), "UASM UG": round(c["PRE"], 1),
-        "Other UG/GR": round(c["OTHER"], 1), "External": round(c["EXTERNAL"], 1),
+        "Year": c["year"],
+        "UASM GR": round(c["EPOS"] / 100 * year_totals.get(c["year"], total)),
+        "UASM UG": round(c["PRE"] / 100 * year_totals.get(c["year"], total)),
+        "Other UG/GR": round(c["OTHER"] / 100 * year_totals.get(c["year"], total)),
+        "External": round(c["EXTERNAL"] / 100 * year_totals.get(c["year"], total)),
     } for c in cat_all])
     st.dataframe(cat_df, use_container_width=True, hide_index=True)
     st.download_button("Download as Excel", data=_xlsx_bytes(cat_df, "Historical_Composition"),
@@ -769,41 +822,55 @@ def page_summary():
             bc["profs"].add(r["profesor"])
             bc["unis"].add(r["universidad"])
 
-    fig_map = go.Figure()
-    for country, info in by_country.items():
-        coords = COUNTRY_GEO.get(country)
-        if not coords:
-            continue
-        lat0, lon0 = coords
+    col_map, col_side = st.columns([3, 1])
+    with col_side:
+        _kpi("Countries", len(by_country))
+        all_unis = sorted({u for info in by_country.values() for u in info["unis"]})
+        _kpi("Universities", len(all_unis))
+        focus = st.selectbox("Filter by country", ["All"] + sorted(by_country.keys()), key="summary_focus_country")
+        st.markdown("**Universities**" + (f" — {focus}" if focus != "All" else ""))
+        unis_to_show = sorted(by_country[focus]["unis"]) if focus != "All" else all_unis
+        with st.container(height=300):
+            for u in unis_to_show:
+                st.markdown(f"- {u}")
+
+    with col_map:
+        fig_map = go.Figure()
+        for country, info in by_country.items():
+            coords = COUNTRY_GEO.get(country)
+            if not coords:
+                continue
+            lat0, lon0 = coords
+            highlight = focus == "All" or focus == country
+            fig_map.add_trace(go.Scattergeo(
+                lat=[lat0, BOGOTA[0]], lon=[lon0, BOGOTA[1]], mode="lines",
+                line=dict(color=COUNTRY_COLORS.get(country, PINK), width=1.6),
+                opacity=0.7 if highlight else 0.12, showlegend=False, hoverinfo="skip",
+            ))
+            fig_map.add_trace(go.Scattergeo(
+                lat=[lat0], lon=[lon0], mode="markers+text", text=[country],
+                textposition="top center", textfont=dict(size=11, color=INK if highlight else "#C9BEC5"),
+                marker=dict(size=10 + len(info["profs"]) * 3, color=COUNTRY_COLORS.get(country, PINK),
+                            opacity=1 if highlight else 0.25, line=dict(color="#fff", width=1.5)),
+                hovertext=f"{country}: {len(info['profs'])} faculty, {len(info['unis'])} universities",
+                hoverinfo="text",
+            ))
         fig_map.add_trace(go.Scattergeo(
-            lat=[lat0, BOGOTA[0]], lon=[lon0, BOGOTA[1]], mode="lines",
-            line=dict(color=COUNTRY_COLORS.get(country, PINK), width=1.6), opacity=0.7,
-            showlegend=False, hoverinfo="skip",
+            lat=[BOGOTA[0]], lon=[BOGOTA[1]], mode="markers+text", text=["Bogotá"],
+            textposition="bottom center", textfont=dict(size=11, color=INK),
+            marker=dict(size=11, color=INK, symbol="diamond"), showlegend=False, hoverinfo="skip",
         ))
-        fig_map.add_trace(go.Scattergeo(
-            lat=[lat0], lon=[lon0], mode="markers+text", text=[country],
-            textposition="top center", textfont=dict(size=11, color=INK),
-            marker=dict(size=10 + len(info["profs"]) * 3, color=COUNTRY_COLORS.get(country, PINK),
-                        line=dict(color="#fff", width=1.5)),
-            hovertext=f"{country}: {len(info['profs'])} faculty, {len(info['unis'])} universities",
-            hoverinfo="text",
-        ))
-    fig_map.add_trace(go.Scattergeo(
-        lat=[BOGOTA[0]], lon=[BOGOTA[1]], mode="markers+text", text=["Bogotá"],
-        textposition="bottom center", textfont=dict(size=11, color=INK),
-        marker=dict(size=11, color=INK, symbol="diamond"), showlegend=False, hoverinfo="skip",
-    ))
-    fig_map.update_geos(showland=True, landcolor="#F1EDEF", showcountries=True, countrycolor="#DDD4D9",
-                        showocean=True, oceancolor="#FAF8FA", bgcolor="rgba(0,0,0,0)", projection_type="natural earth")
-    fig_map.update_layout(margin=dict(t=6, r=6, b=6, l=6), height=420, showlegend=False, paper_bgcolor="rgba(0,0,0,0)")
-    st.plotly_chart(fig_map, use_container_width=True)
+        fig_map.update_geos(showland=True, landcolor="#F1EDEF", showcountries=True, countrycolor="#DDD4D9",
+                            showocean=True, oceancolor="#FAF8FA", bgcolor="rgba(0,0,0,0)", projection_type="natural earth")
+        fig_map.update_layout(margin=dict(t=6, r=6, b=6, l=6), height=420, showlegend=False, paper_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig_map, use_container_width=True)
 
     st.markdown("### Courses by Block")
     display_cols = ["bloque", "curso", "profesor", "universidad", "pais", "modalidad", "inscritos", "cupos", "ocupacion"]
-    disp = tabla[display_cols].copy()
-    disp["ocupacion"] = disp["ocupacion"].round(1).astype(str) + "%"
+    disp = tabla[display_cols].copy().sort_values("bloque").reset_index(drop=True)
     disp.columns = ["Block", "Course", "Professor", "University", "Country", "Modality", "Enrolled", "Seats", "Occupancy"]
-    st.dataframe(disp, use_container_width=True, hide_index=True, height=420)
+    styled = _style_courses_table(disp)
+    st.dataframe(styled, use_container_width=True, hide_index=True, height=460)
     st.download_button("Download as Excel", data=_xlsx_bytes(disp, "Courses_by_Block"),
                         file_name="Courses_by_Block.xlsx", key="dl_courses_block")
 
@@ -854,42 +921,21 @@ def page_dashboard():
         if profs:
             st.markdown(f"**{profs}** — {curso}")
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("##### Program Type Distribution")
-        total = len(f_listas) or 1
-        counts = f_listas["_tipo"].fillna("Unspecified").value_counts()
-        labels = [PROGRAM_TYPE_LABELS.get(l, l) for l in counts.index]
-        values = (counts / total * 100)
-        fig = go.Figure(go.Bar(
-            x=values.values, y=labels, orientation="h",
-            marker=dict(color=[{"External": PURPLE, "Otros Pre y Posgrados": PINK, "Pregrado": GREEN}.get(l, BLUE)
-                                for l in counts.index]),
-            text=[f"{v:.1f}%" for v in values.values], textposition="outside",
-        ))
-        fig.update_layout(margin=dict(t=6, r=36, b=36, l=140), xaxis=dict(ticksuffix="%", gridcolor="#EFEBEE"),
-                           yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
-                           paper_bgcolor="rgba(0,0,0,0)", height=280)
-        st.plotly_chart(fig, use_container_width=True)
-    with col_b:
-        st.markdown("##### Courses Taken per Student")
-        per_student = d["df_listas"].dropna(subset=["Código est"]).groupby("Código est").agg(
-            count=("Código est", "size"), tipo=("_tipo", "first")
-        )
-        per_student["tipo"] = per_student["tipo"].fillna("Unspecified")
-        per_student["bucket"] = per_student["count"].clip(upper=3)
-        pivot = per_student.groupby(["tipo", "bucket"]).size().unstack(fill_value=0)
-        for b in [1, 2, 3]:
-            if b not in pivot.columns:
-                pivot[b] = 0
-        pivot = pivot[[1, 2, 3]].sort_index()
-        fig2 = go.Figure()
-        for b, color, name in [(1, BLUE, "1 course"), (2, GREEN, "2 courses"), (3, PINK, "3 courses")]:
-            fig2.add_trace(go.Bar(x=pivot.index, y=pivot[b], name=name, marker=dict(color=color)))
-        fig2.update_layout(margin=dict(t=6, r=16, b=70, l=46), barmode="stack",
-                            legend=dict(orientation="h", x=0, y=1.14), plot_bgcolor="rgba(0,0,0,0)",
-                            paper_bgcolor="rgba(0,0,0,0)", height=280)
-        st.plotly_chart(fig2, use_container_width=True)
+    st.markdown("##### Program Type Distribution")
+    total = len(f_listas) or 1
+    counts = f_listas["_tipo"].fillna("Unspecified").value_counts()
+    labels = [PROGRAM_TYPE_LABELS.get(l, l) for l in counts.index]
+    values = (counts / total * 100)
+    fig = go.Figure(go.Bar(
+        x=values.values, y=labels, orientation="h",
+        marker=dict(color=[{"External": PURPLE, "Otros Pre y Posgrados": PINK, "Pregrado": GREEN}.get(l, BLUE)
+                            for l in counts.index]),
+        text=[f"{v:.1f}%" for v in values.values], textposition="outside",
+    ))
+    fig.update_layout(margin=dict(t=6, r=36, b=36, l=160), xaxis=dict(ticksuffix="%", gridcolor="#EFEBEE"),
+                       yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
+                       paper_bgcolor="rgba(0,0,0,0)", height=220)
+    st.plotly_chart(fig, use_container_width=True)
 
     st.markdown(f"##### Grade Dispersion — {'All Courses' if curso=='all' and bloque=='all' else (curso if curso!='all' else f'Block {bloque}')}")
     total_n = len(f_notas) or 1
@@ -929,6 +975,25 @@ def page_dashboard():
     st.dataframe(comp_df, use_container_width=True, hide_index=True, height=420)
     st.download_button("Download as Excel", data=_xlsx_bytes(comp_df, "Enrollment_Composition"),
                         file_name="Enrollment_Composition.xlsx", key="dl_enrollment_comp")
+
+    st.markdown("##### Courses Taken per Student")
+    per_student = d["df_listas"].dropna(subset=["Código est"]).groupby("Código est").agg(
+        count=("Código est", "size"), tipo=("_tipo", "first")
+    )
+    per_student["tipo"] = per_student["tipo"].fillna("Unspecified")
+    per_student["bucket"] = per_student["count"].clip(upper=3)
+    pivot = per_student.groupby(["tipo", "bucket"]).size().unstack(fill_value=0)
+    for b in [1, 2, 3]:
+        if b not in pivot.columns:
+            pivot[b] = 0
+    pivot = pivot[[1, 2, 3]].sort_index()
+    fig2 = go.Figure()
+    for b, color, name in [(1, BLUE, "1 course"), (2, GREEN, "2 courses"), (3, PINK, "3 courses")]:
+        fig2.add_trace(go.Bar(x=pivot.index, y=pivot[b], name=name, marker=dict(color=color)))
+    fig2.update_layout(margin=dict(t=6, r=16, b=70, l=46), barmode="stack",
+                        legend=dict(orientation="h", x=0, y=1.14), plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)", height=280)
+    st.plotly_chart(fig2, use_container_width=True)
 
 
 # ── 12) PÁGINA — Financial ───────────────────────────────────────────────
@@ -1021,7 +1086,7 @@ def page_visiting():
         curso_sel = st.selectbox("Course (selects one faculty member)", ["All"] + cursos_in_scope, key="vf_curso")
         curso = "all" if curso_sel == "All" else curso_sel
 
-    _render_header("Visiting Faculty", "Course evaluation and satisfaction survey — pick a course for a full profile.")
+    _render_header("Evaluation & Feedback", "Course evaluation and faculty satisfaction survey — pick a course for a full profile.")
 
     df_cursos = d["df_cursos"]
     entries = df_cursos.to_dict("records")
@@ -1036,28 +1101,7 @@ def page_visiting():
     scope_entries = entries if bloque == "all" else [e for e in entries if str(e.get("Ciclo")) == str(bloque)]
     prof_names = list({e["Profesor"] for e in scope_entries if e.get("Profesor")})
 
-    df_sat = load_satisfaccion()
-    sat_rows = []
-    for e in scope_entries:
-        row = _find_satisfaction_row(df_sat, e["Curso"], e["Profesor"])
-        if row is not None:
-            sat_rows.append(row)
-
-    st.markdown("### Faculty Satisfaction (pooled)")
-    overall_col = next((c for c in df_sat.columns if "overall experience" in c.lower()), None)
-    matched_col = next((c for c in df_sat.columns if "match your expectations" in c.lower()), None)
-    ov_vals = [r[overall_col] for r in sat_rows if overall_col and isinstance(r.get(overall_col), (int, float))]
-    mt_vals = [r[matched_col] for r in sat_rows if matched_col and isinstance(r.get(matched_col), (int, float))]
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        _kpi("Faculty Satisfaction Responses", f"{len(sat_rows)} / {len(scope_entries)}", "accent")
-    with c2:
-        _kpi("Avg. Overall Experience", f"{np.mean(ov_vals):.2f} / 5" if ov_vals else "—", "accent")
-    with c3:
-        _kpi("Avg. Matched Expectations", f"{np.mean(mt_vals):.2f} / 5" if mt_vals else "—", "accent")
-
-    st.markdown("### Course Evaluation (pooled, weighted by respondents)")
+    st.markdown("### Course Evaluation")
     resp_total = insc_total = 0
     avg_w = avg_wt = nps_w = nps_wt = obj_w = obj_wt = 0.0
     eval_by_course = []
@@ -1128,6 +1172,27 @@ def page_visiting():
                                yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
                                paper_bgcolor="rgba(0,0,0,0)", height=max(200, 28 * len(ranked_n)))
             st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### Faculty Satisfaction")
+    df_sat = load_satisfaccion()
+    sat_rows = []
+    for e in scope_entries:
+        row = _find_satisfaction_row(df_sat, e["Curso"], e["Profesor"])
+        if row is not None:
+            sat_rows.append(row)
+
+    overall_col = next((c for c in df_sat.columns if "overall experience" in c.lower()), None)
+    matched_col = next((c for c in df_sat.columns if "match your expectations" in c.lower()), None)
+    ov_vals = [r[overall_col] for r in sat_rows if overall_col and isinstance(r.get(overall_col), (int, float))]
+    mt_vals = [r[matched_col] for r in sat_rows if matched_col and isinstance(r.get(matched_col), (int, float))]
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        _kpi("Faculty Satisfaction Responses", f"{len(sat_rows)} / {len(scope_entries)}", "accent")
+    with c2:
+        _kpi("Avg. Overall Experience", f"{np.mean(ov_vals):.2f} / 5" if ov_vals else "—", "accent")
+    with c3:
+        _kpi("Avg. Matched Expectations", f"{np.mean(mt_vals):.2f} / 5" if mt_vals else "—", "accent")
 
 
 def _fcol(row: dict, target: str):
@@ -1220,9 +1285,55 @@ def _render_professor_detail(entry: dict, entries: List[dict]):
             st.caption(f"Co-teaching faculty: {len(co_entries)} on this course.")
 
     st.markdown("---")
-    st.markdown("### Faculty Satisfaction Survey")
+    st.markdown("### Course Evaluation")
+    ed = build_professor_eval_data(profesor)
     df_sat = load_satisfaccion()
     row = _find_satisfaction_row(df_sat, curso, profesor)
+    if not ed:
+        st.info("No course evaluation data found for this professor.")
+    else:
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1:
+            _kpi("Students Responded", ed["respondents"], "accent")
+        with c2:
+            rr = (ed["respondents"] / ed["inscritos"] * 100) if ed["inscritos"] else None
+            _kpi("Response Rate", f"{rr:.1f}%" if rr is not None else "—", "accent")
+        with c3:
+            _kpi("Avg. Satisfaction", f"{ed['avg']:.2f} / 5" if ed["avg"] is not None else "—", "accent")
+        with c4:
+            _kpi("Would Recommend", f"{ed['nps']:.1f} / 10" if ed["npsN"] else "—", "accent")
+        with c5:
+            _kpi("Objectives Met", f"{ed['objectivesAllPct']:.1f}%" if ed["objN"] else "—", "accent")
+
+        if ed["aspects"]:
+            st.markdown("##### By Aspect")
+            fig = go.Figure(go.Bar(
+                x=[a["avg"] for a in ed["aspects"]], y=[a["aspect"] for a in ed["aspects"]], orientation="h",
+                marker=dict(color=PINK), text=[f'{a["avg"]:.2f}' for a in ed["aspects"]], textposition="outside",
+            ))
+            fig.update_layout(margin=dict(t=10, r=50, b=26, l=270), xaxis=dict(range=[1, 5.5]),
+                               yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
+                               paper_bgcolor="rgba(0,0,0,0)", height=280)
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("##### Comments")
+        com_by_prof = comments_by_professor()
+        prof_comments = com_by_prof.get(_resolve_alias(profesor), {})
+        ccols = st.columns(2)
+        all_groups = {**POSITIVE_QIDS, **IMPROVE_QIDS}
+        for i, (qid, label) in enumerate(all_groups.items()):
+            with ccols[i % 2]:
+                group = prof_comments.get(qid, {"items": []})
+                st.markdown(f"**{label} ({len(group['items'])})**")
+                if group["items"]:
+                    with st.container(height=180):
+                        for item in group["items"]:
+                            st.markdown(f"- {item}")
+                else:
+                    st.caption("No comments for this question.")
+
+    st.markdown("---")
+    st.markdown("### Faculty Satisfaction Survey")
     if not row:
         st.info("No satisfaction survey response found for this course.")
     else:
@@ -1275,53 +1386,8 @@ def _render_professor_detail(entry: dict, entries: List[dict]):
             st.markdown(_quote("Visit logistics to improve", _fcol(row, "Are there any logistical aspects that should be improved?")), unsafe_allow_html=True)
             st.markdown(_quote("General observations", _fcol(row, "General observations or suggestions")), unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("### Course Evaluation")
-    ed = build_professor_eval_data(profesor)
     if not ed:
-        st.info("No course evaluation data found for this professor.")
         return
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1:
-        _kpi("Students Responded", ed["respondents"], "accent")
-    with c2:
-        rr = (ed["respondents"] / ed["inscritos"] * 100) if ed["inscritos"] else None
-        _kpi("Response Rate", f"{rr:.1f}%" if rr is not None else "—", "accent")
-    with c3:
-        _kpi("Avg. Satisfaction", f"{ed['avg']:.2f} / 5" if ed["avg"] is not None else "—", "accent")
-    with c4:
-        _kpi("Would Recommend", f"{ed['nps']:.1f} / 10" if ed["npsN"] else "—", "accent")
-    with c5:
-        _kpi("Objectives Met", f"{ed['objectivesAllPct']:.1f}%" if ed["objN"] else "—", "accent")
-
-    if ed["aspects"]:
-        st.markdown("##### By Aspect")
-        fig = go.Figure(go.Bar(
-            x=[a["avg"] for a in ed["aspects"]], y=[a["aspect"] for a in ed["aspects"]], orientation="h",
-            marker=dict(color=PINK), text=[f'{a["avg"]:.2f}' for a in ed["aspects"]], textposition="outside",
-        ))
-        fig.update_layout(margin=dict(t=10, r=50, b=26, l=270), xaxis=dict(range=[1, 5.5]),
-                           yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
-                           paper_bgcolor="rgba(0,0,0,0)", height=280)
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("##### Comments")
-    com_by_prof = comments_by_professor()
-    prof_comments = com_by_prof.get(_resolve_alias(profesor), {})
-    ccols = st.columns(2)
-    all_groups = {**POSITIVE_QIDS, **IMPROVE_QIDS}
-    for i, (qid, label) in enumerate(all_groups.items()):
-        with ccols[i % 2]:
-            group = prof_comments.get(qid, {"items": []})
-            st.markdown(f"**{label} ({len(group['items'])})**")
-            if group["items"]:
-                with st.container(height=180):
-                    for item in group["items"]:
-                        st.markdown(f"- {item}")
-            else:
-                st.caption("No comments for this question.")
-
     with st.spinner("Preparando reporte…"):
         pdf_bytes = _build_professor_pdf(profesor, curso, ed, row if row else {})
     st.download_button(
@@ -1455,7 +1521,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
 def page_faculty():
     d = compute_all()
     _render_header(
-        "School Enrollment & International Exposure",
+        "Other Analysis — School Enrollment & International Exposure",
         "Historical enrollment, graduate program mix, PRE mobility, and the international-exposure gap analysis.",
     )
 
@@ -1587,7 +1653,7 @@ def page_faculty():
 
 # ── 16) PÁGINA — Conclusions ──────────────────────────────────────────────
 def page_conclusions():
-    _render_header("Conclusions", "Achievements, challenges, findings, and recommendations for the 2026 edition.")
+    _render_header("Achievements & Challenges", "Achievements, challenges, findings, and recommendations for the 2026 edition.")
     _pending_card("To be completed.", "Left blank until the team finishes reviewing the 2026 edition — matches the source report.")
 
 
@@ -1597,10 +1663,10 @@ pages = [
     st.Page(page_overview, title="Overview", icon="📈", url_path="overview"),
     st.Page(page_summary, title="Summary", icon="🌍", url_path="summary"),
     st.Page(page_dashboard, title="Dashboard", icon="📊", url_path="dashboard"),
+    st.Page(page_visiting, title="Evaluation & Feedback", icon="🧑‍🏫", url_path="visiting"),
+    st.Page(page_conclusions, title="Achievements & Challenges", icon="📝", url_path="conclusions"),
     st.Page(page_financial, title="Financial", icon="💰", url_path="financial"),
-    st.Page(page_visiting, title="Visiting Faculty", icon="🧑‍🏫", url_path="visiting"),
-    st.Page(page_faculty, title="School Enrollment", icon="🎓", url_path="enrollment"),
-    st.Page(page_conclusions, title="Conclusions", icon="📝", url_path="conclusions"),
+    st.Page(page_faculty, title="Other Analysis", icon="🎓", url_path="enrollment"),
 ]
 pg = st.navigation(pages, position="hidden")
 IS_DATACENTER = pg is pages[0]
@@ -1608,6 +1674,10 @@ nav_pages = pages[1:]
 _NAV_VISIBLE = 6
 
 with st.sidebar:
+    try:
+        st.image("PICS/LOGO/2026/logo2026.png", width=140)
+    except Exception:
+        pass
     st.markdown(
         f'<div style="color:{INK};font-size:22px;font-weight:800;line-height:1.1;">EIV Analytics</div>',
         unsafe_allow_html=True,
@@ -1630,6 +1700,15 @@ if not IS_DATACENTER:
                 with st.popover("More...", use_container_width=False):
                     for page_obj in overflow_pages:
                         st.page_link(page_obj)
+
+    # ---- Flechas laterales para pasar de sección ----
+    _idx = nav_pages.index(pg)
+    _prev_pg = nav_pages[_idx - 1]
+    _next_pg = nav_pages[(_idx + 1) % len(nav_pages)]
+    with st.container(key="side_arrow_left"):
+        st.page_link(_prev_pg, label="‹", icon=None)
+    with st.container(key="side_arrow_right"):
+        st.page_link(_next_pg, label="›", icon=None)
 
 pg.run()
 
