@@ -87,12 +87,16 @@ st.markdown(
     "font-style:italic;color:#3B2C34;}"
     ".prof-quote strong{font-style:normal;font-family:monospace;font-size:10.5px;"
     "color:#8C7F87;display:block;margin-bottom:3px;text-transform:uppercase;}"
-    ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:82vw;max-width:1050px;}"
+    ".st-key-nav_toggle{position:fixed !important;top:0.25rem;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:auto !important;max-width:96vw;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
-    "display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;width:100% !important;"
-    "justify-content:center !important;gap:16px !important;overflow-x:auto;overflow-y:hidden;}"
-    ".st-key-nav_toggle div[data-testid='column']{width:auto !important;min-width:fit-content !important;flex:none !important;}"
+    "display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;width:auto !important;"
+    "justify-content:center !important;align-items:center !important;gap:14px !important;"
+    "overflow-x:auto;overflow-y:hidden;max-width:96vw;}"
+    ".st-key-nav_toggle div[data-testid='stHorizontalBlock'] > div{"
+    "flex:0 0 auto !important;width:auto !important;min-width:0 !important;}"
+    ".st-key-nav_toggle div[data-testid='column'], .st-key-nav_toggle div[data-testid='stColumn']{"
+    "width:auto !important;min-width:fit-content !important;flex:0 0 auto !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;font-size:13px !important;padding:6px 4px !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a p{white-space:nowrap !important;overflow:visible !important;}"
@@ -104,16 +108,20 @@ st.markdown(
     "padding:6px 4px !important;white-space:nowrap !important;}"
     f".st-key-nav_toggle div[data-testid='stPopover'] button:hover{{color:{INK} !important;}}"
     ".st-key-nav_toggle div[data-testid='stPopover'] button svg{display:none !important;}"
-    ".st-key-side_arrow_left, .st-key-side_arrow_right{position:fixed !important;top:50%;transform:translateY(-50%);z-index:999998;}"
-    ".st-key-side_arrow_left{left:6px !important;right:auto !important;}"
-    ".st-key-side_arrow_right{right:6px !important;left:auto !important;}"
-    ".st-key-side_arrow_left a, .st-key-side_arrow_right a{"
+    ".st-key-side_arrows{position:fixed !important;top:50%;left:0;right:0;transform:translateY(-50%);"
+    "z-index:999998;width:100%;pointer-events:none;}"
+    ".st-key-side_arrows div[data-testid='stHorizontalBlock']{"
+    "display:flex !important;flex-direction:row !important;width:100% !important;"
+    "justify-content:space-between !important;padding:0 6px;pointer-events:none;}"
+    ".st-key-side_arrows div[data-testid='column'], .st-key-side_arrows div[data-testid='stColumn']{"
+    "width:auto !important;flex:0 0 auto !important;pointer-events:auto;}"
+    ".st-key-side_arrows a{"
     "display:flex !important;align-items:center;justify-content:center;"
     "background:transparent !important;border:none !important;box-shadow:none !important;"
     f"font-size:26px;font-weight:400;color:{PINK} !important;opacity:.55;text-decoration:none;"
     "transition:opacity .15s ease;}"
-    ".st-key-side_arrow_left a p, .st-key-side_arrow_right a p{font-size:26px;}"
-    ".st-key-side_arrow_left a:hover, .st-key-side_arrow_right a:hover{opacity:1;}"
+    ".st-key-side_arrows a p{font-size:26px;}"
+    ".st-key-side_arrows a:hover{opacity:1;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -160,6 +168,33 @@ def _xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
         df.to_excel(w, index=False, sheet_name=sheet_name[:31])
     buf.seek(0)
     return buf.getvalue()
+
+
+import os as _os
+
+_LOGO_CANDIDATES = [
+    "PICS/LOGO/2026/logo2026.png", "PICS/LOGO/2026/Logo2026.png",
+    "pics/LOGO/2026/logo2026.png", "PICS/logo/2026/logo2026.png",
+    "PICS/LOGO/2026/logo2026.PNG", "./PICS/LOGO/2026/logo2026.png",
+]
+
+
+def _show_eiv_logo(width: int):
+    """Prueba varias rutas/variantes de mayúsculas del logo — el filesystem
+    de despliegue es sensible a mayúsculas y no sabemos con certeza cuál usa."""
+    base = _os.path.dirname(_os.path.abspath(__file__))
+    for rel in _LOGO_CANDIDATES:
+        full = _os.path.join(base, rel)
+        if _os.path.exists(full):
+            st.image(full, width=width)
+            return
+    # último intento: buscar cualquier .png dentro de PICS/LOGO (nombre exacto desconocido)
+    logo_dir = _os.path.join(base, "PICS", "LOGO", "2026")
+    if _os.path.isdir(logo_dir):
+        for fname in sorted(_os.listdir(logo_dir)):
+            if fname.lower().endswith(".png") and "logo" in fname.lower():
+                st.image(_os.path.join(logo_dir, fname), width=width)
+                return
 
 
 def color_scale(pct: float) -> str:
@@ -441,6 +476,7 @@ def cursos_unicos_map(df_cursos: pd.DataFrame) -> Dict[str, dict]:
             m[nombre] = {
                 "curso": nombre, "ciclo": r.get("Ciclo"), "fechas": r.get("Fechas curso"),
                 "modalidad": r.get("Modalidad"), "capacidad": r.get("Capacidad") or 0,
+                "area": str(r.get("Area curso") or "").strip(),
                 "profesores": [r.get("Profesor")],
             }
         else:
@@ -508,6 +544,7 @@ def compute_all():
         cap = meta.get("capacidad", 0)
         tabla_por_profesor_rows.append({
             "bloque": r.get("Ciclo"), "curso": curso, "profesor": r.get("Profesor"),
+            "genero": str(r.get("Género") or "").strip(), "area": str(r.get("Area curso") or "").strip(),
             "universidad": str(r.get("Universidad") or "").strip(),
             "pais": str(r.get("País Universidad") or "").strip(),
             "modalidad": r.get("Modalidad"), "inscritos": ins, "cupos": cap or 0,
@@ -700,7 +737,7 @@ def page_cover():
         unsafe_allow_html=True,
     )
     try:
-        st.image("PICS/LOGO/2026/logo2026.png", width=260)
+        _show_eiv_logo(260)
     except Exception:
         pass
     st.markdown(
@@ -932,20 +969,42 @@ def page_summary():
         st.plotly_chart(fig_map, use_container_width=True, on_select="rerun", selection_mode="points", key="summary_map")
 
     st.markdown("### Courses by Block")
-    total_profs = tabla["profesor"].nunique()
-    st.caption(
-        f"**{total_profs} visiting faculty** across {len(d['cmap'])} courses. "
-        "(Academic area and faculty gender aren't captured in the current source files — "
-        "BD_cursos only has Professor/University/Country/Modality/Capacity — so those two "
-        "breakdowns aren't shown here.)"
-    )
-    display_cols = ["bloque", "curso", "profesor", "universidad", "pais", "modalidad", "inscritos", "cupos", "ocupacion"]
-    disp = tabla[display_cols].copy().sort_values("bloque").reset_index(drop=True)
-    disp.columns = ["Block", "Course", "Professor", "University", "Country", "Modality", "Enrolled", "Seats", "Occupancy"]
-    styled = _style_courses_table(disp)
-    st.dataframe(styled, use_container_width=True, hide_index=True, height=460)
-    st.download_button("Download as Excel", data=_xlsx_bytes(disp, "Courses_by_Block"),
-                        file_name="Courses_by_Block.xlsx", key="dl_courses_block")
+    tabla_f = tabla[tabla["pais"].str.contains(focus, case=False, na=False)] if focus else tabla
+    total_profs = tabla_f["profesor"].nunique()
+    gender_counts = tabla_f.drop_duplicates(subset=["profesor"])["genero"].value_counts()
+    gtotal = gender_counts.sum() or 1
+    male_pct = gender_counts.get("Male", 0) / gtotal * 100
+    female_pct = gender_counts.get("Female", 0) / gtotal * 100
+
+    col_tbl, col_donut = st.columns([3, 1])
+    with col_tbl:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            _kpi("Visiting Faculty", total_profs, "accent")
+        with c2:
+            _kpi("% Male", f"{male_pct:.0f}%")
+        with c3:
+            _kpi("% Female", f"{female_pct:.0f}%")
+        if focus:
+            st.caption(f"Filtered to courses taught by faculty from **{focus}**.")
+        display_cols = ["bloque", "curso", "profesor", "area", "universidad", "pais", "modalidad", "inscritos", "cupos", "ocupacion"]
+        disp = tabla_f[display_cols].copy().sort_values("bloque").reset_index(drop=True)
+        disp.columns = ["Block", "Course", "Professor", "Area", "University", "Country", "Modality", "Enrolled", "Seats", "Occupancy"]
+        styled = _style_courses_table(disp)
+        st.dataframe(styled, use_container_width=True, hide_index=True, height=460)
+        st.download_button("Download as Excel", data=_xlsx_bytes(disp, "Courses_by_Block"),
+                            file_name="Courses_by_Block.xlsx", key="dl_courses_block")
+    with col_donut:
+        st.markdown("##### By Area")
+        area_counts = tabla_f.drop_duplicates(subset=["curso"])["area"].value_counts()
+        fig_area = go.Figure(go.Pie(
+            labels=area_counts.index, values=area_counts.values, hole=0.55,
+            marker=dict(colors=[BLUE, PURPLE, PINK, GREEN, "#F2994A", "#3FA34D", "#8C7F87"]),
+            textinfo="label+value", textfont=dict(size=10),
+        ))
+        fig_area.update_layout(margin=dict(t=10, r=10, b=10, l=10), showlegend=False,
+                                paper_bgcolor="rgba(0,0,0,0)", height=460)
+        st.plotly_chart(fig_area, use_container_width=True)
 
 
 # ── 11) PÁGINA — Dashboard (Enrollment Composition) ──────────────────────
@@ -988,7 +1047,7 @@ def page_dashboard():
         if profs:
             st.markdown(f"**{profs}** — {curso}")
 
-    col_kpi, col_chart = st.columns([1, 2])
+    col_chart, col_kpi = st.columns([2, 1])
     with col_kpi:
         _kpi("Enrolled seats", f"{len(f_listas):,}", "accent")
         st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
@@ -1053,34 +1112,25 @@ def page_dashboard():
                **{t: f"{col_totals[t] / grand_total * 100:.1f}%" for t in tipos}, "Total": "100.0%"}
     comp_df = pd.concat([comp_df, pd.DataFrame([total_row, pct_row])], ignore_index=True)
 
-    def _style_pct_row(df: pd.DataFrame):
-        pct_idx = df.index[-1]
-        raw_vals = []
-        for c in tipos:
-            v = df.loc[pct_idx, c]
-            if isinstance(v, str) and v.endswith("%"):
-                try:
-                    raw_vals.append(float(v.rstrip("%")))
-                except ValueError:
-                    pass
-        lo, hi = (min(raw_vals), max(raw_vals)) if raw_vals else (0, 100)
-        span = (hi - lo) or 1
+    st.dataframe(comp_df, use_container_width=True, hide_index=True, height=420)
 
-        def _style(d):
-            s = pd.DataFrame("", index=d.index, columns=d.columns)
-            for c in tipos:
-                val = d.loc[pct_idx, c]
-                if isinstance(val, str) and val.endswith("%"):
-                    try:
-                        pct = float(val.rstrip("%"))
-                        scaled = (pct - lo) / span * 100
-                        s.loc[pct_idx, c] = f"background:{color_scale(scaled)};color:#fff;font-weight:700;"
-                    except ValueError:
-                        pass
-            return s
-        return df.style.apply(_style, axis=None)
+    pct_vals = {t: col_totals[t] / grand_total * 100 for t in tipos}
+    lo, hi = min(pct_vals.values()), max(pct_vals.values())
+    span = (hi - lo) or 1
+    st.caption("% of Total, by program type")
+    badge_cols = st.columns(len(tipos))
+    for col, t in zip(badge_cols, tipos):
+        pct = pct_vals[t]
+        scaled = (pct - lo) / span * 100
+        color = color_scale(scaled)
+        with col:
+            st.markdown(
+                f'<div style="text-align:center;background:{color};color:#fff;border-radius:8px;'
+                f'padding:10px 6px;"><div style="font-size:17px;font-weight:800;">{pct:.1f}%</div>'
+                f'<div style="font-size:10.5px;opacity:.9;">{PROGRAM_TYPE_LABELS.get(t, t)}</div></div>',
+                unsafe_allow_html=True,
+            )
 
-    st.dataframe(_style_pct_row(comp_df), use_container_width=True, hide_index=True, height=460)
     st.download_button("Download as Excel", data=_xlsx_bytes(comp_df, "Enrollment_Composition"),
                         file_name="Enrollment_Composition.xlsx", key="dl_enrollment_comp")
 
@@ -1906,18 +1956,12 @@ def page_conclusions():
          "Importante para generar una buena participación en clase, sin llenar el curso con evaluaciones de "
          "participación. máximo un 10% de la nota final."),
     ]
-    col_a, col_b = st.columns(2)
-    for i, (title, sub) in enumerate(challenges):
-        col = col_a if i % 2 == 0 else col_b
-        with col:
-            sub_html = f'<div style="font-size:12.5px;color:{MUTED};margin-top:6px;">{sub}</div>' if sub else ""
-            st.markdown(
-                f'<div style="display:flex;gap:16px;border:1px solid {LINE};border-radius:10px;'
-                f'padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);">'
-                f'<div style="font-size:26px;font-weight:800;color:{PURPLE};line-height:1;">{i+1}</div>'
-                f'<div><div style="font-size:14.5px;font-weight:700;color:{INK};">{title}</div>{sub_html}</div></div>',
-                unsafe_allow_html=True,
-            )
+    for title, sub in challenges:
+        sub_html = f'<div style="font-size:13.5px;color:{MUTED};margin-top:4px;">{sub}</div>' if sub else ""
+        st.markdown(
+            f'<div style="margin-bottom:22px;"><div style="font-size:17px;font-weight:700;color:{INK};">{title}</div>{sub_html}</div>',
+            unsafe_allow_html=True,
+        )
 
 
 # ── 17) NAVEGACIÓN ────────────────────────────────────────────────────────
@@ -1936,7 +1980,7 @@ pg = st.navigation(pages, position="hidden")
 IS_COVER = pg is pages[0]
 IS_DATACENTER = pg is pages[1]
 nav_pages = pages[2:]
-_NAV_VISIBLE = 6
+_NAV_VISIBLE = 5
 
 if IS_COVER:
     st.markdown(
@@ -1948,7 +1992,7 @@ if IS_COVER:
 if not IS_COVER:
     with st.sidebar:
         try:
-            st.image("PICS/LOGO/2026/logo2026.png", width=140)
+            _show_eiv_logo(140)
         except Exception:
             pass
         st.markdown(
@@ -1974,14 +2018,18 @@ if not IS_COVER and not IS_DATACENTER:
                     for page_obj in overflow_pages:
                         st.page_link(page_obj)
 
-    # ---- Flechas laterales para pasar de sección ----
+    # ---- Flechas laterales para pasar de sección (un solo contenedor,
+    # mismo patrón flex que el nav de arriba, para evitar el problema de
+    # posicionamiento con dos contenedores 'fixed' separados) ----
     _idx = nav_pages.index(pg)
     _prev_pg = nav_pages[_idx - 1]
     _next_pg = nav_pages[(_idx + 1) % len(nav_pages)]
-    with st.container(key="side_arrow_left"):
-        st.page_link(_prev_pg, label="‹", icon=None)
-    with st.container(key="side_arrow_right"):
-        st.page_link(_next_pg, label="›", icon=None)
+    with st.container(key="side_arrows"):
+        arrow_l, arrow_r = st.columns(2)
+        with arrow_l:
+            st.page_link(_prev_pg, label="‹", icon=None)
+        with arrow_r:
+            st.page_link(_next_pg, label="›", icon=None)
 
 pg.run()
 
