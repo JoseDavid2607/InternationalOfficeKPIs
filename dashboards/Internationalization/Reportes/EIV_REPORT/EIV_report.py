@@ -54,11 +54,11 @@ st.markdown(
     "<style>"
     f".suite-header{{display:flex;flex-direction:column;align-items:center;"
     "padding:16px 24px 12px;"
-    f"background:{PINK};"
+    f"background:linear-gradient(135deg,#B00D50 0%,{PINK} 100%);"
     "border-radius:12px;box-shadow:0 2px 8px rgba(230,17,102,.18);margin-bottom:14px;}}"
     f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
     "color:#FBD6E4;text-transform:uppercase;margin-bottom:2px;}}"
-    ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
+    ".sh-title{font-size:29px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
     ".sh-sub{font-size:13px;color:#fff;margin-top:4px;text-align:center;}"
     f".kv{{font-size:24px;font-weight:700;line-height:1.1;font-family:monospace;color:{INK};}}"
     f".kv.accent{{color:{PINK};}}"
@@ -105,14 +105,14 @@ st.markdown(
     f".st-key-nav_toggle div[data-testid='stPopover'] button:hover{{color:{INK} !important;}}"
     ".st-key-nav_toggle div[data-testid='stPopover'] button svg{display:none !important;}"
     ".st-key-side_arrow_left, .st-key-side_arrow_right{position:fixed;top:50%;transform:translateY(-50%);z-index:999998;}"
-    ".st-key-side_arrow_left{left:8px;} .st-key-side_arrow_right{right:8px;}"
+    ".st-key-side_arrow_left{left:6px;} .st-key-side_arrow_right{right:6px;}"
     ".st-key-side_arrow_left a, .st-key-side_arrow_right a{"
     "display:flex !important;align-items:center;justify-content:center;"
-    "width:38px;height:38px;border-radius:50%;background:#FFFFFF;"
-    f"border:1px solid {LINE};box-shadow:0 2px 8px rgba(0,0,0,.08);"
-    f"font-size:20px;font-weight:700;color:{PINK} !important;text-decoration:none;}}"
-    ".st-key-side_arrow_left a p, .st-key-side_arrow_right a p{font-size:20px;font-weight:700;}"
-    ".st-key-side_arrow_left a:hover, .st-key-side_arrow_right a:hover{background:#FCE9F1;}"
+    "background:transparent !important;border:none !important;box-shadow:none !important;"
+    f"font-size:26px;font-weight:400;color:{PINK} !important;opacity:.55;text-decoration:none;"
+    "transition:opacity .15s ease;}"
+    ".st-key-side_arrow_left a p, .st-key-side_arrow_right a p{font-size:26px;}"
+    ".st-key-side_arrow_left a:hover, .st-key-side_arrow_right a:hover{opacity:1;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -177,28 +177,31 @@ def occ_color(pct: float) -> str:
     return color_scale(max(0.0, (pct - 20) / 80 * 100))
 
 
-MODALITY_BADGE_COLORS = {"Online": "#DCEEF9", "On Campus": "#DEF3E6", "Bootcamp": "#FCEADA"}
-
-
 def _style_courses_table(disp: pd.DataFrame):
-    """Barras de ocupación (rojo→verde), badge de color por modalidad, y
-    borde grueso entre bloques — todo vía pandas Styler."""
+    """Barra de ocupación (rojo→verde) con ⚠️ en las 3 con menor ocupación,
+    negrilla en Modality solo si es Online, fondo gris tenue para los
+    bloques 1 y 3, y borde grueso entre bloques — todo vía pandas Styler."""
+    low_threshold = sorted(disp["Occupancy"])[2] if len(disp) >= 3 else disp["Occupancy"].max()
+
     def _style(d: pd.DataFrame) -> pd.DataFrame:
         s = pd.DataFrame("", index=d.index, columns=d.columns)
         for i in d.index:
             pct = d.loc[i, "Occupancy"]
             color = occ_color(pct)
             s.loc[i, "Occupancy"] = f"background:linear-gradient(90deg,{color} {pct:.0f}%,#F3F1F2 {pct:.0f}%);"
-            mod = d.loc[i, "Modality"]
-            badge = MODALITY_BADGE_COLORS.get(mod)
-            if badge:
-                s.loc[i, "Modality"] = f"background:{badge};border-radius:4px;font-weight:600;"
+            if d.loc[i, "Modality"] == "Online":
+                s.loc[i, "Modality"] += "font-weight:700;"
+            if str(d.loc[i, "Block"]) in ("1", "3"):
+                for c in d.columns:
+                    if c != "Occupancy":
+                        s.loc[i, c] += "background:#F7F5F6;"
             is_last_in_block = (i == d.index[-1]) or (d.loc[i, "Block"] != d.loc[d.index[d.index.get_loc(i) + 1], "Block"])
             if is_last_in_block and i != d.index[-1]:
                 for c in d.columns:
                     s.loc[i, c] += f"border-bottom:3px solid {INK};"
         return s
-    fmt = {"Occupancy": lambda v: f"{v:.1f}%"}
+
+    fmt = {"Occupancy": lambda v: f"{v:.1f}%" + (" ⚠️" if v <= low_threshold else "")}
     return disp.style.apply(_style, axis=None).format(fmt)
 
 
@@ -823,13 +826,24 @@ def page_summary():
             bc["unis"].add(r["universidad"])
 
     col_map, col_side = st.columns([3, 1])
+
+    # Lee la selección del click anterior sobre el mapa (antes de construirlo).
+    _sel = st.session_state.get("summary_map", {})
+    _sel_points = _sel.get("selection", {}).get("points", []) if _sel else []
+    focus = None
+    if _sel_points:
+        cd = _sel_points[0].get("customdata")
+        if cd:
+            focus = cd[0] if isinstance(cd, (list, tuple)) else cd
+
     with col_side:
         _kpi("Countries", len(by_country))
         all_unis = sorted({u for info in by_country.values() for u in info["unis"]})
         _kpi("Universities", len(all_unis))
-        focus = st.selectbox("Filter by country", ["All"] + sorted(by_country.keys()), key="summary_focus_country")
-        st.markdown("**Universities**" + (f" — {focus}" if focus != "All" else ""))
-        unis_to_show = sorted(by_country[focus]["unis"]) if focus != "All" else all_unis
+        st.markdown("**Universities**" + (f" — {focus}" if focus else ""))
+        if focus:
+            st.caption("Click the country again, or elsewhere on the map, to clear the filter.")
+        unis_to_show = sorted(by_country[focus]["unis"]) if focus and focus in by_country else all_unis
         with st.container(height=300):
             for u in unis_to_show:
                 st.markdown(f"- {u}")
@@ -841,18 +855,18 @@ def page_summary():
             if not coords:
                 continue
             lat0, lon0 = coords
-            highlight = focus == "All" or focus == country
+            highlight = not focus or focus == country
             fig_map.add_trace(go.Scattergeo(
                 lat=[lat0, BOGOTA[0]], lon=[lon0, BOGOTA[1]], mode="lines",
                 line=dict(color=COUNTRY_COLORS.get(country, PINK), width=1.6),
                 opacity=0.7 if highlight else 0.12, showlegend=False, hoverinfo="skip",
             ))
             fig_map.add_trace(go.Scattergeo(
-                lat=[lat0], lon=[lon0], mode="markers+text", text=[country],
+                lat=[lat0], lon=[lon0], mode="markers+text", text=[country], customdata=[country],
                 textposition="top center", textfont=dict(size=11, color=INK if highlight else "#C9BEC5"),
                 marker=dict(size=10 + len(info["profs"]) * 3, color=COUNTRY_COLORS.get(country, PINK),
                             opacity=1 if highlight else 0.25, line=dict(color="#fff", width=1.5)),
-                hovertext=f"{country}: {len(info['profs'])} faculty, {len(info['unis'])} universities",
+                hovertext=f"{country}: {len(info['profs'])} faculty, {len(info['unis'])} universities — click to filter",
                 hoverinfo="text",
             ))
         fig_map.add_trace(go.Scattergeo(
@@ -863,7 +877,7 @@ def page_summary():
         fig_map.update_geos(showland=True, landcolor="#F1EDEF", showcountries=True, countrycolor="#DDD4D9",
                             showocean=True, oceancolor="#FAF8FA", bgcolor="rgba(0,0,0,0)", projection_type="natural earth")
         fig_map.update_layout(margin=dict(t=6, r=6, b=6, l=6), height=420, showlegend=False, paper_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_map, use_container_width=True)
+        st.plotly_chart(fig_map, use_container_width=True, on_select="rerun", selection_mode="points", key="summary_map")
 
     st.markdown("### Courses by Block")
     display_cols = ["bloque", "curso", "profesor", "universidad", "pais", "modalidad", "inscritos", "cupos", "ocupacion"]
@@ -972,7 +986,15 @@ def page_dashboard():
         table_rows.append({"Course / Faculty": f"{r['curso']} ({r['profesores']})",
                             **{t: rowgrid.get(t, "") for t in tipos}, "Total": row_total})
     comp_df = pd.DataFrame(table_rows)
-    st.dataframe(comp_df, use_container_width=True, hide_index=True, height=420)
+
+    col_totals = {t: comp_df[t].apply(lambda v: v if isinstance(v, (int, float)) else 0).sum() for t in tipos}
+    grand_total = sum(col_totals.values()) or 1
+    total_row = {"Course / Faculty": "Total", **col_totals, "Total": grand_total}
+    pct_row = {"Course / Faculty": "% of Total",
+               **{t: f"{col_totals[t] / grand_total * 100:.1f}%" for t in tipos}, "Total": "100.0%"}
+    comp_df = pd.concat([comp_df, pd.DataFrame([total_row, pct_row])], ignore_index=True)
+
+    st.dataframe(comp_df, use_container_width=True, hide_index=True, height=460)
     st.download_button("Download as Excel", data=_xlsx_bytes(comp_df, "Enrollment_Composition"),
                         file_name="Enrollment_Composition.xlsx", key="dl_enrollment_comp")
 
@@ -1194,6 +1216,42 @@ def page_visiting():
     with c3:
         _kpi("Avg. Matched Expectations", f"{np.mean(mt_vals):.2f} / 5" if mt_vals else "—", "accent")
 
+    if sat_rows:
+        col_radar, col_bars = st.columns(2)
+        with col_radar:
+            axes = [(a, v) for a, v in _radar_axes_multi(sat_rows) if v is not None]
+            if len(axes) >= 3:
+                fig = go.Figure(go.Scatterpolar(
+                    r=[v for _, v in axes] + [axes[0][1]], theta=[a for a, _ in axes] + [axes[0][0]],
+                    fill="toself", fillcolor="rgba(230,17,102,0.15)", line=dict(color=PINK, width=2),
+                ))
+                fig.update_layout(margin=dict(t=20, r=40, b=20, l=40),
+                                   polar=dict(radialaxis=dict(visible=True, range=[0, 5])),
+                                   showlegend=False, paper_bgcolor="rgba(0,0,0,0)", height=320)
+                st.plotly_chart(fig, use_container_width=True)
+        with col_bars:
+            st.markdown("##### Student Performance")
+            perf = [(label, _avg_multi(sat_rows, [q])) for label, q in STUDENT_PERF_ITEMS]
+            perf = [(l, v) for l, v in perf if v is not None]
+            if perf:
+                fig_b = go.Figure(go.Bar(
+                    x=[v for _, v in perf], y=[l for l, _ in perf], orientation="h",
+                    marker=dict(color=[color_scale((v - 1) / 4 * 100) for _, v in perf]),
+                    text=[f"{v:.2f}" for _, v in perf], textposition="outside",
+                ))
+                fig_b.update_layout(margin=dict(t=10, r=36, b=26, l=140), xaxis=dict(range=[1, 5.5]),
+                                     yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
+                                     paper_bgcolor="rgba(0,0,0,0)", height=320)
+                st.plotly_chart(fig_b, use_container_width=True)
+
+        st.markdown("##### Important Insights")
+        cards = [
+            _insight_card("Enrollment Size", sat_rows, "Regarding the number of enrolled students, do you consider that it was"),
+            _insight_card("Office Hours Use", sat_rows, "How frequently did students used your office hours? (Frequently/Occasionally/Rarely)"),
+            _insight_card("UG vs. Grad Differences", sat_rows, "Did you perceive any differences between undergraduate and graduate students performance  in the different  course activities?"),
+        ]
+        _render_insight_cards(cards)
+
 
 def _fcol(row: dict, target: str):
     """Búsqueda de columna normalizada (colapsa espacios/():NBSP a un
@@ -1251,6 +1309,73 @@ def _radar_axes(row: dict) -> List[Tuple[str, Optional[float]]]:
             "Punctuality and reliability of the daily transportation provided", "Quality of accommodation at BH La Quinta"])),
         ("Overall Experience", _fcol(row, "Please rate your overall experience during this year’s International Summer School  (1: Not at all – 5: Exceeded expectations)")),
     ]
+
+
+STUDENT_PERF_ITEMS = [
+    ("English Proficiency", "Please rate the following aspects (1: Poor – 5: Excellent): Students English proficiency"),
+    ("Punctuality", "Student punctuality"),
+    ("Analytical Skills", "Students analytical skills"),
+]
+
+
+def _avg_multi(rows: List[dict], keys: List[str]) -> Optional[float]:
+    vals = [_fcol(r, k) for r in rows for k in keys if isinstance(_fcol(r, k), (int, float))]
+    return (sum(vals) / len(vals)) if vals else None
+
+
+def _radar_axes_multi(rows: List[dict]) -> List[Tuple[str, Optional[float]]]:
+    """Igual que _radar_axes(), pero promediando sobre varias filas (vista
+    agregada de Faculty Satisfaction, en vez de un solo profesor)."""
+    return [
+        ("IO Staff Support", _avg_multi(rows, [
+            "Please rate the support provided by the International Office staff in the following items (1: Poor – 5: Excellent): General assistance provided by the International Office staff",
+            "Effectiveness of the hiring process (documentation and payment procedures)",
+            "Agility in scheduling your inbound/outbound flights",
+            "Agility in arranging your accommodation in Bogotá",
+            "Clarity of the virtual learning platform instructions and access credentials"])),
+        ("Student Performance", _avg_multi(rows, [
+            "Please rate the following aspects (1: Poor – 5: Excellent): Students English proficiency",
+            "Student punctuality", "Students analytical skills"])),
+        ("Tech & Platform Support", _avg_multi(rows, [
+            "Please rate the following aspects (1: Poor – 5: Excellent): Virtual learning platform (Bloque Neón)",
+            "Support provided by DSIT (Technology Office)", "Support provided by CSL (Logistics Service Center)"])),
+        ("Teaching Assistant", _avg_multi(rows, [
+            "Please rate the following logistical aspects during your visit  (1: Poor – 5: Excellent): English proficiency of the teaching assistant",
+            "Proactivity of the teaching assistant", "Punctuality of the teaching assistant",
+            "Professionalism and attitude of the teaching assistant", "Responsiveness to students’ questions and needs"])),
+        ("Visit Logistics", _avg_multi(rows, [
+            "Please rate the following logistical aspects during your visit  (1: Poor – 5: Excellent)2: Organization of the welcome lunch",
+            "Punctuality and reliability of the daily transportation provided", "Quality of accommodation at BH La Quinta"])),
+        ("Overall Experience", _avg_multi(rows, [
+            "Please rate your overall experience during this year’s International Summer School  (1: Not at all – 5: Exceeded expectations)"])),
+    ]
+
+
+def _insight_card(label: str, rows: List[dict], question: str) -> Tuple[str, str, str]:
+    """Respuesta más común a una pregunta categórica + % y conteo, para las
+    tarjetas 'Important Insights'."""
+    vals = [str(_fcol(r, question)).strip() for r in rows if _fcol(r, question) not in (None, "")]
+    vals = [v for v in vals if v and v.lower() != "nan"]
+    if not vals:
+        return label, "—", ""
+    counts = pd.Series(vals).value_counts()
+    top, n = counts.index[0], counts.iloc[0]
+    pct = n / len(vals) * 100
+    return label, top, f"{pct:.1f}% of respondents ({n}/{len(vals)})"
+
+
+def _render_insight_cards(cards: List[Tuple[str, str, str]]):
+    cols = st.columns(len(cards))
+    for col, (label, value, sub) in zip(cols, cards):
+        with col:
+            st.markdown(
+                f'<div style="background:#F6F8FB;border-radius:10px;padding:14px 16px;">'
+                f'<div style="font-family:monospace;font-size:10.5px;letter-spacing:.06em;'
+                f'text-transform:uppercase;color:{PINK};font-weight:700;">{label}</div>'
+                f'<div style="font-size:19px;font-weight:800;color:{INK};margin:4px 0 2px;">{value}</div>'
+                f'<div style="font-size:12px;color:#8C7F87;">{sub}</div></div>',
+                unsafe_allow_html=True,
+            )
 
 
 def _photo_path(profesor: str) -> str:
