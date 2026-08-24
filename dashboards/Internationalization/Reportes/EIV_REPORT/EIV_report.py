@@ -90,8 +90,8 @@ st.markdown(
     ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
     "z-index:999999;width:82vw;max-width:1050px;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
-    "display:flex !important;flex-wrap:nowrap !important;width:100% !important;"
-    "justify-content:center !important;gap:16px !important;overflow:visible;}"
+    "display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;width:100% !important;"
+    "justify-content:center !important;gap:16px !important;overflow-x:auto;overflow-y:hidden;}"
     ".st-key-nav_toggle div[data-testid='column']{width:auto !important;min-width:fit-content !important;flex:none !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;font-size:13px !important;padding:6px 4px !important;}"
@@ -104,8 +104,9 @@ st.markdown(
     "padding:6px 4px !important;white-space:nowrap !important;}"
     f".st-key-nav_toggle div[data-testid='stPopover'] button:hover{{color:{INK} !important;}}"
     ".st-key-nav_toggle div[data-testid='stPopover'] button svg{display:none !important;}"
-    ".st-key-side_arrow_left, .st-key-side_arrow_right{position:fixed;top:50%;transform:translateY(-50%);z-index:999998;}"
-    ".st-key-side_arrow_left{left:6px;} .st-key-side_arrow_right{right:6px;}"
+    ".st-key-side_arrow_left, .st-key-side_arrow_right{position:fixed !important;top:50%;transform:translateY(-50%);z-index:999998;}"
+    ".st-key-side_arrow_left{left:6px !important;right:auto !important;}"
+    ".st-key-side_arrow_right{right:6px !important;left:auto !important;}"
     ".st-key-side_arrow_left a, .st-key-side_arrow_right a{"
     "display:flex !important;align-items:center;justify-content:center;"
     "background:transparent !important;border:none !important;box-shadow:none !important;"
@@ -691,6 +692,55 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
 
 
 # ── 8) PÁGINA — Data Center ──────────────────────────────────────────────
+# ── 8) PÁGINA — Cover (portada, sin sidebar ni nav) ──────────────────────
+def page_cover():
+    st.markdown(
+        '<div style="display:flex;flex-direction:column;align-items:center;'
+        'justify-content:center;min-height:70vh;text-align:center;padding-top:6vh;">',
+        unsafe_allow_html=True,
+    )
+    try:
+        st.image("PICS/LOGO/2026/logo2026.png", width=260)
+    except Exception:
+        pass
+    st.markdown(
+        f'<div style="font-size:34px;font-weight:800;color:{INK};margin-top:18px;">'
+        'International Summer School</div>'
+        f'<div style="font-size:16px;color:{MUTED};max-width:560px;margin:10px auto 0;line-height:1.5;">'
+        "Analytics for the 2026 edition of EIV — enrollment, course evaluation, faculty "
+        "satisfaction, and financial performance across every visiting-faculty course.</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    _, col_center, _ = st.columns([1, 2, 1])
+    with col_center:
+        if st.button("Enter the Report →", key="cover_enter", use_container_width=True):
+            st.switch_page(pages[1])
+
+        st.markdown(
+            f'<div style="text-align:center;margin-top:34px;font-family:monospace;'
+            f'font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:{MUTED};">'
+            "Data sources used</div>",
+            unsafe_allow_html=True,
+        )
+        file_ids = {
+            "BD_cursos.xlsx": CURSOS_FILE_ID, "BD_listas.xlsx": LISTAS_FILE_ID,
+            "BD_evaluacion_curso.xlsx": EVALUACION_FILE_ID, "BD_satisfaccionEIV.xlsx": SATISFACCION_FILE_ID,
+            "BD_gastos.xlsx": GASTOS_FILE_ID, "BD_electivas.xlsx": ELECTIVAS_FILE_ID,
+        }
+        for fname, fid in file_ids.items():
+            fc1, fc2 = st.columns([5, 1])
+            with fc1:
+                st.markdown(f'<span style="font-size:12.5px;color:{MUTED};">{fname}</span>', unsafe_allow_html=True)
+            with fc2:
+                st.download_button(
+                    "⇩", data=_download_drive_file_bytes(fid), file_name=fname,
+                    key=f"cover_dl_{fname}", use_container_width=True,
+                )
+
+
+# ── 9) PÁGINA — Data Center ───────────────────────────────────────────────
 def page_datacenter():
     d = compute_all()
     _render_header("Data Center", "Verification of the sources powering this report.")
@@ -705,7 +755,7 @@ def page_datacenter():
     for fname, desc in files:
         st.markdown(f"**{fname}** — {desc}  \n:material/check_circle: Loaded")
     st.markdown(f"**{len(files)} sources loaded** · {d['total_inscritos']} enrollments · {len(d['cmap'])} courses")
-    st.page_link(pages[1], label="Enter the Report →", icon=":material/arrow_forward:")
+    st.page_link(pages[2], label="Enter the Report →", icon=":material/arrow_forward:")
 
 
 # ── 9) PÁGINA — Overview (Historical Evolution) ──────────────────────────
@@ -837,14 +887,16 @@ def page_summary():
             focus = cd[0] if isinstance(cd, (list, tuple)) else cd
 
     with col_side:
-        _kpi("Countries", len(by_country))
+        _kpi("Countries", len(by_country), "accent")
         all_unis = sorted({u for info in by_country.values() for u in info["unis"]})
-        _kpi("Universities", len(all_unis))
+        _kpi("Universities", len(all_unis), "accent")
         st.markdown("**Universities**" + (f" — {focus}" if focus else ""))
         if focus:
-            st.caption("Click the country again, or elsewhere on the map, to clear the filter.")
+            if st.button("↺ Return to all countries", key="reset_country_focus", use_container_width=True):
+                st.session_state["summary_map"] = {"selection": {"points": []}}
+                st.rerun()
         unis_to_show = sorted(by_country[focus]["unis"]) if focus and focus in by_country else all_unis
-        with st.container(height=300):
+        with st.container(height=260):
             for u in unis_to_show:
                 st.markdown(f"- {u}")
 
@@ -880,6 +932,13 @@ def page_summary():
         st.plotly_chart(fig_map, use_container_width=True, on_select="rerun", selection_mode="points", key="summary_map")
 
     st.markdown("### Courses by Block")
+    total_profs = tabla["profesor"].nunique()
+    st.caption(
+        f"**{total_profs} visiting faculty** across {len(d['cmap'])} courses. "
+        "(Academic area and faculty gender aren't captured in the current source files — "
+        "BD_cursos only has Professor/University/Country/Modality/Capacity — so those two "
+        "breakdowns aren't shown here.)"
+    )
     display_cols = ["bloque", "curso", "profesor", "universidad", "pais", "modalidad", "inscritos", "cupos", "ocupacion"]
     disp = tabla[display_cols].copy().sort_values("bloque").reset_index(drop=True)
     disp.columns = ["Block", "Course", "Professor", "University", "Country", "Modality", "Enrolled", "Seats", "Occupancy"]
@@ -916,12 +975,6 @@ def page_dashboard():
     f_listas = filtered_listas(bloque, curso)
     f_notas = filtered_notas(bloque, curso)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        _kpi("Enrolled seats", f"{len(f_listas):,}", "accent")
-    with col2:
-        _kpi("Unique participants", f"{f_listas['Código est'].dropna().nunique():,}", "accent")
-
     note = []
     if bloque != "all":
         note.append(f"Block {bloque}")
@@ -935,21 +988,27 @@ def page_dashboard():
         if profs:
             st.markdown(f"**{profs}** — {curso}")
 
-    st.markdown("##### Program Type Distribution")
-    total = len(f_listas) or 1
-    counts = f_listas["_tipo"].fillna("Unspecified").value_counts()
-    labels = [PROGRAM_TYPE_LABELS.get(l, l) for l in counts.index]
-    values = (counts / total * 100)
-    fig = go.Figure(go.Bar(
-        x=values.values, y=labels, orientation="h",
-        marker=dict(color=[{"External": PURPLE, "Otros Pre y Posgrados": PINK, "Pregrado": GREEN}.get(l, BLUE)
-                            for l in counts.index]),
-        text=[f"{v:.1f}%" for v in values.values], textposition="outside",
-    ))
-    fig.update_layout(margin=dict(t=6, r=36, b=36, l=160), xaxis=dict(ticksuffix="%", gridcolor="#EFEBEE"),
-                       yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
-                       paper_bgcolor="rgba(0,0,0,0)", height=220)
-    st.plotly_chart(fig, use_container_width=True)
+    col_kpi, col_chart = st.columns([1, 2])
+    with col_kpi:
+        _kpi("Enrolled seats", f"{len(f_listas):,}", "accent")
+        st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
+        _kpi("Unique participants", f"{f_listas['Código est'].dropna().nunique():,}", "accent")
+    with col_chart:
+        st.markdown("##### Program Type Distribution")
+        total = len(f_listas) or 1
+        counts = f_listas["_tipo"].fillna("Unspecified").value_counts()
+        labels = [PROGRAM_TYPE_LABELS.get(l, l) for l in counts.index]
+        values = (counts / total * 100)
+        fig = go.Figure(go.Bar(
+            x=values.values, y=labels, orientation="h",
+            marker=dict(color=[{"External": PURPLE, "Otros Pre y Posgrados": PINK, "Pregrado": GREEN}.get(l, BLUE)
+                                for l in counts.index]),
+            text=[f"{v:.1f}%" for v in values.values], textposition="outside",
+        ))
+        fig.update_layout(margin=dict(t=6, r=36, b=36, l=160), xaxis=dict(ticksuffix="%", gridcolor="#EFEBEE"),
+                           yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
+                           paper_bgcolor="rgba(0,0,0,0)", height=340)
+        st.plotly_chart(fig, use_container_width=True)
 
     st.markdown(f"##### Grade Dispersion — {'All Courses' if curso=='all' and bloque=='all' else (curso if curso!='all' else f'Block {bloque}')}")
     total_n = len(f_notas) or 1
@@ -994,7 +1053,34 @@ def page_dashboard():
                **{t: f"{col_totals[t] / grand_total * 100:.1f}%" for t in tipos}, "Total": "100.0%"}
     comp_df = pd.concat([comp_df, pd.DataFrame([total_row, pct_row])], ignore_index=True)
 
-    st.dataframe(comp_df, use_container_width=True, hide_index=True, height=460)
+    def _style_pct_row(df: pd.DataFrame):
+        pct_idx = df.index[-1]
+        raw_vals = []
+        for c in tipos:
+            v = df.loc[pct_idx, c]
+            if isinstance(v, str) and v.endswith("%"):
+                try:
+                    raw_vals.append(float(v.rstrip("%")))
+                except ValueError:
+                    pass
+        lo, hi = (min(raw_vals), max(raw_vals)) if raw_vals else (0, 100)
+        span = (hi - lo) or 1
+
+        def _style(d):
+            s = pd.DataFrame("", index=d.index, columns=d.columns)
+            for c in tipos:
+                val = d.loc[pct_idx, c]
+                if isinstance(val, str) and val.endswith("%"):
+                    try:
+                        pct = float(val.rstrip("%"))
+                        scaled = (pct - lo) / span * 100
+                        s.loc[pct_idx, c] = f"background:{color_scale(scaled)};color:#fff;font-weight:700;"
+                    except ValueError:
+                        pass
+            return s
+        return df.style.apply(_style, axis=None)
+
+    st.dataframe(_style_pct_row(comp_df), use_container_width=True, hide_index=True, height=460)
     st.download_button("Download as Excel", data=_xlsx_bytes(comp_df, "Enrollment_Composition"),
                         file_name="Enrollment_Composition.xlsx", key="dl_enrollment_comp")
 
@@ -1778,13 +1864,66 @@ def page_faculty():
 
 # ── 16) PÁGINA — Conclusions ──────────────────────────────────────────────
 def page_conclusions():
-    _render_header("Achievements & Challenges", "Achievements, challenges, findings, and recommendations for the 2026 edition.")
-    _pending_card("To be completed.", "Left blank until the team finishes reviewing the 2026 edition — matches the source report.")
+    _render_header("Achievements & Challenges", "Findings and recommendations for the 2026 edition.")
+
+    GREEN_H = "#1FBE72"
+
+    st.markdown(f'<div style="font-size:30px;font-weight:700;color:{GREEN_H};margin:8px 0 18px;">Key Achievements</div>', unsafe_allow_html=True)
+    achievements = [
+        ("Nivel muy top de profesores y universidades representantes.", ""),
+        ("Programa muy conocido entre profesores internacionales.",
+         "La convocatoria cerrada tuvo más de 100 propuestas para los 13 cursos finalmente escogidos."),
+        ("Apoya la internacionalización de la facultad y de la universidad",
+         "con actividades extra que se dan gracias a la escuela de verano: reuniones de área, reuniones con "
+         "profesores, cursos de educación ejecutiva, seminarios, etc."),
+        ("Principal vía para que los estudiantes cumplan su experiencia internacional.",
+         "Ayuda a cumplir el componente de internacionalización sin salir del campus para quienes no puedan "
+         "realizar un intercambio en el exterior. Es el programa top of mind de los estudiantes, y ayuda a "
+         "quienes cuentan con pocos ingresos a vivir una experiencia internacional."),
+    ]
+    for title, sub in achievements:
+        sub_html = f'<div style="font-size:13.5px;color:{MUTED};margin-top:4px;">{sub}</div>' if sub else ""
+        st.markdown(
+            f'<div style="margin-bottom:22px;"><div style="font-size:17px;font-weight:700;color:{INK};">{title}</div>{sub_html}</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+    st.markdown(f'<div style="font-size:30px;font-weight:700;color:{GREEN_H};margin:8px 0 18px;">Challenges</div>', unsafe_allow_html=True)
+    challenges = [
+        ("Experiencia virtual vs. presencial.", ""),
+        ("Atracción de estudiantes internacionales.", ""),
+        ("Dispersión de notas.",
+         "Al final la tendencia es superar 4.5 y no hay pérdidas — la mayoría de quienes pierden retiran el "
+         "curso, o no pagaron y se les retira."),
+        ("Claridad de reglas y expectativas del curso con los profesores.",
+         "Reforzar con los profesores visitantes cómo se califica en Uniandes."),
+        ("Baja participación histórica en cursos de sostenibilidad.", ""),
+        ("Contar con un estudiante representante de pregrado",
+         "para escoger cursos que sean pertinentes y de valor para los estudiantes."),
+        ("El bootcamp se percibe como un curso totalmente diferente", "a los demás cursos de la escuela de verano."),
+        ("% de participación estratégica.",
+         "Importante para generar una buena participación en clase, sin llenar el curso con evaluaciones de "
+         "participación. máximo un 10% de la nota final."),
+    ]
+    col_a, col_b = st.columns(2)
+    for i, (title, sub) in enumerate(challenges):
+        col = col_a if i % 2 == 0 else col_b
+        with col:
+            sub_html = f'<div style="font-size:12.5px;color:{MUTED};margin-top:6px;">{sub}</div>' if sub else ""
+            st.markdown(
+                f'<div style="display:flex;gap:16px;border:1px solid {LINE};border-radius:10px;'
+                f'padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);">'
+                f'<div style="font-size:26px;font-weight:800;color:{PURPLE};line-height:1;">{i+1}</div>'
+                f'<div><div style="font-size:14.5px;font-weight:700;color:{INK};">{title}</div>{sub_html}</div></div>',
+                unsafe_allow_html=True,
+            )
 
 
 # ── 17) NAVEGACIÓN ────────────────────────────────────────────────────────
 pages = [
-    st.Page(page_datacenter, title="Data Center", icon="🗄️", url_path="datacenter", default=True),
+    st.Page(page_cover, title="Cover", icon="🌐", url_path="cover", default=True),
+    st.Page(page_datacenter, title="Data Center", icon="🗄️", url_path="datacenter"),
     st.Page(page_overview, title="Overview", icon="📈", url_path="overview"),
     st.Page(page_summary, title="Summary", icon="🌍", url_path="summary"),
     st.Page(page_dashboard, title="Dashboard", icon="📊", url_path="dashboard"),
@@ -1794,24 +1933,33 @@ pages = [
     st.Page(page_faculty, title="Other Analysis", icon="🎓", url_path="enrollment"),
 ]
 pg = st.navigation(pages, position="hidden")
-IS_DATACENTER = pg is pages[0]
-nav_pages = pages[1:]
+IS_COVER = pg is pages[0]
+IS_DATACENTER = pg is pages[1]
+nav_pages = pages[2:]
 _NAV_VISIBLE = 6
 
-with st.sidebar:
-    try:
-        st.image("PICS/LOGO/2026/logo2026.png", width=140)
-    except Exception:
-        pass
+if IS_COVER:
     st.markdown(
-        f'<div style="color:{INK};font-size:22px;font-weight:800;line-height:1.1;">EIV Analytics</div>',
+        "<style>section[data-testid='stSidebar']{display:none !important;}"
+        "div[data-testid='stSidebarCollapsedControl']{display:none !important;}</style>",
         unsafe_allow_html=True,
     )
-    st.caption("International Summer School · Facultad de Administración")
-    st.page_link(pages[0], label="Back to Data Center", icon=":material/home:")
-    st.markdown("---")
 
-if not IS_DATACENTER:
+if not IS_COVER:
+    with st.sidebar:
+        try:
+            st.image("PICS/LOGO/2026/logo2026.png", width=140)
+        except Exception:
+            pass
+        st.markdown(
+            f'<div style="color:{INK};font-size:22px;font-weight:800;line-height:1.1;">EIV Analytics</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption("International Summer School · Facultad de Administración")
+        st.page_link(pages[1], label="Go to Data Center", icon=":material/home:")
+        st.markdown("---")
+
+if not IS_COVER and not IS_DATACENTER:
     with st.container(key="nav_toggle"):
         visible_pages = nav_pages[:_NAV_VISIBLE]
         overflow_pages = nav_pages[_NAV_VISIBLE:]
