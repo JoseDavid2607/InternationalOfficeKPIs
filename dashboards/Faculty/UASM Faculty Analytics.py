@@ -3891,10 +3891,9 @@ def page_qualifications():
 
     # === Subheader ===
 
-    st.subheader(f"Faculty Sufficiency and Qualifications — {st.session_state.get('sel_label','Selected')}")
-
     # ====== NORMALIZACIÓN BASE PARA CARTELERA + EXCLUSIONES ======
     if not all([col_cred, col_tipoC, col_areaCourse]):
+        st.subheader(f"Faculty Sufficiency and Qualifications — {st.session_state.get('sel_label','Selected')}")
         st.error("Missing columns in 'BD_Cartelera': 'Credits', 'TIPO', and/or 'Academic Area (course)'.")
     else:
         df_car_n = df_car.copy()
@@ -3918,10 +3917,11 @@ def page_qualifications():
         fil_period_only = filter_df_car(df_car_n, time_mode, sel_year, sel_sem)
 
         # ---------- Filtro sutil de programas (columna J / "Cod program") ----------
-        # Por defecto van seleccionados todos los programas que aparecen en
-        # el periodo elegido, EXCEPTO CONT, E-ENEG, E-IMER y E-AFIN — y solo
-        # si de verdad aparecen en ese periodo (si no aparecen, ni siquiera
-        # salen en la lista de opciones).
+        # Va ARRIBA del título de la tabla a propósito. Por defecto van
+        # seleccionados todos los programas que aparecen en el periodo
+        # elegido, EXCEPTO CONT, E-ENEG, E-IMER y E-AFIN — y solo si de
+        # verdad aparecen en ese periodo (si no aparecen, ni siquiera salen
+        # en la lista de opciones).
         program_col0 = _get_any(df_car_n, "Program", "PROGRAM", "program")
         DEFAULT_EXCLUDE_PROGRAMS = {"CONT", "E-IMER", "E-ENEG", "E-AFIN"}
         if program_col0:
@@ -3938,6 +3938,9 @@ def page_qualifications():
             df_car_filt_all = fil_period_only[mask_ok].copy()
         else:
             df_car_filt_all = fil_period_only.copy()
+
+        st.subheader(f"Faculty Sufficiency and Qualifications — {st.session_state.get('sel_label','Selected')}")
+
 
         # Compatibilidad con el resto de la página: 'df_car_global' se usa
         # más abajo en varias vistas históricas multi-periodo (todas las
@@ -7945,18 +7948,19 @@ def page_update_data():
                             with st.spinner("Preparando reporte…"):
                                 report_bytes = _build_cartelera_save_report(target_period, new_courses_df, new_profs_df)
                             st.markdown(
-                                "<style>div[data-testid='stDownloadButton'] button{"
+                                "<style>.st-key-cartelera_report_btn div[data-testid='stDownloadButton'] button{"
                                 "background-color:#16A34A !important;color:#FFFFFF !important;"
                                 "border:none !important;font-weight:700 !important;}"
-                                "div[data-testid='stDownloadButton'] button:hover{background-color:#15803D !important;}</style>",
+                                ".st-key-cartelera_report_btn div[data-testid='stDownloadButton'] button:hover{background-color:#15803D !important;}</style>",
                                 unsafe_allow_html=True,
                             )
-                            st.download_button(
-                                "Descargar reporte en Excel", data=report_bytes,
-                                file_name=f"Reporte_Cartelera_{target_period}.xlsx".replace(" ", "_"),
-                                key="dl_cartelera_report", icon=":material/download:",
-                                use_container_width=True,
-                            )
+                            with st.container(key="cartelera_report_btn"):
+                                st.download_button(
+                                    "Descargar reporte en Excel", data=report_bytes,
+                                    file_name=f"Reporte_Cartelera_{target_period}.xlsx".replace(" ", "_"),
+                                    key="dl_cartelera_report", icon=":material/download:",
+                                    use_container_width=True,
+                                )
                     else:
                         st.error(msg)
             elif cart_df is not None:
