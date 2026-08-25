@@ -93,15 +93,42 @@ st.markdown(
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
     "div[data-testid='stButton'] button:hover{"
     "background:#F8FFFE !important;border-color:#B7DCD6 !important;}"
-    ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:70vw;max-width:900px;}"
+    ".st-key-nav_toggle{position:fixed !important;top:0.25rem;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:auto !important;max-width:96vw;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
-    "display:flex !important;flex-wrap:nowrap !important;width:100% !important;"
-    "justify-content:space-between !important;gap:8px !important;}"
-    ".st-key-nav_toggle div[data-testid='column']{width:auto !important;min-width:fit-content !important;flex:none !important;}"
+    "display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;width:auto !important;"
+    "justify-content:center !important;align-items:center !important;gap:14px !important;"
+    "overflow:visible;max-width:96vw;}"
+    ".st-key-nav_toggle div[data-testid='stHorizontalBlock'] > div{"
+    "flex:0 0 auto !important;width:auto !important;min-width:0 !important;}"
+    ".st-key-nav_toggle div[data-testid='column'], .st-key-nav_toggle div[data-testid='stColumn']{"
+    "width:auto !important;min-width:fit-content !important;flex:0 0 auto !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
-    ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;font-size:13px !important;padding:6px 4px !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a p{white-space:nowrap !important;overflow:visible !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover']{width:auto !important;min-width:fit-content !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button{"
+    "background:transparent !important;border:none !important;box-shadow:none !important;"
+    "color:#00A896 !important;font-size:13px !important;font-weight:400 !important;"
+    "height:auto !important;width:auto !important;min-width:fit-content !important;"
+    "padding:6px 4px !important;white-space:nowrap !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button:hover{color:#004d47 !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button svg{display:none !important;}"
+    ".st-key-side_arrows{position:fixed !important;top:50%;left:0;right:0;transform:translateY(-50%);"
+    "z-index:999998;width:100%;pointer-events:none;}"
+    ".st-key-side_arrows div[data-testid='stHorizontalBlock']{"
+    "display:flex !important;flex-direction:row !important;width:100% !important;"
+    "justify-content:space-between !important;padding:0 6px;pointer-events:none;}"
+    ".st-key-side_arrows div[data-testid='column'], .st-key-side_arrows div[data-testid='stColumn']{"
+    "width:auto !important;flex:0 0 auto !important;pointer-events:auto;}"
+    ".st-key-side_arrows a{"
+    "display:flex !important;align-items:center;justify-content:center;"
+    "background:transparent !important;border:none !important;box-shadow:none !important;"
+    "font-size:0 !important;font-weight:400;color:#00A896 !important;opacity:.55;text-decoration:none;"
+    "transition:opacity .15s ease;}"
+    ".st-key-side_arrows a p{font-size:26px !important;}"
+    ".st-key-side_arrows a span:first-child{display:none !important;}"
+    ".st-key-side_arrows a:hover{opacity:1;}"
     ".st-key-update_sidebar_group{text-align:center;}"
     "div[class*='st-key-course_box_bad_'] div[data-testid='stExpander'],"
     "div[class*='st-key-prof_box_bad_'] div[data-testid='stExpander']{"
@@ -6591,11 +6618,6 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
                 " \u26a0\ufe0f No encontre una Tabla de Excel llamada 'tabla_planta' en la hoja -- "
                 "las filas se agregaron igual, pero quedaran fuera de la tabla."
             )
-        if not formulas_ok:
-            msg += (
-                " \u26a0\ufe0f No encontre una formula existente en F/V de la ultima fila para "
-                "copiar -- esas columnas quedaron en blanco en las filas nuevas."
-            )
         return True, msg
     except Exception as e:
         return False, f"Error al escribir en la hoja 'planta': {e}"
@@ -7924,12 +7946,35 @@ if not IS_UPDATE_PAGE:
             st.caption("Analytics Dashboard")
         st.markdown("---")
 
-    # "Other sections": simple, nativo de Streamlit, siempre visible.
+    # "Other sections": nav horizontal con overflow a "More..." si no caben
+    # todas, más las flechas laterales para pasar de sección (mismo patrón
+    # que EIV_report: un solo contenedor flex con justify-content:space-between,
+    # evita el problema de posicionamiento de dos contenedores 'fixed' separados).
+    nav_pages = pages[:-1]
+    _NAV_VISIBLE = 6
     with st.container(key="nav_toggle"):
-        nav_cols = st.columns(6)
-        for col, page_obj in zip(nav_cols, pages[:-1]):
+        visible_pages = nav_pages[:_NAV_VISIBLE]
+        overflow_pages = nav_pages[_NAV_VISIBLE:]
+        n_cols = len(visible_pages) + (1 if overflow_pages else 0)
+        nav_cols = st.columns(n_cols)
+        for col, page_obj in zip(nav_cols, visible_pages):
             with col:
                 st.page_link(page_obj)
+        if overflow_pages:
+            with nav_cols[-1]:
+                with st.popover("More...", use_container_width=False):
+                    for page_obj in overflow_pages:
+                        st.page_link(page_obj)
+
+    _idx = nav_pages.index(pg)
+    _prev_pg = nav_pages[_idx - 1]
+    _next_pg = nav_pages[(_idx + 1) % len(nav_pages)]
+    with st.container(key="side_arrows"):
+        arrow_l, arrow_r = st.columns(2)
+        with arrow_l:
+            st.page_link(_prev_pg, label="‹")
+        with arrow_r:
+            st.page_link(_next_pg, label="›")
 
 pg.run()
 
