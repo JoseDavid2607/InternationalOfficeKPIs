@@ -38,7 +38,7 @@ except ImportError as _e:
 try:
     import openpyxl
     from openpyxl.styles import Font, Border, Side, PatternFill, Alignment
-    from openpyxl.utils import range_boundaries, get_column_letter
+    from openpyxl.utils import range_boundaries, get_column_letter, column_index_from_string
     from openpyxl.formula.translate import Translator
     from openpyxl.worksheet.formula import ArrayFormula
     _OPENPYXL_OK = True
@@ -6151,6 +6151,141 @@ def _needs_fix(v) -> bool:
     return False
 
 
+def _last_data_row(ws, key_col: int = 1, header_row: int = 1, upper_bound: Optional[int] = None) -> int:
+    """Última fila con datos REALES en `key_col` (no fórmula ni celda vacía
+    con solo formato). openpyxl.Worksheet.max_row cuenta cualquier celda que
+    alguna vez tuvo estilo/borde aplicado -- en estas plantillas eso deja
+    `max_row` muy por encima del último dato real (sobre todo después de
+    delete_rows, que no lo recalcula), lo que producía el 'hueco' al agregar
+    filas nuevas. Se escanea por datos de verdad en vez de confiar en
+    max_row."""
+    bound = upper_bound if upper_bound is not None else ws.max_row
+    last = header_row
+    for r in range(header_row + 1, bound + 1):
+        v = ws.cell(row=r, column=key_col).value
+        if v is not None and str(v).strip() != "":
+            last = r
+    return last
+
+
+def _compute_full_name(first_name, last_name) -> str:
+    """Replica en Python la fórmula real de F (Full Name) en 'planta':
+    concatena First Name + Last Name."""
+    fn = "" if first_name is None else str(first_name).strip()
+    ln = "" if last_name is None else str(last_name).strip()
+    return f"{fn} {ln}".strip()
+
+
+def _compute_age(dob) -> Optional[int]:
+    """Replica en Python la fórmula real de V (Age) en 'planta': edad en
+    años completos a la fecha de hoy (equivalente a DATEDIF(DOB,HOY,"Y"))."""
+    import datetime as _dt
+    if dob is None or dob == "":
+        return None
+    if isinstance(dob, str):
+        try:
+            dob = _dt.datetime.strptime(dob.strip(), "%Y-%m-%d")
+        except ValueError:
+            try:
+                dob = _dt.datetime.strptime(dob.strip(), "%m/%d/%Y")
+            except ValueError:
+                return None
+    if isinstance(dob, _dt.datetime):
+        dob = dob.date()
+    if not isinstance(dob, _dt.date):
+        return None
+    today = _dt.date.today()
+    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+
+
+def _eval_simple_lookup_formula(wb, formula_text: str, row: int, home_sheet: str) -> Optional[object]:
+    """Evalúa (sin abrir Excel) una fórmula XLOOKUP/VLOOKUP de una sola tabla
+    de referencia -- el patrón dominante en estas plantillas -- leyendo los
+    valores reales ya presentes en el propio workbook. Así 'se calcula la
+    fórmula que es' de forma genérica, sin tener que adivinar de antemano
+    qué representa cada columna. Si la fórmula no calza con estos patrones
+    conocidos, devuelve None (la fórmula se deja copiada como antes)."""
+    if not isinstance(formula_text, str):
+        return None
+    text = formula_text.lstrip("=").strip()
+
+    def _split_ref(ref: str):
+        ref = ref.strip()
+        if "!" in ref:
+            sheet, cellref = ref.split("!", 1)
+            sheet = sheet.strip("'")
+        else:
+            sheet, cellref = home_sheet, ref
+        return sheet, cellref.replace("$", "")
+
+    def _resolve_scalar(ref: str):
+        sheet, cellref = _split_ref(ref)
+        if sheet not in wb.sheetnames:
+            return None
+        m = re.match(r"^([A-Z]+)(\d+)$", cellref)
+        if not m:
+            return None
+        col_letters, row_s = m.groups()
+        col = column_index_from_string(col_letters)
+        r = int(row_s) if row_s != "0" else row
+        return wb[sheet].cell(row=r, column=col).value
+
+    def _build_dict(lookup_ref: str, return_ref: str):
+        lsheet, lcell = _split_ref(lookup_ref)
+        rsheet, rcell = _split_ref(return_ref)
+        if lsheet not in wb.sheetnames or rsheet not in wb.sheetnames:
+            return {}
+        m_l = re.match(r"^([A-Z]+)(\d+):([A-Z]+)(\d+)$", lcell)
+        m_r = re.match(r"^([A-Z]+)(\d+):([A-Z]+)(\d+)$", rcell)
+        if not m_l or not m_r:
+            return {}
+        lcol = column_index_from_string(m_l.group(1))
+        rcol = column_index_from_string(m_r.group(1))
+        lstart = int(m_l.group(2))
+        d = {}
+        ws_l, ws_r = wb[lsheet], wb[rsheet]
+        r_off = int(m_r.group(2)) - lstart
+        for rr in range(lstart, ws_l.max_row + 1):
+            k = ws_l.cell(row=rr, column=lcol).value
+            if k is None:
+                continue
+            d.setdefault(str(k).strip(), ws_r.cell(row=rr + r_off, column=rcol).value)
+        return d
+
+    m = re.match(r"XLOOKUP\(([^,]+),\s*([^,]+),\s*([^,]+)", text, re.IGNORECASE)
+    if not m:
+        m = re.match(r"VLOOKUP\(([^,]+),\s*([^,]+),\s*(\d+)", text, re.IGNORECASE)
+        if m:
+            lookup_val_ref, table_ref, col_idx_s = [g.strip().rstrip(")") for g in m.groups()]
+            lsheet, lcell = _split_ref(table_ref)
+            m_range = re.match(r"^([A-Z]+)(\d+):([A-Z]+)(\d+)$", lcell)
+            if not m_range or lsheet not in wb.sheetnames:
+                return None
+            lcol = column_index_from_string(m_range.group(1))
+            rcol = lcol + int(col_idx_s) - 1
+            lstart = int(m_range.group(2))
+            d = {}
+            ws_l = wb[lsheet]
+            for rr in range(lstart, ws_l.max_row + 1):
+                k = ws_l.cell(row=rr, column=lcol).value
+                if k is None:
+                    continue
+                d.setdefault(str(k).strip(), ws_l.cell(row=rr, column=rcol).value)
+            lookup_val = _resolve_scalar(lookup_val_ref)
+            return d.get(str(lookup_val).strip()) if lookup_val is not None else None
+        return None
+
+    lookup_val_ref, lookup_arr_ref, return_arr_ref = [g.strip().rstrip(")") for g in m.groups()]
+    try:
+        lookup_val = _resolve_scalar(lookup_val_ref)
+        if lookup_val is None:
+            return None
+        lookup_dict = _build_dict(lookup_arr_ref, return_arr_ref)
+        return lookup_dict.get(str(lookup_val).strip())
+    except Exception:
+        return None
+
+
 def _table_info(ws, table_name: str):
     """Ubica una Tabla de Excel por nombre (case-insensitive) y devuelve
     (nombre_real, min_col, min_row, max_col, last_row) usando el rango de la
@@ -6363,25 +6498,15 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
             except (TypeError, ValueError):
                 continue
 
-        # 2) Agrega las filas nuevas al final
-        append_start = ws.max_row + 1
+        # 2) Agrega las filas nuevas justo debajo del ultimo dato REAL (no de
+        # ws.max_row, que queda inflado por formato/bordes que sobreviven a
+        # delete_rows y dejaba un hueco de filas vacias antes de esta fila).
+        last_real_row = _last_data_row(ws, key_col=1)
+        append_start = last_real_row + 1
         rows = [
             _build_planta_row(list(r), max_nro + 1 + i, append_start + i)
             for i, r in enumerate(new_rows_df.itertuples(index=False, name=None))
         ]
-
-        # 2.5) Copia las formulas REALES de F (Full Name) y V (Age) desde la
-        # ultima fila existente, y las traslada a cada fila nueva con
-        # openpyxl.formula.translate.Translator -- asi nunca se "adivina" ni
-        # se transcribe la formula a mano, se copia tal cual y solo se
-        # ajustan las referencias de fila (respetando $ absolutos si los hay).
-        template_row = append_start - 1
-        tpl_formula_f = ws.cell(row=template_row, column=6).value if template_row > 1 else None
-        tpl_formula_v = ws.cell(row=template_row, column=22).value if template_row > 1 else None
-        formulas_ok = (
-            isinstance(tpl_formula_f, str) and tpl_formula_f.startswith("=")
-            and isinstance(tpl_formula_v, str) and tpl_formula_v.startswith("=")
-        )
 
         base_font = _BASE_ARIAL_FONT
         blue_bold_font = Font(name="Arial", size=11, color="1D4ED8", bold=True)
@@ -6389,7 +6514,7 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
         thin = Side(style="thin")
         thin_border = Border(left=thin, right=thin, top=thin, bottom=thin)
         fv_fill = PatternFill(fill_type="solid", fgColor="F1CEEE")
-        fv_align = Alignment(horizontal="right")
+        fv_align = Alignment(horizontal="left")
 
         for i, row_vals in enumerate(rows):
             rn = append_start + i
@@ -6397,26 +6522,42 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
             font = blue_bold_font if style == "blue_bold" else red_font if style == "red" else base_font
             for c, val in enumerate(row_vals, start=1):
                 if val is None:
-                    if c == 6 and formulas_ok:      # F -- Full Name
-                        val = Translator(tpl_formula_f, origin=f"F{template_row}").translate_formula(f"F{rn}")
-                    elif c == 22 and formulas_ok:    # V -- Age
-                        val = Translator(tpl_formula_v, origin=f"V{template_row}").translate_formula(f"V{rn}")
+                    if c == 6:      # F -- Full Name: se calcula en Python (First + Last), no formula
+                        val = _compute_full_name(row_vals[3], row_vals[4])
+                    elif c == 22:    # V -- Age: se calcula en Python desde Date of Birth (col U, indice 20)
+                        val = _compute_age(row_vals[20])
+                        if val is None:
+                            continue
                     else:
-                        # No hay fila anterior de la cual copiar la formula
-                        # (ej. la hoja quedo vacia) -- se deja en blanco.
                         continue
                 cell = ws.cell(row=rn, column=c, value=val)
                 cell.font = font
                 cell.border = thin_border
-                if c in (6, 22):  # F (Full Name) y V (Age): relleno rosado + alineado a la derecha
+                if c in (6, 22):  # F (Full Name) y V (Age): relleno rosado + alineado a la izquierda
                     cell.fill = fv_fill
                     cell.alignment = fv_align
+
+        # 2.6) Repara de paso cualquier fila EXISTENTE de F/V que haya quedado
+        # como texto de formula sin resolver (de cargas anteriores a este
+        # cambio) o mal alineada, para que toda la columna quede consistente.
+        for r in range(2, append_start):
+            for c in (6, 22):
+                cell = ws.cell(row=r, column=c)
+                v = cell.value
+                if isinstance(v, str) and v.startswith("="):
+                    if c == 6:
+                        cell.value = _compute_full_name(ws.cell(row=r, column=4).value, ws.cell(row=r, column=5).value)
+                    else:
+                        age = _compute_age(ws.cell(row=r, column=21).value)
+                        if age is not None:
+                            cell.value = age
+                cell.alignment = fv_align
 
         # 3.5) Extiende la Tabla de Excel "tabla_planta" para que incluya las
         # filas nuevas -- sin esto, aunque las celdas queden vacias, Excel no
         # las reconoce como parte de la tabla y no autocompleta las columnas
         # calculadas (F, V).
-        new_last_row = append_start + len(rows) - 1 if rows else ws.max_row
+        new_last_row = append_start + len(rows) - 1 if rows else last_real_row
         try:
             table_names = list(ws.tables.keys())
         except AttributeError:
@@ -6847,6 +6988,195 @@ def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
         return False, f"Error al escribir en Info. Profesores: {e}"
 
 
+def _build_academic_area_pct_table(df_cart_period: pd.DataFrame) -> pd.DataFrame:
+    """Replica independiente de la tabla 'Academic Area / %P / %S / %SA /
+    %OTHER' de Qualifications, para un DataFrame de cartelera ya filtrado a
+    un solo periodo. No depende del estado de la página en vivo."""
+    def _resolve(df, target):
+        t = target.strip().casefold()
+        for c in df.columns:
+            if c.strip().casefold() == t:
+                return c
+        return None
+
+    def _get_any(df, *cands):
+        for c in cands:
+            if _resolve(df, c):
+                return _resolve(df, c)
+        return None
+
+    def normalize_ps(val):
+        v = str(val).strip().lower()
+        if v in {"p", "participating", "participante", "participating faculty"}:
+            return "P"
+        if v in {"s", "supporting", "soporte", "supporting faculty"}:
+            return "S"
+        return ""
+
+    def normalize_tipo(val):
+        v = str(val).strip().lower()
+        if v in {"sa", "scholarly academics", "scholarly academic"}:
+            return "SA"
+        if v in {"pa", "practice academics", "practice academic"}:
+            return "PA"
+        if v in {"sp", "scholarly practitioners", "scholarly practitioner"}:
+            return "SP"
+        if v in {"ip", "instructional practitioners", "instructional practitioner"}:
+            return "IP"
+        if v in {"o", "other", "others", "otro", "otros"}:
+            return "OTHER"
+        m = re.search(r"\b(sa|pa|sp|ip|o|other)\b", v)
+        if m:
+            code = m.group(1).upper()
+            return "OTHER" if code in {"O", "OTHER"} else code
+        return "OTHER"
+
+    col_cred = _get_any(df_cart_period, "Créditos", "Creditos", "Credits")
+    col_tipo = _get_any(df_cart_period, "Type", "Tipo", "TIPO")
+    col_ps = _get_any(df_cart_period, "P/S", "PS")
+    col_area = _get_any(df_cart_period, "Course Area", "Area del curso", "Área")
+    if not all([col_cred, col_tipo, col_ps, col_area]) or df_cart_period.empty:
+        return pd.DataFrame(columns=["Academic Area", "%P", "%S", "%SA", "%OTHER"])
+
+    d = df_cart_period.copy()
+    d["_CRED"] = pd.to_numeric(d[col_cred], errors="coerce").fillna(0.0)
+    d["_TIPO"] = d[col_tipo].astype(str).map(normalize_tipo)
+    d["_PS"] = d[col_ps].astype(str).map(normalize_ps)
+    d["_AREA"] = d[col_area].astype(str).str.strip()
+
+    tipo_pivot = d.groupby(["_AREA", "_TIPO"])["_CRED"].sum().unstack(fill_value=0.0)
+    for k in ["SA", "PA", "SP", "IP", "OTHER"]:
+        if k not in tipo_pivot.columns:
+            tipo_pivot[k] = 0.0
+    ps_pivot = d.groupby(["_AREA", "_PS"])["_CRED"].sum().unstack(fill_value=0.0)
+    for k in ["P", "S"]:
+        if k not in ps_pivot.columns:
+            ps_pivot[k] = 0.0
+
+    den_ps = (ps_pivot["P"] + ps_pivot["S"]).replace(0, pd.NA)
+    p_share = (ps_pivot["P"] / den_ps) * 100
+    denom_q = tipo_pivot.sum(axis=1).replace(0, pd.NA)
+
+    out = pd.DataFrame({
+        "Academic Area": tipo_pivot.index,
+        "%P": p_share,
+        "%S": 100 - p_share,
+        "%SA": (tipo_pivot["SA"] / denom_q) * 100,
+        "%OTHER": (tipo_pivot["OTHER"] / denom_q) * 100,
+    }).fillna(0.0).round(1).reset_index(drop=True)
+
+    tot_p, tot_s = ps_pivot["P"].sum(), ps_pivot["S"].sum()
+    tot_den = tot_p + tot_s
+    p_tot = (tot_p / tot_den * 100) if tot_den else 0.0
+    tipo_sums = tipo_pivot.sum(axis=0)
+    denom_tot = float(tipo_sums.sum())
+    total_row = pd.DataFrame([{
+        "Academic Area": "TOTAL",
+        "%P": round(p_tot, 1), "%S": round(100 - p_tot, 1),
+        "%SA": round((tipo_sums["SA"] / denom_tot * 100) if denom_tot else 0.0, 1),
+        "%OTHER": round((tipo_sums["OTHER"] / denom_tot * 100) if denom_tot else 0.0, 1),
+    }])
+    return pd.concat([out, total_row], ignore_index=True)
+
+
+def _build_bsq_report_tables(df_fd_period: pd.DataFrame):
+    """Replica independiente de las 2 tablas de BSQ Compensation de
+    Qualifications (participating/supporting por categoría de calificación),
+    para un DataFrame de Faculty Distribution ya filtrado a un solo periodo."""
+    cats = ["SA", "PA", "SP", "IP", "OTHER"]
+
+    def _norm_tipo(v):
+        v = str(v or "").strip().upper()
+        return v if v in cats else "OTHER"
+
+    def _norm_ps(v):
+        v = str(v or "").strip().upper()
+        return "P" if v.startswith("P") else ("S" if v.startswith("S") else "")
+
+    def _norm_ft(v):
+        v = str(v or "").strip().upper()
+        return "PLANTA" if "PLANTA" in v else ("CÁTEDRA" if v else "")
+
+    d = df_fd_period.copy()
+    tipo_col = next((c for c in d.columns if c.strip().upper() in ("TIPO", "TYPE")), None)
+    ps_col = next((c for c in d.columns if c.strip().upper() in ("P/S", "PS")), None)
+    ft_col = next((c for c in d.columns if "PLANTA" in c.strip().upper() or "CATEDRA" in c.strip().upper().replace("Á", "A")), None)
+    if not tipo_col or not ps_col:
+        empty = pd.DataFrame(columns=["Row"] + cats + ["TOTAL"])
+        return empty, empty
+
+    d["_TIPO"] = d[tipo_col].map(_norm_tipo)
+    d["_PS"] = d[ps_col].map(_norm_ps)
+    d["_FT"] = d[ft_col].map(_norm_ft) if ft_col else ""
+
+    def _counts(mask):
+        sub = d[mask]
+        c = sub["_TIPO"].value_counts()
+        row = {k: int(c.get(k, 0)) for k in cats}
+        row["TOTAL"] = sum(row.values())
+        return row
+
+    r7a, r7b = _counts(d["_PS"] == "P"), _counts(d["_PS"] == "S")
+    tbl7 = pd.DataFrame([
+        {"Row": "a. Participating faculty members", **r7a},
+        {"Row": "b. Supporting faculty members", **r7b},
+    ])[["Row"] + cats + ["TOTAL"]]
+
+    r8a = _counts((d["_PS"] == "P") & (d["_FT"] == "PLANTA"))
+    r8b = _counts((d["_PS"] == "P") & (d["_FT"] == "CÁTEDRA"))
+    r8c = {k: r8a.get(k, 0) + r8b.get(k, 0) for k in cats + ["TOTAL"]}
+    r8d = _counts((d["_PS"] == "S") & (d["_FT"] == "PLANTA"))
+    r8e = _counts((d["_PS"] == "S") & (d["_FT"] == "CÁTEDRA"))
+    r8f = {k: r8d.get(k, 0) + r8e.get(k, 0) for k in cats + ["TOTAL"]}
+
+    tbl8 = pd.DataFrame([
+        {"Row": "a. Full-time Participating faculty members", **r8a},
+        {"Row": "b. Part-time Participating faculty members", **r8b},
+        {"Row": "c. Total Participating faculty members", **r8c},
+        {"Row": "d. Full-time Supporting faculty members", **r8d},
+        {"Row": "e. Part-time Supporting faculty members", **r8e},
+        {"Row": "f. Total Supporting faculty members", **r8f},
+    ])[["Row"] + cats + ["TOTAL"]]
+
+    return tbl7, tbl8
+
+
+def _build_cartelera_save_report(target_period: str, new_courses_df: pd.DataFrame, new_profs_df: pd.DataFrame) -> bytes:
+    """Reporte de 5 hojas generado justo después de guardar Cartelera con éxito:
+    1) Profesores (Faculty Distribution completa, filtrada al periodo subido)
+    2) Profesores nuevos agregados en esta carga
+    3) Cartelera completa (sin filtrar)
+    4) Cursos nuevos agregados en esta carga
+    5) Qualifications — las 3 tablas dinámicas de la página (Academic Area
+       %P/%S/%SA/%OTHER, y las 2 de BSQ Compensation), para el mismo periodo"""
+    raw_fd = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    df_fd = pd.read_excel(raw_fd, sheet_name="Faculty Distribution")
+    df_fd_period = df_fd[df_fd["Semestre"].astype(str).str.strip() == str(target_period).strip()].copy()
+
+    raw_cart = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
+    df_cart_full = pd.read_excel(raw_cart, sheet_name="cartelera")
+    period_nodash = str(target_period).strip().replace("-", "")
+    cart_period_mask = df_cart_full["Periodo"].astype(str).str.strip().isin([str(target_period).strip(), period_nodash])
+    df_cart_period = df_cart_full[cart_period_mask].copy()
+
+    tbl_area = _build_academic_area_pct_table(df_cart_period)
+    tbl7, tbl8 = _build_bsq_report_tables(df_fd_period)
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf) as writer:
+        df_fd_period.to_excel(writer, index=False, sheet_name="Profesores")
+        (new_profs_df if new_profs_df is not None else pd.DataFrame()).to_excel(
+            writer, index=False, sheet_name="Profesores Nuevos")
+        df_cart_period.to_excel(writer, index=False, sheet_name="Cartelera")
+        (new_courses_df if new_courses_df is not None else pd.DataFrame()).to_excel(
+            writer, index=False, sheet_name="Cursos Nuevos")
+        tbl_area.to_excel(writer, index=False, sheet_name="Qualifications", startrow=0)
+        tbl7.to_excel(writer, index=False, sheet_name="Qualifications", startrow=len(tbl_area) + 3)
+        tbl8.to_excel(writer, index=False, sheet_name="Qualifications", startrow=len(tbl_area) + len(tbl7) + 6)
+    buf.seek(0)
+    return buf.getvalue()
+
+
 def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFrame,
                             profesor_lookup: Optional[Dict[str, Tuple]] = None,
                             area_map: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
@@ -6899,6 +7229,10 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             if not info:
                 return False, "No encontré la Tabla de Excel 'tabla_cursos' en la hoja 'cursos'."
             _, min_col_c, min_row_c, max_col_c, last_row_c = info
+            # last_row_c viene del ref de la Tabla de Excel, que puede haber
+            # quedado inflado en cargas anteriores (mismo problema de
+            # max_row-tras-delete) -- se recalcula contra el dato real.
+            last_row_c = _last_data_row(ws_cursos, key_col=1, header_row=min_row_c, upper_bound=max(last_row_c, ws_cursos.max_row))
             template_row_c = last_row_c
             tpl_e_text, e_is_array = _get_formula_text(ws_cursos.cell(row=template_row_c, column=5))
             tpl_f_text, f_is_array = _get_formula_text(ws_cursos.cell(row=template_row_c, column=6))
@@ -6912,11 +7246,26 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                     cell = ws_cursos.cell(row=rn, column=col, value=val)
                     cell.font = base_font
                 if ef_ok:
-                    _write_translated_formula(ws_cursos, 5, rn, tpl_e_text, e_is_array, f"E{template_row_c}", f"E{rn}")
-                    _write_translated_formula(ws_cursos, 6, rn, tpl_f_text, f_is_array, f"F{template_row_c}", f"F{rn}")
+                    # E y F se CALCULAN en Python (evaluando la fórmula real
+                    # contra las tablas de referencia que ya viven en el
+                    # workbook), en vez de copiar solo el texto de la
+                    # fórmula -- así quedan resueltas de una sin depender de
+                    # que alguien abra el archivo en Excel.
+                    val_e = _eval_simple_lookup_formula(wb, tpl_e_text, rn, "cursos")
+                    val_f = _eval_simple_lookup_formula(wb, tpl_f_text, rn, "cursos")
+                    if val_e is None:
+                        _write_translated_formula(ws_cursos, 5, rn, tpl_e_text, e_is_array, f"E{template_row_c}", f"E{rn}")
+                    else:
+                        ws_cursos.cell(row=rn, column=5, value=val_e)
+                    if val_f is None:
+                        _write_translated_formula(ws_cursos, 6, rn, tpl_f_text, f_is_array, f"F{template_row_c}", f"F{rn}")
+                    else:
+                        ws_cursos.cell(row=rn, column=6, value=val_f)
                     for col in (5, 6):
                         cell = ws_cursos.cell(row=rn, column=col)
                         cell.font = base_font
+                        cell.fill = cursos_fill
+                        cell.alignment = Alignment(horizontal="left")
                         cell.fill = cursos_fill
                 n_new_courses += 1
 
@@ -6993,7 +7342,8 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             return False
 
         heal_info = _table_info(ws_cart, "tabla_cartelera")
-        heal_last_row = heal_info[4] if heal_info else ws_cart.max_row
+        heal_last_row = _last_data_row(ws_cart, key_col=1, header_row=heal_info[2] if heal_info else 1,
+                                        upper_bound=ws_cart.max_row) if heal_info else ws_cart.max_row
         for r in range(2, heal_last_row + 1):
             h_periodo = ws_cart.cell(row=r, column=1).value
             h_materia = ws_cart.cell(row=r, column=4).value
@@ -7033,7 +7383,11 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                     c.font = base_font; c.fill = calc_fill
 
         info_cart2 = _table_info(ws_cart, "tabla_cartelera")
-        _, _, _, _, last_row_ct2 = info_cart2
+        _, _, min_row_ct2, _, last_row_ct2 = info_cart2
+        # El ref de la Tabla de Excel NO se actualiza solo al borrar filas
+        # (delete_rows no lo toca) -- por eso quedaba un hueco de filas
+        # vacías antes de las nuevas. Se recalcula contra el dato real.
+        last_row_ct2 = _last_data_row(ws_cart, key_col=1, header_row=min_row_ct2, upper_bound=max(last_row_ct2, ws_cart.max_row))
         append_start_ct = last_row_ct2 + 1
 
         lookup = profesor_lookup or {}
@@ -7501,6 +7855,24 @@ def page_update_data():
                             else:
                                 st.error(msg_fd)
                         st.balloons()
+
+                        target_period = sorted(periodo_to_ids.keys(), key=_period_sort_key)[-1] if periodo_to_ids else None
+                        if target_period:
+                            with st.spinner("Preparando reporte…"):
+                                report_bytes = _build_cartelera_save_report(target_period, new_courses_df, new_profs_df)
+                            st.markdown(
+                                "<style>div[data-testid='stDownloadButton'] button{"
+                                "background-color:#16A34A !important;color:#FFFFFF !important;"
+                                "border:none !important;font-weight:700 !important;}"
+                                "div[data-testid='stDownloadButton'] button:hover{background-color:#15803D !important;}</style>",
+                                unsafe_allow_html=True,
+                            )
+                            st.download_button(
+                                "Descargar reporte en Excel", data=report_bytes,
+                                file_name=f"Reporte_Cartelera_{target_period}.xlsx".replace(" ", "_"),
+                                key="dl_cartelera_report", icon=":material/download:",
+                                use_container_width=True,
+                            )
                     else:
                         st.error(msg)
             elif cart_df is not None:
