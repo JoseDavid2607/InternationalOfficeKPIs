@@ -118,9 +118,10 @@ st.markdown(
     ".st-key-side_arrows a{"
     "display:flex !important;align-items:center;justify-content:center;"
     "background:transparent !important;border:none !important;box-shadow:none !important;"
-    f"font-size:26px;font-weight:400;color:{PINK} !important;opacity:.55;text-decoration:none;"
+    f"font-size:0 !important;font-weight:400;color:{PINK} !important;opacity:.55;text-decoration:none;"
     "transition:opacity .15s ease;}"
-    ".st-key-side_arrows a p{font-size:26px;}"
+    ".st-key-side_arrows a p{font-size:26px !important;}"
+    ".st-key-side_arrows a span:first-child{display:none !important;}"
     ".st-key-side_arrows a:hover{opacity:1;}"
     ".st-key-cover_enter_btn div[data-testid='stButton'] button{"
     f"background:{PINK} !important;border:none !important;color:#fff !important;"
@@ -776,7 +777,6 @@ def page_cover():
             ("BD_evaluacion_curso.xlsx", "Course evaluation — frequencies & comments", EVALUACION_FILE_ID),
             ("BD_satisfaccionEIV.xlsx", "Faculty satisfaction survey", SATISFACCION_FILE_ID),
             ("BD_gastos.xlsx", "Expenses & actual spend", GASTOS_FILE_ID),
-            ("BD_electivas.xlsx", "International electives (not yet assigned to a section)", ELECTIVAS_FILE_ID),
         ]
         for fname, desc, fid in files:
             fc1, fc2 = st.columns([5, 1])
@@ -2028,9 +2028,9 @@ if not IS_COVER:
     with st.container(key="side_arrows"):
         arrow_l, arrow_r = st.columns(2)
         with arrow_l:
-            st.page_link(_prev_pg, label="‹", icon=" ")
+            st.page_link(_prev_pg, label="‹")
         with arrow_r:
-            st.page_link(_next_pg, label="›", icon=" ")
+            st.page_link(_next_pg, label="›")
 
 pg.run()
 
