@@ -3908,23 +3908,49 @@ def page_qualifications():
         col_ps_C_local = _get_any(df_car_n, "P/S","P - S","Participating/Supporting")
         df_car_n["_PS"] = _norm_str(df_car_n[col_ps_C_local]).map(normalize_ps) if col_ps_C_local else ""
 
-        # excluir programas
-        program_col0 = _get_any(df_car_n, "Program","PROGRAM","program")
-        EXCLUDE_SUBJ = {"CONT", "E-IMER", "E-ENEG", "E-AFIN"}
-        if program_col0:
-            mask_ok = ~df_car_n[program_col0].astype(str).str.strip().str.upper().isin(EXCLUDE_SUBJ)
-            df_car_global = df_car_n[mask_ok].copy()
-        else:
-            df_car_global = df_car_n.copy()
-
-        # ---------- Filtro por timeframe seleccionado ----------
+        # ---------- Filtro por timeframe seleccionado (primero, para poder
+        # calcular qué programas existen en el periodo elegido) ----------
         sel_label = st.session_state.get("sel_label")
         time_mode = st.session_state.get("time_mode", "Semestral")
         sel_year  = st.session_state.get("sel_year")
         sel_sem   = st.session_state.get("sel_sem")
 
-        fil = filter_df_car(df_car_global, time_mode, sel_year, sel_sem)
-        df_car_filt_all = fil.copy()  # usar en expander/tabla/dona
+        fil_period_only = filter_df_car(df_car_n, time_mode, sel_year, sel_sem)
+
+        # ---------- Filtro sutil de programas (columna J / "Cod program") ----------
+        # Por defecto van seleccionados todos los programas que aparecen en
+        # el periodo elegido, EXCEPTO CONT, E-ENEG, E-IMER y E-AFIN — y solo
+        # si de verdad aparecen en ese periodo (si no aparecen, ni siquiera
+        # salen en la lista de opciones).
+        program_col0 = _get_any(df_car_n, "Program", "PROGRAM", "program")
+        DEFAULT_EXCLUDE_PROGRAMS = {"CONT", "E-IMER", "E-ENEG", "E-AFIN"}
+        if program_col0:
+            all_programs_period = sorted(
+                fil_period_only[program_col0].dropna().astype(str).str.strip().unique().tolist()
+            )
+            default_programs = [p for p in all_programs_period if p.strip().upper() not in DEFAULT_EXCLUDE_PROGRAMS]
+            with st.expander("Program filter", expanded=False, icon=":material/filter_alt:"):
+                selected_programs = st.multiselect(
+                    "Programs included in the tables below", options=all_programs_period,
+                    default=default_programs, key=f"qual_program_filter_{_slugify(sel_label)}",
+                )
+            mask_ok = fil_period_only[program_col0].astype(str).str.strip().isin(selected_programs)
+            df_car_filt_all = fil_period_only[mask_ok].copy()
+        else:
+            df_car_filt_all = fil_period_only.copy()
+
+        # Compatibilidad con el resto de la página: 'df_car_global' se usa
+        # más abajo en varias vistas históricas multi-periodo (todas las
+        # épocas, no solo la seleccionada), así que mantiene la exclusión
+        # FIJA de siempre ahí -- el filtro interactivo de arriba solo
+        # aplica al periodo seleccionado. 'fil' es el mismo alias de
+        # siempre para el bloque actual (ahora ya con el filtro aplicado).
+        if program_col0:
+            mask_global = ~df_car_n[program_col0].astype(str).str.strip().str.upper().isin(DEFAULT_EXCLUDE_PROGRAMS)
+            df_car_global = df_car_n[mask_global].copy()
+        else:
+            df_car_global = df_car_n.copy()
+        fil = df_car_filt_all
 
         # ============================ VISTAS ============================
         def build_percent_table(base_idx_name, agg_tipo, agg_ps):
@@ -4022,8 +4048,6 @@ def page_qualifications():
 
                     if not needed_mode:
                         metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
-                        _download_xlsx_button(metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
-                                              key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
                         styled_tbl = (
                             metrics_tbl.style
                             .format({"%P": "{:.1f}%", "%S": "{:.1f}%", "%SA": "{:.1f}%", "%OTHER": "{:.1f}%"})
@@ -4031,6 +4055,8 @@ def page_qualifications():
                             .hide(axis="index")
                         )
                         st.dataframe(styled_tbl, use_container_width=True, hide_index=True)
+                        _download_xlsx_button(metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
+                                              key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
                     else:
                         # ===== Tabla: Needed (dos columnas) + Impact (siempre) SIN TOTAL =====
                         # union de índices para no perder filas
