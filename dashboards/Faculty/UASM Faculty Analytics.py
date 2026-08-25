@@ -6178,6 +6178,30 @@ def _needs_fix(v) -> bool:
     return False
 
 
+def _semestre_from_periodo(periodo) -> str:
+    """Regla real de Uniandes para pasar de un código de Periodo (YYYYNN) al
+    Semestre limpio que usa el resto de la app -- NUNCA se inventa/adivina,
+    es la regla exacta que maneja la Oficina:
+      NN en {01,02,03,10,11,12} -> primer semestre  (YYYY10)
+      NN en {04,05,06,14,15}    -> segundo semestre (YYYY20)
+      NN en {13,18,19}          -> intersemestral   (YYYY Intersemestral)
+    Si el código no calza con el patrón YYYYNN, o el NN no está en ninguna
+    de las listas anteriores, se devuelve el valor crudo tal cual (para no
+    perder el dato ni inventar una clasificación)."""
+    s = str(periodo).strip()
+    m = re.match(r"^(\d{4})(\d{2})$", s)
+    if not m:
+        return s
+    year, code = m.groups()
+    if code in ("01", "02", "03", "10", "11", "12"):
+        return f"{year}10"
+    if code in ("04", "05", "06", "14", "15"):
+        return f"{year}20"
+    if code in ("13", "18", "19"):
+        return f"{year} Intersemestral"
+    return s
+
+
 def _last_data_row(ws, key_col: int = 1, header_row: int = 1, upper_bound: Optional[int] = None) -> int:
     """Última fila con datos REALES en `key_col` (no fórmula ni celda vacía
     con solo formato). openpyxl.Worksheet.max_row cuenta cualquier celda que
@@ -6205,18 +6229,25 @@ def _compute_full_name(first_name, last_name) -> str:
 
 def _compute_age(dob) -> Optional[int]:
     """Replica en Python la fórmula real de V (Age) en 'planta': edad en
-    años completos a la fecha de hoy (equivalente a DATEDIF(DOB,HOY,"Y"))."""
+    años completos a la fecha de hoy (equivalente a DATEDIF(DOB,HOY,"Y")).
+    DOB llega normalizada por _planta_fmt_date() como texto DD/MM/YYYY --
+    antes solo se probaba %Y-%m-%d y %m/%d/%Y, que nunca calzaban con ese
+    formato real y dejaban la mayoria de edades en blanco."""
     import datetime as _dt
     if dob is None or dob == "":
         return None
     if isinstance(dob, str):
-        try:
-            dob = _dt.datetime.strptime(dob.strip(), "%Y-%m-%d")
-        except ValueError:
+        dob_s = dob.strip()
+        parsed = None
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y", "%d-%m-%Y", "%Y/%m/%d"):
             try:
-                dob = _dt.datetime.strptime(dob.strip(), "%m/%d/%Y")
+                parsed = _dt.datetime.strptime(dob_s, fmt)
+                break
             except ValueError:
-                return None
+                continue
+        if parsed is None:
+            return None
+        dob = parsed
     if isinstance(dob, _dt.datetime):
         dob = dob.date()
     if not isinstance(dob, _dt.date):
@@ -7165,20 +7196,21 @@ def _build_bsq_report_tables(df_fd_period: pd.DataFrame):
 
 def _build_cartelera_save_report(target_period: str, new_courses_df: pd.DataFrame, new_profs_df: pd.DataFrame) -> bytes:
     """Reporte de 5 hojas generado justo después de guardar Cartelera con éxito:
-    1) Profesores (Faculty Distribution completa, filtrada al periodo subido)
+    1) Profesores (Faculty Distribution completa, filtrada al semestre subido)
     2) Profesores nuevos agregados en esta carga
-    3) Cartelera completa (sin filtrar)
+    3) Cartelera completa, filtrada al MISMO semestre limpio (columna
+       'Semestre', no 'Periodo' -- así cubre TODOS los códigos crudos de
+       Periodo que caen en ese semestre, no solo el que se subió)
     4) Cursos nuevos agregados en esta carga
     5) Qualifications — las 3 tablas dinámicas de la página (Academic Area
-       %P/%S/%SA/%OTHER, y las 2 de BSQ Compensation), para el mismo periodo"""
+       %P/%S/%SA/%OTHER, y las 2 de BSQ Compensation), para el mismo semestre"""
     raw_fd = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
     df_fd = pd.read_excel(raw_fd, sheet_name="Faculty Distribution")
     df_fd_period = df_fd[df_fd["Semestre"].astype(str).str.strip() == str(target_period).strip()].copy()
 
     raw_cart = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
     df_cart_full = pd.read_excel(raw_cart, sheet_name="cartelera")
-    period_nodash = str(target_period).strip().replace("-", "")
-    cart_period_mask = df_cart_full["Periodo"].astype(str).str.strip().isin([str(target_period).strip(), period_nodash])
+    cart_period_mask = df_cart_full["Semestre"].astype(str).str.strip() == str(target_period).strip()
     df_cart_period = df_cart_full[cart_period_mask].copy()
 
     tbl_area = _build_academic_area_pct_table(df_cart_period)
@@ -7377,7 +7409,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             h_creditos = 0 if pd.isna(h_creditos) else h_creditos
 
             if _needs_fix(ws_cart.cell(row=r, column=2).value):
-                c = ws_cart.cell(row=r, column=2, value=semestre_map.get(str(h_periodo).strip(), h_periodo))
+                c = ws_cart.cell(row=r, column=2, value=_semestre_from_periodo(h_periodo))
                 c.font = base_font; c.fill = calc_fill
             if _needs_fix(ws_cart.cell(row=r, column=9).value):
                 c = ws_cart.cell(row=r, column=9, value=field_map.get(str(h_area).strip(), ""))
@@ -7424,7 +7456,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
 
             # B — Semestre (limpio vía tabla AD:AE; si el periodo no está ahí
             # registrado, se deja al menos el Periodo crudo — nunca en blanco)
-            b_cell = ws_cart.cell(row=rn, column=2, value=semestre_map.get(str(periodo).strip(), periodo))
+            b_cell = ws_cart.cell(row=rn, column=2, value=_semestre_from_periodo(periodo))
             b_cell.font = base_font
             b_cell.fill = calc_fill
 
@@ -7861,13 +7893,17 @@ def page_update_data():
                         ok, msg = push_cartelera_updates(save_df, new_courses_df, combined_lookup, area_map)
                     if ok:
                         st.success(msg)
-                        # Faculty Distribution: un ID único por periodo, tomado de la cartelera recién guardada
+                        # Faculty Distribution: un ID único por periodo, tomado de la cartelera recién guardada.
+                        # Usa el Semestre LIMPIO (regla YYYYNN -> YYYY10/YYYY20/YYYY Intersemestral), no el
+                        # código crudo de Periodo -- así Faculty Distribution siempre queda con
+                        # exactamente 202610 / 202620 / 2026 Intersemestral, nunca con el código sin normalizar.
                         periodo_to_ids: Dict[str, List] = {}
                         for periodo_val, prof_name in zip(save_df["Periodo"], save_df["Profesor"]):
                             m = combined_lookup.get(str(prof_name).strip().upper())
                             if not m:
                                 continue
-                            periodo_to_ids.setdefault(str(periodo_val).strip(), set()).add(m[0])
+                            semestre_limpio = _semestre_from_periodo(periodo_val)
+                            periodo_to_ids.setdefault(semestre_limpio, set()).add(m[0])
                         periodo_to_ids = {p: sorted(ids, key=str) for p, ids in periodo_to_ids.items()}
                         if periodo_to_ids:
                             with st.spinner("Actualizando Faculty Distribution…"):
