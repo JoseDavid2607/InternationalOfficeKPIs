@@ -556,7 +556,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
           <div class="preview-header-info" style="flex:1;">
             <div class="preview-title" id="previewTitle" style="font-size:.9rem;font-weight:800;color:#1f2937;"></div>
           </div>
-          <a class="action-btn action-btn--teal" id="updateBtn" style="display:none;" href="https://internationalofficekpis-eh35dj3hrbgdzu7dbaqzpr.streamlit.app/update-data" target="_blank" rel="noopener">Update data ↗</a>
+          <a class="action-btn action-btn--teal" id="updateBtn" style="display:none;" href="#" target="_blank" rel="noopener">Update data ↗</a>
           <a href="#" class="action-btn action-btn--primary" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open Dashboard ↗</a>
         </div>
         <div class="preview-body" id="previewBody">
@@ -650,6 +650,7 @@ const UNITS = [
     name: "Faculty",
     desc: "Faculty deployment, qualifications, demographics, workload, and accreditation-relevant academic profiles.",
     icon: `<circle cx="12" cy="7" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>`,
+    updateUrl: "https://internationalofficekpis-eh35dj3hrbgdzu7dbaqzpr.streamlit.app/update-data",
     dashboards: [
       { title: "Full-time Faculty Composition",    desc: "Composition by type of full-time faculty ranking, historical evolution, and detailed academic distribution.",                     url: "https://internationalofficekpis-eh35dj3hrbgdzu7dbaqzpr.streamlit.app/" },
       { title: "Full-time Faculty Staffing Levels", desc: "Staffing levels, number of professors, teaching load, and detailed information on faculty allocation.",                          url: "https://internationalofficekpis-eh35dj3hrbgdzu7dbaqzpr.streamlit.app/staffing" },
@@ -665,16 +666,18 @@ const UNITS = [
     name: "Internationalization",
     desc: "Mobility, agreements, visiting faculty, international activities, and global engagement indicators.",
     icon: `<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 4 3 14 0 18M12 3c-3 4-3 14 0 18" stroke-width="1.3"/>`,
+    updateUrl: "https://dashboardsinternationalizationuasminternatio-wdfa0h.streamlit.app/update-data",
     dashboards: [
-      { title: "International Faculty & Visiting Professors", desc: "International faculty and visiting professors metrics, origin countries, and engagement history.",        url: "#", soon: true },
-      { title: "International Publications & Conferences",    desc: "Publications, conference participation, and academic output with international reach.",                   url: "#", soon: true },
-      { title: "Faculty Academic Activities",                 desc: "International teaching activities, lectures, workshops, and academic engagements abroad.",               url: "#", soon: true },
-      { title: "International Research Seminars",             desc: "International research seminars hosted, speaker profiles, and academic contribution data.",              url: "#", soon: true },
-      { title: "Internationalization of the Campus",          desc: "Campus internationalization indicators, graduation requirements, and cross-cultural programmes.",        url: "#", soon: true },
-      { title: "International Weeks & Activities",            desc: "International weeks, global activities, partnerships events, and student participation rates.",          url: "#", soon: true },
-      { title: "UASM Seminars",                               desc: "Seminar series data, invited speakers, attendance figures, and contribution to academic positioning.",   url: "#", soon: true },
-      { title: "Student & PhD Mobility",                      desc: "Outgoing and incoming student mobility, PhD exchange programmes, and partner institution breakdown.",    url: "#", soon: true },
-      { title: "Signed Agreements",                           desc: "Active international agreements, MoUs, partnership tiers, and geographic distribution of alliances.",   url: "#", soon: true }
+      { title: "Faculty",                  desc: "International full-time faculty counts, evolution over time, and dual-nationality composition.",                                url: "https://dashboardsinternationalizationuasminternatio-wdfa0h.streamlit.app/faculty" },
+      { title: "Visiting Faculty",         desc: "Visiting faculty origin countries, host universities, and visit dates.",                                                        url: "https://dashboardsinternationalizationuasminternatio-wdfa0h.streamlit.app/visiting" },
+      { title: "Intl. Weeks",              desc: "International weeks and activities: students by program and host university, and attendance by country.",                     url: "https://dashboardsinternationalizationuasminternatio-wdfa0h.streamlit.app/weeks" },
+      { title: "Research & Faculty Activities", desc: "International journal articles, conference presentations, and faculty teaching activities abroad.",                       url: "#", soon: true },
+      { title: "Home Campus",              desc: "Incoming international students hosted at UASM's home campus.",                                                                url: "#", soon: true },
+      { title: "Graduates",                desc: "International mobility experience among UASM graduates.",                                                                       url: "#", soon: true },
+      { title: "Agreement Utilization",    desc: "Outgoing & incoming mobility mapped against each international agreement.",                                                     url: "#", soon: true },
+      { title: "Mobility by Program",      desc: "Outgoing exchange mobility broken down by academic program.",                                                                   url: "#", soon: true },
+      { title: "PhD Mobility",             desc: "International mobility and research stays among PhD students.",                                                                 url: "#", soon: true },
+      { title: "Agreements",               desc: "Full catalog of international agreements — type, status, dates, accreditation.",                                                url: "#", soon: true }
     ]
   },
   { id: "alumni",     name: "Alumni & Career Services",  desc: "Employment distribution, salary trends, career outcomes, and placement indicators for graduates.",                         icon: `<path d="M9 7V6a3 3 0 0 1 6 0v1"/><rect x="3" y="7" width="18" height="12" rx="2"/>`,  dashboards: [], soon: true },
@@ -776,7 +779,14 @@ function openPreview(title, url, bdType) {
   const embedUrl = url.includes("?") ? url + "&embed=true" : url + "?embed=true";
   extBtn.href = url; extBtn.style.display = "inline-flex";
   toBtn.href  = url;
-  document.getElementById("updateBtn").style.display = "inline-flex";
+  const unitForUpdate = UNITS.find(u => u.id === selectedUnit);
+  const updateBtn = document.getElementById("updateBtn");
+  if (unitForUpdate && unitForUpdate.updateUrl) {
+    updateBtn.href = unitForUpdate.updateUrl;
+    updateBtn.style.display = "inline-flex";
+  } else {
+    updateBtn.style.display = "none";
+  }
 
   ph.style.display = "none";
   timeout.classList.remove("show");
