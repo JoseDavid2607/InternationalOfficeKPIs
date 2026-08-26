@@ -1051,6 +1051,18 @@ pg = st.navigation(pages, position="hidden")
 IS_UPDATE_PAGE = pg is pages[-1]
 main_pages = pages[:-1]
 
+# ── DEEP-LINK REDIRECT (avoids Streamlit's "Page not found" flash) ──────
+# External links (e.g. from the KPI hub HTML) should always open the ROOT
+# URL with "?page=<url_path>" instead of linking directly to a sub-page.
+# The root path always resolves to the default page, so it never triggers
+# Streamlit's "Page not found" modal on a fresh session. Once the app has
+# booted, we read the "page" query param here and switch internally.
+_target_slug = st.query_params.get("page")
+if _target_slug:
+    _target_page = next((p for p in pages if p.url_path == _target_slug), None)
+    if _target_page is not None and pg.url_path != _target_page.url_path:
+        st.switch_page(_target_page)
+
 if not IS_UPDATE_PAGE:
     st.session_state["_return_page_idx"] = main_pages.index(pg)
 
