@@ -26,6 +26,7 @@ import plotly.graph_objects as go
 import io
 import time
 import re
+import unicodedata
 from typing import Optional, Dict, List, Tuple
 
 try:
@@ -844,10 +845,10 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
 # ── 8) PÁGINA — Cover (portada, funciona como Data Center — sin sidebar) ──
 def page_cover():
     st.markdown(f"<div style='height:4vh;'></div>", unsafe_allow_html=True)
-    col_l, col_mid, col_r = st.columns([1, 4, 1])
+    col_l, col_mid, col_r = st.columns([1, 2, 1])
     with col_mid:
         try:
-            _show_eiv_banner(use_container_width=True)
+            _show_eiv_banner(width=550)  # ~30% más chico que el ancho de contenedor que tenía antes
         except Exception:
             pass
     col_l2, col_mid2, col_r2 = st.columns([1, 2, 1])
@@ -1101,13 +1102,14 @@ def page_summary():
         area_counts = tabla_f.drop_duplicates(subset=["curso"])["area"].value_counts()
         fig_area = go.Figure(go.Pie(
             labels=area_counts.index, values=area_counts.values, hole=0.55,
-            marker=dict(colors=[BLUE, PURPLE, PINK, GREEN, "#F2994A", "#3FA34D", "#8C7F87"]),
-            textinfo="label+value", textposition="inside", insidetextorientation="radial",
-            textfont=dict(size=12, color="#fff"),
+            marker=dict(colors=[BLUE, PURPLE, PINK, GREEN, "#F2994A", "#3FA34D", "#8C7F87"],
+                        line=dict(color="#fff", width=1.5)),
+            textinfo="label+value", textposition="outside", insidetextorientation="horizontal",
+            textfont=dict(size=14, color=INK),
         ))
-        fig_area.update_layout(margin=dict(t=10, r=10, b=10, l=10), showlegend=False,
-                                paper_bgcolor="rgba(0,0,0,0)", height=460, uniformtext_minsize=9,
-                                uniformtext_mode="hide")
+        fig_area.update_layout(margin=dict(t=10, r=60, b=10, l=60), showlegend=False,
+                                paper_bgcolor="rgba(0,0,0,0)", height=460, uniformtext_minsize=12,
+                                uniformtext_mode="show")
         st.plotly_chart(fig_area, use_container_width=True)
 
 
@@ -1392,12 +1394,37 @@ def page_visiting():
     combined_avg = (avg_w / avg_wt) if avg_wt else None
     combined_nps = (nps_w / nps_wt) if nps_wt else None
     combined_obj = (obj_w / obj_wt) if obj_wt else None
+    df_sat = load_satisfaccion()
 
-    c1, c2 = st.columns(2)
+    c1, c2, c_btn = st.columns([1, 1, 1])
     with c1:
         _kpi("Students Responded", f"{resp_total} / {insc_total}" if insc_total else str(resp_total), "accent")
     with c2:
         _kpi("Response Rate", f"{resp_total/insc_total*100:.1f}%" if insc_total else "—", "accent")
+    with c_btn:
+        st.caption(f"One PDF per faculty member ({len(prof_names)}), as a ZIP.")
+        if st.button("📄 Generate PDF Reports (ZIP)", key="btn_bulk_pdf", use_container_width=True):
+            import zipfile
+            zbuf = io.BytesIO()
+            with st.spinner(f"Generando {len(prof_names)} reportes…"), zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for name in prof_names:
+                    ed_name = build_professor_eval_data(name)
+                    if not ed_name:
+                        continue
+                    entry_name = next((e for e in scope_entries if e.get("Profesor") == name), None)
+                    curso_name = entry_name["Curso"] if entry_name else ""
+                    row_name = _find_satisfaction_row(df_sat, curso_name, name) if entry_name else None
+                    pdf_bytes = _build_professor_pdf(name, curso_name, ed_name, row_name or {})
+                    fname = f"ISS_{name.replace(' ', '_')}_Evaluation_Report.pdf"
+                    zf.writestr(fname, pdf_bytes)
+            zbuf.seek(0)
+            st.session_state["_eiv_bulk_pdf_zip"] = zbuf.getvalue()
+        if st.session_state.get("_eiv_bulk_pdf_zip"):
+            st.download_button(
+                "⬇️ Download ZIP", data=st.session_state["_eiv_bulk_pdf_zip"],
+                file_name="ISS_2026_Evaluation_Reports.zip", mime="application/zip", key="dl_bulk_pdf_zip",
+                use_container_width=True,
+            )
     c3, c4, c5 = st.columns(3)
     with c3:
         _kpi("Avg. Satisfaction", f"{combined_avg:.2f} / 5" if combined_avg is not None else "—", "accent")
@@ -1534,37 +1561,16 @@ def page_visiting():
                 else:
                     st.caption("No comments for this question in this scope.")
 
-    st.markdown("---")
-    st.markdown("##### Download Evaluation Reports")
-    st.caption(f"All courses in scope — this downloads one PDF per faculty member ({len(prof_names)}) as a ZIP. "
-               "Pick a specific course above to download just that professor's PDF instead.")
-    if st.button("📄 Generate PDF Reports (ZIP)", key="btn_bulk_pdf", use_container_width=False):
-        import zipfile
-        zbuf = io.BytesIO()
-        with st.spinner(f"Generando {len(prof_names)} reportes…"), zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for name in prof_names:
-                ed_name = build_professor_eval_data(name)
-                if not ed_name:
-                    continue
-                entry_name = next((e for e in scope_entries if e.get("Profesor") == name), None)
-                curso_name = entry_name["Curso"] if entry_name else ""
-                row_name = _find_satisfaction_row(df_sat, curso_name, name) if entry_name else None
-                pdf_bytes = _build_professor_pdf(name, curso_name, ed_name, row_name or {})
-                fname = f"ISS_{name.replace(' ', '_')}_Evaluation_Report.pdf"
-                zf.writestr(fname, pdf_bytes)
-        zbuf.seek(0)
-        st.download_button(
-            "⬇️ Download ZIP", data=zbuf.getvalue(), file_name="ISS_2026_Evaluation_Reports.zip",
-            mime="application/zip", key="dl_bulk_pdf_zip",
-        )
-
 
 def _fcol(row: dict, target: str):
-    """Búsqueda de columna normalizada (colapsa espacios/():NBSP a un
-    espacio simple) — BD_satisfaccionEIV trae algunas cabeceras con \\xa0
-    (espacio duro) en lugares distintos a los de la copia usada para
-    escribir este código, y una búsqueda exacta por clave los pierde."""
-    norm = lambda s: re.sub(r"\s+", " ", str(s)).strip()
+    """Búsqueda de columna normalizada (colapsa espacios/NBSP a un espacio
+    simple, y normaliza Unicode a NFC) — BD_satisfaccionEIV trae algunas
+    cabeceras con \\xa0 (espacio duro) en lugares distintos, y algunas
+    tildes ('Bogotá', 'Neón') pueden llegar en forma NFD (á = 'a' + acento
+    combinante) en vez de NFC (á precompuesta); ambos casos hacen que una
+    búsqueda exacta por clave falle en silencio, aunque el texto se vea
+    idéntico -- esto era lo que dejaba 3 de los 6 ejes del radar en None."""
+    norm = lambda s: unicodedata.normalize("NFC", re.sub(r"\s+", " ", str(s)).strip())
     t = norm(target)
     for k in row.keys():
         if norm(k) == t:
@@ -1574,17 +1580,18 @@ def _fcol(row: dict, target: str):
 
 def _find_satisfaction_row(df_sat: pd.DataFrame, curso: str, profesor: str) -> Optional[dict]:
     def _resolve_header(df, target):
-        t = re.sub(r"\s+", " ", target).strip().casefold()
+        t = unicodedata.normalize("NFC", re.sub(r"\s+", " ", target).strip().casefold())
         for k in df.columns:
-            if re.sub(r"\s+", " ", str(k)).strip().casefold() == t:
+            if unicodedata.normalize("NFC", re.sub(r"\s+", " ", str(k)).strip().casefold()) == t:
                 return k
         return None
 
     title_col = _resolve_header(df_sat, "Course title")
     if not title_col:
         return None
-    curso_norm = re.sub(r"\s+", " ", str(curso)).strip().casefold()
-    title_norm = df_sat[title_col].astype(str).str.replace(r"\s+", " ", regex=True).str.strip().str.casefold()
+    curso_norm = unicodedata.normalize("NFC", re.sub(r"\s+", " ", str(curso)).strip().casefold())
+    title_norm = df_sat[title_col].astype(str).str.replace(r"\s+", " ", regex=True).str.strip().str.casefold().apply(
+        lambda s: unicodedata.normalize("NFC", s))
     matches = df_sat[title_norm == curso_norm]
     if len(matches) == 0:
         return None
