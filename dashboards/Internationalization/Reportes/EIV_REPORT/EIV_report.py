@@ -54,12 +54,12 @@ st.markdown(
     "<style>"
     f".suite-header{{display:flex;flex-direction:column;align-items:center;"
     "padding:16px 24px 12px;"
-    f"background:linear-gradient(135deg,#B00D50 0%,{PINK} 100%);"
+    f"background:linear-gradient(135deg,#7A0A3C 0%,#B00D50 55%,{PINK} 100%);"
     "border-radius:12px;box-shadow:0 2px 8px rgba(230,17,102,.18);margin-bottom:14px;}}"
     f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
     "color:#FBD6E4;text-transform:uppercase;margin-bottom:2px;}}"
-    ".sh-title{font-size:29px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
-    ".sh-sub{font-size:13px;color:#fff;margin-top:4px;text-align:center;}"
+    ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
+    ".sh-sub{font-size:13px;color:rgba(255,255,255,.75);margin-top:4px;text-align:center;}"
     f".kv{{font-size:24px;font-weight:700;line-height:1.1;font-family:monospace;color:{INK};}}"
     f".kv.accent{{color:{PINK};}}"
     f".kl{{font-size:11px;font-weight:600;color:{MUTED};"
@@ -385,9 +385,19 @@ COUNTRY_COLORS = {
 BOGOTA = (4.71, -74.07)
 
 LIKERT_WEIGHTS = {
+    # Español
     "Totalmente en desacuerdo": 1, "En desacuerdo": 2,
     "Ni de acuerdo ni en desacuerdo": 3, "De acuerdo": 4, "Totalmente de acuerdo": 5,
+    # English (BD_evaluacion_curso.xlsx trae ambos idiomas por fila; el
+    # profesor puede tener "answer" en inglés según su Idioma en BD_cursos)
+    "Strongly Disagree": 1, "Disagree": 2,
+    "Neither agree nor disagree": 3, "Agree": 4, "Strongly Agree": 5,
 }
+WORKLOAD_WEIGHTS = {
+    "Nada": 1, "Poco": 2, "Mucho": 3, "Demasiado": 4,
+    "Nothing": 1, "Low": 2, "A lot": 3, "Too much": 4,
+}
+OBJ_ALL_VALUES = {"todos", "all"}
 NPS_QID, WORKLOAD_QID, OBJ_QID = "E008V01", "P458V20", "P1003"
 POSITIVE_QIDS = {"P216": "Course", "P216V01": "Faculty"}
 IMPROVE_QIDS = {"P217": "Course", "P217V01": "Faculty"}
@@ -410,6 +420,32 @@ def load_cursos() -> pd.DataFrame:
     df = pd.read_excel(raw, sheet_name="cursos")
     df.columns = df.columns.str.strip()
     return df
+
+
+@st.cache_data(ttl=300)
+def professor_language_map() -> Dict[str, str]:
+    """Profesor -> 'es'/'en', desde la columna 'Idioma' de BD_cursos.xlsx
+    (si existe). Si la columna todavía no existe en el archivo real, o el
+    profesor no tiene un valor reconocible, se asume inglés por defecto —
+    la mayoría de profesores visitantes no leen español y el resto del
+    reporte ya está en inglés."""
+    df = load_cursos()
+    idioma_col = next((c for c in df.columns if c.strip().casefold() == "idioma"), None)
+    prof_col = next((c for c in df.columns if c.strip().casefold() == "profesor"), None)
+    out: Dict[str, str] = {}
+    if not idioma_col or not prof_col:
+        return out
+    for _, r in df.iterrows():
+        prof = r.get(prof_col)
+        if pd.isna(prof):
+            continue
+        val = str(r.get(idioma_col) or "").strip().casefold()
+        out[str(prof).strip()] = "es" if val.startswith(("esp", "spa")) else "en"
+    return out
+
+
+def _prof_lang(prof_name: str) -> str:
+    return professor_language_map().get(str(prof_name).strip(), "en")
 
 
 @st.cache_data(ttl=300)
@@ -621,6 +657,7 @@ def _resolve_alias(name: str) -> str:
 @st.cache_data(ttl=300)
 def evaluation_by_professor() -> Dict[str, dict]:
     frec, _ = load_evaluacion()
+    lang_map = professor_language_map()
     profs: Dict[str, dict] = {}
     for _, r in frec.iterrows():
         prof = r.get("nombre_profesor")
@@ -630,19 +667,34 @@ def evaluation_by_professor() -> Dict[str, dict]:
         qid = r.get("id_pregunta")
         if pd.isna(qid):
             continue
-        d = profs.setdefault(prof, {"questions": {}, "courses": set()})
+        lang = lang_map.get(prof, "en")
+        # BD_evaluacion_curso.xlsx trae pregunta/aspecto/respuesta en
+        # español Y en inglés en la misma fila (columnas H/I, E/F, L/M) —
+        # se elige la columna según el idioma real del profesor (Idioma en
+        # BD_cursos), no un idioma fijo para todos.
+        if lang == "es":
+            pregunta_col, aspecto_col, respuesta_col = "pregunta", "aspecto_evaluado", "respuesta"
+        else:
+            pregunta_col, aspecto_col, respuesta_col = "question", "evaluated_aspect", "answer"
+        pregunta = r.get(pregunta_col) if pregunta_col in r.index and pd.notna(r.get(pregunta_col)) else r.get("pregunta")
+        aspecto = r.get(aspecto_col) if aspecto_col in r.index and pd.notna(r.get(aspecto_col)) else r.get("aspecto_evaluado")
+        respuesta = r.get(respuesta_col) if respuesta_col in r.index and pd.notna(r.get(respuesta_col)) else r.get("respuesta")
+
+        d = profs.setdefault(prof, {"questions": {}, "courses": set(), "lang": lang})
         if pd.notna(r.get("nombre_curso")):
             d["courses"].add(r["nombre_curso"])
-        q = d["questions"].setdefault(qid, {"text": r.get("pregunta"), "aspect": r.get("aspecto_evaluado"), "options": {}})
-        ans = r.get("respuesta")
+        q = d["questions"].setdefault(qid, {"text": pregunta, "aspect": aspecto, "options": {}})
         n = int(r.get("respuestas_por_opcion") or 0)
-        q["options"][ans] = q["options"].get(ans, 0) + n
+        q["options"][respuesta] = q["options"].get(respuesta, 0) + n
     return profs
 
 
 @st.cache_data(ttl=300)
 def comments_by_professor() -> Dict[str, dict]:
     _, com = load_evaluacion()
+    lang_map = professor_language_map()
+    respuesta_candidates_es = ["respuesta", "Respuesta"]
+    respuesta_candidates_en = ["answer", "Answer", "respuesta en inglés", "respuesta_ingles"]
     profs: Dict[str, dict] = {}
     for _, r in com.iterrows():
         prof = r.get("nombre_profesor")
@@ -652,12 +704,21 @@ def comments_by_professor() -> Dict[str, dict]:
         qid = r.get("id_pregunta")
         if pd.isna(qid):
             continue
-        ans = r.get("respuesta")
+        lang = lang_map.get(prof, "en")
+        candidates = respuesta_candidates_en if lang == "en" else respuesta_candidates_es
+        ans = None
+        for c in candidates:
+            if c in r.index and pd.notna(r.get(c)):
+                ans = r.get(c)
+                break
+        if ans is None:
+            ans = r.get("respuesta")  # respaldo: solo hay una columna de comentarios (no bilingüe)
         clean = "" if (ans is None or (isinstance(ans, float) and pd.isna(ans))) else str(ans).strip()
         if not clean or clean.lower() == "n/a" or clean == "0":
             continue
+        pregunta_col = "question" if (lang == "en" and "question" in r.index and pd.notna(r.get("question"))) else "pregunta"
         d = profs.setdefault(prof, {})
-        q = d.setdefault(qid, {"text": r.get("pregunta"), "items": []})
+        q = d.setdefault(qid, {"text": r.get(pregunta_col), "items": []})
         q["items"].append(clean)
     return profs
 
@@ -720,7 +781,7 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
     obj_n = sum(obj_counts.values())
     obj_pct = None
     if obj_n:
-        todos = sum(c for ans, c in obj_counts.items() if str(ans).startswith("Todos"))
+        todos = sum(c for ans, c in obj_counts.items() if str(ans).strip().casefold() in OBJ_ALL_VALUES)
         obj_pct = todos / obj_n * 100
 
     aspects_list = sorted(
@@ -736,7 +797,7 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
     return {
         "avg": avg, "n": total_n, "nps": nps, "npsN": nps_n, "objectivesAllPct": obj_pct, "objN": obj_n,
         "workloadCounts": workload_counts, "aspects": aspects_list, "respondents": nps_n,
-        "inscritos": inscritos, "course": course, "questions": questions,
+        "inscritos": inscritos, "course": course, "questions": questions, "lang": q.get("lang", "en"),
     }
 
 
@@ -977,13 +1038,13 @@ def page_summary():
     col_tbl, col_donut = st.columns([3, 1])
     with col_tbl:
         st.markdown(
-            f'<div style="display:flex;justify-content:flex-end;align-items:flex-end;gap:26px;margin-bottom:6px;">'
-            f'<div style="text-align:right;"><div style="font-size:14px;font-weight:700;color:{INK};">{male_pct:.0f}%</div>'
+            f'<div style="display:flex;justify-content:flex-start;align-items:flex-start;gap:26px;margin-bottom:6px;">'
+            f'<div style="text-align:left;"><div class="kv accent">{total_profs}</div>'
+            f'<div class="kl">Visiting Faculty</div></div>'
+            f'<div style="text-align:left;"><div style="font-size:14px;font-weight:700;color:{INK};">{male_pct:.0f}%</div>'
             f'<div class="kl">% Male</div></div>'
-            f'<div style="text-align:right;"><div style="font-size:14px;font-weight:700;color:{INK};">{female_pct:.0f}%</div>'
-            f'<div class="kl">% Female</div></div>'
-            f'<div style="text-align:right;"><div class="kv accent">{total_profs}</div>'
-            f'<div class="kl">Visiting Faculty</div></div></div>',
+            f'<div style="text-align:left;"><div style="font-size:14px;font-weight:700;color:{INK};">{female_pct:.0f}%</div>'
+            f'<div class="kl">% Female</div></div></div>',
             unsafe_allow_html=True,
         )
         if focus:
@@ -1001,10 +1062,12 @@ def page_summary():
         fig_area = go.Figure(go.Pie(
             labels=area_counts.index, values=area_counts.values, hole=0.55,
             marker=dict(colors=[BLUE, PURPLE, PINK, GREEN, "#F2994A", "#3FA34D", "#8C7F87"]),
-            textinfo="label+value", textfont=dict(size=13), pull=[0.03] * len(area_counts),
+            textinfo="label+value", textposition="inside", insidetextorientation="radial",
+            textfont=dict(size=12, color="#fff"),
         ))
         fig_area.update_layout(margin=dict(t=10, r=10, b=10, l=10), showlegend=False,
-                                paper_bgcolor="rgba(0,0,0,0)", height=460)
+                                paper_bgcolor="rgba(0,0,0,0)", height=460, uniformtext_minsize=9,
+                                uniformtext_mode="hide")
         st.plotly_chart(fig_area, use_container_width=True)
 
 
@@ -1357,16 +1420,24 @@ def page_visiting():
     if sat_rows:
         col_radar, col_bars = st.columns(2)
         with col_radar:
+            st.markdown("##### Overall Ratings (Radar)")
             axes = [(a, v) for a, v in _radar_axes_multi(sat_rows) if v is not None]
             if len(axes) >= 3:
+                r_vals = [v for _, v in axes] + [axes[0][1]]
+                theta_vals = [a for a, _ in axes] + [axes[0][0]]
                 fig = go.Figure(go.Scatterpolar(
-                    r=[v for _, v in axes] + [axes[0][1]], theta=[a for a, _ in axes] + [axes[0][0]],
-                    fill="toself", fillcolor="rgba(230,17,102,0.15)", line=dict(color=PINK, width=2),
+                    r=r_vals, theta=theta_vals,
+                    fill="toself", fillcolor="rgba(230,17,102,0.18)", line=dict(color=PINK, width=2),
+                    mode="lines+markers+text", marker=dict(size=6, color=PINK),
+                    text=[f"{v:.2f}" for v in r_vals], textposition="top center",
+                    textfont=dict(size=11, color=INK),
                 ))
-                fig.update_layout(margin=dict(t=20, r=40, b=20, l=40),
-                                   polar=dict(radialaxis=dict(visible=True, range=[0, 5])),
-                                   showlegend=False, paper_bgcolor="rgba(0,0,0,0)", height=320)
+                fig.update_layout(margin=dict(t=20, r=50, b=20, l=50),
+                                   polar=dict(radialaxis=dict(visible=True, range=[0, 5], tickfont=dict(size=9))),
+                                   showlegend=False, paper_bgcolor="rgba(0,0,0,0)", height=340)
                 st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Not enough satisfaction categories with data to draw the radar for this scope.")
         with col_bars:
             st.markdown("##### Student Performance")
             perf = [(label, _avg_multi(sat_rows, [q])) for label, q in STUDENT_PERF_ITEMS]
@@ -1405,7 +1476,9 @@ def _fcol(row: dict, target: str):
 
 
 def _find_satisfaction_row(df_sat: pd.DataFrame, curso: str, profesor: str) -> Optional[dict]:
-    matches = df_sat[df_sat["Course title"] == curso]
+    curso_norm = re.sub(r"\s+", " ", str(curso)).strip().casefold()
+    title_norm = df_sat["Course title"].astype(str).str.replace(r"\s+", " ", regex=True).str.strip().str.casefold()
+    matches = df_sat[title_norm == curso_norm]
     if len(matches) == 0:
         return None
     if len(matches) == 1:
@@ -1617,16 +1690,24 @@ def _render_professor_detail(entry: dict, entries: List[dict]):
 
         col_radar, col_fields = st.columns([1, 1])
         with col_radar:
+            st.markdown("##### Overall Ratings (Radar)")
             axes = [(a, v) for a, v in _radar_axes(row) if v is not None]
             if len(axes) >= 3:
+                r_vals = [v for _, v in axes] + [axes[0][1]]
+                theta_vals = [a for a, _ in axes] + [axes[0][0]]
                 fig = go.Figure(go.Scatterpolar(
-                    r=[v for _, v in axes] + [axes[0][1]], theta=[a for a, _ in axes] + [axes[0][0]],
-                    fill="toself", fillcolor="rgba(230,17,102,0.15)", line=dict(color=PINK, width=2),
+                    r=r_vals, theta=theta_vals,
+                    fill="toself", fillcolor="rgba(230,17,102,0.18)", line=dict(color=PINK, width=2),
+                    mode="lines+markers+text", marker=dict(size=6, color=PINK),
+                    text=[f"{v:.2f}" for v in r_vals], textposition="top center",
+                    textfont=dict(size=11, color=INK),
                 ))
-                fig.update_layout(margin=dict(t=20, r=40, b=20, l=40),
-                                   polar=dict(radialaxis=dict(visible=True, range=[0, 5])),
-                                   showlegend=False, paper_bgcolor="rgba(0,0,0,0)", height=320)
+                fig.update_layout(margin=dict(t=20, r=50, b=20, l=50),
+                                   polar=dict(radialaxis=dict(visible=True, range=[0, 5], tickfont=dict(size=9))),
+                                   showlegend=False, paper_bgcolor="rgba(0,0,0,0)", height=340)
                 st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Not enough satisfaction categories with data to draw the radar.")
         with col_fields:
             st.markdown(f"**Would choose the same modality again?** {_fcol(row, 'Would you prefer to deliver the course in the same modality again','—')}")
             st.markdown(f"**Enrollment size:** {_fcol(row, 'Regarding the number of enrolled students, do you consider that it was','—')}")
@@ -1661,123 +1742,450 @@ def _render_professor_detail(entry: dict, entries: List[dict]):
 
 
 # ── 14) PDF — Evaluation Report per professor ────────────────────────────
+def _pdf_check_page(y_mm, needed, page_h_mm, draw_header_fn):
+    if y_mm + needed > page_h_mm - 16:
+        draw_header_fn()
+        return 24.0
+    return y_mm
+
+
+def _pdf_stacked_bar(c, options: dict, order: list, color_map: dict, x_mm, y_mm, w_mm, h_mm, page_h_mm):
+    """Traduce EIV.Export.pdfStackedBar a reportlab -- todo se razona en mm
+    (y_mm = distancia desde ARRIBA de la página, igual que el resto del
+    layout), convirtiendo a puntos de reportlab solo al dibujar. Devuelve
+    el nuevo y_mm (más abajo) para encadenar el siguiente elemento."""
+    from reportlab.lib import colors as rl_colors
+    from reportlab.lib.units import mm
+    total = sum(options.get(k, 0) for k in order)
+    if not total:
+        return y_mm + h_mm + 2
+    top_pt = (page_h_mm - y_mm) * mm
+    h_pt = h_mm * mm
+    cx = x_mm * mm
+    for k in order:
+        n = options.get(k, 0)
+        if not n:
+            continue
+        sw = (w_mm * mm) * (n / total)
+        col = color_map.get(k, (180, 180, 180))
+        c.setFillColor(rl_colors.Color(col[0] / 255, col[1] / 255, col[2] / 255))
+        c.rect(cx, top_pt - h_pt, sw, h_pt, fill=1, stroke=0)
+        if sw > 14:
+            c.setFont("Helvetica-Bold", 6.5)
+            c.setFillColor(rl_colors.white)
+            c.drawCentredString(cx + sw / 2, top_pt - h_pt / 2 - 2.2, f"{round(n / total * 100)}%")
+        cx += sw
+    c.setStrokeColor(rl_colors.HexColor("#C8C8C8"))
+    c.setLineWidth(0.4)
+    c.rect(x_mm * mm, top_pt - h_pt, w_mm * mm, h_pt, fill=0, stroke=1)
+    return y_mm + h_mm + 2
+
+
+def _pdf_legend(c, options: dict, order: list, color_map: dict, x_mm, y_mm, w_mm, page_h_mm):
+    from reportlab.lib import colors as rl_colors
+    from reportlab.lib.units import mm
+    lx_mm, ly_mm = x_mm, y_mm
+    c.setFont("Helvetica", 6.5)
+    for k in order:
+        n = options.get(k, 0)
+        if not n:
+            continue
+        col = color_map.get(k, (180, 180, 180))
+        top_pt = (page_h_mm - ly_mm) * mm
+        c.setFillColor(rl_colors.Color(col[0] / 255, col[1] / 255, col[2] / 255))
+        c.rect(lx_mm * mm, top_pt - 2.4 * mm, 3.5 * mm, 3.2 * mm, fill=1, stroke=0)
+        c.setFillColor(rl_colors.HexColor(INK))
+        label = f"{k} ({n})"
+        c.drawString(lx_mm * mm + 5 * mm, top_pt - 2.4 * mm, label)
+        lx_mm += (c.stringWidth(label, "Helvetica", 6.5) / mm) + 8
+        if lx_mm > x_mm + w_mm - 24:
+            lx_mm, ly_mm = x_mm, ly_mm + 5
+    return ly_mm + 6
+
+
+def _pdf_nps_bar(c, options: dict, x_mm, y_mm, w_mm, h_mm, page_h_mm):
+    from reportlab.lib import colors as rl_colors
+    from reportlab.lib.units import mm
+    NPS_COL = {
+        0: (210, 45, 45), 1: (220, 55, 55), 2: (225, 85, 55), 3: (240, 110, 40), 4: (255, 145, 0),
+        5: (255, 190, 0), 6: (205, 215, 55), 7: (155, 200, 80), 8: (95, 175, 95), 9: (55, 155, 75), 10: (25, 135, 55),
+    }
+    sw_mm = w_mm / 11
+    top_pt = (page_h_mm - y_mm) * mm
+    h_pt = h_mm * mm
+    c.setFont("Helvetica", 6)
+    c.setFillColor(rl_colors.HexColor("#8C7F87"))
+    for i in range(11):
+        c.drawCentredString((x_mm + i * sw_mm + sw_mm / 2) * mm, top_pt + 2 * mm, str(i))
+    for i in range(11):
+        n = 0
+        for k, v in options.items():
+            if str(k).strip() == str(i):
+                n += v
+        col = NPS_COL[i]
+        cx = (x_mm + i * sw_mm) * mm
+        c.setFillColor(rl_colors.Color(col[0] / 255, col[1] / 255, col[2] / 255))
+        c.rect(cx, top_pt - h_pt, sw_mm * mm - 0.4 * mm, h_pt, fill=1, stroke=0)
+        if n > 0:
+            c.setFont("Helvetica-Bold", 7)
+            c.setFillColor(rl_colors.white)
+            c.drawCentredString(cx + (sw_mm * mm) / 2, top_pt - h_pt / 2 - 2.5, str(n))
+    c.setStrokeColor(rl_colors.HexColor("#C8C8C8"))
+    c.setLineWidth(0.4)
+    c.rect(x_mm * mm, top_pt - h_pt, w_mm * mm, h_pt, fill=0, stroke=1)
+    return y_mm + h_mm + 3
+
+
+# Órdenes bilingües (español + inglés) — cada fila de BD_evaluacion_curso.xlsx
+# ya trae ambos idiomas, y evaluation_by_professor() elige uno según el
+# profesor, así que estos mapas cubren ambos casos; solo se dibujan las
+# claves que de verdad tengan datos.
+LIKERT_ORDER_PDF = [
+    "Totalmente en desacuerdo", "Strongly Disagree", "En desacuerdo", "Disagree",
+    "Ni de acuerdo ni en desacuerdo", "Neither agree nor disagree",
+    "De acuerdo", "Agree", "Totalmente de acuerdo", "Strongly Agree",
+]
+LIKERT_COLOR_PDF = {
+    "Totalmente en desacuerdo": (210, 45, 45), "Strongly Disagree": (210, 45, 45),
+    "En desacuerdo": (255, 112, 67), "Disagree": (255, 112, 67),
+    "Ni de acuerdo ni en desacuerdo": (255, 193, 7), "Neither agree nor disagree": (255, 193, 7),
+    "De acuerdo": (139, 195, 74), "Agree": (139, 195, 74),
+    "Totalmente de acuerdo": (46, 125, 50), "Strongly Agree": (46, 125, 50),
+}
+WORKLOAD_ORDER_PDF = ["Nada", "Nothing", "Poco", "Low", "Mucho", "A lot", "Demasiado", "Too much"]
+WORKLOAD_COLOR_PDF = {
+    "Nada": (46, 125, 50), "Nothing": (46, 125, 50), "Poco": (139, 195, 74), "Low": (139, 195, 74),
+    "Mucho": (255, 112, 67), "A lot": (255, 112, 67), "Demasiado": (210, 45, 45), "Too much": (210, 45, 45),
+}
+OBJ_ORDER_PDF = ["Ninguno", "None", "Algunos", "Some", "Todos", "All"]
+OBJ_COLOR_PDF = {
+    "Ninguno": (210, 45, 45), "None": (210, 45, 45), "Algunos": (255, 193, 7), "Some": (255, 193, 7),
+    "Todos": (46, 125, 50), "All": (46, 125, 50),
+}
+
+
+def _pdf_file_bytes(path: str) -> Optional[bytes]:
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except Exception:
+        return None
+
+
 def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> bytes:
-    """Resumen en PDF (reportlab) del profesor visitante — mismo contenido
-    que el PDF del HTML (KPIs de evaluación + aspectos + comentarios +
-    satisfacción), sin réplica pixel-a-pixel del radar/barras degradadas."""
+    """Réplica en reportlab del PDF de evaluación aprobado en el HTML
+    (EIV.Export.generateSingleProfessorPDF): banda rosa con logo+foto,
+    tarjetas KPI, barras apiladas con leyenda de conteos reales agrupadas
+    por aspecto, barra NPS 0-10 con gradiente, barras de objetivos y carga
+    académica, y comentarios paginados — mismo diseño y lógica aprobados.
+    Todo el layout se razona en mm (como el jsPDF original), convirtiendo a
+    puntos de reportlab solo en las llamadas de dibujo."""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.lib import colors as rl_colors
     from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib.utils import ImageReader
     import textwrap
 
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
-    W, H = A4
-    mg = 14 * mm
+    PW, PH = 210.0, 297.0
+    mg = 14.0
+    cW = PW - 2 * mg
     pink = rl_colors.HexColor(PINK)
+    ink = rl_colors.HexColor(INK)
+    muted = rl_colors.HexColor("#8C7F87")
+    lgray = rl_colors.HexColor("#F8F6F8")
 
-    def header_band():
-        c.setFillColor(rl_colors.HexColor(INK))
-        c.rect(0, H - 26 * mm, W, 26 * mm, fill=1, stroke=0)
-        c.setFillColor(rl_colors.white)
-        c.setFont("Helvetica-Bold", 15)
-        c.drawString(mg, H - 15 * mm, f"EIV — {profesor}")
-        c.setFont("Helvetica", 9)
-        c.drawString(mg, H - 21 * mm, curso)
+    def top_pt(y_mm):
+        return (PH - y_mm) * mm
 
-    def check_page(y, needed):
-        if y - needed < 16 * mm:
-            c.showPage()
-            header_band()
-            return H - 34 * mm
-        return y
+    entry = next((e for e in load_cursos().to_dict("records") if e.get("Profesor") == profesor), None)
+    info = None
+    if entry:
+        d0 = compute_all()
+        info = {
+            "universidad": entry.get("Universidad"), "pais": entry.get("País Universidad"),
+            "curso": entry.get("Curso"), "modalidad": entry.get("Modalidad"), "bloque": entry.get("Ciclo"),
+            "inscritos": d0["inscritos_por_curso"].get(entry.get("Curso"), 0),
+        }
 
-    header_band()
-    y = H - 34 * mm
+    logo_bytes = None
+    try:
+        _base = _os.path.dirname(_os.path.abspath(__file__))
+        for rel in _LOGO_CANDIDATES:
+            full = _os.path.join(_base, rel)
+            if _os.path.exists(full):
+                logo_bytes = _pdf_file_bytes(full)
+                break
+    except Exception:
+        logo_bytes = None
+    photo_bytes = _pdf_file_bytes(_photo_path(profesor))
 
-    c.setFillColor(rl_colors.HexColor(INK))
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(mg, y, "COURSE EVALUATION")
-    y -= 8 * mm
-
-    kpis = [
-        ("Students Responded", str(ed["respondents"])),
-        ("Response Rate", f"{ed['respondents']/ed['inscritos']*100:.1f}%" if ed["inscritos"] else "—"),
-        ("Avg. Satisfaction", f"{ed['avg']:.2f} / 5" if ed["avg"] is not None else "—"),
-        ("Would Recommend", f"{ed['nps']:.1f} / 10" if ed["npsN"] else "—"),
-        ("Objectives Met", f"{ed['objectivesAllPct']:.1f}%" if ed["objN"] else "—"),
-    ]
-    kw = (W - 2 * mg) / len(kpis)
-    for i, (label, val) in enumerate(kpis):
-        x = mg + i * kw
-        c.setFillColor(rl_colors.HexColor("#F6F8FB"))
-        c.roundRect(x, y - 18 * mm, kw - 4, 18 * mm, 3, fill=1, stroke=0)
+    def draw_stats_header():
         c.setFillColor(pink)
-        c.setFont("Helvetica-Bold", 11)
-        c.drawCentredString(x + (kw - 4) / 2, y - 9 * mm, val)
-        c.setFillColor(rl_colors.HexColor("#8B97AC"))
-        c.setFont("Helvetica", 6.5)
-        c.drawCentredString(x + (kw - 4) / 2, y - 15 * mm, label)
-    y -= 26 * mm
+        c.rect(0, top_pt(26), PW * mm, 26 * mm, fill=1, stroke=0)
+        if logo_bytes:
+            try:
+                c.setFillColor(rl_colors.white)
+                c.roundRect(mg * mm, top_pt(23), 42 * mm, 20 * mm, 3 * mm, fill=1, stroke=0)
+                img = ImageReader(io.BytesIO(logo_bytes))
+                c.drawImage(img, (mg + 2) * mm, top_pt(21), width=38 * mm, height=16 * mm,
+                            preserveAspectRatio=True, mask="auto")
+            except Exception:
+                pass
+        name_right_edge = PW - mg
+        if photo_bytes:
+            try:
+                c.setFillColor(rl_colors.white)
+                c.roundRect((PW - mg - 18) * mm, top_pt(23), 18 * mm, 20 * mm, 2 * mm, fill=1, stroke=0)
+                img = ImageReader(io.BytesIO(photo_bytes))
+                c.drawImage(img, (PW - mg - 17) * mm, top_pt(22), width=16 * mm, height=18 * mm,
+                            preserveAspectRatio=True, mask="auto")
+                name_right_edge = PW - mg - 22
+            except Exception:
+                pass
+        c.setFillColor(rl_colors.white)
+        c.setFont("Helvetica-Bold", 13)
+        c.drawRightString(name_right_edge * mm, top_pt(12), profesor)
+        c.setFont("Helvetica", 9)
+        c.drawRightString(name_right_edge * mm, top_pt(19), info["curso"] if info else (curso or ""))
 
-    c.setFillColor(rl_colors.HexColor(INK))
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(mg, y, "BY ASPECT")
-    y -= 7 * mm
-    for a in ed["aspects"]:
-        y = check_page(y, 6 * mm)
+    def draw_continuation_header():
+        c.setFillColor(pink)
+        c.rect(0, top_pt(14), PW * mm, 14 * mm, fill=1, stroke=0)
+        c.setFillColor(rl_colors.white)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawRightString((PW - mg) * mm, top_pt(9), f"{profesor} — continued")
+
+    def draw_footer(page_num):
+        c.setFillColor(lgray)
+        c.rect(0, 0, PW * mm, 10 * mm, fill=1, stroke=0)
+        c.setFont("Helvetica", 7)
+        c.setFillColor(muted)
+        c.drawString(12 * mm, 4 * mm, "International Summer School 2026 — Course Evaluation")
+        c.drawRightString((PW - 12) * mm, 4 * mm, str(page_num))
+
+    page_num = 1
+
+    # ---- Página 1: banda + KPIs ----
+    draw_stats_header()
+    y = 38.0
+    c.setFillColor(ink)
+    if info:
+        c.setFont("Helvetica", 9)
+        c.drawString(mg * mm, top_pt(y), f"{info['universidad']}  |  {info['pais']}  |  Block {info['bloque']}  |  {info['modalidad']}")
+        y += 10
+
+    stats = [
+        (f"{ed['respondents']} / {ed['inscritos']}" if ed.get("inscritos") else str(ed["respondents"]), "Students Responded"),
+        (f"{ed['respondents']/ed['inscritos']*100:.0f}%" if ed.get("inscritos") else "—", "Response Rate"),
+        (f"{ed['avg']:.2f} / 5.0" if ed["avg"] is not None else "N/A", "Avg. Satisfaction"),
+        (f"{ed['nps']:.1f} / 10" if ed["npsN"] else "N/A", "Avg. Recommendation"),
+        (f"{ed['objectivesAllPct']:.0f}%" if ed["objN"] else "N/A", "Objectives Met (All)"),
+    ]
+    bw = cW / 5
+    for i, (val, label) in enumerate(stats):
+        bx = mg + i * bw
+        c.setFillColor(lgray)
+        c.roundRect((bx + 1) * mm, top_pt(y + 22), (bw - 3) * mm, 22 * mm, 3 * mm, fill=1, stroke=0)
+        c.setFillColor(pink)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawCentredString((bx + bw / 2 - 1) * mm, top_pt(y + 11), val)
+        c.setFillColor(muted)
+        c.setFont("Helvetica", 6)
+        c.drawCentredString((bx + bw / 2 - 1) * mm, top_pt(y + 18), label)
+    y += 32
+    draw_footer(page_num)
+
+    # ---- Páginas de evaluación cuantitativa (barras apiladas por aspecto) ----
+    c.showPage()
+    page_num += 1
+    draw_continuation_header()
+    draw_footer(page_num)
+    y = 24.0
+
+    def check(needed):
+        nonlocal y, page_num
+        if y + needed > PH - 16:
+            c.showPage()
+            page_num += 1
+            draw_continuation_header()
+            draw_footer(page_num)
+            y = 24.0
+
+    def section_bar(title):
+        nonlocal y
+        check(12)
+        c.setFillColor(pink)
+        c.rect(mg * mm, top_pt(y + 7.5), cW * mm, 7.5 * mm, fill=1, stroke=0)
+        c.setFillColor(rl_colors.white)
+        c.setFont("Helvetica-Bold", 8.5)
+        c.drawString((mg + 5) * mm, top_pt(y + 5.3), title)
+        y += 11
+
+    def draw_likert_q(q):
+        nonlocal y
+        text = q.get("text") or ""
+        q_lines = textwrap.wrap(str(text), width=110) or [""]
+        needed = len(q_lines) * 4 + 7 + 14
+        check(needed)
+        c.setFillColor(ink)
         c.setFont("Helvetica", 8)
-        c.setFillColor(rl_colors.HexColor(INK))
-        c.drawString(mg, y, a["aspect"])
-        c.setFont("Helvetica-Bold", 8)
-        c.drawRightString(W - mg, y, f'{a["avg"]:.2f} / 5.0  (n={a["n"]})')
-        y -= 5.5 * mm
-    y -= 4 * mm
+        for i, line in enumerate(q_lines):
+            c.drawString(mg * mm, top_pt(y + i * 4), line)
+        total = sum(q["options"].values())
+        if total:
+            c.setFillColor(lgray)
+            c.roundRect((mg + cW - 22) * mm, top_pt(y - 2), 22 * mm, 6 * mm, 2 * mm, fill=1, stroke=0)
+            c.setFont("Helvetica", 7)
+            c.setFillColor(muted)
+            c.drawCentredString((mg + cW - 11) * mm, top_pt(y + 0.5), f"n={total}")
+        y += len(q_lines) * 4 + 3
+        y = _pdf_stacked_bar(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, mg, y, cW, 7, PH)
+        y = _pdf_legend(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, mg, y, cW, PH)
+        c.setStrokeColor(rl_colors.HexColor("#E6E6E6"))
+        c.setLineWidth(0.3)
+        c.line(mg * mm, top_pt(y), (mg + cW) * mm, top_pt(y))
+        y += 5
+
+    by_aspect: Dict[str, list] = {}
+    for q in ed["questions"].values():
+        if not any(k in LIKERT_WEIGHTS for k in q["options"]):
+            continue
+        asp = q.get("aspect") or "General"
+        by_aspect.setdefault(asp, []).append(q)
+
+    section_bar("QUANTITATIVE EVALUATION")
+    for asp, qs in by_aspect.items():
+        check(16)
+        c.setFillColor(rl_colors.HexColor("#FBE3ED"))
+        c.rect(mg * mm, top_pt(y + 6.5), cW * mm, 6.5 * mm, fill=1, stroke=0)
+        c.setFillColor(ink)
+        c.setFont("Helvetica-Bold", 7.5)
+        c.drawString((mg + 4) * mm, top_pt(y + 4.6), str(asp).upper())
+        y += 9.5
+        for q in qs:
+            draw_likert_q(q)
+        y += 2
+
+    nps_q = ed["questions"].get(NPS_QID)
+    obj_q = ed["questions"].get(OBJ_QID)
+    wl_q = ed["questions"].get(WORKLOAD_QID)
+
+    if nps_q or obj_q or wl_q:
+        c.showPage()
+        page_num += 1
+        draw_continuation_header()
+        draw_footer(page_num)
+        y = 24.0
+
+    if nps_q:
+        section_bar("RECOMMENDATION (0-10)")
+        q_lines = textwrap.wrap(str(nps_q.get("text") or ""), width=110) or [""]
+        check(len(q_lines) * 4 + 20)
+        c.setFillColor(ink)
+        c.setFont("Helvetica", 8)
+        for i, line in enumerate(q_lines):
+            c.drawString(mg * mm, top_pt(y + i * 4), line)
+        y += len(q_lines) * 4 + 5
+        y = _pdf_nps_bar(c, nps_q["options"], mg, y, cW, 10, PH) + 8
+
+    if obj_q:
+        check(24)
+        section_bar("COURSE OBJECTIVES")
+        q_lines = textwrap.wrap(str(obj_q.get("text") or ""), width=110) or [""]
+        check(len(q_lines) * 4 + 20)
+        c.setFillColor(ink)
+        c.setFont("Helvetica", 8)
+        for i, line in enumerate(q_lines):
+            c.drawString(mg * mm, top_pt(y + i * 4), line)
+        y += len(q_lines) * 4 + 3
+        y = _pdf_stacked_bar(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, 7, PH)
+        y = _pdf_legend(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, PH) + 8
+
+    if wl_q:
+        check(24)
+        section_bar("ACADEMIC WORKLOAD")
+        q_lines = textwrap.wrap(str(wl_q.get("text") or ""), width=110) or [""]
+        check(len(q_lines) * 4 + 20)
+        c.setFillColor(ink)
+        c.setFont("Helvetica", 8)
+        for i, line in enumerate(q_lines):
+            c.drawString(mg * mm, top_pt(y + i * 4), line)
+        y += len(q_lines) * 4 + 3
+        y = _pdf_stacked_bar(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, 7, PH)
+        _pdf_legend(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, PH)
+
+    draw_footer(page_num)
+
+    # ---- Página de comentarios ----
+    c.showPage()
+    page_num += 1
+    draw_continuation_header()
+    y = 24.0
 
     com_by_prof = comments_by_professor()
-    prof_comments = com_by_prof.get(_resolve_alias(profesor), {})
-    for qid, label in {**POSITIVE_QIDS, **IMPROVE_QIDS}.items():
-        group = prof_comments.get(qid, {"items": []})
-        y = check_page(y, 12 * mm)
-        c.setFillColor(pink)
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(mg, y, f"{label} ({len(group['items'])})")
-        y -= 6 * mm
-        if not group["items"]:
-            c.setFont("Helvetica-Oblique", 8)
-            c.setFillColor(rl_colors.HexColor("#8B97AC"))
-            c.drawString(mg, y, "No comments for this question.")
-            y -= 6 * mm
-        for item in group["items"]:
-            for line in (textwrap.wrap(str(item), width=100) or [""]):
-                y = check_page(y, 5 * mm)
-                c.setFont("Helvetica", 7.5)
-                c.setFillColor(rl_colors.HexColor(INK))
-                c.drawString(mg, y, line)
-                y -= 4.2 * mm
-            y -= 1.5 * mm
-        y -= 4 * mm
+    com_qs = com_by_prof.get(_resolve_alias(profesor), {})
+    comment_groups = []
+    for qid, label in POSITIVE_QIDS.items():
+        g = com_qs.get(qid)
+        comment_groups.append({"label": f"{label} — Valued Most", "items": g["items"] if g else []})
+    for qid, label in IMPROVE_QIDS.items():
+        g = com_qs.get(qid)
+        comment_groups.append({"label": f"{label} — Could Improve", "items": g["items"] if g else []})
 
-    if sat_row:
-        y = check_page(y, 12 * mm)
-        c.setFillColor(rl_colors.HexColor(INK))
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(mg, y, "FACULTY SATISFACTION SURVEY")
-        y -= 8 * mm
-        overall = _fcol(sat_row, "Please rate your overall experience during this year’s International Summer School  (1: Not at all – 5: Exceeded expectations)")
-        matched = _fcol(sat_row, "Did your experience match your expectations?  (1: Not at all – 5: Exceeded expectations)")
-        c.setFont("Helvetica", 9)
-        c.setFillColor(rl_colors.HexColor(INK))
-        c.drawString(mg, y, f"Overall Experience: {overall}/5   ·   Matched Expectations: {matched}/5")
-        y -= 8 * mm
+    def ensure_space(needed):
+        nonlocal y, page_num
+        if y + needed > 283:
+            draw_footer(page_num)
+            c.showPage()
+            page_num += 1
+            draw_continuation_header()
+            y = 24.0
 
-    c.setFont("Helvetica", 7)
-    c.setFillColor(rl_colors.HexColor("#8B97AC"))
-    c.drawString(mg, 10 * mm, "International Summer School (EIV) · Facultad de Administración · Universidad de los Andes")
+    ensure_space(10)
+    c.setFillColor(ink)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(mg * mm, top_pt(y), "STUDENT COMMENTS")
+    y += 7
+
+    with_items = [g for g in comment_groups if g["items"]]
+    if not with_items:
+        c.setFont("Helvetica", 8)
+        c.setFillColor(rl_colors.HexColor("#50484E"))
+        c.drawString(mg * mm, top_pt(y), "No comments collected for this faculty member.")
+        draw_footer(page_num)
+    else:
+        for g in comment_groups:
+            ensure_space(10)
+            c.setFont("Helvetica-Bold", 8.5)
+            c.setFillColor(pink)
+            n = len(g["items"])
+            c.drawString(mg * mm, top_pt(y), f"{g['label'].upper()}  ({n} student{'' if n == 1 else 's'} responded)")
+            y += 5.5
+            if not g["items"]:
+                c.setFont("Helvetica", 8)
+                c.setFillColor(muted)
+                c.drawString(mg * mm, top_pt(y), "No comments for this question.")
+                y += 6
+                continue
+            for i, txt in enumerate(g["items"]):
+                lines = textwrap.wrap(f'{i + 1}. "{txt}"', width=115) or [""]
+                needed = len(lines) * 4 + 2
+                ensure_space(needed)
+                c.setFont("Helvetica", 8)
+                c.setFillColor(rl_colors.HexColor("#50484E"))
+                for j, line in enumerate(lines):
+                    c.drawString(mg * mm, top_pt(y + j * 4), line)
+                y += needed
+            y += 4
+        draw_footer(page_num)
+
     c.save()
     buf.seek(0)
     return buf.getvalue()
+
 
 
 # ── 15) PÁGINA — School Enrollment & Gap Analysis ────────────────────────
