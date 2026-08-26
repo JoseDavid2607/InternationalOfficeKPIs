@@ -1,874 +1,1115 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KPIs for International Accreditations</title>
-<style>
-:root {
-  --bg-page: #f5f6f8;
-  --bg-glass: rgba(255,255,255,.93);
-  --bg-white: #ffffff;
-  --slate: #4b5563;
-  --slate-dark: #1f2937;
-  --slate-mid: #374151;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --teal: #0f6e56;
-  --teal-light: #e1f5ee;
-  --teal-brand: #56d6c9;
-  --teal-brand-dark: #2fa89c;
-  --shadow-panel: 0 20px 50px rgba(0,0,0,.16);
-  --shadow-soft: 0 10px 24px rgba(0,0,0,.10);
-  --radius-panel: 24px;
-}
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, Helvetica, sans-serif; background: var(--bg-page); color: var(--slate-dark); -webkit-font-smoothing: antialiased; }
+# ===========================================================================
+#  UASM · Internationalization Analytics · App multipágina
+#  Basada en la misma arquitectura de UASM_Faculty_Analytics.py: navegación
+#  fija arriba, sidebar con logo, tarjetas KPI, Plotly para gráficos.
+#  Fuente de datos: Google Drive (Service Account), varios archivos .xlsx.
+#
+#  Secciones completas por ahora: Faculty, Visiting Faculty, Intl. Weeks.
+#  Las demás (Research, Home Campus, Graduates, Agreement Utilization,
+#  Mobility by Program, PhD Mobility, Agreements) quedan como "Coming soon",
+#  listas para completarse en próximas iteraciones.
+# ===========================================================================
+from __future__ import annotations
 
-/* ── HERO ── */
-header.hero {
-  color: #fff; position: relative; min-height: 300px;
-  padding: 48px 24px 140px;
-  display: flex; align-items: center; justify-content: center;
-  overflow: hidden; text-align: center;
-  background:
-    linear-gradient(to bottom, rgba(8,12,20,.08), rgba(8,12,20,.12), rgba(8,12,20,.20)),
-    url("../../imagenes/Santodomingo.jpg") center center / cover no-repeat;
-}
-header.hero::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(to bottom, rgba(255,255,255,0) 65%, var(--bg-page) 100%);
-  pointer-events: none;
-}
-.hero-inner { max-width: 1100px; width: 100%; margin: 0 auto; position: relative; z-index: 2; }
-.hero-eyebrow {
-  display: inline-block; margin-bottom: 14px; padding: 8px 16px;
-  border-radius: 999px; background: rgba(255,255,255,.16);
-  border: 1px solid rgba(255,255,255,.18); font-size: 13px; font-weight: 700;
-  letter-spacing: .02em;
-}
-header.hero h1 {
-  margin: 0; font-weight: 800; line-height: 1.02;
-  font-size: clamp(2.2rem, 4vw + .5rem, 3.8rem);
-  letter-spacing: -.03em; text-shadow: 0 10px 30px rgba(0,0,0,.28);
-}
-.back-button { position: absolute; top: 24px; left: 24px; z-index: 20; }
-.back-button a {
-  width: 52px; height: 52px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.22);
-  text-decoration: none; box-shadow: 0 8px 20px rgba(0,0,0,.18);
-  transition: transform .2s, background .2s; backdrop-filter: blur(4px);
-}
-.back-button a:hover { transform: translateY(-2px); background: rgba(255,255,255,0.26); }
-.back-button svg { width: 24px; height: 24px; stroke: #fff; }
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+import re
+import io
+import time
+from typing import Optional, Dict, List
 
-/* ── INTRO ── */
-.intro-wrap {
-  position: relative; max-width: 900px; margin: -135px auto 12px;
-  z-index: 10; padding: 0 16px; display: flex; align-items: flex-end; gap: 0;
-}
-.intro-seneca { position: relative; flex-shrink: 0; width: 100px; margin-right: -16px; z-index: 13; }
-.intro-seneca img { max-width: 100px; height: auto; display: block; filter: drop-shadow(0 10px 18px rgba(0,0,0,.16)); }
-.intro-panel {
-  flex: 1; z-index: 12; padding: 20px 22px 20px 32px;
-  background: var(--bg-glass); border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-panel); text-align: left;
-  border: 1px solid rgba(255,255,255,.28);
-  font-size: .93rem; line-height: 1.7;
-}
+try:
+    from google.oauth2.service_account import Credentials
+    _GSPREAD_OK = True
+    _GSPREAD_IMPORT_ERR = None
+except ImportError as _e:
+    _GSPREAD_OK = False
+    _GSPREAD_IMPORT_ERR = str(_e)
 
-/* ── MAIN ── */
-.main { max-width: 1600px; margin: 4px auto 56px; padding: 0 20px; }
-.section-heading { margin: 0 0 14px; }
-.section-heading h2 { font-size: 1.1rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 4px; }
-.section-heading p { color: var(--muted); font-size: .88rem; }
+import requests
 
-/* ── WORKSPACE 3 COLS ── */
-.workspace { display: grid; grid-template-columns: 280px 300px 1fr; gap: 18px; align-items: stretch; }
-.col-panel { background: var(--bg-white); border-radius: var(--radius-panel); box-shadow: var(--shadow-soft); overflow: hidden; display: flex; flex-direction: column; height: 700px; }
-.col-header { padding: 18px 20px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.col-header h3 { font-size: .95rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
-.col-header p { color: var(--muted); font-size: .81rem; line-height: 1.5; }
+# ── 1) CONFIGURACIÓN GLOBAL ────────────────────────────────────────────────
+st.set_page_config(
+    page_title="UASM Internationalization Analytics",
+    page_icon="🌐",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-/* ── UNITS LIST ── */
-.units-scroll { overflow-y: auto; flex: 1; }
-.units-scroll::-webkit-scrollbar { width: 4px; }
-.units-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+# Paleta morado metálico elegante (no muy oscuro)
+_PURPLE_DEEP = "#4A2E7D"
+_PURPLE_MID = "#7B5AAE"
+_PURPLE_SOFT = "#A98FD2"
+_PURPLE_ACCENT = "#8A63C9"
+_PURPLE_BG_TINT = "#F4F0FA"
 
-.unit-item {
-  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
-  cursor: pointer; border: none; background: transparent; text-align: left;
-  border-bottom: 1px solid var(--border); width: 100%; transition: background .15s;
-}
-.unit-item:last-child { border-bottom: none; }
-.unit-item:hover { background: #f9fafb; }
-.unit-item.active { background: #1f2937; }
-.unit-item.active .unit-name { color: #fff; }
-.unit-item.active .unit-icon { background: rgba(255,255,255,.1); }
-.unit-item.active .unit-icon svg { stroke: #fff; }
-.unit-icon { width: 36px; height: 36px; border-radius: 10px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.unit-icon svg { width: 17px; height: 17px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
-.unit-name { font-size: .88rem; font-weight: 800; color: var(--slate-dark); flex: 1; line-height: 1.3; }
-.unit-desc { font-size: .76rem; color: var(--muted); line-height: 1.4; margin-top: 2px; font-weight: 400; }
-.unit-item.active .unit-desc { color: rgba(255,255,255,.65); }
-.unit-item.active .unit-name { color: #fff; }
-
-/* ── DASHBOARDS LIST ── */
-.dash-scroll { overflow-y: auto; flex: 1; }
-.dash-scroll::-webkit-scrollbar { width: 4px; }
-.dash-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-
-.dash-item {
-  display: flex; flex-direction: column; gap: 3px; padding: 14px 18px;
-  cursor: pointer; border: none; background: transparent; text-align: left;
-  border-bottom: 1px solid var(--border); width: 100%; transition: background .15s;
-}
-.dash-item:last-child { border-bottom: none; }
-.dash-item:hover { background: #f9fafb; }
-.dash-item.active { background: #1f2937; border-left: 3px solid var(--teal-brand); }
-.dash-item.active .dash-title { color: #fff; }
-.dash-item.active .dash-type { background: rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
-.dash-title { font-size: .87rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; }
-.dash-type { display: inline-block; padding: 2px 7px; border-radius: 999px; background: #f0fdf4; color: #166534; font-size: .72rem; font-weight: 700; margin-top: 2px; }
-.dash-type.soon { background: #f3f4f6; color: var(--muted); }
-.dash-desc { font-size: .76rem; color: var(--muted); line-height: 1.4; margin-top: 2px; }
-.dash-item.active .dash-desc { color: rgba(255,255,255,.65); }
-.empty-state { padding: 32px 20px; text-align: center; color: var(--muted); font-size: .86rem; line-height: 1.7; }
-.dash-alert-dot {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; border-radius: 50%;
-  background: #fef2f2; border: 1.5px solid #fca5a5;
-  font-size: .7rem; font-weight: 900; color: #b91c1c;
-  flex-shrink: 0; margin-left: auto;
-}
-.dash-item.active .dash-alert-dot { background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.4); color: #fca5a5; }
-
-/* ── PREVIEW PANEL ── */
-.preview-panel { display: flex; flex-direction: column; flex: 1; height: 100%; }
-.preview-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.preview-header-info { flex: 1; }
-.preview-title { font-size: .95rem; font-weight: 800; color: var(--slate-dark); }
-.preview-meta { font-size: .79rem; color: var(--muted); margin-top: 2px; }
-.action-btn {
-  display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
-  border-radius: 999px; border: none; font-size: .82rem; font-weight: 800;
-  cursor: pointer; text-decoration: none; transition: transform .15s, background .15s;
-}
-.action-btn:hover { transform: translateY(-1px); }
-.action-btn--primary { background: #1f2937; color: #fff; }
-.action-btn--teal { background: var(--teal-light); color: var(--teal); }
-.preview-body { flex: 1; position: relative; overflow: hidden; }
-.preview-iframe { width: 100%; height: 100%; border: none; display: none; position: absolute; inset: 0; }
-
-.preview-placeholder {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 12px;
-  color: var(--muted); font-size: .9rem; text-align: center; padding: 40px;
-}
-.preview-placeholder svg { width: 48px; height: 48px; stroke: #d1d5db; fill: none; stroke-width: 1.4; }
-
-.preview-loading {
-  position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center; gap: 14px;
-  background: #f8fafc; color: var(--muted); font-size: .88rem;
-}
-.preview-loading.show { display: flex; }
-.spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: var(--teal-brand); border-radius: 50%; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.countdown-wrap { width: 220px; height: 4px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
-.countdown-bar { height: 100%; background: var(--teal-brand); border-radius: 999px; width: 100%; }
-
-.preview-timeout {
-  position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center; gap: 16px;
-  background: #f8fafc; padding: 40px; text-align: center;
-}
-.preview-timeout.show { display: flex; }
-.preview-login {
-  position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center;
-  background: #f8fafc; padding: 40px; text-align: center;
-}
-.preview-login.show { display: flex; }
-.timeout-title { font-size: 1rem; font-weight: 800; color: var(--slate-dark); }
-.timeout-desc { color: var(--muted); font-size: .87rem; line-height: 1.6; max-width: 360px; }
-
-/* ── UPDATE MODAL ── */
-.modal-overlay {
-  display: none; position: fixed; inset: 0; z-index: 5000;
-  background: rgba(15,20,30,.55); backdrop-filter: blur(4px);
-  align-items: center; justify-content: center; padding: 20px;
-}
-.modal-overlay.show { display: flex; }
-.modal-box {
-  background: #fff; border-radius: 20px; width: 100%; max-width: 760px;
-  max-height: 90vh; overflow-y: auto; box-shadow: 0 32px 80px rgba(0,0,0,.28);
-  display: flex; flex-direction: column;
-}
-.modal-box::-webkit-scrollbar { width: 5px; }
-.modal-box::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
-.modal-head {
-  padding: 24px 28px 18px; border-bottom: 1px solid var(--border);
-  display: flex; align-items: flex-start; gap: 14px; flex-shrink: 0;
-  position: sticky; top: 0; background: #fff; z-index: 2; border-radius: 20px 20px 0 0;
-}
-.modal-head-icon {
-  width: 44px; height: 44px; border-radius: 12px; background: var(--teal-light);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.modal-head-icon svg { width: 22px; height: 22px; stroke: var(--teal); fill: none; stroke-width: 1.8; }
-.modal-head-text { flex: 1; }
-.modal-head-text h2 { font-size: 1.05rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 3px; }
-.modal-head-text p { font-size: .82rem; color: var(--muted); }
-.modal-close {
-  width: 32px; height: 32px; border-radius: 50%; border: none; background: #f3f4f6;
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  transition: background .15s; flex-shrink: 0; margin-top: 2px;
-}
-.modal-close:hover { background: #e5e7eb; }
-.modal-close svg { width: 16px; height: 16px; stroke: var(--slate); fill: none; stroke-width: 2.2; }
-
-.modal-status-bar {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
-  background: var(--border); border-bottom: 1px solid var(--border);
-}
-.status-cell {
-  background: #fafafa; padding: 14px 18px;
-}
-.status-cell:first-child { border-radius: 0; }
-.status-label { font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
-.status-value { font-size: .88rem; font-weight: 800; color: var(--slate-dark); }
-.status-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700;
-}
-.status-badge.ok { background: #dcfce7; color: #166534; }
-.status-badge.warn { background: #fef9c3; color: #854d0e; }
-.status-badge.dot::before {
-  content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor;
-  display: inline-block;
-}
-
-.modal-body { padding: 22px 28px 10px; flex: 1; }
-.modal-section-title {
-  font-size: .72rem; font-weight: 800; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 14px;
-}
-
-.file-card {
-  border: 1.5px solid #d1d9e6; border-radius: 14px;
-  margin-bottom: 20px; overflow: hidden; transition: border-color .2s;
-  box-shadow: 0 1px 4px rgba(0,0,0,.05);
-}
-.file-card:last-of-type { margin-bottom: 0; }
-.file-card.file-selected { border-color: var(--teal-brand); box-shadow: 0 0 0 3px rgba(13,148,136,.08); }
-.file-card-head {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 18px; background: #f4f6fa; border-bottom: 2px solid #d1d9e6;
-}
-.file-card.file-selected .file-card-head { background: #f0fdf9; border-color: #a7f3d0; }
-.file-icon {
-  width: 36px; height: 36px; border-radius: 9px; background: #f3f4f6;
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.file-card.file-selected .file-icon { background: var(--teal-light); }
-.file-icon svg { width: 17px; height: 17px; stroke: var(--slate); fill: none; stroke-width: 1.7; }
-.file-card.file-selected .file-icon svg { stroke: var(--teal); }
-.file-name { font-size: .9rem; font-weight: 800; color: var(--slate-dark); flex: 1; }
-.file-selected-badge {
-  display: none; align-items: center; gap: 5px;
-  padding: 3px 10px; border-radius: 999px;
-  background: #dcfce7; color: #15803d; font-size: .75rem; font-weight: 700;
-}
-.file-selected-badge svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.5; }
-.file-card.file-selected .file-selected-badge { display: inline-flex; }
-
-.file-meta-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
-  border-bottom: 2px solid #d1d9e6; background: #fff;
-}
-.file-meta-cell { padding: 11px 18px; border-right: 1px solid #d1d9e6; }
-.file-meta-cell:last-child { border-right: none; }
-.file-meta-label { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
-.file-meta-val { font-size: .84rem; font-weight: 700; color: var(--slate-dark); }
-.meta-next-wrap { display: flex; flex-direction: column; gap: 5px; }
-.update-alert {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px; border-radius: 999px; font-size: .7rem; font-weight: 700;
-  white-space: nowrap;
-}
-.update-alert.overdue  { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; }
-.update-alert.due-soon { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
-.update-alert.ok       { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
-.update-alert svg      { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2.5; }
-
-.file-actions { display: flex; align-items: center; gap: 10px; padding: 12px 18px; }
-.btn-download {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 14px; border-radius: 999px;
-  border: 1.5px solid #b6d8f2;
-  background: #e8f4fd; color: #1565a8; font-size: .8rem; font-weight: 700;
-  cursor: pointer; transition: background .15s, border-color .15s; white-space: nowrap;
-}
-.btn-download:hover { background: #d0eaf9; border-color: #7dbde8; }
-.btn-download svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2.2; }
-
-.file-attach-wrapper { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
-.btn-trash {
-  width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%;
-  border: 1.5px solid #fca5a5; background: #fef2f2; color: #dc2626;
-  display: none; align-items: center; justify-content: center;
-  cursor: pointer; transition: background .15s;
-}
-.btn-trash:hover { background: #fee2e2; }
-.btn-trash svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2.2; }
-.btn-trash.visible { display: flex; }
-
-.file-attach-label {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px;
-  padding: 7px 14px; border-radius: 999px; border: 1.5px dashed #d1d5db;
-  background: #fafafa; color: var(--muted); font-size: .8rem; font-weight: 600;
-  cursor: pointer; transition: background .15s, border-color .15s; user-select: none;
-  overflow: hidden;
-}
-.file-attach-label span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.file-attach-label:hover { background: #f0fdf9; border-color: var(--teal-brand); color: var(--teal); }
-.file-attach-label svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; flex-shrink: 0; }
-.file-attach-input { display: none; }
-
-.modal-footer {
-  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
-  padding: 18px 28px 24px; border-top: 1px solid var(--border);
-  position: sticky; bottom: 0; background: #fff; z-index: 2;
-  border-radius: 0 0 20px 20px; flex-shrink: 0;
-}
-.btn-cancel {
-  padding: 9px 22px; border-radius: 999px; border: 1.5px solid var(--border);
-  background: #fff; color: var(--slate); font-size: .87rem; font-weight: 700;
-  cursor: pointer; transition: background .15s;
-}
-.btn-cancel:hover { background: #f3f4f6; }
-.btn-upload {
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 22px; border-radius: 999px; border: none;
-  background: #1f2937; color: #fff; font-size: .87rem; font-weight: 800;
-  cursor: pointer; transition: background .15s, transform .15s;
-}
-.btn-upload:hover { background: #111827; transform: translateY(-1px); }
-.btn-upload svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.2; }
-.btn-upload:disabled {
-  background: #d1d5db; color: #9ca3af; cursor: not-allowed; transform: none !important;
-}
-.btn-upload:disabled:hover { background: #d1d5db; transform: none; }
-
-.validation-msg {
-  margin: 0 18px 8px; padding: 9px 14px; border-radius: 8px;
-  font-size: .8rem; font-weight: 600; line-height: 1.5;
-  border-left: 3px solid transparent;
-}
-.validation-msg.error { background: #fef2f2; color: #991b1b; border-color: #f87171; }
-.validation-msg.success { background: #f0fdf4; color: #166534; border-color: #4ade80; }
-.validation-msg ul { margin: 4px 0 0 16px; }
-.validation-msg li { margin-bottom: 2px; }
-
-/* ── NEW ITEMS PANEL ─────────────────────────────────────────────────────── */
-.new-items-panel {
-  display: none; border-top: 1.5px solid #e9ecf2;
-  padding: 18px 28px 20px; background: #f8fafc;
-  animation: slideDown .25s ease;
-}
-.new-items-panel.show { display: block; }
-@keyframes slideDown { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
-.new-items-title {
-  font-size: .72rem; font-weight: 800; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .07em; margin-bottom: 14px;
-}
-.new-items-grid { display: flex; gap: 12px; flex-wrap: wrap; }
-.new-item-card {
-  flex: 1; min-width: 220px; background: #fff;
-  border: 1.5px solid #e2e8f0; border-radius: 10px;
-  padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
-}
-.new-item-card-title {
-  font-size: .78rem; font-weight: 700; color: var(--slate-dark);
-  display: flex; align-items: center; gap: 7px;
-}
-.new-item-count {
-  font-size: .68rem; background: #fef3c7; color: #92400e;
-  border-radius: 20px; padding: 2px 8px; font-weight: 700;
-}
-.new-item-count.ok { background: #dcfce7; color: #166534; }
-.new-item-actions { display: flex; gap: 7px; align-items: center; }
-.btn-ni-download {
-  padding: 6px 11px; border-radius: 7px; border: 1.5px solid #d1d9e6;
-  background: #fff; font-size: .75rem; font-weight: 700; color: var(--slate-dark);
-  cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;
-}
-.btn-ni-download:hover { border-color: var(--teal-brand); color: var(--teal-brand); }
-.btn-ni-upload-label {
-  flex: 1; padding: 6px 11px; border-radius: 7px;
-  border: 1.5px dashed #d1d9e6; background: #f8fafc;
-  font-size: .75rem; color: var(--muted); cursor: pointer;
-  display: flex; align-items: center; gap: 5px; white-space: nowrap;
-}
-.btn-ni-upload-label:hover { border-color: var(--teal-brand); color: var(--teal); }
-.btn-ni-upload-label.ready { border-color: #4ade80; color: #166534; background: #f0fdf4; }
-.ni-val-msg { font-size: .72rem; color: #166534; display: none; }
-.ni-val-msg.show { display: block; }
-.new-items-footer { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
-.btn-ni-save {
-  padding: 8px 20px; border-radius: 8px; border: none;
-  background: var(--teal-brand); color: #fff;
-  font-size: .82rem; font-weight: 700; cursor: pointer;
-  display: flex; align-items: center; gap: 6px;
-}
-.btn-ni-save:disabled { opacity: .45; cursor: not-allowed; }
-.btn-ni-save:not(:disabled):hover { background: var(--teal); }
-
-/* ── Step 2: New Items inside modal ── */
-.ni-step-header {
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 16px 18px; background: #fffbeb;
-  border: 1px solid #fde68a; border-radius: 10px; margin-bottom: 16px;
-}
-.ni-step-icon {
-  flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
-  background: #fef3c7; display: flex; align-items: center; justify-content: center;
-  color: #d97706;
-}
-.ni-step-title { font-size: .84rem; font-weight: 800; color: var(--slate-dark); margin-bottom: 2px; }
-.ni-step-sub   { font-size: .76rem; color: var(--muted); line-height: 1.4; }
-.ni-cards-grid { display: flex; flex-direction: column; gap: 10px; }
-.ni-card {
-  background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px;
-  padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
-}
-.ni-card-head {
-  font-size: .78rem; font-weight: 700; color: var(--slate-dark);
-  display: flex; align-items: center; gap: 7px;
-}
-.ni-badge {
-  font-size: .66rem; background: #fef3c7; color: #92400e;
-  border-radius: 20px; padding: 2px 8px; font-weight: 700; margin-left: auto;
-}
-.ni-badge.ok { background: #dcfce7; color: #166534; }
-.ni-card-actions { display: flex; gap: 7px; align-items: center; }
-.btn-ni-dl {
-  padding: 6px 11px; border-radius: 7px; border: 1.5px solid #d1d9e6;
-  background: #fff; font-size: .75rem; font-weight: 700; color: var(--slate-dark);
-  cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap;
-}
-.btn-ni-dl:hover { border-color: var(--teal-brand); color: var(--teal-brand); }
-.btn-ni-ul {
-  flex: 1; padding: 6px 11px; border-radius: 7px;
-  border: 1.5px dashed #d1d9e6; background: #f8fafc;
-  font-size: .75rem; color: var(--muted); cursor: pointer;
-  display: flex; align-items: center; gap: 5px; white-space: nowrap;
-}
-.btn-ni-ul:hover { border-color: var(--teal-brand); color: var(--teal); }
-.btn-ni-ul.ready { border-color: #4ade80; color: #166534; background: #f0fdf4; }
-.ni-feedback { font-size: .72rem; color: #166534; display: none; margin-top: 2px; }
-.ni-feedback.show { display: block; }
-.card-period-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 18px; background: #f8fafc;
-  border-top: 1px solid #e9ecf2; border-bottom: 1px solid #e9ecf2;
-}
-.card-period-label {
-  font-size: .72rem; font-weight: 700; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
-}
-.card-period-select {
-  padding: 4px 24px 4px 8px; border: 1.5px solid #d1d9e6; border-radius: 6px;
-  background: #fff; font-size: .8rem; font-weight: 700; color: var(--slate-dark);
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 7px center; cursor: pointer;
-}
-.card-period-select:focus { outline: none; border-color: var(--teal-brand); }
-.card-period-hint {
-  font-size: .74rem; color: var(--muted); font-style: italic;
-}
-.card-period-hint.warn { color: #c2410c; font-style: normal; font-weight: 600; }
-
-.toast { display: none; position: fixed; bottom: 28px; right: 28px; z-index: 3000; background: #1f2937; color: #fff; padding: 13px 20px; border-radius: 14px; font-size: .88rem; font-weight: 700; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
-
-footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-size: 14px; }
-
-@media (max-width: 1100px) { .workspace { grid-template-columns: 240px 260px 1fr; } .col-panel { height: 700px; } }
-@media (max-width: 860px) { .workspace { grid-template-columns: 1fr 1fr; } .col-panel { height: 400px; } .preview-col { grid-column: span 2; height: 600px; } }
-@media (max-width: 580px) { .workspace { grid-template-columns: 1fr; } .col-panel { height: 380px; } .preview-col { grid-column: auto; height: 520px; } .intro-seneca { display: none; } header.hero { min-height: 260px; padding: 64px 18px 110px; } }
-</style>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-</head>
-<body>
-
-<header class="hero">
-  <div class="back-button">
-    <a href="../../index.html" aria-label="Go back">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/>
-      </svg>
-    </a>
-  </div>
-  <div class="hero-inner">
-    <div class="hero-eyebrow">International Office UASM · Information System & Data Center</div>
-    <h1>KPIs for International Accreditations</h1>
-  </div>
-</header>
-
-<div class="intro-wrap">
-  <div class="intro-seneca" aria-hidden="true">
-    <img src="../../imagenes/seneca.png" alt="Seneca">
-  </div>
-  <div class="intro-panel">
-    Dynamic BaseRoom with key information from the different areas of the School of Management, to report in international rankings and accreditations.
-    <strong> Select a unit, then a dashboard to preview it.</strong>
-  </div>
-</div>
-
-<section class="main">
-  <div class="workspace">
-
-    <!-- UNITS -->
-    <div class="col-panel">
-      <div class="col-header">
-        <h3>Units</h3>
-        <p>Select a unit to see its dashboards</p>
-      </div>
-      <div class="units-scroll" id="unitList"></div>
-    </div>
-
-    <!-- DASHBOARDS -->
-    <div class="col-panel">
-      <div class="col-header">
-        <h3>Dashboards</h3>
-        <p id="dashColDesc">Select a unit first</p>
-      </div>
-      <div class="dash-scroll" id="dashList"></div>
-    </div>
-
-    <!-- PREVIEW -->
-    <div class="col-panel preview-col">
-      <div class="preview-panel">
-        <div class="preview-header" style="padding:12px 16px;">
-          <div class="preview-header-info" style="flex:1;">
-            <div class="preview-title" id="previewTitle" style="font-size:.9rem;font-weight:800;color:#1f2937;"></div>
-          </div>
-          <a class="action-btn action-btn--teal" id="updateBtn" style="display:none;" href="#" target="_blank" rel="noopener">Update data ↗</a>
-          <a href="#" class="action-btn action-btn--primary" id="openExtBtn" target="_blank" rel="noopener" style="display:none;">Open Dashboard ↗</a>
-        </div>
-        <div class="preview-body" id="previewBody">
-          <div class="preview-placeholder" id="previewPlaceholder">
-            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
-            <div>Select a dashboard to preview it here</div>
-          </div>
-          <div class="preview-loading" id="previewLoading">
-            <div class="spinner"></div>
-            <div>Loading dashboard…</div>
-            <div class="countdown-wrap"><div class="countdown-bar" id="countdownBar"></div></div>
-            <div id="countdownText" style="font-size:.78rem;color:#9ca3af;">Waiting up to 30 seconds</div>
-          </div>
-          <iframe class="preview-iframe" id="previewIframe" allow="fullscreen; scripts; same-origin; popups" allowfullscreen></iframe>
-          <div class="preview-timeout" id="previewTimeout">
-            <div style="font-size:2.5rem;opacity:.25;">⚡</div>
-            <div class="timeout-title">Dashboard taking too long</div>
-            <div class="timeout-desc">The preview could not load in time. Open the dashboard directly in a new tab.</div>
-            <a href="#" class="action-btn action-btn--primary" id="timeoutBtn" target="_blank" rel="noopener">Open dashboard ↗</a>
-          </div>
-          <div class="preview-login" id="previewLogin">
-            <div style="font-size:2.2rem;margin-bottom:14px;">🔐</div>
-            <div style="font-size:1rem;font-weight:800;color:#1f2937;margin-bottom:8px;">Sign in to view dashboards</div>
-            <div style="color:#6b7280;font-size:.87rem;line-height:1.6;margin-bottom:22px;max-width:320px;">Sign in with your <strong>@uniandes.edu.co</strong> account to access the KPI dashboards.</div>
-            <button id="kpiLoginGoogleBtn" style="display:inline-flex;align-items:center;gap:10px;padding:12px 24px;border-radius:999px;border:1.5px solid #e5e7eb;background:#fff;color:#1f2937;font-size:.9rem;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.08);transition:box-shadow .18s,transform .18s;">
-              <svg width="20" height="20" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-              Continue with Google
-            </button>
-            <div style="font-size:.75rem;color:#9ca3af;margin-top:12px;">Only @uniandes.edu.co accounts are authorized.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-<footer>International Office · School of Management · Internal use only</footer>
-<div class="toast" id="toast"></div>
+st.markdown(
+    "<style>"
+    ".suite-header{display:flex;flex-direction:column;align-items:center;"
+    "padding:16px 24px 12px;"
+    f"background:linear-gradient(135deg,{_PURPLE_DEEP} 0%,{_PURPLE_MID} 60%,{_PURPLE_SOFT} 100%);"
+    "border-radius:12px;box-shadow:0 2px 8px rgba(74,46,125,.22);margin-bottom:14px;}"
+    ".sh-super{font-size:11px;font-weight:700;letter-spacing:2px;"
+    "color:#E4D9F7;text-transform:uppercase;margin-bottom:2px;}"
+    ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
+    ".sh-sub{font-size:13px;color:rgba(255,255,255,.80);margin-top:4px;text-align:center;}"
+    ".kv{font-size:28px;font-weight:800;color:#6941A8;line-height:1.1;}"
+    ".kl{font-size:11px;font-weight:600;color:#6B7280;"
+    "text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}"
+    "section[data-testid='stSidebar']{background:#F7F4FC !important;}"
+    "div[data-testid='stButton'] button{background:#FFFFFF !important;"
+    "border:1px solid #E1D5F2 !important;border-radius:10px !important;"
+    "color:#374151 !important;font-size:14px !important;"
+    "font-weight:600 !important;height:48px !important;"
+    "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
+    "div[data-testid='stButton'] button:hover{"
+    "background:#FBF9FE !important;border-color:#C9B4E8 !important;}"
+    "div.stDownloadButton>button{background:transparent !important;"
+    "border:none !important;box-shadow:none !important;"
+    "color:#6941A8 !important;font-size:13px !important;"
+    "padding:0 !important;text-decoration:underline !important;}"
+    "thead th{background:#EFE7FA !important;color:#4A2E7D !important;"
+    "font-weight:700 !important;}"
+    ".pending-card{background:#FAF8FD;border:1px dashed #D8C7EF;border-radius:12px;"
+    "padding:22px 24px;margin-top:14px;color:#6B7280;font-size:13.5px;}"
+    ".pending-card .tag{display:inline-block;font-family:monospace;font-size:10px;"
+    "letter-spacing:.06em;text-transform:uppercase;color:#7B5AAE;"
+    "background:#EDE3F8;padding:3px 9px;border-radius:5px;margin-bottom:8px;}"
+    ".report-link-card{display:flex;align-items:center;justify-content:space-between;"
+    "flex-wrap:wrap;gap:12px;background:#FAF8FD;border:1px solid #E7DBF6;"
+    "border-radius:12px;padding:16px 20px;margin-top:6px;}"
+    ".report-link-card h4{margin:0;color:#3B2560;font-size:15px;}"
+    ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:82vw;max-width:1050px;}"
+    ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
+    "display:flex !important;flex-wrap:nowrap !important;width:100% !important;"
+    "justify-content:center !important;gap:18px !important;overflow:visible;}"
+    ".st-key-nav_toggle div[data-testid='column']{width:auto !important;min-width:fit-content !important;flex:none !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;font-size:13px !important;padding:6px 4px !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink'] a p{white-space:nowrap !important;overflow:visible !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover']{width:auto !important;min-width:fit-content !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button{"
+    "background:transparent !important;border:none !important;box-shadow:none !important;"
+    "color:#6941A8 !important;font-size:13px !important;font-weight:400 !important;"
+    "height:auto !important;width:auto !important;min-width:fit-content !important;"
+    "padding:6px 4px !important;white-space:nowrap !important;gap:2px !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button:hover{"
+    "background:transparent !important;color:#4A2E7D !important;text-decoration:underline;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button svg{display:none !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] svg{display:none !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] [data-testid='stIconMaterial']{display:none !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button{gap:0 !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopoverBody']{padding:8px 4px !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopoverBody'] div[data-testid='stPageLink'] a{"
+    "font-size:13px !important;padding:4px 10px !important;}"
+    ".st-key-update_sidebar_group{text-align:center;}"
+    ".st-key-update_sidebar_group img{margin:0 auto;}"
+    ".st-key-go_to_dashboard_btn a{"
+    "display:flex !important;align-items:center;justify-content:center;gap:10px;text-align:center;"
+    f"background:{_PURPLE_DEEP} !important;border:none !important;"
+    "color:#FFFFFF !important;font-size:20px !important;font-weight:800 !important;"
+    "border-radius:14px !important;padding:20px 10px !important;text-decoration:none !important;"
+    "box-shadow:0 4px 14px rgba(74,46,125,.25);transition:transform .15s ease;}"
+    ".st-key-go_to_dashboard_btn a span{color:#FFFFFF !important;}"
+    f".st-key-go_to_dashboard_btn a:hover{{transform:translateY(-2px);background:{_PURPLE_MID} !important;}}"
+    ".st-key-go_to_update_btn a{"
+    "display:flex !important;align-items:center;justify-content:center;gap:6px;"
+    "background:#FFFFFF !important;border:1px solid #E1D5F2 !important;"
+    "color:#374151 !important;font-size:14px !important;font-weight:600 !important;"
+    "border-radius:10px !important;padding:12px 8px !important;text-decoration:none !important;"
+    "height:48px;box-shadow:0 1px 3px rgba(0,0,0,.04);}"
+    ".st-key-go_to_update_btn a:hover{background:#FBF9FE !important;border-color:#C9B4E8 !important;}"
+    "</style>",
+    unsafe_allow_html=True,
+)
 
 
-    <script>
-// ── AUTH (shared session with BaseRoom via sessionStorage) ───────────────
-const GOOGLE_CLIENT_ID_KPI = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
-const SCOPES_KPI   = "";
-const ALLOWED_KPI  = "uniandes.edu.co";
-const SESSION_MS_KPI = 10 * 60 * 1000;
+# ── 2) HELPERS COMPARTIDOS ──────────────────────────────────────────────
+def _render_header(title: str, subtitle: str = ""):
+    sub = f'<div class="sh-sub">{subtitle}</div>' if subtitle else ""
+    st.markdown(
+        f'<div class="suite-header"><div class="sh-super">UASM · Internationalization Analytics</div>'
+        f'<div class="sh-title">{title}</div>{sub}</div>',
+        unsafe_allow_html=True,
+    )
 
-let kpiToken    = sessionStorage.getItem("br_token") || null;
-let kpiEmail    = sessionStorage.getItem("br_email") || null;
-let kpiExpiry   = parseInt(sessionStorage.getItem("br_expiry") || "0") || null;
-let pendingDash = null;
 
-function isLoggedIn() {
-  return kpiToken && kpiEmail && kpiEmail.endsWith("@" + ALLOWED_KPI) &&
-         kpiExpiry && Date.now() < kpiExpiry;
+def _kpi(label: str, value):
+    st.markdown(
+        f'<div class="kv">{value}</div><div class="kl">{label}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _pending_card(label: str, note: str = ""):
+    note_html = f"<br>{note}" if note else ""
+    st.markdown(
+        f'<div class="pending-card"><span class="tag">Coming soon</span>'
+        f'<p style="margin-top:8px;">{label}{note_html}</p></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _section_title_with_link(title: str, url: str, button_label: str, level: str = "###"):
+    """Título de sub-sección con el botón 'Go to report' justo al lado, en la misma fila."""
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.markdown(f"{level} {title}")
+    with col2:
+        if url:
+            st.link_button(button_label, url, use_container_width=True)
+        else:
+            st.button(button_label, disabled=True, use_container_width=True,
+                       help="Falta configurar la URL de este reporte en el código.")
+
+
+def _xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf) as w:
+        df.to_excel(w, index=False, sheet_name=sheet_name[:31])
+    buf.seek(0)
+    return buf.getvalue()
+
+
+# ── 3) FILE IDs (Google Drive) ──────────────────────────────────────────
+# Carpeta raíz: UASM School of Management > Internationalization
+PROFESORES_FILE_ID = "1ncnUk_8VsDt1I0Hui9g0VyoTkA-8P376"   # BD_profesores.xlsx (compartido con Faculty Analytics) → hojas: planta, Info. Profesores, Faculty Distribution
+CONVENIOS_FILE_ID = "1tuPLhr8ttvtFKebi1eoWyrL7E7NimNRn"    # BD_convenios.xlsx
+MOVILIDAD_FILE_ID = "1zkxMmITgSfpjb1o2AKxKDyqhYdRcpwJw"    # BD_movilidad.xlsx
+
+# EIV (International Summer School) — Reportes/EIV
+EIV_CURSOS_FILE_ID = "1qZin81h9oQ4SfxadcNpdjzSO6w3ADKZr"   # BD_cursos.xlsx → Profesor, Universidad, País Universidad, Ciclo
+EIV_LISTAS_FILE_ID = "1BpREXyP3KHIARxik6ah_av9R9wV_ElL3"   # BD_listas.xlsx (EIV) → listas, programas
+
+# Seminars — Reportes/Seminars
+SEMINARS_FILE_ID = "1YFSUmZ95Md9qHoHvc114Eed-oA_uqjST"     # BD_seminarios.xlsx
+CONFERENCISTAS_FILE_ID = "1oEgAJg2pXC6U1arLe2daMp7gPdRKgARm"  # BD_conferencistas.xlsx
+PARTICIPANTES_FILE_ID = "18HDQDbaPqdTeEHFcPUDCRTw_bahhcNWa"   # BD_participantes.xlsx
+
+# International Weeks — Reportes/INT_WEEKS
+WEEKS_LISTAS_FILE_ID = "1Gxev_FWI_mfav3dVWaZczC49F_68Qj9f"  # BD_listas.xlsx → estudiantes UASM asistentes (Producto=universidad, Programa)
+WEEKS_SEMANAS_FILE_ID = "1UXmTsOp1X9DKA_OpFy7kmg4fz2_uQT-W" # BD_semanas.xlsx → semanas ofrecidas por la Facultad
+WEEKS_PRESUPUESTO_FILE_ID = "1835F0CN4QoDgmCoShnbB7xvAnXOwexKO"  # BD_presupuesto.xlsx (INT_WEEKS) → budget, TRM
+
+# URLs de los reportes externos (HTML estáticos ya existentes). Configúralas
+# aquí cuando tengas la URL pública de publicación (p.ej. GitHub Pages).
+EIV_REPORT_URL = "https://internationalofficekpis-ftht3w3ub2wumm5ta2dhox.streamlit.app"
+SEMINARS_REPORT_URL = "https://internationalofficekpis-jp3mpck5jkobwvkhhsjeil.streamlit.app"
+WEEKS_REPORT_URL = "https://internationalofficekpis-4idfdrqqhyvktr65mttkf6.streamlit.app"
+
+_GSPREAD_SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
+
+def _get_gspread_access_token() -> Optional[str]:
+    if not _GSPREAD_OK or "gcp_service_account" not in st.secrets:
+        return None
+    try:
+        from google.auth.transport.requests import Request as _GoogleAuthRequest
+        creds = Credentials.from_service_account_info(
+            dict(st.secrets["gcp_service_account"]), scopes=_GSPREAD_SCOPES
+        )
+        creds.refresh(_GoogleAuthRequest())
+        return creds.token
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=300)
+def _download_drive_file_bytes(file_id: str) -> bytes:
+    """Descarga un archivo .xlsx de Drive (autenticado con la service account)."""
+    token = _get_gspread_access_token()
+    if not token:
+        if not _GSPREAD_OK:
+            st.error(
+                "📦 Falta instalar las librerías `google-auth` en el entorno "
+                f"(el import falló con: `{_GSPREAD_IMPORT_ERR}`). Agrégalas a "
+                "tu `requirements.txt`."
+            )
+        elif "gcp_service_account" not in st.secrets:
+            st.error(
+                "🔑 No encuentro `st.secrets['gcp_service_account']`. Revisa en "
+                "Streamlit Cloud → tu app → Settings → Secrets."
+            )
+        else:
+            st.error("🔑 Las credenciales de `gcp_service_account` no se pudieron usar para autenticar.")
+        st.stop()
+
+    url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = None
+    last_err = None
+    for _ in range(3):
+        try:
+            resp = requests.get(url, timeout=60, headers=headers)
+            if resp.status_code == 200:
+                return resp.content
+            last_err = RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            last_err = e
+        time.sleep(2)
+
+    st.error(
+        f"🌐 No se pudo descargar el archivo de Drive ({file_id}) tras varios intentos: "
+        f"{last_err}\n\nVerifica que el archivo esté compartido con el correo de la "
+        "service account, con permiso de Editor."
+    )
+    st.stop()
+
+
+def _norm_id(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    try:
+        f = float(v)
+        return str(int(f)) if f.is_integer() else str(f)
+    except (ValueError, TypeError):
+        s = str(v).strip().upper()
+        return s if s else None
+
+
+def _period_sort_key(p):
+    s = str(p).strip()
+    try:
+        return (int(s[:4]), 30 if "Intersemestral" in s else int(s[-2:].replace("-", "")))
+    except (ValueError, IndexError):
+        return (-1, -1)
+
+
+# Demonym (Country of Birth en BD_profesores) -> país, para el mapa de burbujas.
+_NATIONALITY_TO_COUNTRY = {
+    "American": "United States", "Argentinian": "Argentina", "Australian": "Australia",
+    "Brazilian": "Brazil", "British": "United Kingdom", "Bulgarian": "Bulgaria",
+    "Canadian": "Canada", "Chilean": "Chile", "Dominican": "Dominican Republic",
+    "Egyptian": "Egypt", "French": "France", "German": "Germany", "Indian": "India",
+    "Italian": "Italy", "Kenyan": "Kenya", "New Zealander": "New Zealand",
+    "Peruvian": "Peru", "Philippine": "Philippines", "Portuguese": "Portugal",
+    "Russian": "Russia", "South African": "South Africa", "Spanish": "Spain",
+    "Turkish": "Turkey", "Venezuelan": "Venezuela", "Dutch": "Netherlands",
+    "Belgian": "Belgium", "Finnish": "Finland", "Mexican": "Mexico",
 }
-function touchKpiSession() {
-  kpiExpiry = Date.now() + SESSION_MS_KPI;
-  sessionStorage.setItem("br_expiry", String(kpiExpiry));
-}
-["click","keydown","mousemove","touchstart"].forEach(ev =>
-  document.addEventListener(ev, () => { if(isLoggedIn()) touchKpiSession(); }, {passive:true})
-);
-setInterval(() => {
-  if (kpiToken && kpiExpiry && Date.now() > kpiExpiry) {
-    kpiToken = kpiEmail = kpiExpiry = null;
-    sessionStorage.removeItem("br_token");
-    sessionStorage.removeItem("br_email");
-    sessionStorage.removeItem("br_expiry");
-    showToast("Session expired. Please sign in again.");
-    resetPreview();
-  }
-}, 15000);
 
-function requireKpiLogin(action) {
-  if (isLoggedIn()) { action(); return; }
-  pendingDash = action;
-  // Show inline login panel in the preview area
-  document.getElementById("previewPlaceholder").style.display = "none";
-  document.getElementById("previewLoading").classList.remove("show");
-  document.getElementById("previewTimeout").classList.remove("show");
-  document.getElementById("previewIframe").style.display = "none";
-  document.getElementById("previewLogin").classList.add("show");
+# Centroides aproximados (lat, lon) de países, para el mapa de flechas hacia
+# Bogotá en Visiting Faculty (EIV). Cubre los países más comunes de origen.
+BOGOTA_COORDS = (4.7110, -74.0721)
+_COUNTRY_CENTROIDS = {
+    "United States": (37.09, -95.71), "France": (46.23, 2.21), "Spain": (40.46, -3.75),
+    "Brazil": (-14.24, -51.93), "China": (35.86, 104.20), "Germany": (51.16, 10.45),
+    "United Kingdom": (55.38, -3.44), "Netherlands": (52.13, 5.29), "The Netherlands": (52.13, 5.29),
+    "Denmark": (56.26, 9.50), "Poland": (51.92, 19.15), "Italy": (41.87, 12.57),
+    "Portugal": (39.40, -8.22), "Belgium": (50.50, 4.47), "Switzerland": (46.82, 8.23),
+    "Norway": (60.47, 8.47), "Sweden": (60.13, 18.64), "Finland": (61.92, 25.75),
+    "Canada": (56.13, -106.35), "Mexico": (23.63, -102.55), "Argentina": (-38.42, -63.62),
+    "Chile": (-35.68, -71.54), "Peru": (-9.19, -75.02), "India": (20.59, 78.96),
+    "Japan": (36.20, 138.25), "South Korea": (35.91, 127.77), "Australia": (-25.27, 133.78),
+    "Austria": (47.52, 14.55), "Ireland": (53.41, -8.24), "Turkey": (38.96, 35.24),
+    "Israel": (31.05, 34.85), "South Africa": (-30.56, 22.94), "Colombia": (4.57, -74.30),
+    "Poland, UK": (51.92, 19.15), "Greece": (39.07, 21.82), "Singapore": (1.35, 103.82),
+    "Hong Kong": (22.32, 114.17), "Bulgaria": (42.73, 25.49), "Russia": (61.52, 105.32),
+    "Dominican Republic": (18.74, -70.16), "Egypt": (26.82, 30.80), "Kenya": (-0.02, 37.91),
+    "New Zealand": (-40.90, 174.89), "Philippines": (12.88, 121.77), "Venezuela": (6.42, -66.59),
 }
 
-// ── DATA ──────────────────────────────────────────────────────────────────
-const UNITS = [
-  {
-    id: "faculty",
-    name: "Faculty",
-    desc: "Faculty deployment, qualifications, demographics, workload, and accreditation-relevant academic profiles.",
-    icon: `<circle cx="12" cy="7" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>`,
-    updateUrl: "https://internationalofficekpis-eh35dj3hrbgdzu7dbaqzpr.streamlit.app/update-data",
-    dashboards: [
-      { title: "Full-time Faculty Composition",    desc: "Composition by type of full-time faculty ranking, historical evolution, and detailed academic distribution.",                     url: "https://internationalofficekpis-eh35dj3hrbgdzu7dbaqzpr.streamlit.app/" },
-      { title: "Full-time Faculty Staffing Levels", desc: "Staffing levels, number of professors, teaching load, and detailed information on faculty allocation.",                          url: "https://internationalofficekpis-eh35dj3hrbgdzu7dbaqzpr.streamlit.app/staffing" },
-      { title: "Distribution by Academic Area",    desc: "Distribution of full-time and part-time faculty by academic area, with evolution and comparative detail.",                       url: "https://internationalofficekpis-eh35dj3hrbgdzu7dbaqzpr.streamlit.app/area" },
-      { title: "Faculty Demographics",             desc: "Demographic indicators of full-time and part-time faculty, including gender, nationality, and age patterns.",                    url: "https://internationalofficekpis-eh35dj3hrbgdzu7dbaqzpr.streamlit.app/demographics" },
-      { title: "Full-time Faculty Questionnaire",  desc: "Survey results related to faculty activities, participation patterns, and relevant institutional insights.",                     url: "https://internationalofficekpis-eh35dj3hrbgdzu7dbaqzpr.streamlit.app/activities", bdType: "fq" },
-      { title: "Faculty Qualifications",           desc: "Faculty sufficiency and qualification indicators aligned with international accreditation standards.",                            url: "https://internationalofficekpis-eh35dj3hrbgdzu7dbaqzpr.streamlit.app/qualifications",  bdType: "faculty" },
-      { title: "Triennial Evaluation",             desc: "Consolidated results from triennial evaluation processes and strategic review indicators.",                                       url: "#", soon: true }
+
+# ── 4) CARGA DE DATOS ────────────────────────────────────────────────────
+@st.cache_data(ttl=300)
+def load_planta_fulltime() -> pd.DataFrame:
+    """Roster de planta (full-time) leído directamente de la hoja 'planta' de
+    BD_profesores.xlsx — trae ya 'Country of Birth'/'Nationality' y 'Double
+    Nationality' propias, sin necesidad de merge (mismo patrón que
+    demo_load_fulltime() en Faculty Analytics)."""
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="planta")
+    df_.columns = df_.columns.str.strip()
+
+    sem = df_["Semestre"].astype(str).str.strip() if "Semestre" in df_.columns else df_.iloc[:, 0].astype(str).str.strip()
+    is_inter = sem.str.contains("inter", case=False, na=False)
+    df_["Periodo"] = np.where(is_inter, sem.str[:4] + " Intersemestral", sem.str[:4] + "-" + sem.str[-2:])
+    df_["Año"] = sem.str[:4]
+
+    if "ID Nr." in df_.columns and "ID" not in df_.columns:
+        df_ = df_.rename(columns={"ID Nr.": "ID"})
+
+    # Resolución robusta del nombre del profesor: intenta First+Last Name,
+    # luego cualquier columna de nombre completo conocida, y si nada aplica
+    # usa el ID como último recurso — nunca deja la columna vacía/None.
+    if "First Name" in df_.columns or "Last Name" in df_.columns:
+        fn = df_["First Name"].astype(str).fillna("") if "First Name" in df_.columns else ""
+        ln = df_["Last Name"].astype(str).fillna("") if "Last Name" in df_.columns else ""
+        fn = fn if isinstance(fn, pd.Series) else pd.Series([""] * len(df_), index=df_.index)
+        ln = ln if isinstance(ln, pd.Series) else pd.Series([""] * len(df_), index=df_.index)
+        df_["Full Name"] = (fn + " " + ln).str.strip()
+    elif "Full Name" not in df_.columns:
+        name_src = next((c for c in ["Profesor", "Nombre", "Nombre completo", "Full Name"] if c in df_.columns), None)
+        if name_src:
+            df_["Full Name"] = df_[name_src].astype(str)
+        else:
+            df_["Full Name"] = df_.get("ID", pd.Series(range(len(df_)), index=df_.index)).astype(str)
+
+    df_["Full Name"] = df_["Full Name"].astype(str).str.strip()
+    df_.loc[df_["Full Name"].isin(["", "nan", "None"]), "Full Name"] = df_["ID"].astype(str) if "ID" in df_.columns else "—"
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_eiv_cursos() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(EIV_CURSOS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="cursos")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_eiv_listas() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(EIV_LISTAS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="listas")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_seminarios() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(SEMINARS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="seminarios")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_conferencistas() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(CONFERENCISTAS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="conferencistas")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_participantes() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(PARTICIPANTES_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="participantes")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_weeks_listas() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(WEEKS_LISTAS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="listas")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_weeks_semanas() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(WEEKS_SEMANAS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="Semanas Internacionales")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_weeks_budget() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(WEEKS_PRESUPUESTO_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="budget")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+# ── 5) PÁGINA — Faculty (International Full-Time Faculty) ──────────────
+def _style_highlight_column(df_: pd.DataFrame, col: str, color: str = "#EDE3F8"):
+    """Devuelve un Styler que resalta en morado claro toda la columna `col`
+    (el período/año seleccionado), igual que el resaltado de periodo en
+    Faculty Analytics."""
+    def _style(d):
+        s = pd.DataFrame("", index=d.index, columns=d.columns)
+        if col in d.columns:
+            s[col] = f"background-color:{color};"
+        return s
+    return df_.style.apply(_style, axis=None)
+
+
+def page_faculty():
+    df = load_planta_fulltime()
+
+    nat_col = next((c for c in ["Country of Birth", "Nationality"] if c in df.columns), None)
+    dual_col = next((c for c in ["Double Nationality", "Doble Nacionalidad"] if c in df.columns), None)
+    id_col = "ID" if "ID" in df.columns else None
+    name_col = "Full Name" if "Full Name" in df.columns else None
+
+    _render_header(
+        "International Full-Time Faculty",
+        "Country of birth and dual nationality of the School of Management's full-time faculty, from the planta roster in BD_profesores.",
+    )
+
+    if nat_col is None or id_col is None or df.empty:
+        st.info("No pude encontrar las columnas necesarias (Country of Birth / ID) en la hoja 'planta' de BD_profesores.xlsx.")
+        return
+
+    with st.sidebar:
+        st.markdown("#### Timeframe")
+        mode = st.radio("View by", ["Period", "Year"], key="fac_mode")
+
+    if mode == "Period":
+        keys = sorted(df["Periodo"].dropna().unique().tolist(), key=_period_sort_key)
+        cols_def = [(k, k, df[df["Periodo"] == k]) for k in keys]
+    else:
+        years = sorted(df["Año"].dropna().unique().tolist())
+        cols_def = []
+        for y in years:
+            periods_in_year = sorted(
+                df[df["Año"] == y]["Periodo"].dropna().unique().tolist(), key=_period_sort_key
+            )
+            if not periods_in_year:
+                continue
+            latest = periods_in_year[-1]
+            cols_def.append((y, y, df[df["Periodo"] == latest]))
+
+    if not cols_def:
+        st.info("No hay datos suficientes para mostrar esta vista.")
+        return
+
+    labels = [c[1] for c in cols_def]
+    with st.sidebar:
+        snap_label = st.selectbox("Periodo (snapshot for map & highlight)", labels[::-1], index=0, key="fac_snapshot")
+    snap_idx = labels.index(snap_label)
+    snap_rows = cols_def[snap_idx][2]
+
+    total_counts, intl_counts, nat_lists, dual_counts_list, dual_nat_lists = [], [], [], [], []
+    intl_rows_by_col, dual_rows_by_col = [], []
+    for key, label, rows in cols_def:
+        total_counts.append(rows[id_col].nunique())
+        intl_rows = rows[rows[nat_col].notna() & ~rows[nat_col].astype(str).str.strip().str.lower().isin(
+            ["colombian", "colombia", ""])]
+        intl_rows_by_col.append(intl_rows)
+        intl_counts.append(intl_rows[id_col].nunique())
+        nat_lists.append(
+            intl_rows.groupby(nat_col)[id_col].nunique().sort_values(ascending=False)
+        )
+        if dual_col and dual_col in rows.columns:
+            dual_rows = rows[rows[dual_col].notna() & ~rows[dual_col].astype(str).str.strip().str.lower().isin(
+                ["no", ""])]
+            dual_rows_by_col.append(dual_rows)
+            dual_counts_list.append(dual_rows[id_col].nunique())
+            dual_nat_lists.append(dual_rows.groupby(dual_col)[id_col].nunique().sort_values(ascending=False))
+        else:
+            dual_rows_by_col.append(rows.iloc[0:0])
+            dual_counts_list.append(0)
+            dual_nat_lists.append(pd.Series(dtype=int))
+
+    pct_intl = [round((intl_counts[i] / total_counts[i] * 100), 1) if total_counts[i] else 0.0
+                for i in range(len(labels))]
+
+    # ---- Tabla combinada: resumen + lista de nacionalidades, mismo período ----
+    st.markdown("### International Full-Time Faculty")
+    max_nat = max((len(n) for n in nat_lists), default=0)
+    table1_rows = [
+        ["Total Faculty"] + total_counts,
+        ["International Full-time Faculty"] + intl_counts,
+        ["% International"] + [f"{p}%" for p in pct_intl],
+        ["Number of nationalities"] + [len(n) for n in nat_lists],
     ]
-  },
-  {
-    id: "internationalization",
-    name: "Internationalization",
-    desc: "Mobility, agreements, visiting faculty, international activities, and global engagement indicators.",
-    icon: `<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 4 3 14 0 18M12 3c-3 4-3 14 0 18" stroke-width="1.3"/>`,
-    updateUrl: "https://dashboardsinternationalizationuasminternatio-wdfa0h.streamlit.app/update-data",
-    dashboards: [
-      { title: "Faculty",                  desc: "International full-time faculty counts, evolution over time, and dual-nationality composition.",                                url: "https://dashboardsinternationalizationuasminternatio-wdfa0h.streamlit.app/faculty" },
-      { title: "Visiting Faculty",         desc: "Visiting faculty origin countries, host universities, and visit dates.",                                                        url: "https://dashboardsinternationalizationuasminternatio-wdfa0h.streamlit.app/visiting" },
-      { title: "Intl. Weeks",              desc: "International weeks and activities: students by program and host university, and attendance by country.",                     url: "https://dashboardsinternationalizationuasminternatio-wdfa0h.streamlit.app/weeks" },
-      { title: "Research & Faculty Activities", desc: "International journal articles, conference presentations, and faculty teaching activities abroad.",                       url: "#", soon: true },
-      { title: "Home Campus",              desc: "Incoming international students hosted at UASM's home campus.",                                                                url: "#", soon: true },
-      { title: "Graduates",                desc: "International mobility experience among UASM graduates.",                                                                       url: "#", soon: true },
-      { title: "Agreement Utilization",    desc: "Outgoing & incoming mobility mapped against each international agreement.",                                                     url: "#", soon: true },
-      { title: "Mobility by Program",      desc: "Outgoing exchange mobility broken down by academic program.",                                                                   url: "#", soon: true },
-      { title: "PhD Mobility",             desc: "International mobility and research stays among PhD students.",                                                                 url: "#", soon: true },
-      { title: "Agreements",               desc: "Full catalog of international agreements — type, status, dates, accreditation.",                                                url: "#", soon: true }
-    ]
-  },
-  { id: "alumni",     name: "Alumni & Career Services",  desc: "Employment distribution, salary trends, career outcomes, and placement indicators for graduates.",                         icon: `<path d="M9 7V6a3 3 0 0 1 6 0v1"/><rect x="3" y="7" width="18" height="12" rx="2"/>`,  dashboards: [], soon: true },
-  { id: "executive",  name: "Executive Education",       desc: "Consolidated KPIs related to executive programs, participation, reach, and operational performance.",                      icon: `<rect x="4" y="3" width="10" height="18" rx="2"/><path d="M8 7h6M8 11h6M8 15h4"/>`,    dashboards: [], soon: true },
-  { id: "programs",   name: "Academic Programs",         desc: "Admissions, student demographics, academic deployment, GPA behavior, and financial indicators.",                           icon: `<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 4v3M16 4v3M3 10h18"/>`,   dashboards: [], soon: true },
-  { id: "research",   name: "Research & Development",    desc: "Publications, research activity, academic production, projects, and broader scholarly impact.",                            icon: `<path d="M9 3v5l-4.5 8A3 3 0 0 0 7.3 20h9.4a3 3 0 0 0 2.8-4L15 8V3"/>`,              dashboards: [], soon: true },
-  { id: "resources",  name: "Resources & Admin",         desc: "Budget, funding, staffing, administrative support, and core operational resources of the School.",                         icon: `<path d="M12 2a7 7 0 1 0 0 14A7 7 0 0 0 12 2z"/><path d="M12 16v6M8 20h8"/>`,          dashboards: [], soon: true },
-];
+    for i in range(max_nat):
+        row = ["Nationalities" if i == 0 else ""]
+        for j in range(len(labels)):
+            nl = nat_lists[j]
+            row.append(f"{nl.index[i]} ({int(nl.iloc[i])})" if i < len(nl) else "")
+        table1_rows.append(row)
+    df_table1 = pd.DataFrame(table1_rows, columns=[""] + labels)
+    st.dataframe(_style_highlight_column(df_table1, snap_label), use_container_width=True, hide_index=True)
 
-// ── STATE ────────────────────────────────────────────────────────────────
-let selectedUnit = null;
-let selectedDash = null;
-let previewTimer = null;
-let countdownInterval = null;
-const TIMEOUT_MS = 30000;
+    st.download_button(
+        "Download as Excel", data=_xlsx_bytes(df_table1, "International_Faculty"),
+        file_name="International_Faculty.xlsx", key="dl_fac_table1",
+    )
 
-// ── RENDER UNITS ─────────────────────────────────────────────────────────
-function renderUnits() {
-  const el = document.getElementById("unitList");
-  el.innerHTML = "";
-  UNITS.forEach(unit => {
-    const btn = document.createElement("button");
-    const isActive = selectedUnit === unit.id;
-    btn.className = "unit-item" + (isActive ? " active" : "");
-    btn.innerHTML = `
-      <div class="unit-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${unit.icon}</svg></div>
-      <div style="flex:1;min-width:0;">
-        <div class="unit-name">${unit.name}</div>
-        ${unit.desc ? `<div class="unit-desc">${unit.desc}</div>` : ""}
-      </div>
-`;
-    btn.addEventListener("click", () => {
-      selectedUnit = unit.id;
-      selectedDash = null;
-      renderUnits();
-      renderDashboards();
-      resetPreview();
-    });
-    el.appendChild(btn);
-  });
-}
+    # ---- Trend chart: % international over time ----
+    st.markdown("### International Faculty Over Time")
+    col_trend, col_donut = st.columns([2, 1])
+    with col_trend:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=labels, y=intl_counts, mode="lines+markers+text", name="International Faculty",
+            line=dict(color=_PURPLE_MID, width=3, shape="spline"),
+            marker=dict(
+                size=[13 if l == snap_label else 7 for l in labels],
+                color=[_PURPLE_ACCENT if l == snap_label else _PURPLE_MID for l in labels],
+            ),
+            text=intl_counts, textposition="top center", textfont=dict(size=10),
+        ))
+        fig.update_layout(
+            margin=dict(t=10, r=16, b=36, l=36), xaxis=dict(type="category"),
+            yaxis=dict(gridcolor="#EFEBEE", title="International Faculty"),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=300,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    with col_donut:
+        donut_df = pd.DataFrame({
+            "Group": ["International", "Domestic"],
+            "Count": [intl_counts[snap_idx], total_counts[snap_idx] - intl_counts[snap_idx]],
+        })
+        fig_donut = px.pie(
+            donut_df, names="Group", values="Count", hole=0.55,
+            color="Group", color_discrete_map={"International": _PURPLE_ACCENT, "Domestic": "#E5DDF2"},
+            title=f"{snap_label} snapshot",
+        )
+        fig_donut.update_traces(textinfo="label+percent", textfont=dict(size=11))
+        fig_donut.update_layout(height=300, margin=dict(t=40, r=10, b=10, l=10), showlegend=False)
+        st.plotly_chart(fig_donut, use_container_width=True)
 
-// ── RENDER DASHBOARDS ─────────────────────────────────────────────────────
-function renderDashboards() {
-  const el = document.getElementById("dashList");
-  const desc = document.getElementById("dashColDesc");
-  if (!selectedUnit) {
-    desc.textContent = "Select a unit first";
-    el.innerHTML =
-      `<div class="empty-state">
-          Click a unit to see its dashboards.
-       </div>`;
-    return;
-  }
-  const unit = UNITS.find(u => u.id === selectedUnit);
-  desc.textContent = unit.name;
-  el.innerHTML = "";
-  if (!unit.dashboards.length) {
-    el.innerHTML = `<div class="empty-state">No dashboards updated yet for this unit.</div>`;
-    return;
-  }
-  unit.dashboards.forEach((d, i) => {
-    const btn = document.createElement("button");
-    const isActive = selectedDash === i;
-    btn.className = "dash-item" + (isActive ? " active" : "");
+    # ---- Nationality bubble map + bar chart for snapshot ----
+    st.markdown(f"### Nationalities Represented — {snap_label}")
+    snap_nat = nat_lists[snap_idx]
+    map_df = snap_nat.rename("Count").reset_index().rename(columns={nat_col: "Nationality"})
+    map_df["Country"] = map_df["Nationality"].map(_NATIONALITY_TO_COUNTRY)
+    map_df_geo = map_df.dropna(subset=["Country"])
 
-    const label = d.soon ? "Not updated" : "Streamlit Dashboard";
-    const titleRow = `<span class="dash-title">${d.title}</span>`;
-    btn.innerHTML = `<div style="display:flex;align-items:center;gap:6px;width:100%;">${titleRow}</div>${d.desc ? `<span class="dash-desc">${d.desc}</span>` : ""}<span class="dash-type${d.soon ? " soon" : ""}">${label}</span>`;
-    btn.addEventListener("click", () => {
-      if (d.soon || d.url === "#") { showToast("This dashboard has not been updated yet."); return; }
-      requireKpiLogin(() => {
-        selectedDash = i;
-        renderDashboards();
-        openPreview(d.title, d.url, d.bdType);
-      });
-    });
-    el.appendChild(btn);
-  });
-}
+    col_map, col_bar = st.columns([2, 1])
+    with col_map:
+        if not map_df_geo.empty:
+            fig_nat = px.scatter_geo(
+                map_df_geo, locations="Country", locationmode="country names", size="Count",
+                text="Nationality", hover_name="Nationality", hover_data={"Count": True, "Country": False},
+                projection="natural earth",
+            )
+            fig_nat.update_traces(
+                marker=dict(color=_PURPLE_ACCENT, opacity=0.8, line=dict(width=1, color="#FFFFFF")),
+                mode="markers+text", textposition="top center", textfont=dict(size=10, color="#3B2560"),
+            )
+            fig_nat.update_geos(
+                showcountries=True, countrycolor="#E5DDF2", showland=True, landcolor=_PURPLE_BG_TINT,
+                showocean=True, oceancolor="#EDE7F7", bgcolor="rgba(0,0,0,0)",
+            )
+            fig_nat.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=6))
+            st.plotly_chart(fig_nat, use_container_width=True)
+        else:
+            st.info("No hay nacionalidades internacionales mapeables para este snapshot.")
+    with col_bar:
+        if not map_df.empty:
+            fig_bar = px.bar(
+                map_df.sort_values("Count"), x="Count", y="Nationality", orientation="h",
+                color_discrete_sequence=[_PURPLE_MID],
+            )
+            fig_bar.update_layout(
+                margin=dict(t=10, r=16, b=26, l=10), plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)", height=360, yaxis=dict(title=""), xaxis=dict(title="Faculty"),
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
 
-// ── PREVIEW ───────────────────────────────────────────────────────────────
-let currentBdType = "faculty"; // "faculty" | "fq"
+    if st.button("Show Nationalities", key="btn_show_nat", use_container_width=True):
+        st.session_state["_faculty_dialog"] = "nat"
 
-function openPreview(title, url, bdType) {
-  clearTimeout(previewTimer);
-  clearInterval(countdownInterval);
-  currentBdType = bdType || "faculty";
+    # ---- Tabla combinada: dual nationality — resumen + lista ----
+    st.markdown("### Full-Time Faculty with Dual Nationality")
+    max_dual = max((len(n) for n in dual_nat_lists), default=0)
+    table2_rows = [["Faculty with dual nationality"] + dual_counts_list]
+    for i in range(max_dual):
+        row = ["Nationalities" if i == 0 else ""]
+        for j in range(len(labels)):
+            dn = dual_nat_lists[j]
+            row.append(f"{dn.index[i]} ({int(dn.iloc[i])})" if i < len(dn) else "")
+        table2_rows.append(row)
+    df_table2 = pd.DataFrame(table2_rows, columns=[""] + labels)
+    st.dataframe(_style_highlight_column(df_table2, snap_label), use_container_width=True, hide_index=True)
 
-  const iframe   = document.getElementById("previewIframe");
-  const loading  = document.getElementById("previewLoading");
-  const timeout  = document.getElementById("previewTimeout");
-  const ph       = document.getElementById("previewPlaceholder");
-  const extBtn   = document.getElementById("openExtBtn");
-  const toBtn    = document.getElementById("timeoutBtn");
-  const bar      = document.getElementById("countdownBar");
+    st.download_button(
+        "Download as Excel", data=_xlsx_bytes(df_table2, "Dual_Nationality_Faculty"),
+        file_name="Dual_Nationality_Faculty.xlsx", key="dl_fac_table2",
+    )
 
-  document.getElementById("previewTitle").textContent = title;
-  const embedUrl = url.includes("?") ? url + "&embed=true" : url + "?embed=true";
-  extBtn.href = url; extBtn.style.display = "inline-flex";
-  toBtn.href  = url;
-  const unitForUpdate = UNITS.find(u => u.id === selectedUnit);
-  const updateBtn = document.getElementById("updateBtn");
-  if (unitForUpdate && unitForUpdate.updateUrl) {
-    updateBtn.href = unitForUpdate.updateUrl;
-    updateBtn.style.display = "inline-flex";
-  } else {
-    updateBtn.style.display = "none";
-  }
+    if st.button("Show Dual Nationality Faculty", key="btn_show_dual", use_container_width=True):
+        st.session_state["_faculty_dialog"] = "dual"
 
-  ph.style.display = "none";
-  timeout.classList.remove("show");
-  iframe.style.display = "none";
-  iframe.src = "";
-  loading.classList.add("show");
+    # ---- Diálogos de detalle (mutuamente excluyentes: solo uno a la vez) ----
+    def _clean_detail(df_in: pd.DataFrame, cols: list, rename_map: dict) -> pd.DataFrame:
+        out = df_in[cols].drop_duplicates().reset_index(drop=True)
+        out = out.rename(columns=rename_map)
+        for c in out.columns:
+            out[c] = out[c].astype(str).replace({"None": "—", "nan": "—", "": "—"})
+        return out
 
-  bar.style.transition = "none"; bar.style.width = "100%";
-  requestAnimationFrame(() => { bar.style.transition = `width ${TIMEOUT_MS}ms linear`; bar.style.width = "0%"; });
-
-  let s = Math.floor(TIMEOUT_MS / 1000);
-  document.getElementById("countdownText").textContent = `Waiting up to ${s} seconds`;
-  countdownInterval = setInterval(() => {
-    s--;
-    document.getElementById("countdownText").textContent = s > 0 ? `Waiting up to ${s} seconds` : "Almost there…";
-  }, 1000);
-
-  iframe.onload = () => { clearTimeout(previewTimer); clearInterval(countdownInterval); loading.classList.remove("show"); iframe.style.display = "block"; };
-  previewTimer = setTimeout(() => { clearInterval(countdownInterval); loading.classList.remove("show"); iframe.style.display = "none"; timeout.classList.add("show"); }, TIMEOUT_MS);
-  iframe.src = embedUrl;
-}
-
-function resetPreview() {
-  clearTimeout(previewTimer);
-  clearInterval(countdownInterval);
-  const iframe = document.getElementById("previewIframe");
-  iframe.src = "";
-  iframe.style.display = "none";
-  document.getElementById("previewLoading").classList.remove("show");
-  document.getElementById("previewTimeout").classList.remove("show");
-  document.getElementById("previewPlaceholder").style.display = "flex";
-  document.getElementById("previewTitle").textContent = "";
-  document.getElementById("previewLogin").classList.remove("show");
-  document.getElementById("openExtBtn").style.display = "none";
-  document.getElementById("updateBtn").style.display = "none";
-}
-
-function showToast(msg) {
-  const t = document.getElementById("toast");
-  t.textContent = msg; t.style.display = "block";
-  setTimeout(() => { t.style.display = "none"; }, 3000);
-}
-
-// ── LOGIN BUTTON ─────────────────────────────────────────────────────────
-document.getElementById("kpiLoginGoogleBtn").addEventListener("click", () => {
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID_KPI,
-    scope: SCOPES_KPI + " https://www.googleapis.com/auth/userinfo.email",
-    callback: (resp) => {
-      if (resp.error) { showToast("Authentication error: " + resp.error); return; }
-      kpiToken = resp.access_token;
-      fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: "Bearer " + kpiToken }
-      }).then(r => r.json()).then(info => {
-        kpiEmail = info.email || "";
-        if (!kpiEmail.endsWith("@" + ALLOWED_KPI)) {
-          kpiToken = kpiEmail = null;
-          showToast("Access denied. Only @uniandes.edu.co accounts are allowed.");
-          return;
-        }
-        touchKpiSession();
-        sessionStorage.setItem("br_token", kpiToken);
-        sessionStorage.setItem("br_email", kpiEmail);
-        
-        showToast("Signed in as " + kpiEmail);
-        document.getElementById("previewLogin").classList.remove("show");
-        if (pendingDash) { const a = pendingDash; pendingDash = null; a(); }
-      }).catch(() => showToast("Could not verify account."));
-    }
-  });
-  client.requestAccessToken();
-});
-
-// ── INIT ─────────────────────────────────────────────────────────────────
-selectedUnit = null;
-selectedDash = null;
-
-renderUnits();
-renderDashboards();
-resetPreview();
+    active_dialog = st.session_state.get("_faculty_dialog")
+    if active_dialog == "nat" and hasattr(st, "dialog"):
+        @st.dialog(f"International Faculty — {snap_label}", width="large")
+        def _dlg_nat():
+            cols = [c for c in [name_col, nat_col] if c]
+            rename_map = {c: ("Professor" if c == name_col else "Nationality") for c in cols}
+            detail = _clean_detail(intl_rows_by_col[snap_idx], cols, rename_map)
+            st.dataframe(detail, use_container_width=True, hide_index=True)
+            if st.button("Close", key="close_nat_dialog"):
+                st.session_state["_faculty_dialog"] = None
+                st.rerun()
+        _dlg_nat()
+    elif active_dialog == "dual" and hasattr(st, "dialog"):
+        @st.dialog(f"Dual Nationality Faculty — {snap_label}", width="large")
+        def _dlg_dual():
+            cols = [c for c in [name_col, dual_col] if c]
+            rename_map = {c: ("Professor" if c == name_col else "Double Nationality") for c in cols}
+            detail = _clean_detail(dual_rows_by_col[snap_idx], cols, rename_map)
+            st.dataframe(detail, use_container_width=True, hide_index=True)
+            if st.button("Close", key="close_dual_dialog"):
+                st.session_state["_faculty_dialog"] = None
+                st.rerun()
+        _dlg_dual()
 
 
-</script>
-</body>
-</html>
+# ── 6) PÁGINA — Visiting Faculty & International Seminars ──────────────
+def page_visiting():
+    _render_header(
+        "Visiting Faculty & International Seminars",
+        "Summary of faculty who visited through the International Summer School (EIV) and the International Seminars series — full detail lives in their own reports.",
+    )
+
+    # ---- EIV ----
+    df_eiv = load_eiv_cursos()
+    prof_col = next((c for c in ["Profesor"] if c in df_eiv.columns), None)
+    country_col = next((c for c in ["País Universidad", "Pais Universidad"] if c in df_eiv.columns), None)
+    ciclo_col = "Ciclo" if "Ciclo" in df_eiv.columns else None
+
+    _section_title_with_link(
+        "International Summer School (EIV) — Visiting Faculty", EIV_REPORT_URL, "Go to EIV report →",
+    )
+
+    if prof_col and country_col:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            _kpi("Visiting Faculty (this edition)", df_eiv[prof_col].nunique())
+        with col2:
+            _kpi("Countries of Origin", df_eiv[country_col].nunique())
+
+        df_eiv_listas = load_eiv_listas()
+        # Cursos únicos (colapsa el bootcamp co-dictado por 2 profesores)
+        cursos_unicos = df_eiv.drop_duplicates(subset=["Curso"])
+        total_capacidad = pd.to_numeric(cursos_unicos.get("Capacidad"), errors="coerce").fillna(0).sum()
+        total_inscritos = len(df_eiv_listas)
+        with col3:
+            _kpi("Students Enrolled", f"{total_inscritos:,}")
+        with col4:
+            _kpi("Occupancy", f"{(total_inscritos/total_capacidad*100):.1f}%" if total_capacidad else "—")
+
+        univ_col = "Universidad" if "Universidad" in df_eiv.columns else None
+
+        # ---- Mapa: flechas desde el país de cada profesor hacia Bogotá ----
+        st.markdown("##### Where Our Visiting Faculty Came From")
+        by_country_df = df_eiv.groupby(country_col)[prof_col].nunique().reset_index(name="Faculty")
+        by_country_df["Country_clean"] = by_country_df[country_col].astype(str).str.strip()
+
+        if univ_col:
+            univ_by_country = (
+                df_eiv.groupby(country_col)[univ_col].apply(lambda s: ", ".join(sorted(set(s.dropna().astype(str)))))
+            )
+            by_country_df["Universities"] = by_country_df[country_col].map(univ_by_country)
+        else:
+            by_country_df["Universities"] = ""
+
+        fig_map = go.Figure()
+        for _, row in by_country_df.iterrows():
+            coords = _COUNTRY_CENTROIDS.get(row["Country_clean"])
+            if not coords:
+                continue
+            lat0, lon0 = coords
+            fig_map.add_trace(go.Scattergeo(
+                lat=[lat0, BOGOTA_COORDS[0]], lon=[lon0, BOGOTA_COORDS[1]],
+                mode="lines", line=dict(width=1.4, color=_PURPLE_MID), opacity=0.55,
+                showlegend=False, hoverinfo="skip",
+            ))
+            fig_map.add_trace(go.Scattergeo(
+                lat=[lat0], lon=[lon0], mode="markers+text",
+                text=[row[country_col]], textposition="top center", textfont=dict(size=9, color="#3B2560"),
+                marker=dict(size=10 + 4 * row["Faculty"], color=_PURPLE_ACCENT, opacity=0.85,
+                            line=dict(width=1, color="#FFFFFF")),
+                hovertext=f"{row[country_col]}: {row['Faculty']} faculty<br>Universities: {row['Universities']}",
+                hoverinfo="text", showlegend=False,
+            ))
+        fig_map.add_trace(go.Scattergeo(
+            lat=[BOGOTA_COORDS[0]], lon=[BOGOTA_COORDS[1]], mode="markers+text",
+            text=["Bogotá"], textposition="bottom center", textfont=dict(size=10, color=_PURPLE_DEEP),
+            marker=dict(size=14, color=_PURPLE_DEEP, symbol="star", line=dict(width=1, color="#FFFFFF")),
+            hoverinfo="text", hovertext="UASM · Bogotá", showlegend=False,
+        ))
+        fig_map.update_geos(
+            showcountries=True, countrycolor="#E5DDF2", showland=True, landcolor=_PURPLE_BG_TINT,
+            showocean=True, oceancolor="#EDE7F7", bgcolor="rgba(0,0,0,0)", projection_type="natural earth",
+        )
+        fig_map.update_layout(height=420, margin=dict(l=10, r=10, t=10, b=6))
+        st.plotly_chart(fig_map, use_container_width=True)
+
+        col_chart, col_table = st.columns([3, 2])
+        with col_chart:
+            st.markdown("##### Faculty by Country of Origin")
+            fig_c = px.bar(
+                by_country_df.sort_values("Faculty"), x="Faculty", y=country_col, orientation="h",
+                color_discrete_sequence=[_PURPLE_MID],
+            )
+            fig_c.update_layout(
+                margin=dict(t=6, r=16, b=26, l=140), plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)", height=max(220, 32 * len(by_country_df)), yaxis=dict(title=""),
+            )
+            st.plotly_chart(fig_c, use_container_width=True)
+        with col_table:
+            st.markdown("##### Detail (with Universities)")
+            st.dataframe(
+                by_country_df[[country_col, "Faculty", "Universities"]], use_container_width=True, hide_index=True,
+            )
+
+        # ---- Cuándo estuvieron (por fechas) en lugar del ciclo ----
+        fechas_col = next((c for c in ["Fechas curso", "Fechas"] if c in df_eiv.columns), None)
+        if fechas_col:
+            by_fechas = df_eiv.groupby(fechas_col)[prof_col].nunique().reset_index(name="Visiting Faculty")
+            st.markdown("##### Visiting Faculty by Dates")
+            col_ch2, col_tb2 = st.columns([3, 2])
+            with col_ch2:
+                fig_cy = px.bar(by_fechas, x=fechas_col, y="Visiting Faculty",
+                                 color_discrete_sequence=[_PURPLE_ACCENT])
+                fig_cy.update_layout(
+                    margin=dict(t=6, r=16, b=60, l=36), plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)", height=300, xaxis=dict(type="category", tickangle=-30),
+                )
+                st.plotly_chart(fig_cy, use_container_width=True)
+            with col_tb2:
+                st.dataframe(by_fechas, use_container_width=True, hide_index=True)
+    else:
+        st.info("No pude encontrar las columnas necesarias (Profesor / País Universidad) en BD_cursos.xlsx (EIV).")
+
+    st.markdown("---")
+
+    # ---- Seminars ----
+    _section_title_with_link(
+        "International Seminars", SEMINARS_REPORT_URL, "Go to Seminars report →",
+    )
+    st.caption(
+        "A quick summary across Seminars, Speakers, and Participants — see the full "
+        "report for search, per-seminar detail, and downloadable tables."
+    )
+
+    df_sem = load_seminarios()
+    df_conf = load_conferencistas()
+    df_part = load_participantes()
+
+    year_col = "Año" if "Año" in df_sem.columns else None
+    cat_col = "Categoría" if "Categoría" in df_sem.columns else None
+    conf_name_col = "Nombre Completo" if "Nombre Completo" in df_conf.columns else None
+    conf_univ_col = "Nombre Universidad origen" if "Nombre Universidad origen" in df_conf.columns else None
+
+    if conf_name_col:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            _kpi("Seminars", len(df_sem))
+        with col2:
+            _kpi("Speakers", df_conf[conf_name_col].dropna().nunique())
+        with col3:
+            _kpi("Universities Represented", df_conf[conf_univ_col].dropna().nunique() if conf_univ_col else "—")
+        with col4:
+            _kpi("Participants", len(df_part))
+
+        col_year, col_cat = st.columns(2)
+        with col_year:
+            if year_col:
+                by_year = df_sem[year_col].dropna().astype(str).value_counts().sort_index()
+                by_year = by_year[~by_year.index.str.contains("REF", case=False, na=False)]
+                if not by_year.empty:
+                    by_year_df = by_year.reset_index()
+                    by_year_df.columns = ["Year", "Seminars"]
+                    st.markdown("##### Seminars by Year")
+                    fig_y = px.bar(by_year_df, x="Year", y="Seminars", color_discrete_sequence=[_PURPLE_MID])
+                    fig_y.update_layout(
+                        margin=dict(t=6, r=16, b=26, l=36), plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)", height=260, xaxis=dict(type="category"),
+                    )
+                    st.plotly_chart(fig_y, use_container_width=True)
+        with col_cat:
+            if cat_col:
+                by_cat = df_sem[cat_col].dropna().value_counts().reset_index()
+                by_cat.columns = ["Category", "Seminars"]
+                st.markdown("##### By Category")
+                fig_c = px.pie(by_cat, names="Category", values="Seminars", hole=0.5,
+                                color_discrete_sequence=[_PURPLE_DEEP, _PURPLE_MID, _PURPLE_ACCENT, "#C9B4E8"])
+                fig_c.update_traces(textinfo="percent+label", textfont=dict(size=10))
+                fig_c.update_layout(height=260, margin=dict(t=10, r=10, b=10, l=10), showlegend=False)
+                st.plotly_chart(fig_c, use_container_width=True)
+    else:
+        st.info("No pude encontrar las columnas necesarias en BD_conferencistas.xlsx.")
+
+
+# ── 7) PÁGINA — International Weeks ──────────────────────────────────────
+def page_weeks():
+    _render_header(
+        "International Weeks",
+        "UASM graduate-program students attending International Weeks abroad, and International Weeks or activities offered by the School.",
+    )
+
+    # ---- Students attending int'l weeks abroad ----
+    _section_title_with_link(
+        "Students Attending International Weeks Abroad", WEEKS_REPORT_URL, "Go to Weeks report →",
+    )
+    df_listas = load_weeks_listas()
+    univ_col = "Producto" if "Producto" in df_listas.columns else None
+    prog_col = "Programa" if "Programa" in df_listas.columns else None
+
+    if univ_col and prog_col:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            _kpi("Total Students", len(df_listas))
+        with col2:
+            _kpi("Programs Represented", df_listas[prog_col].nunique())
+        with col3:
+            _kpi("Universities Visited", df_listas[univ_col].nunique())
+
+        rows = []
+        for prog, sub in df_listas.groupby(prog_col):
+            univ_counts = sub[univ_col].value_counts()
+            rows.append({
+                "Program": prog,
+                "Students": len(sub),
+                "Universities": univ_counts.shape[0],
+                "University Breakdown": ", ".join(f"{u} ({n})" for u, n in univ_counts.items()),
+            })
+        table_students = pd.DataFrame(rows).sort_values("Students", ascending=False)
+
+        col_chart, col_table = st.columns([3, 2])
+        with col_chart:
+            st.markdown("##### Students by Program")
+            fig_p = px.bar(
+                table_students.sort_values("Students"), x="Students", y="Program", orientation="h",
+                color_discrete_sequence=[_PURPLE_MID],
+            )
+            fig_p.update_layout(
+                margin=dict(t=6, r=16, b=26, l=180), plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)", height=max(220, 34 * len(table_students)), yaxis=dict(title=""),
+            )
+            st.plotly_chart(fig_p, use_container_width=True)
+        with col_table:
+            st.markdown("##### Detail")
+            st.dataframe(table_students, use_container_width=True, hide_index=True)
+
+        univ_counts_all = df_listas[univ_col].value_counts().reset_index()
+        univ_counts_all.columns = ["University", "Students"]
+        st.markdown("##### Students by Host University")
+        fig_u = px.pie(univ_counts_all, names="University", values="Students", hole=0.5)
+        fig_u.update_traces(textinfo="percent+label", textfont=dict(size=10))
+        fig_u.update_layout(height=340, margin=dict(t=10, r=10, b=10, l=10), showlegend=False)
+        st.plotly_chart(fig_u, use_container_width=True)
+
+        st.download_button(
+            "Download as Excel", data=_xlsx_bytes(table_students, "International_Weeks_by_Program"),
+            file_name="International_Weeks_by_Program.xlsx", key="dl_weeks_students",
+        )
+    else:
+        st.info("No pude encontrar las columnas necesarias (Producto / Programa) en BD_listas.xlsx (Int. Weeks).")
+
+    st.markdown("---")
+
+    # ---- International Weeks offered by the School ----
+    st.markdown("### International Weeks or Activities Offered by the School")
+    df_semanas = load_weeks_semanas()
+    id_col = df_semanas.columns[0] if len(df_semanas.columns) else None
+    name_col = "Nombre" if "Nombre" in df_semanas.columns else None
+    prof_col = next((c for c in ["Profesor/s", "Profesor"] if c in df_semanas.columns), None)
+    fechas_col = "fechas" if "fechas" in df_semanas.columns else None
+    asist_col = "Asistentes" if "Asistentes" in df_semanas.columns else None
+    country_col = "País" if "País" in df_semanas.columns else None
+    city_col = "Ubicación" if "Ubicación" in df_semanas.columns else None
+
+    if name_col:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            _kpi("Weeks Offered", len(df_semanas))
+        with col2:
+            _kpi("Countries", df_semanas[country_col].nunique() if country_col else "—")
+        with col3:
+            _kpi("Total Attendees", int(df_semanas[asist_col].sum()) if asist_col else "—")
+        with col4:
+            df_budget = load_weeks_budget()
+            week_col = "international week" if "international week" in df_budget.columns else None
+            if week_col and "tipo" in df_budget.columns and "presupuestado" in df_budget.columns:
+                ingresos = df_budget[df_budget["tipo"] == "ingreso"]["presupuestado"].sum()
+                egresos = df_budget[df_budget["tipo"] == "gasto"]["presupuestado"].abs().sum()
+                balance = ingresos - egresos
+                margin = (balance / ingresos * 100) if ingresos else 0
+                _kpi("Margin", f"{margin:.1f}%")
+            else:
+                _kpi("Margin", "—")
+
+        display_cols = [c for c in [id_col, name_col, prof_col, fechas_col, asist_col, city_col, country_col]
+                         if c and c in df_semanas.columns]
+        st.dataframe(df_semanas[display_cols], use_container_width=True, hide_index=True)
+
+        col_ca, col_cb = st.columns(2)
+        if country_col:
+            with col_ca:
+                by_country = df_semanas[country_col].value_counts().reset_index()
+                by_country.columns = ["Country", "Weeks"]
+                st.markdown("##### Weeks by Country")
+                fig = px.bar(by_country, x="Weeks", y="Country", orientation="h",
+                             color_discrete_sequence=[_PURPLE_MID])
+                fig.update_layout(
+                    margin=dict(t=6, r=16, b=26, l=120), plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)", height=max(220, 40 * len(by_country)), yaxis=dict(title=""),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        if asist_col and name_col:
+            with col_cb:
+                st.markdown("##### Attendees by Week")
+                fig_at = px.bar(
+                    df_semanas.sort_values(asist_col), x=asist_col, y=name_col, orientation="h",
+                    color_discrete_sequence=[_PURPLE_ACCENT],
+                )
+                fig_at.update_layout(
+                    margin=dict(t=6, r=16, b=26, l=160), plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)", height=max(220, 40 * len(df_semanas)), yaxis=dict(title=""),
+                )
+                st.plotly_chart(fig_at, use_container_width=True)
+
+        st.download_button(
+            "Download as Excel", data=_xlsx_bytes(df_semanas[display_cols], "International_Weeks_Offered"),
+            file_name="International_Weeks_Offered.xlsx", key="dl_weeks_offered",
+        )
+    else:
+        st.info("No pude encontrar las columnas necesarias en BD_semanas.xlsx (Int. Weeks).")
+
+
+# ── 8) PÁGINAS PENDIENTES (placeholders) ────────────────────────────────
+def _make_pending_page(title: str, subtitle: str, note: str):
+    def _page():
+        _render_header(title, subtitle)
+        _pending_card("This section is pending.", note)
+    return _page
+
+
+page_research = _make_pending_page(
+    "Research & Faculty Activities",
+    "International academic journal articles, conference presentations, faculty activities, credit-granting and non-credit courses taught abroad.",
+    "Needs a source database with international publications, conference presentations, and faculty visiting-teaching records.",
+)
+page_homecampus = _make_pending_page(
+    "Home Campus",
+    "Incoming international students hosted at UASM's home campus.",
+    "Needs BD_movilidad.xlsx (incoming) mapped and confirmed for this view.",
+)
+page_graduates = _make_pending_page(
+    "Graduates",
+    "International mobility experience among UASM graduates.",
+    "Needs BD_grados joined against BD_movilidad / BD_experiencia.",
+)
+page_agreements_mobility = _make_pending_page(
+    "Agreement Utilization",
+    "Outgoing & incoming mobility mapped against each international agreement.",
+    "Needs BD_movilidad.xlsx cross-referenced with BD_convenios.xlsx.",
+)
+page_program_mobility = _make_pending_page(
+    "Mobility by Program",
+    "Outgoing exchange mobility broken down by academic program.",
+    "Needs BD_movilidad.xlsx segmented by program and level.",
+)
+page_phd = _make_pending_page(
+    "PhD Mobility",
+    "International mobility and research stays among PhD students.",
+    "Needs a dedicated PhD mobility source database.",
+)
+page_agreements = _make_pending_page(
+    "Agreements",
+    "Full catalog of international agreements — type, status, dates, accreditation.",
+    "BD_convenios.xlsx is already loaded; full-table view coming next.",
+)
+
+
+# ── 9) PÁGINA — Update Data ──────────────────────────────────────────────
+def page_update_data():
+    _render_header(
+        "Update Data",
+        "Upload templates and refresh the Google Drive source files behind this dashboard.",
+    )
+    _pending_card(
+        "The update workflow for Internationalization is pending.",
+        "This will mirror Faculty Analytics' Update Data page (template downloads, "
+        "validation, and direct writes to Drive) once the source templates for "
+        "BD_convenios, BD_movilidad, BD_cursos, BD_seminarios, and BD_listas are defined.",
+    )
+
+
+# ── 10) NAVEGACIÓN ────────────────────────────────────────────────────────
+pages = [
+    st.Page(page_faculty, title="Faculty", icon="🌎", url_path="faculty", default=True),
+    st.Page(page_visiting, title="Visiting Faculty", icon="🧑‍🏫", url_path="visiting"),
+    st.Page(page_research, title="Research", icon="🔬", url_path="research"),
+    st.Page(page_homecampus, title="Home Campus", icon="🏫", url_path="homecampus"),
+    st.Page(page_graduates, title="Graduates", icon="🎓", url_path="graduates"),
+    st.Page(page_weeks, title="Intl. Weeks", icon="📅", url_path="weeks"),
+    st.Page(page_agreements_mobility, title="Agreement Utilization", icon="🤝", url_path="agreements-mobility"),
+    st.Page(page_program_mobility, title="Mobility by Program", icon="🧭", url_path="program-mobility"),
+    st.Page(page_phd, title="PhD Mobility", icon="🎯", url_path="phd"),
+    st.Page(page_agreements, title="Agreements", icon="📄", url_path="agreements"),
+    st.Page(page_update_data, title="Update Data", icon="🔄", url_path="update-data"),
+]
+pg = st.navigation(pages, position="hidden")
+IS_UPDATE_PAGE = pg is pages[-1]
+main_pages = pages[:-1]
+
+if not IS_UPDATE_PAGE:
+    st.session_state["_return_page_idx"] = main_pages.index(pg)
+
+if IS_UPDATE_PAGE:
+    return_idx = st.session_state.get("_return_page_idx", 0)
+    return_page = main_pages[return_idx]
+    with st.sidebar:
+        st.markdown('<div style="height:26vh;"></div>', unsafe_allow_html=True)
+        with st.container(key="update_sidebar_group"):
+            try:
+                st.image("imagenes/logo.png", width=65)
+            except Exception:
+                pass
+            st.markdown(
+                '<div style="color:#4A2E7D;font-size:22px;font-weight:800;'
+                'line-height:1.15;margin-top:8px;">UASM Intl. KPIs</div>'
+                '<div style="color:#6b7280;font-size:13px;margin-bottom:16px;">Internationalization Analytics</div>',
+                unsafe_allow_html=True,
+            )
+            with st.container(key="go_to_dashboard_btn"):
+                st.page_link(return_page, label="Go to Dashboard", icon=":material/bar_chart:", use_container_width=True)
+else:
+    with st.sidebar:
+        col_logo, col_title = st.columns([1, 3])
+        with col_logo:
+            try:
+                st.image("imagenes/logo.png", width=65)
+            except Exception:
+                pass
+        with col_title:
+            st.markdown(
+                '<div style="padding-top:10px;color:#4A2E7D;font-size:22px;'
+                'font-weight:800;line-height:1.1;">UASM Intl. KPIs</div>',
+                unsafe_allow_html=True,
+            )
+            st.caption("Internationalization Analytics")
+        st.markdown("---")
+
+    _NAV_VISIBLE = 6  # cuántas secciones caben directamente antes de agrupar el resto bajo "More"
+    with st.container(key="nav_toggle"):
+        visible_pages = main_pages[:_NAV_VISIBLE]
+        overflow_pages = main_pages[_NAV_VISIBLE:]
+        n_cols = len(visible_pages) + (1 if overflow_pages else 0)
+        nav_cols = st.columns(n_cols)
+
+        for col, page_obj in zip(nav_cols, visible_pages):
+            with col:
+                st.page_link(page_obj)
+
+        if overflow_pages:
+            with nav_cols[-1]:
+                with st.popover("More...", use_container_width=False):
+                    for page_obj in overflow_pages:
+                        st.page_link(page_obj)
+
+pg.run()
+
+if not IS_UPDATE_PAGE:
+    with st.sidebar:
+        st.markdown("---")
+        with st.container(key="go_to_update_btn"):
+            st.page_link(pages[-1], label="Update Data", icon=":material/sync:", use_container_width=True)
