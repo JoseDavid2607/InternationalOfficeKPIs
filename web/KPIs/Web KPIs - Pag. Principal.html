@@ -21,9 +21,9 @@
   --shadow-panel: 0 20px 50px rgba(0,0,0,.16);
   --shadow-soft: 0 10px 24px rgba(0,0,0,.10);
   --radius-panel: 24px;
-  --steel-blue: #2c5282;
-  --steel-blue-dark: #1f3a5f;
-  --steel-blue-light: #e9f0f7;
+  --steel-blue: #2fbfae;
+  --steel-blue-dark: #1f8f82;
+  --steel-blue-light: #e3f9f5;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, Helvetica, sans-serif; background: var(--bg-page); color: var(--slate-dark); -webkit-font-smoothing: antialiased; }
@@ -124,13 +124,6 @@ header.hero h1 {
 .unit-item.locked .unit-icon svg { stroke: #b0b6bf; }
 .unit-item.locked .unit-name { color: #9aa1ab; }
 .unit-item.locked .unit-desc { color: #b7bcc4; }
-.unit-lock-badge {
-  display: inline-flex; align-items: center; gap: 4px; margin-left: 8px;
-  font-size: .64rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
-  color: #9aa1ab; background: #f3f4f6; border: 1px solid #e5e7eb;
-  padding: 2px 7px; border-radius: 999px; flex-shrink: 0;
-}
-.unit-lock-badge svg { width: 9px; height: 9px; stroke: #9aa1ab; fill: none; stroke-width: 2.2; }
 
 /* ── DASHBOARDS LIST ── */
 .dash-scroll { overflow-y: auto; flex: 1; }
@@ -720,16 +713,10 @@ function renderUnits() {
     const btn = document.createElement("button");
     const isActive = selectedUnit === unit.id;
     btn.className = "unit-item" + (isActive ? " active" : "") + (unit.locked ? " locked" : "");
-    const lockBadge = unit.locked
-      ? `<span class="unit-lock-badge"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Locked</span>`
-      : "";
     btn.innerHTML = `
       <div class="unit-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${unit.icon}</svg></div>
       <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;">
-          <div class="unit-name">${unit.name}</div>
-          ${lockBadge}
-        </div>
+        <div class="unit-name">${unit.name}</div>
         ${unit.desc ? `<div class="unit-desc">${unit.desc}</div>` : ""}
       </div>
 `;
