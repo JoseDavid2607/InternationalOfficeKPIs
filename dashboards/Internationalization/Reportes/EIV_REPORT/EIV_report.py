@@ -1100,15 +1100,16 @@ def page_summary():
     with col_donut:
         st.markdown("##### By Area")
         area_counts = tabla_f.drop_duplicates(subset=["curso"])["area"].value_counts()
+        area_labels = [str(a).replace(" & ", " &<br>") for a in area_counts.index]
         fig_area = go.Figure(go.Pie(
-            labels=area_counts.index, values=area_counts.values, hole=0.55,
+            labels=area_labels, values=area_counts.values, hole=0.55,
             marker=dict(colors=[BLUE, PURPLE, PINK, GREEN, "#F2994A", "#3FA34D", "#8C7F87"],
                         line=dict(color="#fff", width=1.5)),
-            textinfo="label+value", textposition="outside", insidetextorientation="horizontal",
-            textfont=dict(size=14, color=INK),
+            textinfo="label+value", textposition="inside", insidetextorientation="horizontal",
+            textfont=dict(size=13, color=INK),
         ))
-        fig_area.update_layout(margin=dict(t=10, r=60, b=10, l=60), showlegend=False,
-                                paper_bgcolor="rgba(0,0,0,0)", height=460, uniformtext_minsize=12,
+        fig_area.update_layout(margin=dict(t=10, r=10, b=10, l=10), showlegend=False,
+                                paper_bgcolor="rgba(0,0,0,0)", height=460, uniformtext_minsize=10,
                                 uniformtext_mode="show")
         st.plotly_chart(fig_area, use_container_width=True)
 
@@ -1153,11 +1154,16 @@ def page_dashboard():
         if profs:
             st.markdown(f"**{profs}** — {curso}")
 
-    col_chart, col_kpi = st.columns([2, 1])
+    col_chart, col_kpi = st.columns([2, 1], vertical_alignment="center")
     with col_kpi:
-        _kpi("Enrolled seats", f"{len(f_listas):,}", "accent")
-        st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
-        _kpi("Unique participants", f"{f_listas['Código est'].dropna().nunique():,}", "accent")
+        st.markdown(
+            f'<div style="display:flex;flex-direction:column;justify-content:center;height:100%;gap:22px;">'
+            f'<div><div class="kv accent" style="font-size:32px;">{len(f_listas):,}</div>'
+            f'<div class="kl">Enrolled seats</div></div>'
+            f'<div><div class="kv accent" style="font-size:32px;">{f_listas["Código est"].dropna().nunique():,}</div>'
+            f'<div class="kl">Unique participants</div></div></div>',
+            unsafe_allow_html=True,
+        )
     with col_chart:
         st.markdown("##### Program Type Distribution")
         total = len(f_listas) or 1
@@ -1562,7 +1568,7 @@ def page_visiting():
                     st.caption("No comments for this question in this scope.")
 
 
-def _fcol(row: dict, target: str):
+def _fcol(row: dict, target: str, default=None):
     """Búsqueda de columna normalizada (colapsa espacios/NBSP a un espacio
     simple, y normaliza Unicode a NFC) — BD_satisfaccionEIV trae algunas
     cabeceras con \\xa0 (espacio duro) en lugares distintos, y algunas
@@ -1574,8 +1580,9 @@ def _fcol(row: dict, target: str):
     t = norm(target)
     for k in row.keys():
         if norm(k) == t:
-            return row[k]
-    return None
+            v = row[k]
+            return default if (v is None or (isinstance(v, float) and pd.isna(v))) else v
+    return default
 
 
 def _find_satisfaction_row(df_sat: pd.DataFrame, curso: str, profesor: str) -> Optional[dict]:
@@ -1777,9 +1784,9 @@ def _render_professor_detail(entry: dict, entries: List[dict]):
                 group = prof_comments.get(qid, {"items": []})
                 st.markdown(f"**{label} ({len(group['items'])})**")
                 if group["items"]:
-                    with st.container(height=180):
+                    with st.container(height=200):
                         for item in group["items"]:
-                            st.markdown(f"- {item}")
+                            st.markdown(f'<div class="prof-quote">“{item}”</div>', unsafe_allow_html=True)
                 else:
                     st.caption("No comments for this question.")
 
