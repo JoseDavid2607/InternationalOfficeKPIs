@@ -189,6 +189,11 @@ _LOGO_CANDIDATES = [
     "pics/LOGO/2026/logo2026.png", "PICS/logo/2026/logo2026.png",
     "PICS/LOGO/2026/logo2026.PNG", "./PICS/LOGO/2026/logo2026.png",
 ]
+_BANNER_CANDIDATES = [
+    "PICS/LOGO/2026/Banner_EIV.png", "PICS/LOGO/2026/banner_eiv.png",
+    "pics/LOGO/2026/Banner_EIV.png", "PICS/LOGO/2026/Banner_EIV.PNG",
+    "./PICS/LOGO/2026/Banner_EIV.png",
+]
 
 
 def _show_eiv_logo(width: int):
@@ -206,6 +211,29 @@ def _show_eiv_logo(width: int):
         for fname in sorted(_os.listdir(logo_dir)):
             if fname.lower().endswith(".png") and "logo" in fname.lower():
                 st.image(_os.path.join(logo_dir, fname), width=width)
+                return
+
+
+def _show_eiv_banner(width: Optional[int] = None, use_container_width: bool = False):
+    """El banner de portada (Banner_EIV.png), para el Data Center — distinto
+    del logo pequeño que va en el sidebar del resto de páginas."""
+    base = _os.path.dirname(_os.path.abspath(__file__))
+    for rel in _BANNER_CANDIDATES:
+        full = _os.path.join(base, rel)
+        if _os.path.exists(full):
+            if use_container_width:
+                st.image(full, use_container_width=True)
+            else:
+                st.image(full, width=width)
+            return
+    logo_dir = _os.path.join(base, "PICS", "LOGO", "2026")
+    if _os.path.isdir(logo_dir):
+        for fname in sorted(_os.listdir(logo_dir)):
+            if fname.lower().endswith(".png") and "banner" in fname.lower():
+                if use_container_width:
+                    st.image(_os.path.join(logo_dir, fname), use_container_width=True)
+                else:
+                    st.image(_os.path.join(logo_dir, fname), width=width)
                 return
 
 
@@ -440,7 +468,7 @@ def professor_language_map() -> Dict[str, str]:
         if pd.isna(prof):
             continue
         val = str(r.get(idioma_col) or "").strip().casefold()
-        out[str(prof).strip()] = "es" if val.startswith(("esp", "spa")) else "en"
+        out[_norm_name(prof)] = "es" if val.startswith(("esp", "spa")) else "en"
     return out
 
 
@@ -650,8 +678,18 @@ def filtered_notas(bloque: str, curso: str) -> pd.DataFrame:
 
 
 # ── 7) EIV.Evaluation equivalente ────────────────────────────────────────
+def _norm_name(name) -> str:
+    """Normaliza nombres de profesor (espacios/mayúsculas) antes de cruzar
+    entre BD_cursos.xlsx y BD_evaluacion_curso.xlsx / BD_satisfaccionEIV.xlsx
+    -- si alguno de los 3 archivos trae un espacio doble o una diferencia de
+    mayúsculas, una comparación exacta pierde silenciosamente TODOS los
+    datos de ese profesor (parecía que 'no leía la información')."""
+    return re.sub(r"\s+", " ", str(name)).strip().upper()
+
+
 def _resolve_alias(name: str) -> str:
-    return NAME_ALIASES.get(name, name)
+    n = _norm_name(name)
+    return NAME_ALIASES.get(n, n)
 
 
 @st.cache_data(ttl=300)
@@ -806,12 +844,14 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
 # ── 8) PÁGINA — Cover (portada, funciona como Data Center — sin sidebar) ──
 def page_cover():
     st.markdown(f"<div style='height:4vh;'></div>", unsafe_allow_html=True)
-    col_l, col_mid, col_r = st.columns([1, 2, 1])
+    col_l, col_mid, col_r = st.columns([1, 4, 1])
     with col_mid:
         try:
-            _show_eiv_logo(260)
+            _show_eiv_banner(use_container_width=True)
         except Exception:
             pass
+    col_l2, col_mid2, col_r2 = st.columns([1, 2, 1])
+    with col_mid2:
         st.markdown(
             f'<div style="text-align:center;font-size:34px;font-weight:800;color:{INK};margin-top:18px;">'
             'International Summer School</div>'
@@ -1461,6 +1501,63 @@ def page_visiting():
         ]
         _render_insight_cards(cards)
 
+        st.markdown("##### Comments")
+        prof_col_for_sat = next((c for c in df_sat.columns if re.sub(r"\s+", " ", str(c)).strip().casefold() == "full name"), None)
+        title_col_for_sat = next((c for c in df_sat.columns if re.sub(r"\s+", " ", str(c)).strip().casefold() == "course title"), None)
+        comment_fields = [
+            ("What They Valued Most", "Please mention two aspects that you valued the most about your course delivery"),
+            ("What They Would Change", "Please mention two aspects that you would change if delivering this course again"),
+            ("Student Academic Impression", "Please provide the general impressions on the academic level and performance of the students in your course"),
+            ("General Comments", "General comments"),
+            ("Changes for Next Year", "What changes would you introduce to make the International Summer School even better?"),
+        ]
+        ccols = st.columns(2)
+        for i, (label, question) in enumerate(comment_fields):
+            with ccols[i % 2]:
+                items = []
+                for row in sat_rows:
+                    val = _fcol(row, question)
+                    if val is None or (isinstance(val, float) and pd.isna(val)) or not str(val).strip():
+                        continue
+                    who = row.get(prof_col_for_sat) if prof_col_for_sat else None
+                    what = row.get(title_col_for_sat) if title_col_for_sat else None
+                    items.append((who, what, str(val).strip()))
+                st.markdown(f"**{label} ({len(items)})**")
+                if items:
+                    with st.container(height=200):
+                        for who, what, txt in items:
+                            attribution = f"{who} — {what}" if who else (what or "")
+                            st.markdown(
+                                f'<div class="prof-quote"><strong>{attribution}</strong>“{txt}”</div>',
+                                unsafe_allow_html=True,
+                            )
+                else:
+                    st.caption("No comments for this question in this scope.")
+
+    st.markdown("---")
+    st.markdown("##### Download Evaluation Reports")
+    st.caption(f"All courses in scope — this downloads one PDF per faculty member ({len(prof_names)}) as a ZIP. "
+               "Pick a specific course above to download just that professor's PDF instead.")
+    if st.button("📄 Generate PDF Reports (ZIP)", key="btn_bulk_pdf", use_container_width=False):
+        import zipfile
+        zbuf = io.BytesIO()
+        with st.spinner(f"Generando {len(prof_names)} reportes…"), zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name in prof_names:
+                ed_name = build_professor_eval_data(name)
+                if not ed_name:
+                    continue
+                entry_name = next((e for e in scope_entries if e.get("Profesor") == name), None)
+                curso_name = entry_name["Curso"] if entry_name else ""
+                row_name = _find_satisfaction_row(df_sat, curso_name, name) if entry_name else None
+                pdf_bytes = _build_professor_pdf(name, curso_name, ed_name, row_name or {})
+                fname = f"ISS_{name.replace(' ', '_')}_Evaluation_Report.pdf"
+                zf.writestr(fname, pdf_bytes)
+        zbuf.seek(0)
+        st.download_button(
+            "⬇️ Download ZIP", data=zbuf.getvalue(), file_name="ISS_2026_Evaluation_Reports.zip",
+            mime="application/zip", key="dl_bulk_pdf_zip",
+        )
+
 
 def _fcol(row: dict, target: str):
     """Búsqueda de columna normalizada (colapsa espacios/():NBSP a un
@@ -1476,17 +1573,28 @@ def _fcol(row: dict, target: str):
 
 
 def _find_satisfaction_row(df_sat: pd.DataFrame, curso: str, profesor: str) -> Optional[dict]:
+    def _resolve_header(df, target):
+        t = re.sub(r"\s+", " ", target).strip().casefold()
+        for k in df.columns:
+            if re.sub(r"\s+", " ", str(k)).strip().casefold() == t:
+                return k
+        return None
+
+    title_col = _resolve_header(df_sat, "Course title")
+    if not title_col:
+        return None
     curso_norm = re.sub(r"\s+", " ", str(curso)).strip().casefold()
-    title_norm = df_sat["Course title"].astype(str).str.replace(r"\s+", " ", regex=True).str.strip().str.casefold()
+    title_norm = df_sat[title_col].astype(str).str.replace(r"\s+", " ", regex=True).str.strip().str.casefold()
     matches = df_sat[title_norm == curso_norm]
     if len(matches) == 0:
         return None
     if len(matches) == 1:
         return matches.iloc[0].to_dict()
+    name_col = _resolve_header(df_sat, "Full name")
     prof_words = [w for w in profesor.lower().split() if len(w) > 2]
     best, best_score = matches.iloc[0].to_dict(), -1
     for _, m in matches.iterrows():
-        full = str(m.get("Full name", "")).lower()
+        full = str(m.get(name_col, "")).lower() if name_col else ""
         score = sum(1 for w in prof_words if w in full)
         if score > best_score:
             best_score, best = score, m.to_dict()
