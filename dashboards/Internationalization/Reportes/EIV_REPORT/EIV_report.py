@@ -1560,14 +1560,16 @@ def page_visiting():
         _kpi("Response Rate", f"{resp_total/insc_total*100:.1f}%" if insc_total else "—", "accent")
     with c_btn:
         st.caption(f"One PDF per faculty member ({len(prof_names)}), as a ZIP.")
-        with st.container(key="bulk_pdf_generate"):
-            gen_clicked = st.button("Generate PDF Reports (ZIP)", key="btn_bulk_pdf",
-                                     icon=":material/picture_as_pdf:", use_container_width=True)
-        if gen_clicked:
+        # Se genera de una sola vez (con caché por alcance) y se muestra
+        # directo el botón de descarga -- antes había que darle click a
+        # "Generate" y LUEGO a "Download" (dos pasos); ahora es un solo click.
+        scope_key = f"{bloque}|{'|'.join(sorted(prof_names))}"
+        cache = st.session_state.get("_eiv_bulk_pdf_cache", {})
+        if cache.get("key") != scope_key:
             try:
                 import zipfile
                 zbuf = io.BytesIO()
-                with st.spinner(f"Generando {len(prof_names)} reportes…"), zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
+                with st.spinner(f"Preparando {len(prof_names)} reportes…"), zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
                     for name in prof_names:
                         ed_name = build_professor_eval_data(name)
                         if not ed_name:
@@ -1579,13 +1581,14 @@ def page_visiting():
                         fname = f"ISS_{name.replace(' ', '_')}_Evaluation_Report.pdf"
                         zf.writestr(fname, pdf_bytes)
                 zbuf.seek(0)
-                st.session_state["_eiv_bulk_pdf_zip"] = zbuf.getvalue()
+                st.session_state["_eiv_bulk_pdf_cache"] = {"key": scope_key, "data": zbuf.getvalue()}
             except ModuleNotFoundError:
-                pass
-        if st.session_state.get("_eiv_bulk_pdf_zip"):
+                st.session_state["_eiv_bulk_pdf_cache"] = {"key": scope_key, "data": None}
+        cache = st.session_state.get("_eiv_bulk_pdf_cache", {})
+        if cache.get("data"):
             with st.container(key="bulk_pdf_download"):
                 st.download_button(
-                    "Download ZIP", data=st.session_state["_eiv_bulk_pdf_zip"],
+                    "Download PDF Reports (ZIP)", data=cache["data"],
                     file_name="ISS_2026_Evaluation_Reports.zip", mime="application/zip", key="dl_bulk_pdf_zip",
                     icon=":material/download:", use_container_width=True,
                 )
@@ -1926,10 +1929,15 @@ def _render_professor_detail(entry: dict, entries: List[dict], siblings: Optiona
         st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
         if ed:
             try:
-                pdf_bytes = _build_professor_pdf(profesor, curso, ed, row if row else {})
+                pdf_key = f"{profesor}|{curso}"
+                cache = st.session_state.get("_eiv_prof_pdf_cache", {})
+                if cache.get("key") != pdf_key:
+                    pdf_bytes = _build_professor_pdf(profesor, curso, ed, row if row else {})
+                    st.session_state["_eiv_prof_pdf_cache"] = {"key": pdf_key, "data": pdf_bytes}
+                    cache = st.session_state["_eiv_prof_pdf_cache"]
                 with st.container(key=f"pdf_btn_{profesor}"):
                     st.download_button(
-                        "Evaluation Report (PDF)", data=pdf_bytes,
+                        "Evaluation Report (PDF)", data=cache["data"],
                         file_name=f"EIV_{profesor.replace(' ', '_')}_Evaluation_Report.pdf",
                         mime="application/pdf", key=f"dl_pdf_{profesor}", use_container_width=True,
                         icon=":material/picture_as_pdf:",
@@ -2097,16 +2105,20 @@ def _pdf_legend(c, options: dict, order: list, color_map: dict, x_mm, y_mm, w_mm
         n = options.get(k, 0)
         if not n:
             continue
+        label = f"{k} ({n})"
+        item_w_mm = (c.stringWidth(label, "Helvetica", 6.5) / mm) + 5 + 3
+        # Revisa ANTES de dibujar si el ítem cabe en lo que queda de la fila
+        # -- antes se revisaba DESPUÉS de dibujar, así que una etiqueta larga
+        # que arrancaba cerca del borde se salía del margen de la columna.
+        if lx_mm + item_w_mm > x_mm + w_mm and lx_mm > x_mm:
+            lx_mm, ly_mm = x_mm, ly_mm + 5
         col = color_map.get(k, (180, 180, 180))
         top_pt = (page_h_mm - ly_mm) * mm
         c.setFillColor(rl_colors.Color(col[0] / 255, col[1] / 255, col[2] / 255))
         c.rect(lx_mm * mm, top_pt - 2.4 * mm, 3.5 * mm, 3.2 * mm, fill=1, stroke=0)
         c.setFillColor(rl_colors.HexColor(INK))
-        label = f"{k} ({n})"
         c.drawString(lx_mm * mm + 5 * mm, top_pt - 2.4 * mm, label)
-        lx_mm += (c.stringWidth(label, "Helvetica", 6.5) / mm) + 8
-        if lx_mm > x_mm + w_mm - 24:
-            lx_mm, ly_mm = x_mm, ly_mm + 5
+        lx_mm += item_w_mm + 5
     return ly_mm + 6
 
 
@@ -2175,9 +2187,10 @@ def _wrap_to_width(c, text: str, font_name: str, font_size: float, max_width_mm:
     """Envuelve texto según el ANCHO REAL renderizado (c.stringWidth), no
     una estimación de caracteres por línea -- esa estimación quedaba corta
     para columnas angostas y dejaba preguntas largas en una sola línea que
-    se salía del margen."""
+    se salía del margen. Se resta un pequeño margen de seguridad (2%) para
+    absorber cualquier diferencia mínima de redondeo."""
     from reportlab.lib.units import mm
-    max_w_pt = max_width_mm * mm
+    max_w_pt = max_width_mm * mm * 0.98
     words = str(text).split()
     lines, cur = [], ""
     for w in words:
@@ -2470,7 +2483,9 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         nonlocal y
         text = q.get("text") or ""
         q_lines = _wrap_to_width(c, text, "Helvetica", 8, cW)
-        needed = len(q_lines) * 4 + 7 + 14
+        n_opts = sum(1 for k in LIKERT_ORDER_PDF if q["options"].get(k))
+        legend_rows = 2 if n_opts >= 4 else 1
+        needed = len(q_lines) * 4 + 7 + 14 + (legend_rows - 1) * 5
         check(needed)
         c.setFillColor(ink)
         c.setFont("Helvetica", 8)
@@ -2539,6 +2554,18 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         col_title = ["Period 202613 (GR)", "Period 202618 (UG)"]
         col_data = [p13, p18]
 
+        def estimate_q_height(q, w):
+            """Alto real necesario para una pregunta en la columna de ancho
+            `w`: líneas del texto envuelto + barra + hasta 2 filas de
+            leyenda (antes se usaba un estimado fijo de 22mm que se quedaba
+            corto con preguntas largas de varias líneas, cortándolas a la
+            mitad entre páginas)."""
+            text = q.get("text") or ""
+            n_lines = len(_wrap_to_width(c, text, "Helvetica", 7, w))
+            n_opts = sum(1 for k in LIKERT_ORDER_PDF if q["options"].get(k))
+            legend_rows = 2 if n_opts >= 3 else 1
+            return n_lines * 3.6 + 2 + 6 + legend_rows * 5 + 6
+
         def draw_likert_q_col(q, x_off, w, y_in):
             """Misma lógica que draw_likert_q pero en un ancho/columna
             propios, para el layout de 2 columnas lado a lado."""
@@ -2603,10 +2630,10 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             y_start = y + 8.5
             y_l, y_r = y_start, y_start
             for q in by_aspect_cols[0].get(asp, []):
-                y_l, y_r = check_dual(y_l, y_r, 22)  # espacio estimado de una pregunta (texto+barra+leyenda)
+                y_l, y_r = check_dual(y_l, y_r, estimate_q_height(q, col_w))
                 y_l = draw_likert_q_col(q, col_x[0], col_w, y_l)
             for q in by_aspect_cols[1].get(asp, []):
-                y_l, y_r = check_dual(y_l, y_r, 22)
+                y_l, y_r = check_dual(y_l, y_r, estimate_q_height(q, col_w))
                 y_r = draw_likert_q_col(q, col_x[1], col_w, y_r)
             y = max(y_l, y_r) + 1
 
@@ -2740,11 +2767,29 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         draw_footer(page_num)
     else:
         for g in comment_groups:
-            ensure_space(10)
+            # Estima el alto TOTAL del grupo (encabezado + todos sus items)
+            # ANTES de empezar a dibujarlo -- si no cabe completo en lo que
+            # queda de la página actual, se salta la página entera para
+            # este grupo, en vez de partirlo a la mitad.
+            group_needed = 7.0  # encabezado
+            if not g["items"]:
+                group_needed += 6
+            else:
+                for item in g["items"]:
+                    tag = f'[{item["periodo"]}] ' if item.get("periodo") else ""
+                    lines_est = _wrap_to_width(c, f'1. {tag}"{item["text"]}"', "Helvetica", 8, cW)
+                    group_needed += len(lines_est) * 4 + 2 + 0.001 * 0  # aproximación consistente con el dibujo real
+                group_needed += 4
+            if y + min(group_needed, 260) > 283 and y > 24.0:
+                draw_footer(page_num)
+                c.showPage()
+                page_num += 1
+                draw_continuation_header()
+                y = 24.0
             c.setFont("Helvetica-Bold", 8.5)
             c.setFillColor(pink)
             n = len(g["items"])
-            c.drawString(mg * mm, top_pt(y), f"{g['label'].upper()}  ({n} student{'' if n == 1 else 's'} responded)")
+            c.drawString(mg * mm, top_pt(y), f"{g['label'].upper()}")
             y += 5.5
             if not g["items"]:
                 c.setFont("Helvetica", 8)
