@@ -66,9 +66,12 @@ st.markdown(
     f"background:linear-gradient(135deg,{ACCENT_DARK} 0%,{ACCENT} 55%,{ACCENT_LIGHT} 100%);"
     f"border-radius:12px;box-shadow:0 2px 8px rgba(47,143,91,.22);margin-bottom:14px;}}"
     f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
-    "color:#DDF3E6;text-transform:uppercase;margin-bottom:2px;}}"
-    ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
-    ".sh-sub{font-size:13px;color:rgba(255,255,255,.80);margin-top:4px;text-align:center;}"
+    "color:#DDF3E6 !important;text-transform:uppercase;margin-bottom:2px;}}"
+    ".sh-title{font-size:26px !important;font-weight:800 !important;color:#fff !important;"
+    "text-align:center !important;line-height:1.2 !important;margin:0 !important;padding:0 !important;}"
+    ".sh-sub{font-size:13px;color:rgba(255,255,255,.80) !important;margin-top:4px;text-align:center;}"
+    "div[data-testid='stMarkdownContainer'] .sh-title{font-size:26px !important;font-weight:800 !important;"
+    "color:#fff !important;text-align:center !important;}"
     f".kv{{font-size:26px;font-weight:700;line-height:1.1;font-family:monospace;color:{INK};}}"
     f".kv.accent{{color:{ACCENT};}}"
     f".kv.income{{color:{INCOME};}} .kv.expense{{color:{EXPENSE};}} .kv.balance{{color:{BALANCE};}}"
@@ -434,7 +437,7 @@ PRODUCT_TO_KEY = {
 # "PT"), que fue justo lo que se veía en la navegación. Se reemplazan por un
 # emoji de un solo glifo, distinto por semana, que siempre renderiza igual.
 FLAGS = {"Germany": "🇩🇪", "Portugal": "🇵🇹", "Brazil": "🇧🇷", "USA": "🇺🇸"}
-WEEK_ICON = {"KLU": "🍺", "NOVA": "⛵", "FGV": "⚽", "BABSON": "🗽"}
+WEEK_ICON = {"KLU": "🚚", "NOVA": "💻", "FGV": "💳", "BABSON": "🚀"}
 
 BOGOTA = (4.711, -74.0721)
 
@@ -917,62 +920,69 @@ def page_week(key: str):
 
     _render_header(w["name"], w["course"])
 
+    # ---- Banner de color de la semana: logo del socio (grande, ocupa la
+    # franja), info de la semana al lado (sin emojis), y a la derecha el
+    # nombre del profesor + su foto — todo dentro de la misma franja de
+    # color, en una sola fila flex que no se rompe en pantallas normales.
     logo_path = _partner_logo_path(w["key"])
     logo_html = ""
     if logo_path:
         with open(logo_path, "rb") as f:
             _logo_b64 = base64.b64encode(f.read()).decode()
-        logo_html = f'<img src="data:image/png;base64,{_logo_b64}" style="height:34px;margin-right:14px;">'
+        logo_html = (
+            f'<img src="data:image/png;base64,{_logo_b64}" '
+            f'style="height:92px;max-width:230px;object-fit:contain;'
+            f'flex-shrink:0;margin-right:26px;">'
+        )
+
+    prof_photo = _photo_path(w["professor"])
+    if prof_photo:
+        with open(prof_photo, "rb") as f:
+            _prof_b64 = base64.b64encode(f.read()).decode()
+        _prof_ext = "jpeg" if prof_photo.lower().endswith((".jpg", ".jpeg")) else "png"
+        prof_photo_html = (
+            f'<img src="data:image/{_prof_ext};base64,{_prof_b64}" '
+            'style="width:72px;height:72px;border-radius:50%;object-fit:cover;'
+            'flex-shrink:0;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.18);">'
+        )
+    else:
+        prof_photo_html = ""
+
+    prof_html = (
+        f'<div style="margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:14px;">'
+        f'<div style="text-align:right;">'
+        f'<div style="font-weight:700;font-size:14px;color:{INK};white-space:nowrap;">{w["professor"]}</div>'
+        f'<div style="font-size:10px;color:{MUTED};text-transform:uppercase;'
+        f'font-family:monospace;letter-spacing:.04em;">Faculty Lead</div></div>'
+        f'{prof_photo_html}</div>'
+    )
 
     st.markdown(
-        f'<div class="week-band" style="background:{w["colorSoft"]};">'
+        f'<div class="week-band" style="background:{w["colorSoft"]};flex-wrap:nowrap;">'
         f'{logo_html}'
-        f'<div><div class="eyebrow" style="color:{w["color"]};">{w["name"]}</div>'
-        f'<h2>{w["course"]}</h2>'
-        f'<div class="loc">{WEEK_ICON.get(w["key"], "🌍")} {w["location"]}, {w["country"]} · {w["dates"]}</div></div>'
+        f'<div style="min-width:0;"><div class="eyebrow" style="color:{w["color"]};">{w["name"]}</div>'
+        f'<h2 style="white-space:normal;">{w["course"]}</h2>'
+        f'<div class="loc">{w["location"]}, {w["country"]} · {w["dates"]}</div></div>'
+        f'{prof_html}'
         f'</div>',
         unsafe_allow_html=True,
     )
 
-    # ---- Faculty lead card (photo + name), en su propia fila para que la
-    # foto se vea siempre a tamaño legible en vez de escondida en el band ----
-    prof_photo = _photo_path(w["professor"])
-    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
-    col_photo, col_prof, col_gap = st.columns([1, 3, 4])
-    with col_photo:
-        if prof_photo:
-            try:
-                st.image(prof_photo, width=120)
-            except Exception:
-                pass
-    with col_prof:
-        st.markdown(
-            f'<div style="padding-top:{"22px" if prof_photo else "0"};">'
-            f'<div style="font-weight:700;font-size:16px;color:{INK};">{w["professor"]}</div>'
-            f'<div style="font-size:11px;color:{MUTED};text-transform:uppercase;'
-            f'font-family:monospace;letter-spacing:.04em;">Faculty Lead</div></div>',
-            unsafe_allow_html=True,
-        )
-
     st.markdown("<div style='height:22px;'></div>", unsafe_allow_html=True)
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            _kpi("Income", _fmt_money(w["ingresos"]), "income")
-        with c2:
-            _kpi("Expenses", _fmt_money(w["egresos"]), "expense")
-        with c3:
-            _kpi("Balance", _fmt_money(w["balance"]), "balance")
-        with c4:
-            _kpi("Margin", f'{w["marginPct"]}%')
-    with col2:
-        c1, c2 = st.columns(2)
-        with c1:
-            _kpi("Students Abroad", w["abroadCount"])
-        with c2:
-            _kpi("Registered, Did Not Travel", w["registeredCount"] - w["abroadCount"])
-        fig_geo = go.Figure()
+    col_fin, col_att, col_map = st.columns([1, 1, 2])
+    with col_fin:
+        _kpi("Income", _fmt_money(w["ingresos"]), "income")
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _kpi("Expenses", _fmt_money(w["egresos"]), "expense")
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _kpi("Balance", _fmt_money(w["balance"]), "balance")
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _kpi("Margin", f'{w["marginPct"]}%')
+    with col_att:
+        _kpi("Students Abroad", w["abroadCount"])
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _kpi("Registered, Did Not Travel", w["registeredCount"] - w["abroadCount"])
+    with col_map:
         if w.get("countryCode"):
             fig_geo.add_trace(go.Choropleth(
                 locations=[w["countryCode"]], z=[1], locationmode="ISO-3",
@@ -1023,32 +1033,28 @@ def page_week(key: str):
         st.info("No enrolled/traveling participants for this week yet.")
 
     # ---- Roster ----
-    # Estudiantes sin ningún pago registrado quedan al final y en gris tenue,
-    # como si no hubieran viajado — el resto conserva el orden original.
+    # Cualquier estudiante con X en 1st Payment, 2nd Payment o Enrolled
+    # (i.e. no completó ese trámite) queda al final de la lista y en gris
+    # tenue, como si no hubiera viajado. La columna auxiliar usada para
+    # ordenar/colorear NUNCA se muestra: se calcula aparte y no entra al
+    # DataFrame que se despliega, para no depender de Styler.hide().
     st.markdown(f'### Roster ({w["registeredCount"]} registered · {w["abroadCount"]} traveled)')
-    participants_sorted = sorted(
-        w["participantsList"], key=lambda p: 0 if (p["pago1"] or p["pago2"]) else 1
-    )
+    incomplete = lambda p: not (p["pago1"] and p["pago2"] and p["matricula"])
+    participants_sorted = sorted(w["participantsList"], key=lambda p: 1 if incomplete(p) else 0)
+    incomplete_flags = [incomplete(p) for p in participants_sorted]
+
     roster_df = pd.DataFrame([{
         "Name": p["nombre"], "Code": p["codigo"] if p["codigo"] else "—", "Program": p["programa"],
         "Type": p["tipoPrograma"], "1st Payment": tick(p["pago1"]), "2nd Payment": tick(p["pago2"]),
         "Enrolled": tick(p["matricula"]),
-        "_no_payment": not (p["pago1"] or p["pago2"]),
     } for p in participants_sorted])
 
-    def _style_roster(d: pd.DataFrame) -> pd.DataFrame:
-        s = pd.DataFrame("", index=d.index, columns=d.columns)
-        for i in d.index:
-            if d.loc[i, "_no_payment"]:
-                for c in d.columns:
-                    if c != "_no_payment":
-                        s.loc[i, c] = "color:#ADA6AB;"
-        return s
+    def _style_roster(row: pd.Series) -> List[str]:
+        if incomplete_flags[row.name]:
+            return ["color:#ADA6AB;"] * len(row)
+        return [""] * len(row)
 
-    styled_roster = (
-        roster_df.style.apply(_style_roster, axis=None)
-        .hide(axis="columns", subset=["_no_payment"])
-    )
+    styled_roster = roster_df.style.apply(_style_roster, axis=1)
     st.dataframe(styled_roster, use_container_width=True, hide_index=True, height=420)
     st.download_button(
         "Download as Excel",
