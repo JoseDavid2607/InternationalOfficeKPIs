@@ -45,16 +45,16 @@ st.set_page_config(
 
 # Paleta — misma arquitectura visual que EIV_report.py (header degradado,
 # KPI cards, botones, nav superior con flechas), con un acento propio de
-# International Weeks: dorado elegante. Los colores propios de cada semana
-# (KLU/NOVA/FGV/BABSON) se conservan tal cual — son identidad del socio,
-# no "color principal".
+# International Weeks: azul elegante (no menta). Los colores propios de
+# cada semana (KLU/NOVA/FGV/BABSON) se conservan tal cual — son identidad
+# del socio, no "color principal".
 INK = "#241420"; INK_SOFT = "#6E5C68"; PAPER = "#FAF8FA"
 LINE = "#E9E2E7"; MUTED = "#8C7F87"
-ACCENT = "#AD8A32"           # dorado — reemplaza el rol de "PINK" de EIV
-ACCENT_DARK = "#6B5220"      # hover / degradado oscuro (bronce)
-ACCENT_LIGHT = "#D6B968"     # degradado claro (oro pálido)
-ACCENT_SOFT = "#F8F1DE"      # fondo suave para tablas / chips
-GOLD = "#AD8A32"             # alias — mismo dorado, para detalles puntuales
+ACCENT = "#2C4A6B"           # azul marino elegante — reemplaza el rol de "PINK" de EIV
+ACCENT_DARK = "#152C43"      # hover / degradado oscuro
+ACCENT_LIGHT = "#5B84AC"     # degradado claro (azul acero)
+ACCENT_SOFT = "#E4ECF3"      # fondo suave para tablas / chips
+GOLD = "#AD8A32"             # acento cálido secundario (detalles puntuales, no botones)
 INCOME = "#2E8B57"; INCOME_SOFT = "#E3F3EA"
 EXPENSE = "#C23B3B"; EXPENSE_SOFT = "#FBE6E6"
 BALANCE = "#1C6FA5"; BALANCE_SOFT = "#E1EEF7"
@@ -64,9 +64,9 @@ st.markdown(
     f".suite-header{{display:flex;flex-direction:column;align-items:center;"
     "padding:16px 24px 12px;"
     f"background:linear-gradient(135deg,{ACCENT_DARK} 0%,{ACCENT} 55%,{ACCENT_LIGHT} 100%);"
-    f"border-radius:12px;box-shadow:0 2px 8px rgba(173,138,50,.22);margin-bottom:14px;}}"
+    f"border-radius:12px;box-shadow:0 2px 8px rgba(44,74,107,.22);margin-bottom:14px;}}"
     f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
-    "color:#F3E8CE !important;text-transform:uppercase;margin-bottom:2px;}}"
+    "color:#D8E4EF !important;text-transform:uppercase;margin-bottom:2px;}}"
     ".sh-title{font-size:26px !important;font-weight:800 !important;color:#fff !important;"
     "text-align:center !important;line-height:1.2 !important;margin:0 !important;padding:0 !important;}"
     ".sh-sub{font-size:13px;color:rgba(255,255,255,.80) !important;margin-top:4px;text-align:center;}"
@@ -105,12 +105,6 @@ st.markdown(
     f".survey-quote{{background:#FAF8FA;border-left:3px solid {ACCENT};"
     "border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12.5px;"
     "font-style:italic;color:#3B2C34;}}"
-    ".week-band{border-radius:12px;padding:16px 19px;display:flex;align-items:center;"
-    "gap:14px;flex-wrap:wrap;}"
-    ".week-band .eyebrow{font-family:monospace;font-size:9px;text-transform:uppercase;"
-    "letter-spacing:.06em;font-weight:600;}"
-    ".week-band h2{font-size:14px;margin:3px 0 0;}"
-    ".week-band .loc{font-size:9.5px;color:#6E5C68;margin-top:3px;}"
     ".st-key-nav_toggle{position:fixed !important;top:0.25rem;left:50%;transform:translateX(-50%);"
     "z-index:999999;width:auto !important;max-width:96vw;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
@@ -150,7 +144,7 @@ st.markdown(
     ".st-key-cover_enter_btn div[data-testid='stButton'] button{"
     f"background:{ACCENT} !important;border:none !important;color:#fff !important;"
     "font-size:16px !important;font-weight:700 !important;height:52px !important;"
-    "box-shadow:0 4px 14px rgba(173,138,50,.28) !important;}"
+    "box-shadow:0 4px 14px rgba(44,74,107,.28) !important;}"
     f".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{{background:{ACCENT_DARK} !important;}}"
     ".st-key-cover_banner{display:flex !important;justify-content:center !important;width:100% !important;}"
     ".st-key-cover_banner div[data-testid='stImage']{margin:0 auto !important;width:auto !important;"
@@ -166,7 +160,7 @@ st.markdown(
     "div[class*='st-key-gen_report_btn_'] div[data-testid='stDownloadButton'] button{"
     f"background:{ACCENT} !important;color:#fff !important;border:none !important;"
     "text-decoration:none !important;font-weight:700 !important;height:50px !important;"
-    f"box-shadow:0 3px 10px rgba(173,138,50,.28) !important;}}"
+    f"box-shadow:0 3px 10px rgba(44,74,107,.28) !important;}}"
     "div[class*='st-key-gen_report_btn_'] div[data-testid='stDownloadButton'] button:hover{"
     f"background:{ACCENT_DARK} !important;}}"
     "</style>",
@@ -529,9 +523,21 @@ def build_weeks() -> Tuple[List[dict], dict]:
 
         participants = []
         for _, p in rows.iterrows():
+            _codigo_raw = p.get("Código de Estudiante")
+            # Excel a veces entrega el código como float (202112345.0) cuando
+            # la columna tiene celdas vacías mezcladas — se limpia aquí para
+            # que en toda la app (tabla y Excel) salga sin decimales.
+            if pd.isna(_codigo_raw):
+                _codigo = None
+            elif isinstance(_codigo_raw, float) and _codigo_raw.is_integer():
+                _codigo = str(int(_codigo_raw))
+            else:
+                _codigo = str(_codigo_raw).strip()
+                if _codigo.endswith(".0"):
+                    _codigo = _codigo[:-2]
             participants.append({
                 "nombre": p.get("Nombre"), "genero": p.get("Género"),
-                "codigo": p.get("Código de Estudiante"), "programa": p.get("Programa") or "Unspecified",
+                "codigo": _codigo, "programa": p.get("Programa") or "Unspecified",
                 "tipoPrograma": p.get("Tipo programa"),
                 "pago1": pd.notna(p.get("Primer Pago")),
                 "pago2": pd.notna(p.get("Segundo Pago")),
@@ -919,10 +925,10 @@ def page_week(key: str):
 
     _render_header(w["name"], w["course"])
 
-    # ---- Banner de color de la semana: logo del socio (grande, ocupa la
-    # franja), info de la semana al lado (sin emojis), y a la derecha el
-    # nombre del profesor + su foto — todo dentro de la misma franja de
-    # color, en una sola fila flex que no se rompe en pantallas normales.
+    # ---- Banner de color de la semana: logo del socio + info (izquierda),
+    # nombre del profesor + foto (derecha) — TODO con estilos inline (no
+    # depende de la clase .week-band) para que el layout de una sola fila
+    # no dependa del orden de carga del <style> global.
     logo_path = _partner_logo_path(w["key"])
     logo_html = ""
     if logo_path:
@@ -931,7 +937,7 @@ def page_week(key: str):
         logo_html = (
             f'<img src="data:image/png;base64,{_logo_b64}" '
             f'style="height:66px;max-width:167px;object-fit:contain;'
-            f'flex-shrink:0;margin-right:19px;">'
+            f'flex:0 0 auto;margin-right:19px;">'
         )
 
     prof_photo = _photo_path(w["professor"])
@@ -941,31 +947,39 @@ def page_week(key: str):
         _prof_ext = "jpeg" if prof_photo.lower().endswith((".jpg", ".jpeg")) else "png"
         prof_photo_html = (
             f'<img src="data:image/{_prof_ext};base64,{_prof_b64}" '
-            'style="width:52px;height:52px;border-radius:50%;object-fit:cover;'
-            'flex-shrink:0;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.18);">'
+            'style="width:72px;height:72px;border-radius:50%;object-fit:cover;'
+            'flex:0 0 auto;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.18);">'
         )
     else:
         prof_photo_html = ""
 
     prof_html = (
-        f'<div style="margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:10px;">'
-        f'<div style="text-align:right;">'
-        f'<div style="font-weight:700;font-size:10px;color:{INK};white-space:nowrap;">{w["professor"]}</div>'
-        f'<div style="font-size:8px;color:{MUTED};text-transform:uppercase;'
-        f'font-family:monospace;letter-spacing:.04em;">Faculty Lead</div></div>'
+        '<div style="margin-left:auto;flex:0 0 auto;display:flex;'
+        'flex-direction:row;align-items:center;gap:12px;">'
+        '<div style="text-align:right;">'
+        f'<div style="font-weight:700;font-size:12px;color:{INK};white-space:nowrap;">{w["professor"]}</div>'
+        f'<div style="font-size:9px;color:{MUTED};text-transform:uppercase;'
+        'font-family:monospace;letter-spacing:.04em;">Faculty Lead</div></div>'
         f'{prof_photo_html}</div>'
     )
 
+    band_style = (
+        "display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;"
+        f"border-radius:12px;padding:16px 19px;background:{w['colorSoft']};"
+    )
+    info_html = (
+        '<div style="min-width:0;flex:1 1 auto;overflow:hidden;">'
+        f'<div style="font-family:monospace;font-size:9px;text-transform:uppercase;'
+        f'letter-spacing:.06em;font-weight:600;color:{w["color"]};">{w["name"]}</div>'
+        '<h2 style="font-size:14px;margin:3px 0 0;white-space:nowrap;'
+        f'overflow:hidden;text-overflow:ellipsis;">{w["course"]}</h2>'
+        '<div style="font-size:9.5px;color:#6E5C68;margin-top:3px;white-space:nowrap;'
+        f'overflow:hidden;text-overflow:ellipsis;">{w["location"]}, {w["country"]} · {w["dates"]}</div>'
+        '</div>'
+    )
+
     st.markdown(
-        f'<div class="week-band" style="background:{w["colorSoft"]};flex-wrap:nowrap;">'
-        f'{logo_html}'
-        f'<div style="min-width:0;flex:1 1 auto;overflow:hidden;">'
-        f'<div class="eyebrow" style="color:{w["color"]};">{w["name"]}</div>'
-        f'<h2 style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{w["course"]}</h2>'
-        f'<div class="loc" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-        f'{w["location"]}, {w["country"]} · {w["dates"]}</div></div>'
-        f'{prof_html}'
-        f'</div>',
+        f'<div style="{band_style}">{logo_html}{info_html}{prof_html}</div>',
         unsafe_allow_html=True,
     )
 
@@ -1120,7 +1134,7 @@ def page_week(key: str):
     with col_mid:
         with st.container(key=f"gen_report_btn_{w['key']}"):
             st.download_button(
-                "📄 Generate Evaluation Report", data=pdf_bytes,
+                "Generate Evaluation Report", data=pdf_bytes,
                 file_name=f'ISS_{w["key"]}_Evaluation_Report.pdf', mime="application/pdf",
                 key=f'dl_pdf_{w["key"]}', use_container_width=True,
                 icon=":material/picture_as_pdf:",
