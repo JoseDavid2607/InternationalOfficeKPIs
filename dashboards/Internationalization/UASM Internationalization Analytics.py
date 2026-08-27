@@ -1,15 +1,13 @@
 # ===========================================================================
-#  UASM · International Weeks Analytics · App multipágina
-#  Traducción 1:1 del reporte HTML "International Weeks 2026" a Streamlit —
-#  misma estructura (Data Center, Overview, una vista por semana, Financial
-#  Detail), mismos cálculos (ingresos/egresos/balance/margen desde
-#  BD_presupuesto, roster y pagos desde BD_listas, encuesta desde
-#  BD_encuesta_curso), y misma identidad visual por socio (color, logo).
+#  UASM · Internationalization Analytics · App multipágina
+#  Basada en la misma arquitectura de UASM_Faculty_Analytics.py: navegación
+#  fija arriba, sidebar con logo, tarjetas KPI, Plotly para gráficos.
+#  Fuente de datos: Google Drive (Service Account), varios archivos .xlsx.
 #
-#  Las 4 fuentes NO exponen directamente la agregación que mostraba el HTML
-#  original (esa vino de un cálculo hecho aparte); esta app reconstruye esa
-#  agregación en Python a partir de los archivos crudos, para que quede
-#  siempre sincronizada con Drive en vez de datos congelados.
+#  Secciones completas por ahora: Faculty, Visiting Faculty, Intl. Weeks.
+#  Las demás (Research, Home Campus, Graduates, Agreement Utilization,
+#  Mobility by Program, PhD Mobility, Agreements) quedan como "Coming soon",
+#  listas para completarse en próximas iteraciones.
 # ===========================================================================
 from __future__ import annotations
 
@@ -18,10 +16,10 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import re
 import io
 import time
-import functools
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List
 
 try:
     from google.oauth2.service_account import Credentials
@@ -35,64 +33,55 @@ import requests
 
 # ── 1) CONFIGURACIÓN GLOBAL ────────────────────────────────────────────────
 st.set_page_config(
-    page_title="International Weeks Analytics",
-    page_icon="🌍",
+    page_title="UASM Internationalization Analytics",
+    page_icon="🌐",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Paleta — idéntica a las variables CSS del HTML original.
-PINK = "#E61166"; INK = "#241420"; INK_SOFT = "#6E5C68"; PAPER = "#FAF8FA"
-LINE = "#E9E2E7"; MUTED = "#8C7F87"
-INCOME = "#2E8B57"; INCOME_SOFT = "#E3F3EA"
-EXPENSE = "#C23B3B"; EXPENSE_SOFT = "#FBE6E6"
-BALANCE = "#1C6FA5"; BALANCE_SOFT = "#E1EEF7"
+# Paleta morado metálico elegante (no muy oscuro)
+_PURPLE_DEEP = "#4A2E7D"
+_PURPLE_MID = "#7B5AAE"
+_PURPLE_SOFT = "#A98FD2"
+_PURPLE_ACCENT = "#8A63C9"
+_PURPLE_BG_TINT = "#F4F0FA"
 
 st.markdown(
     "<style>"
-    f".suite-header{{display:flex;flex-direction:column;align-items:center;"
+    ".suite-header{display:flex;flex-direction:column;align-items:center;"
     "padding:16px 24px 12px;"
-    f"background:linear-gradient(135deg,{INK} 0%,{PINK} 100%);"
-    "border-radius:12px;box-shadow:0 2px 8px rgba(230,17,102,.18);margin-bottom:14px;}}"
-    f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
-    "color:#FBD6E4;text-transform:uppercase;margin-bottom:2px;}}"
+    f"background:linear-gradient(135deg,{_PURPLE_DEEP} 0%,{_PURPLE_MID} 60%,{_PURPLE_SOFT} 100%);"
+    "border-radius:12px;box-shadow:0 2px 8px rgba(74,46,125,.22);margin-bottom:14px;}"
+    ".sh-super{font-size:11px;font-weight:700;letter-spacing:2px;"
+    "color:#E4D9F7;text-transform:uppercase;margin-bottom:2px;}"
     ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
     ".sh-sub{font-size:13px;color:rgba(255,255,255,.80);margin-top:4px;text-align:center;}"
-    f".kv{{font-size:26px;font-weight:700;line-height:1.1;font-family:monospace;color:{INK};}}"
-    f".kv.income{{color:{INCOME};}} .kv.expense{{color:{EXPENSE};}} .kv.balance{{color:{BALANCE};}}"
-    f".kl{{font-size:11px;font-weight:600;color:{MUTED};"
-    "text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}}"
-    f"section[data-testid='stSidebar']{{background:{PAPER} !important;}}"
+    ".kv{font-size:28px;font-weight:800;color:#6941A8;line-height:1.1;}"
+    ".kl{font-size:11px;font-weight:600;color:#6B7280;"
+    "text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}"
+    "section[data-testid='stSidebar']{background:#F7F4FC !important;}"
     "div[data-testid='stButton'] button{background:#FFFFFF !important;"
-    f"border:1px solid {LINE} !important;border-radius:10px !important;"
+    "border:1px solid #E1D5F2 !important;border-radius:10px !important;"
     "color:#374151 !important;font-size:14px !important;"
     "font-weight:600 !important;height:48px !important;"
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
-    f"div[data-testid='stButton'] button:hover{{background:{PAPER} !important;border-color:{PINK} !important;}}"
+    "div[data-testid='stButton'] button:hover{"
+    "background:#FBF9FE !important;border-color:#C9B4E8 !important;}"
     "div.stDownloadButton>button{background:transparent !important;"
     "border:none !important;box-shadow:none !important;"
-    f"color:{PINK} !important;font-size:13px !important;"
+    "color:#6941A8 !important;font-size:13px !important;"
     "padding:0 !important;text-decoration:underline !important;}"
-    f"thead th{{background:#FCE9F1 !important;color:{INK} !important;"
-    "font-weight:700 !important;}}"
-    ".pending-card{background:#FAFAFA;border:1px dashed #DCD3D8;border-radius:12px;"
+    "thead th{background:#EFE7FA !important;color:#4A2E7D !important;"
+    "font-weight:700 !important;}"
+    ".pending-card{background:#FAF8FD;border:1px dashed #D8C7EF;border-radius:12px;"
     "padding:22px 24px;margin-top:14px;color:#6B7280;font-size:13.5px;}"
     ".pending-card .tag{display:inline-block;font-family:monospace;font-size:10px;"
-    "letter-spacing:.06em;text-transform:uppercase;color:#8C7F87;"
-    "background:#F1EAEE;padding:3px 9px;border-radius:5px;margin-bottom:8px;}"
-    ".partner-card{border-radius:14px;padding:20px;border:1px solid var(--line,#E9E2E7);"
-    "background:#fff;border-top:5px solid var(--wc,#E61166);}"
-    ".partner-card .loc{font-family:monospace;font-size:11px;color:#8C7F87;margin-bottom:10px;}"
-    ".partner-card .n{font-size:28px;font-weight:700;}"
-    ".partner-card .n-label{font-size:11.5px;color:#6E5C68;margin-bottom:10px;}"
-    ".margin-pill{display:inline-block;margin-top:8px;padding:3px 10px;border-radius:20px;"
-    "font-size:11px;font-weight:600;}"
-    ".week-band{border-radius:16px;padding:22px 26px;display:flex;align-items:center;"
-    "gap:20px;flex-wrap:wrap;}"
-    ".week-band .eyebrow{font-family:monospace;font-size:11px;text-transform:uppercase;"
-    "letter-spacing:.06em;font-weight:600;}"
-    ".week-band h2{font-size:19px;margin:4px 0 0;}"
-    ".week-band .loc{font-size:12.5px;color:#6E5C68;margin-top:5px;}"
+    "letter-spacing:.06em;text-transform:uppercase;color:#7B5AAE;"
+    "background:#EDE3F8;padding:3px 9px;border-radius:5px;margin-bottom:8px;}"
+    ".report-link-card{display:flex;align-items:center;justify-content:space-between;"
+    "flex-wrap:wrap;gap:12px;background:#FAF8FD;border:1px solid #E7DBF6;"
+    "border-radius:12px;padding:16px 20px;margin-top:6px;}"
+    ".report-link-card h4{margin:0;color:#3B2560;font-size:15px;}"
     ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
     "z-index:999999;width:82vw;max-width:1050px;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
@@ -105,11 +94,35 @@ st.markdown(
     ".st-key-nav_toggle div[data-testid='stPopover']{width:auto !important;min-width:fit-content !important;}"
     ".st-key-nav_toggle div[data-testid='stPopover'] button{"
     "background:transparent !important;border:none !important;box-shadow:none !important;"
-    f"color:{PINK} !important;font-size:13px !important;font-weight:400 !important;"
+    "color:#6941A8 !important;font-size:13px !important;font-weight:400 !important;"
     "height:auto !important;width:auto !important;min-width:fit-content !important;"
-    "padding:6px 4px !important;white-space:nowrap !important;}"
-    f".st-key-nav_toggle div[data-testid='stPopover'] button:hover{{color:{INK} !important;}}"
+    "padding:6px 4px !important;white-space:nowrap !important;gap:2px !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button:hover{"
+    "background:transparent !important;color:#4A2E7D !important;text-decoration:underline;}"
     ".st-key-nav_toggle div[data-testid='stPopover'] button svg{display:none !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] svg{display:none !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] [data-testid='stIconMaterial']{display:none !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button{gap:0 !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopoverBody']{padding:8px 4px !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopoverBody'] div[data-testid='stPageLink'] a{"
+    "font-size:13px !important;padding:4px 10px !important;}"
+    ".st-key-update_sidebar_group{text-align:center;}"
+    ".st-key-update_sidebar_group img{margin:0 auto;}"
+    ".st-key-go_to_dashboard_btn a{"
+    "display:flex !important;align-items:center;justify-content:center;gap:10px;text-align:center;"
+    f"background:{_PURPLE_DEEP} !important;border:none !important;"
+    "color:#FFFFFF !important;font-size:20px !important;font-weight:800 !important;"
+    "border-radius:14px !important;padding:20px 10px !important;text-decoration:none !important;"
+    "box-shadow:0 4px 14px rgba(74,46,125,.25);transition:transform .15s ease;}"
+    ".st-key-go_to_dashboard_btn a span{color:#FFFFFF !important;}"
+    f".st-key-go_to_dashboard_btn a:hover{{transform:translateY(-2px);background:{_PURPLE_MID} !important;}}"
+    ".st-key-go_to_update_btn a{"
+    "display:flex !important;align-items:center;justify-content:center;gap:6px;"
+    "background:#FFFFFF !important;border:1px solid #E1D5F2 !important;"
+    "color:#374151 !important;font-size:14px !important;font-weight:600 !important;"
+    "border-radius:10px !important;padding:12px 8px !important;text-decoration:none !important;"
+    "height:48px;box-shadow:0 1px 3px rgba(0,0,0,.04);}"
+    ".st-key-go_to_update_btn a:hover{background:#FBF9FE !important;border-color:#C9B4E8 !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -119,15 +132,15 @@ st.markdown(
 def _render_header(title: str, subtitle: str = ""):
     sub = f'<div class="sh-sub">{subtitle}</div>' if subtitle else ""
     st.markdown(
-        f'<div class="suite-header"><div class="sh-super">International Weeks · Analytics</div>'
+        f'<div class="suite-header"><div class="sh-super">UASM · Internationalization Analytics</div>'
         f'<div class="sh-title">{title}</div>{sub}</div>',
         unsafe_allow_html=True,
     )
 
 
-def _kpi(label: str, value, cls: str = ""):
+def _kpi(label: str, value):
     st.markdown(
-        f'<div class="kv {cls}">{value}</div><div class="kl">{label}</div>',
+        f'<div class="kv">{value}</div><div class="kl">{label}</div>',
         unsafe_allow_html=True,
     )
 
@@ -141,11 +154,17 @@ def _pending_card(label: str, note: str = ""):
     )
 
 
-def _fmt_money(n) -> str:
-    if n is None or (isinstance(n, float) and pd.isna(n)):
-        return "$0"
-    sign = "-" if n < 0 else ""
-    return f"{sign}${abs(round(n)):,.0f}"
+def _section_title_with_link(title: str, url: str, button_label: str, level: str = "###"):
+    """Título de sub-sección con el botón 'Go to report' justo al lado, en la misma fila."""
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.markdown(f"{level} {title}")
+    with col2:
+        if url:
+            st.link_button(button_label, url, use_container_width=True)
+        else:
+            st.button(button_label, disabled=True, use_container_width=True,
+                       help="Falta configurar la URL de este reporte en el código.")
 
 
 def _xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
@@ -156,15 +175,31 @@ def _xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
     return buf.getvalue()
 
 
-def tick(v) -> str:
-    return "✅" if v else "❌"
+# ── 3) FILE IDs (Google Drive) ──────────────────────────────────────────
+# Carpeta raíz: UASM School of Management > Internationalization
+PROFESORES_FILE_ID = "1ncnUk_8VsDt1I0Hui9g0VyoTkA-8P376"   # BD_profesores.xlsx (compartido con Faculty Analytics) → hojas: planta, Info. Profesores, Faculty Distribution
+CONVENIOS_FILE_ID = "1tuPLhr8ttvtFKebi1eoWyrL7E7NimNRn"    # BD_convenios.xlsx
+MOVILIDAD_FILE_ID = "1zkxMmITgSfpjb1o2AKxKDyqhYdRcpwJw"    # BD_movilidad.xlsx
 
+# EIV (International Summer School) — Reportes/EIV
+EIV_CURSOS_FILE_ID = "1qZin81h9oQ4SfxadcNpdjzSO6w3ADKZr"   # BD_cursos.xlsx → Profesor, Universidad, País Universidad, Ciclo
+EIV_LISTAS_FILE_ID = "1BpREXyP3KHIARxik6ah_av9R9wV_ElL3"   # BD_listas.xlsx (EIV) → listas, programas
 
-# ── 3) FILE IDs (Google Drive) — carpeta Reportes/INT_WEEKS ─────────────────
-LISTAS_FILE_ID = "1Gxev_FWI_mfav3dVWaZczC49F_68Qj9f"       # BD_listas.xlsx (roster + pagos)
-SEMANAS_FILE_ID = "1UXmTsOp1X9DKA_OpFy7kmg4fz2_uQT-W"      # BD_semanas.xlsx (metadata por semana)
-PRESUPUESTO_FILE_ID = "1835F0CN4QoDgmCoShnbB7xvAnXOwexKO"  # BD_presupuesto.xlsx (budget + TRM)
-ENCUESTA_FILE_ID = "1C2xFwqH3FRgBpcXbzs7_NEj1eVllL4xs"     # BD_encuesta_curso.xlsx (frecuencias + comentarios)
+# Seminars — Reportes/Seminars
+SEMINARS_FILE_ID = "1YFSUmZ95Md9qHoHvc114Eed-oA_uqjST"     # BD_seminarios.xlsx
+CONFERENCISTAS_FILE_ID = "1oEgAJg2pXC6U1arLe2daMp7gPdRKgARm"  # BD_conferencistas.xlsx
+PARTICIPANTES_FILE_ID = "18HDQDbaPqdTeEHFcPUDCRTw_bahhcNWa"   # BD_participantes.xlsx
+
+# International Weeks — Reportes/INT_WEEKS
+WEEKS_LISTAS_FILE_ID = "1Gxev_FWI_mfav3dVWaZczC49F_68Qj9f"  # BD_listas.xlsx → estudiantes UASM asistentes (Producto=universidad, Programa)
+WEEKS_SEMANAS_FILE_ID = "1UXmTsOp1X9DKA_OpFy7kmg4fz2_uQT-W" # BD_semanas.xlsx → semanas ofrecidas por la Facultad
+WEEKS_PRESUPUESTO_FILE_ID = "1835F0CN4QoDgmCoShnbB7xvAnXOwexKO"  # BD_presupuesto.xlsx (INT_WEEKS) → budget, TRM
+
+# URLs de los reportes externos (HTML estáticos ya existentes). Configúralas
+# aquí cuando tengas la URL pública de publicación (p.ej. GitHub Pages).
+EIV_REPORT_URL = "https://internationalofficekpis-ftht3w3ub2wumm5ta2dhox.streamlit.app"
+SEMINARS_REPORT_URL = "https://internationalofficekpis-jp3mpck5jkobwvkhhsjeil.streamlit.app"
+WEEKS_REPORT_URL = "https://internationalofficekpis-4idfdrqqhyvktr65mttkf6.streamlit.app"
 
 _GSPREAD_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -188,12 +223,14 @@ def _get_gspread_access_token() -> Optional[str]:
 
 @st.cache_data(ttl=300)
 def _download_drive_file_bytes(file_id: str) -> bytes:
+    """Descarga un archivo .xlsx de Drive (autenticado con la service account)."""
     token = _get_gspread_access_token()
     if not token:
         if not _GSPREAD_OK:
             st.error(
-                "📦 Falta instalar `google-auth` en el entorno "
-                f"(el import falló con: `{_GSPREAD_IMPORT_ERR}`)."
+                "📦 Falta instalar las librerías `google-auth` en el entorno "
+                f"(el import falló con: `{_GSPREAD_IMPORT_ERR}`). Agrégalas a "
+                "tu `requirements.txt`."
             )
         elif "gcp_service_account" not in st.secrets:
             st.error(
@@ -227,866 +264,842 @@ def _download_drive_file_bytes(file_id: str) -> bytes:
     st.stop()
 
 
-# ── 4) METADATA VISUAL POR SOCIO ────────────────────────────────────────
-# Estos datos (color, logo, coordenadas) no viven en ninguna de las 4 hojas
-# fuente — son identidad visual fija por socio, igual que CATEGORY_LOGOS en
-# el reporte de Seminars. Si el próximo año hay un socio nuevo, agrégalo aquí
-# (fallback abajo asigna color/posición genérica para no romper el reporte).
-WEEK_VISUAL_META = {
-    "KLU":    {"color": "#F2994A", "colorSoft": "#FCEADA", "lat": 53.5511, "lon": 9.9937,
-               "countryCode": "DEU", "geo_scope": "europe", "logo": "KLU.png"},
-    "NOVA":   {"color": "#9B6FD1", "colorSoft": "#EDE3F8", "lat": 38.6979, "lon": -9.3389,
-               "countryCode": "PRT", "geo_scope": "europe", "logo": "NOVA.png"},
-    "FGV":    {"color": "#4FA8D8", "colorSoft": "#DCEEF9", "lat": -23.5505, "lon": -46.6333,
-               "countryCode": "BRA", "geo_scope": "south america", "logo": "FGV.png"},
-    "BABSON": {"color": "#5FB88A", "colorSoft": "#DEF3E6", "lat": 42.2967, "lon": -71.2924,
-               "countryCode": "USA", "geo_scope": "usa", "logo": "BABSON.png"},
+def _norm_id(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    try:
+        f = float(v)
+        return str(int(f)) if f.is_integer() else str(f)
+    except (ValueError, TypeError):
+        s = str(v).strip().upper()
+        return s if s else None
+
+
+def _period_sort_key(p):
+    s = str(p).strip()
+    try:
+        return (int(s[:4]), 30 if "Intersemestral" in s else int(s[-2:].replace("-", "")))
+    except (ValueError, IndexError):
+        return (-1, -1)
+
+
+# Demonym (Country of Birth en BD_profesores) -> país, para el mapa de burbujas.
+_NATIONALITY_TO_COUNTRY = {
+    "American": "United States", "Argentinian": "Argentina", "Australian": "Australia",
+    "Brazilian": "Brazil", "British": "United Kingdom", "Bulgarian": "Bulgaria",
+    "Canadian": "Canada", "Chilean": "Chile", "Dominican": "Dominican Republic",
+    "Egyptian": "Egypt", "French": "France", "German": "Germany", "Indian": "India",
+    "Italian": "Italy", "Kenyan": "Kenya", "New Zealander": "New Zealand",
+    "Peruvian": "Peru", "Philippine": "Philippines", "Portuguese": "Portugal",
+    "Russian": "Russia", "South African": "South Africa", "Spanish": "Spain",
+    "Turkish": "Turkey", "Venezuelan": "Venezuela", "Dutch": "Netherlands",
+    "Belgian": "Belgium", "Finnish": "Finland", "Mexican": "Mexico",
 }
-_FALLBACK_PALETTE = ["#4C6EF5", "#F2994A", "#9B6FD1", "#4FA8D8", "#5FB88A", "#E61166"]
 
-# BD_listas usa "Producto" con variantes (p.ej. "KLU con hotel"/"KLU sin hotel")
-# que colapsan a la misma semana — mapa producto -> key canónico.
-PRODUCT_TO_KEY = {
-    "KLU": "KLU", "KLU CON HOTEL": "KLU", "KLU SIN HOTEL": "KLU",
-    "NOVA": "NOVA", "FGV": "FGV", "BABSON": "BABSON",
+# Centroides aproximados (lat, lon) de países, para el mapa de flechas hacia
+# Bogotá en Visiting Faculty (EIV). Cubre los países más comunes de origen.
+BOGOTA_COORDS = (4.7110, -74.0721)
+_COUNTRY_CENTROIDS = {
+    "United States": (37.09, -95.71), "France": (46.23, 2.21), "Spain": (40.46, -3.75),
+    "Brazil": (-14.24, -51.93), "China": (35.86, 104.20), "Germany": (51.16, 10.45),
+    "United Kingdom": (55.38, -3.44), "Netherlands": (52.13, 5.29), "The Netherlands": (52.13, 5.29),
+    "Denmark": (56.26, 9.50), "Poland": (51.92, 19.15), "Italy": (41.87, 12.57),
+    "Portugal": (39.40, -8.22), "Belgium": (50.50, 4.47), "Switzerland": (46.82, 8.23),
+    "Norway": (60.47, 8.47), "Sweden": (60.13, 18.64), "Finland": (61.92, 25.75),
+    "Canada": (56.13, -106.35), "Mexico": (23.63, -102.55), "Argentina": (-38.42, -63.62),
+    "Chile": (-35.68, -71.54), "Peru": (-9.19, -75.02), "India": (20.59, 78.96),
+    "Japan": (36.20, 138.25), "South Korea": (35.91, 127.77), "Australia": (-25.27, 133.78),
+    "Austria": (47.52, 14.55), "Ireland": (53.41, -8.24), "Turkey": (38.96, 35.24),
+    "Israel": (31.05, 34.85), "South Africa": (-30.56, 22.94), "Colombia": (4.57, -74.30),
+    "Poland, UK": (51.92, 19.15), "Greece": (39.07, 21.82), "Singapore": (1.35, 103.82),
+    "Hong Kong": (22.32, 114.17), "Bulgaria": (42.73, 25.49), "Russia": (61.52, 105.32),
+    "Dominican Republic": (18.74, -70.16), "Egypt": (26.82, 30.80), "Kenya": (-0.02, 37.91),
+    "New Zealand": (-40.90, 174.89), "Philippines": (12.88, 121.77), "Venezuela": (6.42, -66.59),
 }
 
-FLAGS = {"Germany": "🇩🇪", "Portugal": "🇵🇹", "Brazil": "🇧🇷", "USA": "🇺🇸"}
 
-BOGOTA = (4.711, -74.0721)
-
-LIKERT_SCORE = {
-    "Totalmente en desacuerdo": 1, "En desacuerdo": 2, "Ni de acuerdo ni en desacuerdo": 3,
-    "De acuerdo": 4, "Totalmente de acuerdo": 5,
-}
-
-
-def _week_key_from_name(name: str) -> str:
-    """De 'International Week' / 'international week' (BD_semanas /
-    BD_presupuesto) a la clave canónica (KLU/NOVA/FGV/BABSON/...)."""
-    n = str(name).strip().upper()
-    for k in WEEK_VISUAL_META:
-        if n.startswith(k):
-            return k
-    if "GETULIO" in n or "VARGAS" in n:
-        return "FGV"
-    return n.split()[0] if n.split() else n
-
-
-def _week_meta(key: str, idx: int = 0) -> dict:
-    if key in WEEK_VISUAL_META:
-        return WEEK_VISUAL_META[key]
-    color = _FALLBACK_PALETTE[idx % len(_FALLBACK_PALETTE)]
-    return {"color": color, "colorSoft": color + "22", "lat": BOGOTA[0], "lon": BOGOTA[1],
-            "countryCode": None, "geo_scope": "world", "logo": None}
-
-
-# ── 5) CARGA DE HOJAS CRUDAS ─────────────────────────────────────────────
+# ── 4) CARGA DE DATOS ────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
-def load_raw_sheets():
-    raw_sem = io.BytesIO(_download_drive_file_bytes(SEMANAS_FILE_ID))
-    df_semanas = pd.read_excel(raw_sem, sheet_name="Semanas Internacionales")
-    df_semanas.columns = df_semanas.columns.str.strip()
+def load_planta_fulltime() -> pd.DataFrame:
+    """Roster de planta (full-time) leído directamente de la hoja 'planta' de
+    BD_profesores.xlsx — trae ya 'Country of Birth'/'Nationality' y 'Double
+    Nationality' propias, sin necesidad de merge (mismo patrón que
+    demo_load_fulltime() en Faculty Analytics)."""
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="planta")
+    df_.columns = df_.columns.str.strip()
 
-    raw_lis = io.BytesIO(_download_drive_file_bytes(LISTAS_FILE_ID))
-    df_listas = pd.read_excel(raw_lis, sheet_name="listas")
-    df_listas.columns = df_listas.columns.str.strip()
+    sem = df_["Semestre"].astype(str).str.strip() if "Semestre" in df_.columns else df_.iloc[:, 0].astype(str).str.strip()
+    is_inter = sem.str.contains("inter", case=False, na=False)
+    df_["Periodo"] = np.where(is_inter, sem.str[:4] + " Intersemestral", sem.str[:4] + "-" + sem.str[-2:])
+    df_["Año"] = sem.str[:4]
 
-    raw_pre = io.BytesIO(_download_drive_file_bytes(PRESUPUESTO_FILE_ID))
-    df_budget = pd.read_excel(raw_pre, sheet_name="budget")
-    df_budget.columns = df_budget.columns.str.strip()
-    df_trm = pd.read_excel(raw_pre, sheet_name="TRM")
-    df_trm.columns = df_trm.columns.str.strip()
+    if "ID Nr." in df_.columns and "ID" not in df_.columns:
+        df_ = df_.rename(columns={"ID Nr.": "ID"})
 
-    raw_enc = io.BytesIO(_download_drive_file_bytes(ENCUESTA_FILE_ID))
-    df_frec = pd.read_excel(raw_enc, sheet_name="frecuencias")
-    df_frec.columns = df_frec.columns.str.strip()
-    df_com = pd.read_excel(raw_enc, sheet_name="comentarios")
-    df_com.columns = df_com.columns.str.strip()
-
-    return df_semanas, df_listas, df_budget, df_trm, df_frec, df_com
-
-
-COMMENT_QID_LABELS = {
-    "P216": "Course — Valued Most", "P216V01": "Faculty — Valued Most",
-    "P217": "Course — Could Improve", "P217V01": "Faculty — Could Improve",
-}
-
-
-# ── 6) CONSTRUCCIÓN DEL DATASET (equivalente al DATA embebido en el HTML) ──
-@st.cache_data(ttl=300)
-def build_weeks() -> Tuple[List[dict], dict]:
-    """Reconstruye, por semana (KLU/NOVA/FGV/BABSON), exactamente la misma
-    agregación que el HTML original tenía precomputada: roster + pagos
-    (BD_listas), metadata (BD_semanas), presupuesto (BD_presupuesto), y
-    encuesta (BD_encuesta_curso), unidos por nombre de semana / profesor."""
-    df_semanas, df_listas, df_budget, df_trm, df_frec, df_com = load_raw_sheets()
-
-    trm_map = dict(zip(df_trm["Moneda"].astype(str).str.strip(), df_trm["TRM"]))
-
-    df_listas = df_listas.copy()
-    df_listas["_key"] = df_listas["Producto"].astype(str).str.strip().str.upper().map(PRODUCT_TO_KEY)
-    df_listas["_key"] = df_listas["_key"].fillna(df_listas["Producto"].astype(str).str.strip().str.upper())
-
-    df_semanas = df_semanas.copy()
-    df_semanas["_key"] = df_semanas["International Week"].map(_week_key_from_name)
-
-    df_budget = df_budget.copy()
-    df_budget["_key"] = df_budget["international week"].map(_week_key_from_name)
-
-    weeks: List[dict] = []
-    keys_ordered = df_semanas["_key"].tolist()
-
-    for idx, (_, srow) in enumerate(df_semanas.iterrows()):
-        key = srow["_key"]
-        meta = _week_meta(key, idx)
-        rows = df_listas[df_listas["_key"] == key].copy()
-
-        participants = []
-        for _, p in rows.iterrows():
-            participants.append({
-                "nombre": p.get("Nombre"), "genero": p.get("Género"),
-                "codigo": p.get("Código de Estudiante"), "programa": p.get("Programa") or "Unspecified",
-                "tipoPrograma": p.get("Tipo programa"),
-                "pago1": pd.notna(p.get("Primer Pago")),
-                "pago2": pd.notna(p.get("Segundo Pago")),
-                "matricula": pd.notna(p.get("Matricula")),
-            })
-
-        registered_count = len(rows)
-        abroad_count = sum(1 for p in participants if p["matricula"])
-        gender = {"F": 0, "M": 0}
-        programas: Dict[str, int] = {}
-        programa_gender: Dict[str, Dict[str, int]] = {}
-        for p in participants:
-            if not p["matricula"]:
-                continue
-            g = str(p["genero"]).strip().upper() if p["genero"] else "Unknown"
-            if g in gender:
-                gender[g] += 1
-            prog = p["programa"]
-            programas[prog] = programas.get(prog, 0) + 1
-            programa_gender.setdefault(prog, {"F": 0, "M": 0})
-            if g in ("F", "M"):
-                programa_gender[prog][g] += 1
-
-        # ---- Presupuesto ----
-        wb = df_budget[df_budget["_key"] == key]
-        budget_lines = []
-        for _, b in wb.iterrows():
-            budget_lines.append({
-                "concepto": b.get("concepto"), "tipo": b.get("tipo"), "precio": b.get("precio"),
-                "moneda": b.get("moneda"), "cantidad": b.get("cantidad"),
-                "presupuestado": b.get("presupuestado"),
-                "ejecutado": b.get("ejecutado") if pd.notna(b.get("ejecutado")) else None,
-            })
-        ingresos = sum(b["presupuestado"] for b in budget_lines if b["tipo"] == "ingreso")
-        egresos = sum(abs(b["presupuestado"]) for b in budget_lines if b["tipo"] == "gasto")
-        balance = ingresos - egresos
-        margin_pct = round((balance / ingresos * 100), 2) if ingresos else 0.0
-
-        # ---- Encuesta: frecuencias ----
-        prof_name = str(srow.get("Profesor/s") or "").strip()
-        f_rows = df_frec[df_frec["nombre_profesor"].astype(str).str.strip().str.upper() == prof_name.upper()]
-
-        questions = []
-        aspects_map: Dict[str, Dict[str, float]] = {}
-        general_options: Dict[str, int] = {}
-        carga_options: Dict[str, int] = {}
-        cantidad_options: Dict[str, int] = {}
-
-        for qid, qrows in f_rows.groupby("id_pregunta"):
-            qtext = qrows["pregunta"].iloc[0]
-            aspecto = qrows["aspecto_evaluado"].iloc[0]
-            qtype = qrows["opcion_respuesta_pregunta"].iloc[0]
-            options: Dict[str, int] = {}
-            for _, r in qrows.iterrows():
-                resp = str(r["respuesta"])
-                options[resp] = options.get(resp, 0) + int(r["respuestas_por_opcion"])
-            questions.append({"text": qtext, "aspect": aspecto, "type": qtype, "options": options})
-
-            n_q = sum(options.values())
-            if qtype == "acuerdo":
-                # "No aplica" (y cualquier opción sin score Likert) no cuenta
-                # ni en el promedio ni en el denominador — así coincide
-                # exactamente con el cálculo original.
-                valid = {k: v for k, v in options.items() if k in LIKERT_SCORE}
-                n_valid = sum(valid.values())
-                score = sum(LIKERT_SCORE[k] * v for k, v in valid.items())
-                d = aspects_map.setdefault(aspecto, {"score_sum": 0.0, "n": 0})
-                d["score_sum"] += score
-                d["n"] += n_valid
-            elif qtype == "escala010":
-                for k, v in options.items():
-                    general_options[k] = general_options.get(k, 0) + v
-            elif qtype == "carga":
-                for k, v in options.items():
-                    carga_options[k] = carga_options.get(k, 0) + v
-            elif qtype == "cantidad":
-                for k, v in options.items():
-                    cantidad_options[k] = cantidad_options.get(k, 0) + v
-
-        aspects = [{"aspect": a, "avg": round(d["score_sum"] / d["n"], 2) if d["n"] else 0.0, "n": d["n"]}
-                   for a, d in aspects_map.items()]
-        aspects.sort(key=lambda a: -a["avg"])
-
-        n_total = sum(d["n"] for d in aspects_map.values())
-        score_total = sum(d["score_sum"] for d in aspects_map.values())
-        avg_overall = round(score_total / n_total, 2) if n_total else None
-
-        respondents = sum(general_options.values())
-        nps = round(sum(int(k) * v for k, v in general_options.items()) / respondents, 2) if respondents else None
-        response_rate = round(respondents / abroad_count * 100, 1) if abroad_count else 0.0
-
-        workload_n = sum(carga_options.values())
-        wl_score_map = {"Nada": 1, "Poco": 2, "Mucho": 3, "Demasiado": 4}
-        workload_avg = (round(sum(wl_score_map.get(k, 0) * v for k, v in carga_options.items()) / workload_n, 2)
-                         if workload_n else None)
-
-        objectives_n = sum(cantidad_options.values())
-        objectives_all_pct = (round(cantidad_options.get("Todos", 0) / objectives_n * 100, 1)
-                               if objectives_n else None)
-
-        # ---- Encuesta: comentarios ----
-        # Cada fila de 'comentarios' cuenta como una respuesta, incluso si
-        # viene en blanco/NaN — el reporte original las conserva como "NA"
-        # en vez de descartarlas (así el conteo de comentarios coincide con
-        # el número real de estudiantes que respondieron esa pregunta).
-        c_rows = df_com[df_com["nombre_profesor"].astype(str).str.strip().str.upper() == prof_name.upper()]
-        comment_groups = []
-        for qid, label in COMMENT_QID_LABELS.items():
-            items = c_rows[c_rows["id_pregunta"] == qid]["respuesta"].fillna("NA").tolist()
-            items = [str(x).strip() if str(x).strip() else "NA" for x in items]
-            comment_groups.append({"label": label, "items": items, "n": len(items)})
-
-        survey = {
-            "n": n_total, "avg": avg_overall, "nps": nps, "npsN": respondents,
-            "aspects": aspects, "commentGroups": comment_groups, "respondents": respondents,
-            "responseRate": response_rate, "workloadAvg": workload_avg, "workloadN": workload_n,
-            "objectivesAllPct": objectives_all_pct, "objectivesN": objectives_n,
-            "questions": questions,
-        }
-
-        weeks.append({
-            "key": key, "name": srow.get("International Week"), "course": srow.get("Nombre"),
-            "professor": prof_name, "location": srow.get("Ubicación"), "country": srow.get("País"),
-            "dates": srow.get("fechas"), "invoiceCurrency": srow.get("Moneda"),
-            "invoiceValue": srow.get("Valor factura"), "invoiceAttendees": srow.get("Asistentes"),
-            "registeredCount": registered_count, "abroadCount": abroad_count,
-            "gender": gender, "programas": programas, "programaGender": programa_gender,
-            "participantsList": participants, "budgetLines": budget_lines,
-            "ingresos": ingresos, "egresos": egresos, "balance": balance, "marginPct": margin_pct,
-            "survey": survey, **meta,
-        })
-
-    totals = {
-        "weeks": len(weeks), "countries": len(set(w["country"] for w in weeks)),
-        "studentsAbroad": sum(w["abroadCount"] for w in weeks),
-        "totalIncome": sum(w["ingresos"] for w in weeks),
-        "totalExpense": sum(w["egresos"] for w in weeks),
-        "totalBalance": sum(w["balance"] for w in weeks),
-    }
-    totals["marginPct"] = round(totals["totalBalance"] / totals["totalIncome"] * 100, 2) if totals["totalIncome"] else 0.0
-
-    return weeks, totals
-
-
-# ── 7) PÁGINA — Data Center ─────────────────────────────────────────────
-def page_datacenter():
-    weeks, totals = build_weeks()
-    _render_header(
-        "Data Center",
-        "Verification of the sources powering this report.",
-    )
-    files = [
-        ("BD_semanas.xlsx", "Week metadata — professor, dates, location, invoice"),
-        ("BD_listas.xlsx", "Enrollment, payments & program catalog per week"),
-        ("BD_presupuesto.xlsx", "Budget by concept — income & expenses, per week"),
-        ("BD_encuesta_curso.xlsx", "Course evaluation survey — frecuencias & comentarios"),
-    ]
-    for fname, desc in files:
-        st.markdown(f"**{fname}** — {desc}  \n:material/check_circle: Loaded")
-    st.markdown(f"**{len(files)} sources loaded** · {totals['weeks']} international weeks")
-    st.page_link(pages[1], label="Enter the Report →", icon=":material/arrow_forward:")
-
-
-# ── 8) PÁGINA — Overview ─────────────────────────────────────────────────
-def _partner_card(w: dict, show_link: bool = True):
-    gender_txt = "   ".join(f'{"♀" if g == "F" else "♂"} {n}' for g, n in w["gender"].items())
-    flag = FLAGS.get(w["country"], "")
-    st.markdown(
-        f'<div class="partner-card" style="--wc:{w["color"]};">'
-        f'<div class="loc">{flag} {w["location"]}, {w["country"]} · {w["dates"]}</div>'
-        f'<div class="n">{w["abroadCount"]}</div><div class="n-label">Students Abroad</div>'
-        f'<div style="font-family:monospace;font-size:16px;font-weight:600;margin-bottom:10px;">{gender_txt}</div>'
-        f'<div style="display:flex;justify-content:space-between;border-top:1px solid {LINE};'
-        f'padding-top:8px;font-size:12px;"><span>Ingresos</span>'
-        f'<span style="font-family:monospace;color:{INCOME};font-weight:600;">{_fmt_money(w["ingresos"])}</span></div>'
-        f'<div style="display:flex;justify-content:space-between;font-size:12px;"><span>Egresos</span>'
-        f'<span style="font-family:monospace;color:{EXPENSE};font-weight:600;">{_fmt_money(w["egresos"])}</span></div>'
-        f'<div style="display:flex;justify-content:space-between;font-size:12px;"><span>Balance</span>'
-        f'<span style="font-family:monospace;font-weight:600;">{_fmt_money(w["balance"])}</span></div>'
-        f'<span class="margin-pill" style="background:{w["colorSoft"]};color:{w["color"]};">'
-        f'{w["marginPct"]}% margin</span></div>',
-        unsafe_allow_html=True,
-    )
-    if show_link:
-        st.page_link(week_page_by_key[w["key"]], label=f"Open {w['key']} →")
-
-
-def page_overview():
-    weeks, totals = build_weeks()
-    _render_header(
-        "2026 International Weeks — Program Summary",
-        "Graduate international immersions this year, each pairing a partner business school abroad with a School of Management cohort.",
-    )
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        _kpi("International Weeks", totals["weeks"])
-    with col2:
-        _kpi("Countries", totals["countries"])
-    with col3:
-        _kpi("Total Students Abroad", totals["studentsAbroad"])
-
-    col_fin, col_margin = st.columns([1, 2])
-    with col_fin:
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            _kpi("Total Income", _fmt_money(totals["totalIncome"]), "income")
-        with c2:
-            _kpi("Total Expenses", _fmt_money(totals["totalExpense"]), "expense")
-        with c3:
-            _kpi("Total Balance", _fmt_money(totals["totalBalance"]), "balance")
-        _kpi("Total Margin", f"{totals['marginPct']}%")
-    with col_margin:
-        st.markdown("##### Margin by Week")
-        st.caption(f"Dashed line = blended total margin ({totals['marginPct']}%).")
-        fig = go.Figure(go.Bar(
-            x=[w["marginPct"] for w in weeks], y=[w["key"] for w in weeks], orientation="h",
-            marker=dict(color="#4C8A3F"), text=[f'{w["marginPct"]}%' for w in weeks],
-            textposition="outside", cliponaxis=False,
-        ))
-        fig.add_vline(x=totals["marginPct"], line_dash="dot", line_color=INK,
-                       annotation_text=f'Total Margin: {totals["marginPct"]}%', annotation_font_size=9.5)
-        fig.update_layout(margin=dict(t=10, r=46, b=26, l=70), xaxis=dict(ticksuffix="%", gridcolor="#EFEBEE"),
-                           plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=180)
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("---")
-    st.markdown("### Where Students Went")
-    st.caption("Choose a week to focus the map and program breakdown, or leave on 'All' to see everyone.")
-    focus = st.selectbox("Focus week", ["All International Weeks"] + [w["key"] for w in weeks], key="ov_focus")
-    focus_key = None if focus == "All International Weeks" else focus
-
-    col_map, col_card = st.columns([2, 1])
-    with col_map:
-        fig_map = go.Figure()
-        for w in weeks:
-            fig_map.add_trace(go.Scattergeo(
-                lat=[BOGOTA[0], w["lat"]], lon=[BOGOTA[1], w["lon"]], mode="lines",
-                line=dict(color=w["color"], width=1.6), opacity=0.7, showlegend=False, hoverinfo="skip",
-            ))
-        fig_map.add_trace(go.Scattergeo(
-            lat=[w["lat"] for w in weeks], lon=[w["lon"] for w in weeks], mode="markers+text",
-            text=[w["key"] for w in weeks], textposition="top center", textfont=dict(size=11, color=INK),
-            marker=dict(size=13, color=[w["color"] for w in weeks], line=dict(color="#fff", width=1.5)),
-            hovertext=[f'{w["location"]}, {w["country"]} — {w["abroadCount"]} students' for w in weeks],
-            hoverinfo="text",
-        ))
-        fig_map.add_trace(go.Scattergeo(
-            lat=[BOGOTA[0]], lon=[BOGOTA[1]], mode="markers+text", text=["Bogotá"],
-            textposition="bottom center", textfont=dict(size=11, color=INK),
-            marker=dict(size=11, color=INK, symbol="diamond"), showlegend=False, hoverinfo="skip",
-        ))
-        fig_map.update_geos(showland=True, landcolor="#F1EDEF", showcountries=True, countrycolor="#DDD4D9",
-                             showocean=True, oceancolor="#FAF8FA", bgcolor="rgba(0,0,0,0)",
-                             projection_type="natural earth")
-        fig_map.update_layout(margin=dict(t=6, r=6, b=6, l=6), height=380, showlegend=False,
-                               paper_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_map, use_container_width=True)
-    with col_card:
-        if focus_key:
-            w_sel = next(w for w in weeks if w["key"] == focus_key)
-            _partner_card(w_sel)
+    # Resolución robusta del nombre del profesor: intenta First+Last Name,
+    # luego cualquier columna de nombre completo conocida, y si nada aplica
+    # usa el ID como último recurso — nunca deja la columna vacía/None.
+    if "First Name" in df_.columns or "Last Name" in df_.columns:
+        fn = df_["First Name"].astype(str).fillna("") if "First Name" in df_.columns else ""
+        ln = df_["Last Name"].astype(str).fillna("") if "Last Name" in df_.columns else ""
+        fn = fn if isinstance(fn, pd.Series) else pd.Series([""] * len(df_), index=df_.index)
+        ln = ln if isinstance(ln, pd.Series) else pd.Series([""] * len(df_), index=df_.index)
+        df_["Full Name"] = (fn + " " + ln).str.strip()
+    elif "Full Name" not in df_.columns:
+        name_src = next((c for c in ["Profesor", "Nombre", "Nombre completo", "Full Name"] if c in df_.columns), None)
+        if name_src:
+            df_["Full Name"] = df_[name_src].astype(str)
         else:
-            st.info("Select a week above to see its partner card here.")
+            df_["Full Name"] = df_.get("ID", pd.Series(range(len(df_)), index=df_.index)).astype(str)
 
-    # ---- Participants by Program ----
-    st.markdown("##### Participants by Program")
-    scoped_weeks = [w for w in weeks if not focus_key or w["key"] == focus_key]
-    program_totals: Dict[str, int] = {}
-    by_prog_week: Dict[str, Dict[str, int]] = {}
-    for w in scoped_weeks:
-        for prog, n in w["programas"].items():
-            program_totals[prog] = program_totals.get(prog, 0) + n
-            by_prog_week.setdefault(prog, {})[w["key"]] = by_prog_week.get(prog, {}).get(w["key"], 0) + n
-    programs_sorted = sorted(program_totals, key=lambda p: -program_totals[p])
-    if programs_sorted:
-        fig_p = go.Figure()
-        for w in scoped_weeks:
-            fig_p.add_trace(go.Bar(
-                x=[by_prog_week.get(p, {}).get(w["key"], 0) for p in programs_sorted],
-                y=programs_sorted, orientation="h", name=w["key"], marker=dict(color=w["color"]),
-            ))
-        fig_p.update_layout(
-            barmode="stack", margin=dict(t=6, r=16, b=26, l=200),
-            legend=dict(orientation="h", x=0, y=1.12),
-            yaxis=dict(tickfont=dict(size=10), automargin=True, autorange="reversed"),
-            xaxis=dict(gridcolor="#EFEBEE"),
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            height=max(260, 34 * len(programs_sorted)),
-        )
-        st.plotly_chart(fig_p, use_container_width=True)
-    else:
-        st.info("No hay datos de programas para este filtro.")
-
-    st.markdown("---")
-    st.markdown("### By Partner")
-    st.caption("Open a week for the full roster, payment status, and budget breakdown.")
-    cols = st.columns(min(4, len(weeks)) or 1)
-    for i, w in enumerate(weeks):
-        with cols[i % len(cols)]:
-            _partner_card(w)
+    df_["Full Name"] = df_["Full Name"].astype(str).str.strip()
+    df_.loc[df_["Full Name"].isin(["", "nan", "None"]), "Full Name"] = df_["ID"].astype(str) if "ID" in df_.columns else "—"
+    return df_
 
 
-# ── 9) PÁGINA — Week Detail (una por socio) ─────────────────────────────
-def page_week(key: str):
-    weeks, _ = build_weeks()
-    w = next((x for x in weeks if x["key"] == key), None)
-    if w is None:
-        st.error(f"No encontré datos para la semana '{key}'.")
+@st.cache_data(ttl=300)
+def load_eiv_cursos() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(EIV_CURSOS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="cursos")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_eiv_listas() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(EIV_LISTAS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="listas")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_seminarios() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(SEMINARS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="seminarios")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_conferencistas() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(CONFERENCISTAS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="conferencistas")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_participantes() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(PARTICIPANTES_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="participantes")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_weeks_listas() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(WEEKS_LISTAS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="listas")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_weeks_semanas() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(WEEKS_SEMANAS_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="Semanas Internacionales")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+@st.cache_data(ttl=300)
+def load_weeks_budget() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(WEEKS_PRESUPUESTO_FILE_ID))
+    df_ = pd.read_excel(raw, sheet_name="budget")
+    df_.columns = df_.columns.str.strip()
+    return df_
+
+
+# ── 5) PÁGINA — Faculty (International Full-Time Faculty) ──────────────
+def _style_highlight_column(df_: pd.DataFrame, col: str, color: str = "#EDE3F8"):
+    """Devuelve un Styler que resalta en morado claro toda la columna `col`
+    (el período/año seleccionado), igual que el resaltado de periodo en
+    Faculty Analytics."""
+    def _style(d):
+        s = pd.DataFrame("", index=d.index, columns=d.columns)
+        if col in d.columns:
+            s[col] = f"background-color:{color};"
+        return s
+    return df_.style.apply(_style, axis=None)
+
+
+def page_faculty():
+    df = load_planta_fulltime()
+
+    nat_col = next((c for c in ["Country of Birth", "Nationality"] if c in df.columns), None)
+    dual_col = next((c for c in ["Double Nationality", "Doble Nacionalidad"] if c in df.columns), None)
+    id_col = "ID" if "ID" in df.columns else None
+    name_col = "Full Name" if "Full Name" in df.columns else None
+
+    _render_header(
+        "International Full-Time Faculty",
+        "Country of birth and dual nationality of the School of Management's full-time faculty, from the planta roster in BD_profesores.",
+    )
+
+    if nat_col is None or id_col is None or df.empty:
+        st.info("No pude encontrar las columnas necesarias (Country of Birth / ID) en la hoja 'planta' de BD_profesores.xlsx.")
         return
 
-    _render_header(w["name"], w["course"])
+    with st.sidebar:
+        st.markdown("#### Timeframe")
+        mode = st.radio("View by", ["Period", "Year"], key="fac_mode")
 
-    st.markdown(
-        f'<div class="week-band" style="background:{w["colorSoft"]};">'
-        f'<div><div class="eyebrow" style="color:{w["color"]};">{w["name"]}</div>'
-        f'<h2>{w["course"]}</h2>'
-        f'<div class="loc">{FLAGS.get(w["country"], "")} {w["location"]}, {w["country"]} · {w["dates"]}</div></div>'
-        f'<div style="margin-left:auto;background:#fff;border-radius:12px;padding:8px 14px;">'
-        f'<div style="font-weight:600;font-size:13px;">{w["professor"]}</div>'
-        f'<div style="font-size:10.5px;color:{MUTED};text-transform:uppercase;font-family:monospace;">Faculty Lead</div></div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            _kpi("Ingresos", _fmt_money(w["ingresos"]), "income")
-        with c2:
-            _kpi("Egresos", _fmt_money(w["egresos"]), "expense")
-        with c3:
-            _kpi("Balance", _fmt_money(w["balance"]), "balance")
-        with c4:
-            _kpi("% Margin", f'{w["marginPct"]}%')
-    with col2:
-        c1, c2 = st.columns(2)
-        with c1:
-            _kpi("Students Abroad", w["abroadCount"])
-        with c2:
-            _kpi("Registered, Did Not Travel", w["registeredCount"] - w["abroadCount"])
-        fig_geo = go.Figure()
-        if w.get("countryCode"):
-            fig_geo.add_trace(go.Choropleth(
-                locations=[w["countryCode"]], z=[1], locationmode="ISO-3",
-                colorscale=[[0, w["color"]], [1, w["color"]]], showscale=False,
-                marker_line_color="#fff", marker_line_width=0.5,
-            ))
-        fig_geo.add_trace(go.Scattergeo(
-            lat=[w["lat"]], lon=[w["lon"]], mode="markers+text", text=[w["location"]],
-            textposition="bottom center", textfont=dict(size=11, color=INK),
-            marker=dict(size=12, color=INK, line=dict(color="#fff", width=1.5)),
-        ))
-        fig_geo.update_geos(scope=w.get("geo_scope", "world"), showland=True, landcolor="#F1EDEF",
-                             showcountries=True, countrycolor="#DDD4D9", showocean=True,
-                             oceancolor="#FAF8FA", bgcolor="rgba(0,0,0,0)")
-        fig_geo.update_layout(margin=dict(t=6, r=6, b=6, l=6), height=220, showlegend=False,
-                               paper_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_geo, use_container_width=True)
-
-    # ---- Pyramid: participants by program, gender split ----
-    st.markdown("### Participants by Program")
-    st.caption("Women (left) vs. men (right); total shown at right.")
-    programs = sorted(w["programas"], key=lambda p: -w["programas"][p])
-    if programs:
-        women = [-(w["programaGender"].get(p, {}).get("F", 0)) for p in programs]
-        men = [w["programaGender"].get(p, {}).get("M", 0) for p in programs]
-        totals_p = [abs(a) + b for a, b in zip(women, men)]
-        fig_pyr = go.Figure()
-        fig_pyr.add_trace(go.Bar(x=women, y=programs, orientation="h", name="Women",
-                                  marker=dict(color=w["colorSoft"]),
-                                  text=[str(-v) for v in women], textposition="inside",
-                                  textfont=dict(color=w["color"])))
-        fig_pyr.add_trace(go.Bar(x=men, y=programs, orientation="h", name="Men",
-                                  marker=dict(color=w["color"]),
-                                  text=[str(v) for v in men], textposition="inside",
-                                  textfont=dict(color="#fff")))
-        for p, t in zip(programs, totals_p):
-            fig_pyr.add_annotation(xref="paper", x=1.03, xanchor="left", y=p, showarrow=False,
-                                    text=f"Total: {t}", font=dict(size=9.5, color=MUTED))
-        fig_pyr.update_layout(
-            barmode="overlay", margin=dict(t=10, r=90, b=26, l=190),
-            legend=dict(orientation="h", x=0, y=1.12),
-            xaxis=dict(gridcolor="#EFEBEE", zeroline=True, zerolinecolor="#D8CFD5"),
-            yaxis=dict(tickfont=dict(size=10.5), automargin=True, autorange="reversed"),
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=280,
-        )
-        st.plotly_chart(fig_pyr, use_container_width=True)
+    if mode == "Period":
+        keys = sorted(df["Periodo"].dropna().unique().tolist(), key=_period_sort_key)
+        cols_def = [(k, k, df[df["Periodo"] == k]) for k in keys]
     else:
-        st.info("No hay participantes matriculados para esta semana.")
+        years = sorted(df["Año"].dropna().unique().tolist())
+        cols_def = []
+        for y in years:
+            periods_in_year = sorted(
+                df[df["Año"] == y]["Periodo"].dropna().unique().tolist(), key=_period_sort_key
+            )
+            if not periods_in_year:
+                continue
+            latest = periods_in_year[-1]
+            cols_def.append((y, y, df[df["Periodo"] == latest]))
 
-    # ---- Roster ----
-    st.markdown(f'### Roster ({w["registeredCount"]} registered · {w["abroadCount"]} traveled)')
-    roster_df = pd.DataFrame([{
-        "Name": p["nombre"], "Code": p["codigo"] if p["codigo"] else "—", "Program": p["programa"],
-        "Type": p["tipoPrograma"], "1er Pago": tick(p["pago1"]), "2do Pago": tick(p["pago2"]),
-        "Matrícula": tick(p["matricula"]),
-    } for p in w["participantsList"]])
-    st.dataframe(roster_df, use_container_width=True, hide_index=True, height=420)
-    st.download_button(
-        "Download as Excel",
-        data=_xlsx_bytes(pd.DataFrame([{
-            "Name": p["nombre"], "Code": p["codigo"], "Program": p["programa"], "Type": p["tipoPrograma"],
-            "Primer Pago": "Yes" if p["pago1"] else "No", "Segundo Pago": "Yes" if p["pago2"] else "No",
-            "Matrícula": "Yes" if p["matricula"] else "No",
-        } for p in w["participantsList"]]), "Roster"),
-        file_name=f'{w["key"]}_Roster.xlsx', key=f'dl_roster_{w["key"]}',
-    )
+    if not cols_def:
+        st.info("No hay datos suficientes para mostrar esta vista.")
+        return
 
-    # ---- Survey ----
-    st.markdown("### Course Evaluation Survey")
-    sv = w["survey"]
-    st.caption(f'{sv["respondents"]} of {w["abroadCount"]} students abroad responded to the survey.')
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1:
-        _kpi("Students Responded", sv["respondents"])
-    with c2:
-        _kpi("Response Rate", f'{sv["responseRate"]}%')
-    with c3:
-        _kpi("Avg. Satisfaction", f'{sv["avg"]} / 5.0' if sv["avg"] is not None else "—")
-    with c4:
-        _kpi("Would Recommend", f'{sv["nps"]} / 10' if sv["npsN"] else "—")
-    with c5:
-        _kpi("Objectives Met", f'{sv["objectivesAllPct"]}%' if sv["objectivesN"] else "—")
+    labels = [c[1] for c in cols_def]
+    with st.sidebar:
+        snap_label = st.selectbox("Periodo (snapshot for map & highlight)", labels[::-1], index=0, key="fac_snapshot")
+    snap_idx = labels.index(snap_label)
+    snap_rows = cols_def[snap_idx][2]
 
-    if sv["aspects"]:
-        st.markdown("##### By Aspect")
-        fig_asp = go.Figure(go.Bar(
-            x=[a["avg"] for a in sv["aspects"]], y=[a["aspect"] for a in sv["aspects"]], orientation="h",
-            marker=dict(color=w["color"]), text=[f'{a["avg"]:.2f}' for a in sv["aspects"]],
-            textposition="outside", cliponaxis=False,
-        ))
-        fig_asp.update_layout(
-            margin=dict(t=10, r=50, b=26, l=270), xaxis=dict(range=[1, 5.5], gridcolor="#EFEBEE"),
-            yaxis=dict(tickfont=dict(size=10.5), automargin=True, autorange="reversed"),
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=280,
+    total_counts, intl_counts, nat_lists, dual_counts_list, dual_nat_lists = [], [], [], [], []
+    intl_rows_by_col, dual_rows_by_col = [], []
+    for key, label, rows in cols_def:
+        total_counts.append(rows[id_col].nunique())
+        intl_rows = rows[rows[nat_col].notna() & ~rows[nat_col].astype(str).str.strip().str.lower().isin(
+            ["colombian", "colombia", ""])]
+        intl_rows_by_col.append(intl_rows)
+        intl_counts.append(intl_rows[id_col].nunique())
+        nat_lists.append(
+            intl_rows.groupby(nat_col)[id_col].nunique().sort_values(ascending=False)
         )
-        st.plotly_chart(fig_asp, use_container_width=True)
+        if dual_col and dual_col in rows.columns:
+            dual_rows = rows[rows[dual_col].notna() & ~rows[dual_col].astype(str).str.strip().str.lower().isin(
+                ["no", ""])]
+            dual_rows_by_col.append(dual_rows)
+            dual_counts_list.append(dual_rows[id_col].nunique())
+            dual_nat_lists.append(dual_rows.groupby(dual_col)[id_col].nunique().sort_values(ascending=False))
+        else:
+            dual_rows_by_col.append(rows.iloc[0:0])
+            dual_counts_list.append(0)
+            dual_nat_lists.append(pd.Series(dtype=int))
 
-    st.markdown("##### Comments")
-    ccols = st.columns(2)
-    for i, g in enumerate(sv["commentGroups"]):
-        with ccols[i % 2]:
-            st.markdown(f'**{g["label"]} ({g["n"]})**')
-            if g["items"]:
-                with st.container(height=200):
-                    for item in g["items"]:
-                        st.markdown(f"- {item}")
-            else:
-                st.caption("No comments for this question.")
+    pct_intl = [round((intl_counts[i] / total_counts[i] * 100), 1) if total_counts[i] else 0.0
+                for i in range(len(labels))]
 
-    with st.spinner("Preparando reporte…"):
-        pdf_bytes = _build_week_survey_pdf(w)
+    # ---- Tabla combinada: resumen + lista de nacionalidades, mismo período ----
+    st.markdown("### International Full-Time Faculty")
+    max_nat = max((len(n) for n in nat_lists), default=0)
+    table1_rows = [
+        ["Total Faculty"] + total_counts,
+        ["International Full-time Faculty"] + intl_counts,
+        ["% International"] + [f"{p}%" for p in pct_intl],
+        ["Number of nationalities"] + [len(n) for n in nat_lists],
+    ]
+    for i in range(max_nat):
+        row = ["Nationalities" if i == 0 else ""]
+        for j in range(len(labels)):
+            nl = nat_lists[j]
+            row.append(f"{nl.index[i]} ({int(nl.iloc[i])})" if i < len(nl) else "")
+        table1_rows.append(row)
+    df_table1 = pd.DataFrame(table1_rows, columns=[""] + labels)
+    st.dataframe(_style_highlight_column(df_table1, snap_label), use_container_width=True, hide_index=True)
+
     st.download_button(
-        "📄 Generate Evaluation Report", data=pdf_bytes,
-        file_name=f'ISS_{w["key"]}_Evaluation_Report.pdf', mime="application/pdf",
-        key=f'dl_pdf_{w["key"]}',
+        "Download as Excel", data=_xlsx_bytes(df_table1, "International_Faculty"),
+        file_name="International_Faculty.xlsx", key="dl_fac_table1",
     )
 
+    # ---- Trend chart: % international over time ----
+    st.markdown("### International Faculty Over Time")
+    col_trend, col_donut = st.columns([2, 1])
+    with col_trend:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=labels, y=intl_counts, mode="lines+markers+text", name="International Faculty",
+            line=dict(color=_PURPLE_MID, width=3, shape="spline"),
+            marker=dict(
+                size=[13 if l == snap_label else 7 for l in labels],
+                color=[_PURPLE_ACCENT if l == snap_label else _PURPLE_MID for l in labels],
+            ),
+            text=intl_counts, textposition="top center", textfont=dict(size=10),
+        ))
+        fig.update_layout(
+            margin=dict(t=10, r=16, b=36, l=36), xaxis=dict(type="category"),
+            yaxis=dict(gridcolor="#EFEBEE", title="International Faculty"),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=300,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    with col_donut:
+        donut_df = pd.DataFrame({
+            "Group": ["International", "Domestic"],
+            "Count": [intl_counts[snap_idx], total_counts[snap_idx] - intl_counts[snap_idx]],
+        })
+        fig_donut = px.pie(
+            donut_df, names="Group", values="Count", hole=0.55,
+            color="Group", color_discrete_map={"International": _PURPLE_ACCENT, "Domestic": "#E5DDF2"},
+            title=f"{snap_label} snapshot",
+        )
+        fig_donut.update_traces(textinfo="label+percent", textfont=dict(size=11))
+        fig_donut.update_layout(height=300, margin=dict(t=40, r=10, b=10, l=10), showlegend=False)
+        st.plotly_chart(fig_donut, use_container_width=True)
 
-# ── 10) PÁGINA — Financial Detail ────────────────────────────────────────
-def page_financial():
-    weeks, totals = build_weeks()
+    # ---- Nationality bubble map + bar chart for snapshot ----
+    st.markdown(f"### Nationalities Represented — {snap_label}")
+    snap_nat = nat_lists[snap_idx]
+    map_df = snap_nat.rename("Count").reset_index().rename(columns={nat_col: "Nationality"})
+    map_df["Country"] = map_df["Nationality"].map(_NATIONALITY_TO_COUNTRY)
+    map_df_geo = map_df.dropna(subset=["Country"])
+
+    col_map, col_bar = st.columns([2, 1])
+    with col_map:
+        if not map_df_geo.empty:
+            fig_nat = px.scatter_geo(
+                map_df_geo, locations="Country", locationmode="country names", size="Count",
+                text="Nationality", hover_name="Nationality", hover_data={"Count": True, "Country": False},
+                projection="natural earth",
+            )
+            fig_nat.update_traces(
+                marker=dict(color=_PURPLE_ACCENT, opacity=0.8, line=dict(width=1, color="#FFFFFF")),
+                mode="markers+text", textposition="top center", textfont=dict(size=10, color="#3B2560"),
+            )
+            fig_nat.update_geos(
+                showcountries=True, countrycolor="#E5DDF2", showland=True, landcolor=_PURPLE_BG_TINT,
+                showocean=True, oceancolor="#EDE7F7", bgcolor="rgba(0,0,0,0)",
+            )
+            fig_nat.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=6))
+            st.plotly_chart(fig_nat, use_container_width=True)
+        else:
+            st.info("No hay nacionalidades internacionales mapeables para este snapshot.")
+    with col_bar:
+        if not map_df.empty:
+            fig_bar = px.bar(
+                map_df.sort_values("Count"), x="Count", y="Nationality", orientation="h",
+                color_discrete_sequence=[_PURPLE_MID],
+            )
+            fig_bar.update_layout(
+                margin=dict(t=10, r=16, b=26, l=10), plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)", height=360, yaxis=dict(title=""), xaxis=dict(title="Faculty"),
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+    if st.button("Show Nationalities", key="btn_show_nat", use_container_width=True):
+        st.session_state["_faculty_dialog"] = "nat"
+
+    # ---- Tabla combinada: dual nationality — resumen + lista ----
+    st.markdown("### Full-Time Faculty with Dual Nationality")
+    max_dual = max((len(n) for n in dual_nat_lists), default=0)
+    table2_rows = [["Faculty with dual nationality"] + dual_counts_list]
+    for i in range(max_dual):
+        row = ["Nationalities" if i == 0 else ""]
+        for j in range(len(labels)):
+            dn = dual_nat_lists[j]
+            row.append(f"{dn.index[i]} ({int(dn.iloc[i])})" if i < len(dn) else "")
+        table2_rows.append(row)
+    df_table2 = pd.DataFrame(table2_rows, columns=[""] + labels)
+    st.dataframe(_style_highlight_column(df_table2, snap_label), use_container_width=True, hide_index=True)
+
+    st.download_button(
+        "Download as Excel", data=_xlsx_bytes(df_table2, "Dual_Nationality_Faculty"),
+        file_name="Dual_Nationality_Faculty.xlsx", key="dl_fac_table2",
+    )
+
+    if st.button("Show Dual Nationality Faculty", key="btn_show_dual", use_container_width=True):
+        st.session_state["_faculty_dialog"] = "dual"
+
+    # ---- Diálogos de detalle (mutuamente excluyentes: solo uno a la vez) ----
+    def _clean_detail(df_in: pd.DataFrame, cols: list, rename_map: dict) -> pd.DataFrame:
+        out = df_in[cols].drop_duplicates().reset_index(drop=True)
+        out = out.rename(columns=rename_map)
+        for c in out.columns:
+            out[c] = out[c].astype(str).replace({"None": "—", "nan": "—", "": "—"})
+        return out
+
+    active_dialog = st.session_state.get("_faculty_dialog")
+    if active_dialog == "nat" and hasattr(st, "dialog"):
+        @st.dialog(f"International Faculty — {snap_label}", width="large")
+        def _dlg_nat():
+            cols = [c for c in [name_col, nat_col] if c]
+            rename_map = {c: ("Professor" if c == name_col else "Nationality") for c in cols}
+            detail = _clean_detail(intl_rows_by_col[snap_idx], cols, rename_map)
+            st.dataframe(detail, use_container_width=True, hide_index=True)
+            if st.button("Close", key="close_nat_dialog"):
+                st.session_state["_faculty_dialog"] = None
+                st.rerun()
+        _dlg_nat()
+    elif active_dialog == "dual" and hasattr(st, "dialog"):
+        @st.dialog(f"Dual Nationality Faculty — {snap_label}", width="large")
+        def _dlg_dual():
+            cols = [c for c in [name_col, dual_col] if c]
+            rename_map = {c: ("Professor" if c == name_col else "Double Nationality") for c in cols}
+            detail = _clean_detail(dual_rows_by_col[snap_idx], cols, rename_map)
+            st.dataframe(detail, use_container_width=True, hide_index=True)
+            if st.button("Close", key="close_dual_dialog"):
+                st.session_state["_faculty_dialog"] = None
+                st.rerun()
+        _dlg_dual()
+
+
+# ── 6) PÁGINA — Visiting Faculty & International Seminars ──────────────
+def page_visiting():
     _render_header(
-        "Financial Detail",
-        "Full budget by concept for every week — sourced from BD_presupuesto.xlsx. "
-        "\"Executed\" fills in once a line item is reconciled.",
+        "Visiting Faculty & International Seminars",
+        "Summary of faculty who visited through the International Summer School (EIV) and the International Seminars series — full detail lives in their own reports.",
     )
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        _kpi("Total Income", _fmt_money(totals["totalIncome"]), "income")
-    with c2:
-        _kpi("Total Expenses", _fmt_money(totals["totalExpense"]), "expense")
-    with c3:
-        _kpi("Total Balance", _fmt_money(totals["totalBalance"]), "balance")
-    with c4:
-        _kpi("Total Margin", f'{totals["marginPct"]}%')
+    # ---- EIV ----
+    df_eiv = load_eiv_cursos()
+    prof_col = next((c for c in ["Profesor"] if c in df_eiv.columns), None)
+    country_col = next((c for c in ["País Universidad", "Pais Universidad"] if c in df_eiv.columns), None)
+    ciclo_col = "Ciclo" if "Ciclo" in df_eiv.columns else None
 
-    st.markdown("##### Ingresos vs. Egresos by Week")
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=[w["key"] for w in weeks], y=[w["ingresos"] for w in weeks],
-                          name="Ingresos", marker=dict(color=INCOME)))
-    fig.add_trace(go.Bar(x=[w["key"] for w in weeks], y=[w["egresos"] for w in weeks],
-                          name="Egresos", marker=dict(color=EXPENSE)))
-    fig.update_layout(
-        barmode="group", margin=dict(t=20, r=10, b=30, l=90),
-        legend=dict(orientation="h", x=0, y=1.14), yaxis=dict(tickformat="$,.0f", gridcolor="#EFEBEE"),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=320,
+    _section_title_with_link(
+        "International Summer School (EIV) — Visiting Faculty", EIV_REPORT_URL, "Go to EIV report →",
     )
-    st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("##### Comparison")
-    compare_df = pd.DataFrame([{
-        "Week": w["name"], "Ingresos": _fmt_money(w["ingresos"]), "Egresos": _fmt_money(w["egresos"]),
-        "Balance": _fmt_money(w["balance"]), "Margin": f'{w["marginPct"]}%',
-    } for w in weeks] + [{
-        "Week": "Total", "Ingresos": _fmt_money(totals["totalIncome"]), "Egresos": _fmt_money(totals["totalExpense"]),
-        "Balance": _fmt_money(totals["totalBalance"]), "Margin": f'{totals["marginPct"]}%',
-    }])
-    st.dataframe(compare_df, use_container_width=True, hide_index=True)
+    if prof_col and country_col:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            _kpi("Visiting Faculty (this edition)", df_eiv[prof_col].nunique())
+        with col2:
+            _kpi("Countries of Origin", df_eiv[country_col].nunique())
 
-    compare_raw = pd.DataFrame([{
-        "Week": w["name"], "Ingresos": w["ingresos"], "Egresos": w["egresos"],
-        "Balance": w["balance"], "Margin %": w["marginPct"],
-    } for w in weeks] + [{
-        "Week": "Total", "Ingresos": totals["totalIncome"], "Egresos": totals["totalExpense"],
-        "Balance": totals["totalBalance"], "Margin %": totals["marginPct"],
-    }])
-    st.download_button(
-        "Download as Excel", data=_xlsx_bytes(compare_raw, "Comparison"),
-        file_name="International_Weeks_Financial_Comparison.xlsx", key="dl_fin_comparison",
-    )
+        df_eiv_listas = load_eiv_listas()
+        # Cursos únicos (colapsa el bootcamp co-dictado por 2 profesores)
+        cursos_unicos = df_eiv.drop_duplicates(subset=["Curso"])
+        total_capacidad = pd.to_numeric(cursos_unicos.get("Capacidad"), errors="coerce").fillna(0).sum()
+        total_inscritos = len(df_eiv_listas)
+        with col3:
+            _kpi("Students Enrolled", f"{total_inscritos:,}")
+        with col4:
+            _kpi("Occupancy", f"{(total_inscritos/total_capacidad*100):.1f}%" if total_capacidad else "—")
+
+        univ_col = "Universidad" if "Universidad" in df_eiv.columns else None
+
+        # ---- Mapa: flechas desde el país de cada profesor hacia Bogotá ----
+        st.markdown("##### Where Our Visiting Faculty Came From")
+        by_country_df = df_eiv.groupby(country_col)[prof_col].nunique().reset_index(name="Faculty")
+        by_country_df["Country_clean"] = by_country_df[country_col].astype(str).str.strip()
+
+        if univ_col:
+            univ_by_country = (
+                df_eiv.groupby(country_col)[univ_col].apply(lambda s: ", ".join(sorted(set(s.dropna().astype(str)))))
+            )
+            by_country_df["Universities"] = by_country_df[country_col].map(univ_by_country)
+        else:
+            by_country_df["Universities"] = ""
+
+        fig_map = go.Figure()
+        for _, row in by_country_df.iterrows():
+            coords = _COUNTRY_CENTROIDS.get(row["Country_clean"])
+            if not coords:
+                continue
+            lat0, lon0 = coords
+            fig_map.add_trace(go.Scattergeo(
+                lat=[lat0, BOGOTA_COORDS[0]], lon=[lon0, BOGOTA_COORDS[1]],
+                mode="lines", line=dict(width=1.4, color=_PURPLE_MID), opacity=0.55,
+                showlegend=False, hoverinfo="skip",
+            ))
+            fig_map.add_trace(go.Scattergeo(
+                lat=[lat0], lon=[lon0], mode="markers+text",
+                text=[row[country_col]], textposition="top center", textfont=dict(size=9, color="#3B2560"),
+                marker=dict(size=10 + 4 * row["Faculty"], color=_PURPLE_ACCENT, opacity=0.85,
+                            line=dict(width=1, color="#FFFFFF")),
+                hovertext=f"{row[country_col]}: {row['Faculty']} faculty<br>Universities: {row['Universities']}",
+                hoverinfo="text", showlegend=False,
+            ))
+        fig_map.add_trace(go.Scattergeo(
+            lat=[BOGOTA_COORDS[0]], lon=[BOGOTA_COORDS[1]], mode="markers+text",
+            text=["Bogotá"], textposition="bottom center", textfont=dict(size=10, color=_PURPLE_DEEP),
+            marker=dict(size=14, color=_PURPLE_DEEP, symbol="star", line=dict(width=1, color="#FFFFFF")),
+            hoverinfo="text", hovertext="UASM · Bogotá", showlegend=False,
+        ))
+        fig_map.update_geos(
+            showcountries=True, countrycolor="#E5DDF2", showland=True, landcolor=_PURPLE_BG_TINT,
+            showocean=True, oceancolor="#EDE7F7", bgcolor="rgba(0,0,0,0)", projection_type="natural earth",
+        )
+        fig_map.update_layout(height=420, margin=dict(l=10, r=10, t=10, b=6))
+        st.plotly_chart(fig_map, use_container_width=True)
+
+        col_chart, col_table = st.columns([3, 2])
+        with col_chart:
+            st.markdown("##### Faculty by Country of Origin")
+            fig_c = px.bar(
+                by_country_df.sort_values("Faculty"), x="Faculty", y=country_col, orientation="h",
+                color_discrete_sequence=[_PURPLE_MID],
+            )
+            fig_c.update_layout(
+                margin=dict(t=6, r=16, b=26, l=140), plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)", height=max(220, 32 * len(by_country_df)), yaxis=dict(title=""),
+            )
+            st.plotly_chart(fig_c, use_container_width=True)
+        with col_table:
+            st.markdown("##### Detail (with Universities)")
+            st.dataframe(
+                by_country_df[[country_col, "Faculty", "Universities"]], use_container_width=True, hide_index=True,
+            )
+
+        # ---- Cuándo estuvieron (por fechas) en lugar del ciclo ----
+        fechas_col = next((c for c in ["Fechas curso", "Fechas"] if c in df_eiv.columns), None)
+        if fechas_col:
+            by_fechas = df_eiv.groupby(fechas_col)[prof_col].nunique().reset_index(name="Visiting Faculty")
+            st.markdown("##### Visiting Faculty by Dates")
+            col_ch2, col_tb2 = st.columns([3, 2])
+            with col_ch2:
+                fig_cy = px.bar(by_fechas, x=fechas_col, y="Visiting Faculty",
+                                 color_discrete_sequence=[_PURPLE_ACCENT])
+                fig_cy.update_layout(
+                    margin=dict(t=6, r=16, b=60, l=36), plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)", height=300, xaxis=dict(type="category", tickangle=-30),
+                )
+                st.plotly_chart(fig_cy, use_container_width=True)
+            with col_tb2:
+                st.dataframe(by_fechas, use_container_width=True, hide_index=True)
+    else:
+        st.info("No pude encontrar las columnas necesarias (Profesor / País Universidad) en BD_cursos.xlsx (EIV).")
 
     st.markdown("---")
-    st.markdown("### Detailed Budget by Week")
-    for w in weeks:
-        st.markdown(f'<div style="border-top:5px solid {w["color"]};border-radius:4px;"></div>',
-                     unsafe_allow_html=True)
-        st.markdown(f'#### {w["name"]}')
-        used_currencies = sorted(set(b["moneda"] for b in w["budgetLines"] if b["moneda"] != "COP"))
-        _, _, _, df_trm, _, _ = load_raw_sheets()
-        trm_map = dict(zip(df_trm["Moneda"].astype(str).str.strip(), df_trm["TRM"]))
-        if used_currencies:
-            trm_note = "TRM used: " + "  ·  ".join(f"{c} = {_fmt_money(trm_map.get(c, 0))}" for c in used_currencies)
-        else:
-            trm_note = "All line items in COP."
-        st.caption(trm_note)
 
-        col_inc, col_exp = st.columns(2)
-        income_lines = [b for b in w["budgetLines"] if b["tipo"] == "ingreso"]
-        expense_lines = [b for b in w["budgetLines"] if b["tipo"] == "gasto"]
+    # ---- Seminars ----
+    _section_title_with_link(
+        "International Seminars", SEMINARS_REPORT_URL, "Go to Seminars report →",
+    )
+    st.caption(
+        "A quick summary across Seminars, Speakers, and Participants — see the full "
+        "report for search, per-seminar detail, and downloadable tables."
+    )
 
-        def _lines_df(lines, is_expense):
-            return pd.DataFrame([{
-                "Concept": b["concepto"],
-                "Unit Price": f'{b["precio"]:,.0f} {b["moneda"]}' if b["precio"] else "—",
-                "Qty": b["cantidad"],
-                "Total (COP)": _fmt_money(abs(b["presupuestado"]) if is_expense else b["presupuestado"]),
-                "Executed": _fmt_money(abs(b["ejecutado"])) if b["ejecutado"] is not None else "pending",
-            } for b in lines])
+    df_sem = load_seminarios()
+    df_conf = load_conferencistas()
+    df_part = load_participantes()
 
-        with col_inc:
-            st.markdown(f'<span style="color:{INCOME};font-weight:600;">Income</span>', unsafe_allow_html=True)
-            st.dataframe(_lines_df(income_lines, False), use_container_width=True, hide_index=True)
-            st.markdown(f'**Total Income: <span style="color:{INCOME};">{_fmt_money(w["ingresos"])}</span>**',
-                        unsafe_allow_html=True)
-        with col_exp:
-            st.markdown(f'<span style="color:{EXPENSE};font-weight:600;">Expenses</span>', unsafe_allow_html=True)
-            st.dataframe(_lines_df(expense_lines, True), use_container_width=True, hide_index=True)
-            st.markdown(f'**Total Expenses: <span style="color:{EXPENSE};">{_fmt_money(w["egresos"])}</span>**',
-                        unsafe_allow_html=True)
+    year_col = "Año" if "Año" in df_sem.columns else None
+    cat_col = "Categoría" if "Categoría" in df_sem.columns else None
+    conf_name_col = "Nombre Completo" if "Nombre Completo" in df_conf.columns else None
+    conf_univ_col = "Nombre Universidad origen" if "Nombre Universidad origen" in df_conf.columns else None
 
-        st.markdown(f'**Balance ({w["marginPct"]}% margin): {_fmt_money(w["balance"])}**')
+    if conf_name_col:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            _kpi("Seminars", len(df_sem))
+        with col2:
+            _kpi("Speakers", df_conf[conf_name_col].dropna().nunique())
+        with col3:
+            _kpi("Universities Represented", df_conf[conf_univ_col].dropna().nunique() if conf_univ_col else "—")
+        with col4:
+            _kpi("Participants", len(df_part))
 
-        budget_full_df = pd.DataFrame([{
-            "Concept": b["concepto"], "Type": b["tipo"], "Unit Price": b["precio"], "Currency": b["moneda"],
-            "Qty": b["cantidad"], "Budgeted_COP": b["presupuestado"], "Executed_COP": b["ejecutado"],
-        } for b in w["budgetLines"]])
+        col_year, col_cat = st.columns(2)
+        with col_year:
+            if year_col:
+                by_year = df_sem[year_col].dropna().astype(str).value_counts().sort_index()
+                by_year = by_year[~by_year.index.str.contains("REF", case=False, na=False)]
+                if not by_year.empty:
+                    by_year_df = by_year.reset_index()
+                    by_year_df.columns = ["Year", "Seminars"]
+                    st.markdown("##### Seminars by Year")
+                    fig_y = px.bar(by_year_df, x="Year", y="Seminars", color_discrete_sequence=[_PURPLE_MID])
+                    fig_y.update_layout(
+                        margin=dict(t=6, r=16, b=26, l=36), plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)", height=260, xaxis=dict(type="category"),
+                    )
+                    st.plotly_chart(fig_y, use_container_width=True)
+        with col_cat:
+            if cat_col:
+                by_cat = df_sem[cat_col].dropna().value_counts().reset_index()
+                by_cat.columns = ["Category", "Seminars"]
+                st.markdown("##### By Category")
+                fig_c = px.pie(by_cat, names="Category", values="Seminars", hole=0.5,
+                                color_discrete_sequence=[_PURPLE_DEEP, _PURPLE_MID, _PURPLE_ACCENT, "#C9B4E8"])
+                fig_c.update_traces(textinfo="percent+label", textfont=dict(size=10))
+                fig_c.update_layout(height=260, margin=dict(t=10, r=10, b=10, l=10), showlegend=False)
+                st.plotly_chart(fig_c, use_container_width=True)
+    else:
+        st.info("No pude encontrar las columnas necesarias en BD_conferencistas.xlsx.")
+
+
+# ── 7) PÁGINA — International Weeks ──────────────────────────────────────
+def page_weeks():
+    _render_header(
+        "International Weeks",
+        "UASM graduate-program students attending International Weeks abroad, and International Weeks or activities offered by the School.",
+    )
+
+    # ---- Students attending int'l weeks abroad ----
+    _section_title_with_link(
+        "Students Attending International Weeks Abroad", WEEKS_REPORT_URL, "Go to Weeks report →",
+    )
+    df_listas = load_weeks_listas()
+    univ_col = "Producto" if "Producto" in df_listas.columns else None
+    prog_col = "Programa" if "Programa" in df_listas.columns else None
+
+    if univ_col and prog_col:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            _kpi("Total Students", len(df_listas))
+        with col2:
+            _kpi("Programs Represented", df_listas[prog_col].nunique())
+        with col3:
+            _kpi("Universities Visited", df_listas[univ_col].nunique())
+
+        rows = []
+        for prog, sub in df_listas.groupby(prog_col):
+            univ_counts = sub[univ_col].value_counts()
+            rows.append({
+                "Program": prog,
+                "Students": len(sub),
+                "Universities": univ_counts.shape[0],
+                "University Breakdown": ", ".join(f"{u} ({n})" for u, n in univ_counts.items()),
+            })
+        table_students = pd.DataFrame(rows).sort_values("Students", ascending=False)
+
+        col_chart, col_table = st.columns([3, 2])
+        with col_chart:
+            st.markdown("##### Students by Program")
+            fig_p = px.bar(
+                table_students.sort_values("Students"), x="Students", y="Program", orientation="h",
+                color_discrete_sequence=[_PURPLE_MID],
+            )
+            fig_p.update_layout(
+                margin=dict(t=6, r=16, b=26, l=180), plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)", height=max(220, 34 * len(table_students)), yaxis=dict(title=""),
+            )
+            st.plotly_chart(fig_p, use_container_width=True)
+        with col_table:
+            st.markdown("##### Detail")
+            st.dataframe(table_students, use_container_width=True, hide_index=True)
+
+        univ_counts_all = df_listas[univ_col].value_counts().reset_index()
+        univ_counts_all.columns = ["University", "Students"]
+        st.markdown("##### Students by Host University")
+        fig_u = px.pie(univ_counts_all, names="University", values="Students", hole=0.5)
+        fig_u.update_traces(textinfo="percent+label", textfont=dict(size=10))
+        fig_u.update_layout(height=340, margin=dict(t=10, r=10, b=10, l=10), showlegend=False)
+        st.plotly_chart(fig_u, use_container_width=True)
+
         st.download_button(
-            "Download as Excel", data=_xlsx_bytes(budget_full_df, "Budget"),
-            file_name=f'{w["key"]}_Budget.xlsx', key=f'dl_budget_{w["key"]}',
+            "Download as Excel", data=_xlsx_bytes(table_students, "International_Weeks_by_Program"),
+            file_name="International_Weeks_by_Program.xlsx", key="dl_weeks_students",
         )
+    else:
+        st.info("No pude encontrar las columnas necesarias (Producto / Programa) en BD_listas.xlsx (Int. Weeks).")
+
+    st.markdown("---")
+
+    # ---- International Weeks offered by the School ----
+    st.markdown("### International Weeks or Activities Offered by the School")
+    df_semanas = load_weeks_semanas()
+    id_col = df_semanas.columns[0] if len(df_semanas.columns) else None
+    name_col = "Nombre" if "Nombre" in df_semanas.columns else None
+    prof_col = next((c for c in ["Profesor/s", "Profesor"] if c in df_semanas.columns), None)
+    fechas_col = "fechas" if "fechas" in df_semanas.columns else None
+    asist_col = "Asistentes" if "Asistentes" in df_semanas.columns else None
+    country_col = "País" if "País" in df_semanas.columns else None
+    city_col = "Ubicación" if "Ubicación" in df_semanas.columns else None
+
+    if name_col:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            _kpi("Weeks Offered", len(df_semanas))
+        with col2:
+            _kpi("Countries", df_semanas[country_col].nunique() if country_col else "—")
+        with col3:
+            _kpi("Total Attendees", int(df_semanas[asist_col].sum()) if asist_col else "—")
+        with col4:
+            df_budget = load_weeks_budget()
+            week_col = "international week" if "international week" in df_budget.columns else None
+            if week_col and "tipo" in df_budget.columns and "presupuestado" in df_budget.columns:
+                ingresos = df_budget[df_budget["tipo"] == "ingreso"]["presupuestado"].sum()
+                egresos = df_budget[df_budget["tipo"] == "gasto"]["presupuestado"].abs().sum()
+                balance = ingresos - egresos
+                margin = (balance / ingresos * 100) if ingresos else 0
+                _kpi("Margin", f"{margin:.1f}%")
+            else:
+                _kpi("Margin", "—")
+
+        display_cols = [c for c in [id_col, name_col, prof_col, fechas_col, asist_col, city_col, country_col]
+                         if c and c in df_semanas.columns]
+        st.dataframe(df_semanas[display_cols], use_container_width=True, hide_index=True)
+
+        col_ca, col_cb = st.columns(2)
+        if country_col:
+            with col_ca:
+                by_country = df_semanas[country_col].value_counts().reset_index()
+                by_country.columns = ["Country", "Weeks"]
+                st.markdown("##### Weeks by Country")
+                fig = px.bar(by_country, x="Weeks", y="Country", orientation="h",
+                             color_discrete_sequence=[_PURPLE_MID])
+                fig.update_layout(
+                    margin=dict(t=6, r=16, b=26, l=120), plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)", height=max(220, 40 * len(by_country)), yaxis=dict(title=""),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        if asist_col and name_col:
+            with col_cb:
+                st.markdown("##### Attendees by Week")
+                fig_at = px.bar(
+                    df_semanas.sort_values(asist_col), x=asist_col, y=name_col, orientation="h",
+                    color_discrete_sequence=[_PURPLE_ACCENT],
+                )
+                fig_at.update_layout(
+                    margin=dict(t=6, r=16, b=26, l=160), plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)", height=max(220, 40 * len(df_semanas)), yaxis=dict(title=""),
+                )
+                st.plotly_chart(fig_at, use_container_width=True)
+
+        st.download_button(
+            "Download as Excel", data=_xlsx_bytes(df_semanas[display_cols], "International_Weeks_Offered"),
+            file_name="International_Weeks_Offered.xlsx", key="dl_weeks_offered",
+        )
+    else:
+        st.info("No pude encontrar las columnas necesarias en BD_semanas.xlsx (Int. Weeks).")
+
+
+# ── 8) PÁGINAS PENDIENTES (placeholders) ────────────────────────────────
+def _make_pending_page(title: str, subtitle: str, note: str):
+    def _page():
+        _render_header(title, subtitle)
+        _pending_card("This section is pending.", note)
+    return _page
+
+
+page_research = _make_pending_page(
+    "Research & Faculty Activities",
+    "International academic journal articles, conference presentations, faculty activities, credit-granting and non-credit courses taught abroad.",
+    "Needs a source database with international publications, conference presentations, and faculty visiting-teaching records.",
+)
+page_homecampus = _make_pending_page(
+    "Home Campus",
+    "Incoming international students hosted at UASM's home campus.",
+    "Needs BD_movilidad.xlsx (incoming) mapped and confirmed for this view.",
+)
+page_graduates = _make_pending_page(
+    "Graduates",
+    "International mobility experience among UASM graduates.",
+    "Needs BD_grados joined against BD_movilidad / BD_experiencia.",
+)
+page_agreements_mobility = _make_pending_page(
+    "Agreement Utilization",
+    "Outgoing & incoming mobility mapped against each international agreement.",
+    "Needs BD_movilidad.xlsx cross-referenced with BD_convenios.xlsx.",
+)
+page_program_mobility = _make_pending_page(
+    "Mobility by Program",
+    "Outgoing exchange mobility broken down by academic program.",
+    "Needs BD_movilidad.xlsx segmented by program and level.",
+)
+page_phd = _make_pending_page(
+    "PhD Mobility",
+    "International mobility and research stays among PhD students.",
+    "Needs a dedicated PhD mobility source database.",
+)
+page_agreements = _make_pending_page(
+    "Agreements",
+    "Full catalog of international agreements — type, status, dates, accreditation.",
+    "BD_convenios.xlsx is already loaded; full-table view coming next.",
+)
+
+
+# ── 9) PÁGINA — Update Data ──────────────────────────────────────────────
+def page_update_data():
+    _render_header(
+        "Update Data",
+        "Upload templates and refresh the Google Drive source files behind this dashboard.",
+    )
+    _pending_card(
+        "The update workflow for Internationalization is pending.",
+        "This will mirror Faculty Analytics' Update Data page (template downloads, "
+        "validation, and direct writes to Drive) once the source templates for "
+        "BD_convenios, BD_movilidad, BD_cursos, BD_seminarios, and BD_listas are defined.",
+    )
+
+
+# ── 10) NAVEGACIÓN ────────────────────────────────────────────────────────
+pages = [
+    st.Page(page_faculty, title="Faculty", icon="🌎", url_path="faculty", default=True),
+    st.Page(page_visiting, title="Visiting Faculty", icon="🧑‍🏫", url_path="visiting"),
+    st.Page(page_research, title="Research", icon="🔬", url_path="research"),
+    st.Page(page_homecampus, title="Home Campus", icon="🏫", url_path="homecampus"),
+    st.Page(page_graduates, title="Graduates", icon="🎓", url_path="graduates"),
+    st.Page(page_weeks, title="Intl. Weeks", icon="📅", url_path="weeks"),
+    st.Page(page_agreements_mobility, title="Agreement Utilization", icon="🤝", url_path="agreements-mobility"),
+    st.Page(page_program_mobility, title="Mobility by Program", icon="🧭", url_path="program-mobility"),
+    st.Page(page_phd, title="PhD Mobility", icon="🎯", url_path="phd"),
+    st.Page(page_agreements, title="Agreements", icon="📄", url_path="agreements"),
+    st.Page(page_update_data, title="Update Data", icon="🔄", url_path="update-data"),
+]
+pg = st.navigation(pages, position="hidden")
+IS_UPDATE_PAGE = pg is pages[-1]
+main_pages = pages[:-1]
+
+if not IS_UPDATE_PAGE:
+    st.session_state["_return_page_idx"] = main_pages.index(pg)
+
+if IS_UPDATE_PAGE:
+    return_idx = st.session_state.get("_return_page_idx", 0)
+    return_page = main_pages[return_idx]
+    with st.sidebar:
+        st.markdown('<div style="height:26vh;"></div>', unsafe_allow_html=True)
+        with st.container(key="update_sidebar_group"):
+            try:
+                st.image("imagenes/logo.png", width=65)
+            except Exception:
+                pass
+            st.markdown(
+                '<div style="color:#4A2E7D;font-size:22px;font-weight:800;'
+                'line-height:1.15;margin-top:8px;">UASM Intl. KPIs</div>'
+                '<div style="color:#6b7280;font-size:13px;margin-bottom:16px;">Internationalization Analytics</div>',
+                unsafe_allow_html=True,
+            )
+            with st.container(key="go_to_dashboard_btn"):
+                st.page_link(return_page, label="Go to Dashboard", icon=":material/bar_chart:", use_container_width=True)
+else:
+    with st.sidebar:
+        col_logo, col_title = st.columns([1, 3])
+        with col_logo:
+            try:
+                st.image("imagenes/logo.png", width=65)
+            except Exception:
+                pass
+        with col_title:
+            st.markdown(
+                '<div style="padding-top:10px;color:#4A2E7D;font-size:22px;'
+                'font-weight:800;line-height:1.1;">UASM Intl. KPIs</div>',
+                unsafe_allow_html=True,
+            )
+            st.caption("Internationalization Analytics")
         st.markdown("---")
 
-
-# ── 11) PDF — Evaluation Report per week ─────────────────────────────────
-def _build_week_survey_pdf(w: dict) -> bytes:
-    """Reporte PDF de evaluación (solo encuesta, sin financieros) para una
-    semana — mismo contenido que 'Generate Evaluation Report' del HTML.
-    Construido con reportlab en vez de jsPDF: mismo contenido numérico y
-    mismos comentarios, con un layout propio en vez de réplica pixel-a-pixel
-    de las barras apiladas con degradado del original."""
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import mm
-    from reportlab.lib import colors as rl_colors
-    from reportlab.pdfgen import canvas as rl_canvas
-
-    buf = io.BytesIO()
-    c = rl_canvas.Canvas(buf, pagesize=A4)
-    W, H = A4
-    mg = 14 * mm
-    week_color = rl_colors.HexColor(w["color"])
-
-    def header_band():
-        c.setFillColor(week_color)
-        c.rect(0, H - 26 * mm, W, 26 * mm, fill=1, stroke=0)
-        c.setFillColor(rl_colors.white)
-        c.setFont("Helvetica-Bold", 15)
-        c.drawString(mg, H - 15 * mm, f'{w["name"]} — Evaluation Report')
-        c.setFont("Helvetica", 9)
-        c.drawString(mg, H - 21 * mm, f'{w["course"]} · {w["professor"]}')
-
-    def check_page(y, needed):
-        if y - needed < 16 * mm:
-            c.showPage()
-            header_band()
-            return H - 34 * mm
-        return y
-
-    header_band()
-    y = H - 34 * mm
-    sv = w["survey"]
-
-    c.setFillColor(rl_colors.HexColor(INK))
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(mg, y, "SURVEY SUMMARY")
-    y -= 8 * mm
-
-    kpis = [
-        ("Students Responded", str(sv["respondents"])),
-        ("Response Rate", f'{sv["responseRate"]}%'),
-        ("Avg. Satisfaction", f'{sv["avg"]} / 5.0' if sv["avg"] is not None else "—"),
-        ("Would Recommend", f'{sv["nps"]} / 10' if sv["npsN"] else "—"),
-        ("Objectives Met", f'{sv["objectivesAllPct"]}%' if sv["objectivesN"] else "—"),
-    ]
-    kw = (W - 2 * mg) / len(kpis)
-    for i, (label, val) in enumerate(kpis):
-        x = mg + i * kw
-        c.setFillColor(rl_colors.HexColor("#F6F8FB"))
-        c.roundRect(x, y - 18 * mm, kw - 4, 18 * mm, 3, fill=1, stroke=0)
-        c.setFillColor(week_color)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawCentredString(x + (kw - 4) / 2, y - 9 * mm, val)
-        c.setFillColor(rl_colors.HexColor("#8B97AC"))
-        c.setFont("Helvetica", 6.5)
-        c.drawCentredString(x + (kw - 4) / 2, y - 15 * mm, label)
-    y -= 26 * mm
-
-    c.setFillColor(rl_colors.HexColor(INK))
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(mg, y, "BY ASPECT")
-    y -= 7 * mm
-    for a in sv["aspects"]:
-        y = check_page(y, 6 * mm)
-        c.setFillColor(rl_colors.HexColor(INK))
-        c.setFont("Helvetica", 8)
-        c.drawString(mg, y, a["aspect"])
-        c.setFont("Helvetica-Bold", 8)
-        c.drawRightString(W - mg, y, f'{a["avg"]:.2f} / 5.0  (n={a["n"]})')
-        y -= 5.5 * mm
-    y -= 4 * mm
-
-    c.setFillColor(rl_colors.HexColor(INK))
-    c.setFont("Helvetica-Bold", 10)
-    y = check_page(y, 8 * mm)
-    c.drawString(mg, y, "QUESTION-LEVEL RESPONSES")
-    y -= 7 * mm
-    for q in sv["questions"]:
-        y = check_page(y, 14 * mm)
-        c.setFont("Helvetica-Oblique", 7.5)
-        c.setFillColor(rl_colors.HexColor("#5B6B85"))
-        text_lines = _wrap_text(q["text"], 95)
-        for line in text_lines:
-            y = check_page(y, 5 * mm)
-            c.drawString(mg, y, line)
-            y -= 4 * mm
-        opts_str = "  ·  ".join(f"{k}: {v}" for k, v in q["options"].items())
-        c.setFont("Helvetica", 7.5)
-        c.setFillColor(rl_colors.HexColor(INK))
-        for line in _wrap_text(opts_str, 100):
-            y = check_page(y, 5 * mm)
-            c.drawString(mg + 4, y, line)
-            y -= 4.2 * mm
-        y -= 2 * mm
-
-    for g in sv["commentGroups"]:
-        y = check_page(y, 12 * mm)
-        c.setFillColor(week_color)
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(mg, y, f'{g["label"]} ({g["n"]})')
-        y -= 6 * mm
-        if not g["items"]:
-            c.setFont("Helvetica-Oblique", 8)
-            c.setFillColor(rl_colors.HexColor("#8B97AC"))
-            c.drawString(mg, y, "No comments for this question.")
-            y -= 6 * mm
-        for item in g["items"]:
-            for line in _wrap_text(str(item), 100):
-                y = check_page(y, 5 * mm)
-                c.setFont("Helvetica", 7.5)
-                c.setFillColor(rl_colors.HexColor(INK))
-                c.drawString(mg, y, "• " + line if line == _wrap_text(str(item), 100)[0] else "  " + line)
-                y -= 4.2 * mm
-            y -= 1.5 * mm
-        y -= 4 * mm
-
-    c.setFont("Helvetica", 7)
-    c.setFillColor(rl_colors.HexColor("#8B97AC"))
-    c.drawString(mg, 10 * mm, "International Weeks · Facultad de Administración · Universidad de los Andes")
-    c.save()
-    buf.seek(0)
-    return buf.getvalue()
-
-
-def _wrap_text(text: str, width: int) -> List[str]:
-    import textwrap
-    return textwrap.wrap(text, width=width) or [""]
-
-
-# ── 12) NAVEGACIÓN ────────────────────────────────────────────────────────
-_weeks_for_nav, _ = build_weeks()
-
-week_page_by_key: Dict[str, st.Page] = {
-    w["key"]: st.Page(functools.partial(page_week, key=w["key"]), title=w["key"],
-                       url_path=w["key"].lower(), icon="🎓")
-    for w in _weeks_for_nav
-}
-
-pages = (
-    [st.Page(page_datacenter, title="Data Center", icon="🗄️", url_path="datacenter", default=True),
-     st.Page(page_overview, title="Overview", icon="🌍", url_path="overview")]
-    + list(week_page_by_key.values())
-    + [st.Page(page_financial, title="Financial Detail", icon="💰", url_path="financial")]
-)
-pg = st.navigation(pages, position="hidden")
-IS_DATACENTER = pg is pages[0]
-nav_pages = pages[1:]
-_NAV_VISIBLE = 6
-
-with st.sidebar:
-    st.markdown(
-        f'<div style="color:{INK};font-size:22px;font-weight:800;line-height:1.1;">'
-        'International Weeks</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption("Facultad de Administración · Universidad de los Andes")
-    st.page_link(pages[0], label="Back to Data Center", icon=":material/home:")
-    st.markdown("---")
-
-if not IS_DATACENTER:
+    _NAV_VISIBLE = 6  # cuántas secciones caben directamente antes de agrupar el resto bajo "More"
     with st.container(key="nav_toggle"):
-        visible_pages = nav_pages[:_NAV_VISIBLE]
-        overflow_pages = nav_pages[_NAV_VISIBLE:]
+        visible_pages = main_pages[:_NAV_VISIBLE]
+        overflow_pages = main_pages[_NAV_VISIBLE:]
         n_cols = len(visible_pages) + (1 if overflow_pages else 0)
         nav_cols = st.columns(n_cols)
+
         for col, page_obj in zip(nav_cols, visible_pages):
             with col:
                 st.page_link(page_obj)
+
         if overflow_pages:
             with nav_cols[-1]:
                 with st.popover("More...", use_container_width=False):
@@ -1095,9 +1108,8 @@ if not IS_DATACENTER:
 
 pg.run()
 
-st.markdown(
-    f'<div style="text-align:center;padding:40px 0 10px;font-size:11.5px;color:{MUTED};'
-    'font-family:monospace;">International Weeks · Facultad de Administración · '
-    'Universidad de los Andes</div>',
-    unsafe_allow_html=True,
-)
+if not IS_UPDATE_PAGE:
+    with st.sidebar:
+        st.markdown("---")
+        with st.container(key="go_to_update_btn"):
+            st.page_link(pages[-1], label="Update Data", icon=":material/sync:", use_container_width=True)
