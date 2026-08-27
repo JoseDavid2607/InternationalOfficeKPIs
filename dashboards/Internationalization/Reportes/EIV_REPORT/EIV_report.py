@@ -58,11 +58,10 @@ st.markdown(
     "padding:16px 24px 12px;"
     f"background:linear-gradient(135deg,#7A0A3C 0%,#B00D50 55%,{PINK} 100%);"
     "border-radius:12px;box-shadow:0 2px 8px rgba(230,17,102,.18);margin-bottom:14px;}}"
-    f".sh-super{{font-size:11px;font-weight:900;letter-spacing:2px;"
-    "font-family:'Arial Black',Arial,sans-serif;"
+    f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
     "color:#FBD6E4;text-transform:uppercase;margin-bottom:2px;}}"
-    ".sh-title{font-size:29px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
-    ".sh-sub{font-size:13px;color:#FDF0F6;margin-top:4px;text-align:center;}"
+    ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
+    ".sh-sub{font-size:13px;color:rgba(255,255,255,.80);margin-top:4px;text-align:center;}"
     f".kv{{font-size:24px;font-weight:700;line-height:1.1;font-family:monospace;color:{INK};}}"
     f".kv.accent{{color:{PINK};}}"
     f".kl{{font-size:11px;font-weight:600;color:{MUTED};"
@@ -1764,12 +1763,6 @@ def _render_professor_detail(entry: dict, entries: List[dict], siblings: Optiona
             if st.button("‹", key=f"{sib_key}_prev", help="Previous faculty on this course", use_container_width=True):
                 st.session_state[sib_key] = (sib_idx - 1) % len(siblings)
                 st.rerun()
-        with col_mid_nav:
-            st.markdown(
-                f'<div style="text-align:center;font-size:11.5px;color:{MUTED};padding-top:8px;">'
-                f'Co-teaching faculty {sib_idx + 1} of {len(siblings)} on this course</div>',
-                unsafe_allow_html=True,
-            )
         with col_next:
             if st.button("›", key=f"{sib_key}_next", help="Next faculty on this course", use_container_width=True):
                 st.session_state[sib_key] = (sib_idx + 1) % len(siblings)
