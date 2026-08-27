@@ -32,6 +32,8 @@ except ImportError as _e:
     _GSPREAD_IMPORT_ERR = str(_e)
 
 import requests
+import os as _os
+import base64
 
 # ── 1) CONFIGURACIÓN GLOBAL ────────────────────────────────────────────────
 st.set_page_config(
@@ -41,9 +43,19 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Paleta — idéntica a las variables CSS del HTML original.
-PINK = "#E61166"; INK = "#241420"; INK_SOFT = "#6E5C68"; PAPER = "#FAF8FA"
+# Paleta — misma arquitectura visual que EIV_report.py (header degradado,
+# KPI cards, botones, nav superior con flechas), pero con un acento propio
+# de International Weeks: vino/oro elegante en vez del rosa/fucsia de EIV,
+# y evitando menta-azulado y morado en los elementos "de marca" (header,
+# botones, tabla). Los colores propios de cada semana (KLU/NOVA/FGV/BABSON)
+# se conservan tal cual — son identidad del socio, no "color principal".
+INK = "#241420"; INK_SOFT = "#6E5C68"; PAPER = "#FAF8FA"
 LINE = "#E9E2E7"; MUTED = "#8C7F87"
+ACCENT = "#7A1F3D"           # vino profundo — reemplaza el rol de "PINK" de EIV
+ACCENT_DARK = "#4A1226"      # hover / degradado oscuro
+ACCENT_LIGHT = "#A9445A"     # degradado claro (nunca fucsia)
+ACCENT_SOFT = "#F3E3E7"      # fondo suave para tablas / chips
+GOLD = "#C9A227"             # acento cálido secundario (detalles, no botones)
 INCOME = "#2E8B57"; INCOME_SOFT = "#E3F3EA"
 EXPENSE = "#C23B3B"; EXPENSE_SOFT = "#FBE6E6"
 BALANCE = "#1C6FA5"; BALANCE_SOFT = "#E1EEF7"
@@ -52,13 +64,14 @@ st.markdown(
     "<style>"
     f".suite-header{{display:flex;flex-direction:column;align-items:center;"
     "padding:16px 24px 12px;"
-    f"background:linear-gradient(135deg,{INK} 0%,{PINK} 100%);"
-    "border-radius:12px;box-shadow:0 2px 8px rgba(230,17,102,.18);margin-bottom:14px;}}"
+    f"background:linear-gradient(135deg,{ACCENT_DARK} 0%,{ACCENT} 55%,{ACCENT_LIGHT} 100%);"
+    f"border-radius:12px;box-shadow:0 2px 8px rgba(122,31,61,.22);margin-bottom:14px;}}"
     f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
-    "color:#FBD6E4;text-transform:uppercase;margin-bottom:2px;}}"
+    "color:#F0D9DE;text-transform:uppercase;margin-bottom:2px;}}"
     ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
     ".sh-sub{font-size:13px;color:rgba(255,255,255,.80);margin-top:4px;text-align:center;}"
     f".kv{{font-size:26px;font-weight:700;line-height:1.1;font-family:monospace;color:{INK};}}"
+    f".kv.accent{{color:{ACCENT};}}"
     f".kv.income{{color:{INCOME};}} .kv.expense{{color:{EXPENSE};}} .kv.balance{{color:{BALANCE};}}"
     f".kl{{font-size:11px;font-weight:600;color:{MUTED};"
     "text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}}"
@@ -68,12 +81,12 @@ st.markdown(
     "color:#374151 !important;font-size:14px !important;"
     "font-weight:600 !important;height:48px !important;"
     "box-shadow:0 1px 3px rgba(0,0,0,.04) !important;}"
-    f"div[data-testid='stButton'] button:hover{{background:{PAPER} !important;border-color:{PINK} !important;}}"
+    f"div[data-testid='stButton'] button:hover{{background:{PAPER} !important;border-color:{ACCENT} !important;}}"
     "div.stDownloadButton>button{background:transparent !important;"
     "border:none !important;box-shadow:none !important;"
-    f"color:{PINK} !important;font-size:13px !important;"
+    f"color:{ACCENT} !important;font-size:13px !important;"
     "padding:0 !important;text-decoration:underline !important;}"
-    f"thead th{{background:#FCE9F1 !important;color:{INK} !important;"
+    f"thead th{{background:{ACCENT_SOFT} !important;color:{INK} !important;"
     "font-weight:700 !important;}}"
     ".pending-card{background:#FAFAFA;border:1px dashed #DCD3D8;border-radius:12px;"
     "padding:22px 24px;margin-top:14px;color:#6B7280;font-size:13.5px;}"
@@ -81,7 +94,7 @@ st.markdown(
     "letter-spacing:.06em;text-transform:uppercase;color:#8C7F87;"
     "background:#F1EAEE;padding:3px 9px;border-radius:5px;margin-bottom:8px;}"
     ".partner-card{border-radius:14px;padding:20px;border:1px solid var(--line,#E9E2E7);"
-    "background:#fff;border-top:5px solid var(--wc,#E61166);}"
+    "background:#fff;border-top:5px solid var(--wc,#7A1F3D);}"
     ".partner-card .loc{font-family:monospace;font-size:11px;color:#8C7F87;margin-bottom:10px;}"
     ".partner-card .n{font-size:28px;font-weight:700;}"
     ".partner-card .n-label{font-size:11.5px;color:#6E5C68;margin-bottom:10px;}"
@@ -93,23 +106,58 @@ st.markdown(
     "letter-spacing:.06em;font-weight:600;}"
     ".week-band h2{font-size:19px;margin:4px 0 0;}"
     ".week-band .loc{font-size:12.5px;color:#6E5C68;margin-top:5px;}"
-    ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:82vw;max-width:1050px;}"
+    ".st-key-nav_toggle{position:fixed !important;top:0.25rem;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:auto !important;max-width:96vw;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
-    "display:flex !important;flex-wrap:nowrap !important;width:100% !important;"
-    "justify-content:center !important;gap:18px !important;overflow:visible;}"
-    ".st-key-nav_toggle div[data-testid='column']{width:auto !important;min-width:fit-content !important;flex:none !important;}"
+    "display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;width:auto !important;"
+    "justify-content:center !important;align-items:center !important;gap:14px !important;"
+    "overflow:visible;max-width:96vw;}"
+    ".st-key-nav_toggle div[data-testid='stHorizontalBlock'] > div{"
+    "flex:0 0 auto !important;width:auto !important;min-width:0 !important;}"
+    ".st-key-nav_toggle div[data-testid='column'], .st-key-nav_toggle div[data-testid='stColumn']{"
+    "width:auto !important;min-width:fit-content !important;flex:0 0 auto !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;font-size:13px !important;padding:6px 4px !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a p{white-space:nowrap !important;overflow:visible !important;}"
     ".st-key-nav_toggle div[data-testid='stPopover']{width:auto !important;min-width:fit-content !important;}"
     ".st-key-nav_toggle div[data-testid='stPopover'] button{"
     "background:transparent !important;border:none !important;box-shadow:none !important;"
-    f"color:{PINK} !important;font-size:13px !important;font-weight:400 !important;"
+    f"color:{ACCENT} !important;font-size:13px !important;font-weight:400 !important;"
     "height:auto !important;width:auto !important;min-width:fit-content !important;"
     "padding:6px 4px !important;white-space:nowrap !important;}"
     f".st-key-nav_toggle div[data-testid='stPopover'] button:hover{{color:{INK} !important;}}"
     ".st-key-nav_toggle div[data-testid='stPopover'] button svg{display:none !important;}"
+    ".st-key-side_arrows{position:fixed !important;top:50%;left:0;right:0;transform:translateY(-50%);"
+    "z-index:999998;width:100%;pointer-events:none;}"
+    ".st-key-side_arrows div[data-testid='stHorizontalBlock']{"
+    "display:flex !important;flex-direction:row !important;width:100% !important;"
+    "justify-content:space-between !important;padding:0 6px;pointer-events:none;}"
+    ".st-key-side_arrows div[data-testid='column'], .st-key-side_arrows div[data-testid='stColumn']{"
+    "width:auto !important;flex:0 0 auto !important;pointer-events:auto;}"
+    ".st-key-side_arrows a{"
+    "display:flex !important;align-items:center;justify-content:center;"
+    "background:transparent !important;border:none !important;box-shadow:none !important;"
+    f"font-size:0 !important;font-weight:400;color:{ACCENT} !important;opacity:.55;text-decoration:none;"
+    "transition:opacity .15s ease;}"
+    ".st-key-side_arrows a p{font-size:26px !important;}"
+    ".st-key-side_arrows a span:first-child{display:none !important;}"
+    ".st-key-side_arrows a:hover{opacity:1;}"
+    ".st-key-cover_enter_btn div[data-testid='stButton'] button{"
+    f"background:{ACCENT} !important;border:none !important;color:#fff !important;"
+    "font-size:16px !important;font-weight:700 !important;height:52px !important;"
+    "box-shadow:0 4px 14px rgba(122,31,61,.28) !important;}"
+    f".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{{background:{ACCENT_DARK} !important;}}"
+    ".st-key-cover_banner{display:flex !important;justify-content:center !important;width:100% !important;}"
+    ".st-key-cover_banner div[data-testid='stImage']{margin:0 auto !important;width:auto !important;"
+    "display:flex !important;justify-content:center !important;}"
+    ".st-key-cover_banner img{margin:0 auto !important;display:block !important;}"
+    ".block-container{padding-top:3.2rem !important;}"
+    ".st-key-go_to_datacenter_btn a{"
+    f"display:flex !important;align-items:center;justify-content:center;gap:6px;"
+    f"background:{ACCENT} !important;border:none !important;border-radius:10px !important;"
+    "color:#fff !important;font-weight:700 !important;height:44px !important;text-decoration:none !important;}"
+    ".st-key-go_to_datacenter_btn a span{color:#fff !important;}"
+    f".st-key-go_to_datacenter_btn a:hover{{background:{ACCENT_DARK} !important;}}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -158,6 +206,108 @@ def _xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
 
 def tick(v) -> str:
     return "✅" if v else "❌"
+
+
+# ── Identidad visual: logos de socios, banner de portada y fotos de
+#    profesores — mismo patrón que _show_eiv_logo/_show_eiv_banner/
+#    _photo_path en EIV_report.py, adaptado a las rutas propias de Weeks. ──
+_LOGO_DIR_CANDIDATES = ["PICS/LOGOS/2026", "PICS/LOGO/2026", "pics/LOGOS/2026"]
+_BANNER_CANDIDATES = [
+    "PICS/LOGOS/2026/Banner_Semanas.jpg", "PICS/LOGOS/2026/banner_semanas.jpg",
+    "pics/LOGOS/2026/Banner_Semanas.jpg", "PICS/LOGOS/2026/Banner_Semanas.JPG",
+]
+PHOTO_FILENAME_OVERRIDES: Dict[str, str] = {}
+
+
+def _partner_logo_path(week_key: str) -> Optional[str]:
+    """Ruta al logo del socio (KLU.png / NOVA.png / FGV.png / BABSON.png)."""
+    fname = WEEK_VISUAL_META.get(week_key, {}).get("logo")
+    if not fname:
+        return None
+    base = _os.path.dirname(_os.path.abspath(__file__))
+    for d in _LOGO_DIR_CANDIDATES:
+        full = _os.path.join(base, d, fname)
+        if _os.path.exists(full):
+            return full
+    return None
+
+
+def _show_partner_logo(week_key: str, width: int = 90):
+    path = _partner_logo_path(week_key)
+    if path:
+        try:
+            st.image(path, width=width)
+        except Exception:
+            pass
+
+
+def _show_weeks_banner(width: Optional[int] = None, use_container_width: bool = False):
+    """Banner de portada (Banner_Semanas.jpg), centrado con HTML+base64ing —
+    igual criterio que _show_eiv_banner: st.image no se centraba de forma
+    confiable con CSS puro."""
+    base = _os.path.dirname(_os.path.abspath(__file__))
+    path = None
+    for rel in _BANNER_CANDIDATES:
+        full = _os.path.join(base, rel)
+        if _os.path.exists(full):
+            path = full
+            break
+    if not path:
+        for d in _LOGO_DIR_CANDIDATES:
+            logo_dir = _os.path.join(base, d)
+            if _os.path.isdir(logo_dir):
+                for fname in sorted(_os.listdir(logo_dir)):
+                    if fname.lower().endswith((".jpg", ".jpeg", ".png")) and "banner" in fname.lower():
+                        path = _os.path.join(logo_dir, fname)
+                        break
+            if path:
+                break
+    if not path:
+        return
+    with open(path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode()
+    ext = "jpeg" if path.lower().endswith((".jpg", ".jpeg")) else "png"
+    width_css = "100%" if use_container_width else f"{width}px"
+    st.markdown(
+        f'<div style="width:100%;text-align:center;">'
+        f'<img src="data:image/{ext};base64,{b64}" style="width:{width_css};max-width:100%;border-radius:10px;">'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _normalize_name_for_file(name: str) -> List[str]:
+    """Genera variantes de nombre de archivo (con/sin acentos, guion/underscore)
+    a partir del nombre del profesor, para tolerar la inconsistencia observada
+    en los archivos de muestra (eduardo-boada.jpg vs marcus_thiell.jpg)."""
+    import unicodedata
+    n = str(name).strip()
+    n_ascii = unicodedata.normalize("NFKD", n).encode("ascii", "ignore").decode().strip()
+    parts = n_ascii.lower().split()
+    variants = set()
+    if parts:
+        variants.add("-".join(parts))
+        variants.add("_".join(parts))
+    variants.add(n_ascii.lower().replace(" ", "-"))
+    variants.add(n_ascii.lower().replace(" ", "_"))
+    return [v for v in variants if v]
+
+
+def _photo_path(professor: str) -> Optional[str]:
+    if not professor:
+        return None
+    base = _os.path.dirname(_os.path.abspath(__file__))
+    candidates = []
+    if professor in PHOTO_FILENAME_OVERRIDES:
+        candidates.append(PHOTO_FILENAME_OVERRIDES[professor])
+    candidates += _normalize_name_for_file(professor)
+    for stem in candidates:
+        for rel in (f"PICS/PROFES/2026/{stem}.jpg", f"PICS/PROFES/{stem}.jpg",
+                    f"PICS/PROFES/2026/{stem}.jpeg", f"PICS/PROFES/2026/{stem}.png"):
+            full = _os.path.join(base, rel)
+            if _os.path.exists(full):
+                return full
+    return None
 
 
 # ── 3) FILE IDs (Google Drive) — carpeta Reportes/INT_WEEKS ─────────────────
@@ -491,23 +641,65 @@ def build_weeks() -> Tuple[List[dict], dict]:
     return weeks, totals
 
 
-# ── 7) PÁGINA — Data Center ─────────────────────────────────────────────
-def page_datacenter():
+# ── 7) PÁGINA — Cover / Data Center ──────────────────────────────────────
+def page_cover():
+    """Portada + Data Center, mismo patrón que page_cover() en EIV_report.py:
+    banner, título, botón 'Enter the Report', y lista de fuentes con enlace
+    de descarga directa de cada archivo de Drive."""
     weeks, totals = build_weeks()
-    _render_header(
-        "Data Center",
-        "Verification of the sources powering this report.",
-    )
-    files = [
-        ("BD_semanas.xlsx", "Week metadata — professor, dates, location, invoice"),
-        ("BD_listas.xlsx", "Enrollment, payments & program catalog per week"),
-        ("BD_presupuesto.xlsx", "Budget by concept — income & expenses, per week"),
-        ("BD_encuesta_curso.xlsx", "Course evaluation survey — frecuencias & comentarios"),
-    ]
-    for fname, desc in files:
-        st.markdown(f"**{fname}** — {desc}  \n:material/check_circle: Loaded")
-    st.markdown(f"**{len(files)} sources loaded** · {totals['weeks']} international weeks")
-    st.page_link(pages[1], label="Enter the Report →", icon=":material/arrow_forward:")
+    st.markdown("<div style='height:0.2vh;'></div>", unsafe_allow_html=True)
+    with st.container(key="cover_banner"):
+        try:
+            _show_weeks_banner(width=777)
+        except Exception:
+            pass
+
+    col_l, col_mid, col_r = st.columns([1, 2, 1])
+    with col_mid:
+        st.markdown(
+            f'<div style="text-align:center;font-size:34px;font-weight:800;color:{INK};margin-top:18px;">'
+            'International Weeks</div>'
+            f'<div style="text-align:center;font-size:16px;color:{MUTED};margin:10px auto 0;line-height:1.5;">'
+            "Analytics for the 2026 edition of International Weeks — enrollment, roster & payments, "
+            "course evaluation, and financial performance across every partner-school immersion.</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("<div style='height:26px;'></div>", unsafe_allow_html=True)
+        with st.container(key="cover_enter_btn"):
+            if st.button("Enter the Report →", key="cover_enter", use_container_width=True):
+                st.switch_page(pages[1])
+
+        st.markdown(
+            f'<div style="text-align:center;margin-top:34px;font-family:monospace;'
+            f'font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:{MUTED};">'
+            "Data sources used</div>",
+            unsafe_allow_html=True,
+        )
+        files = [
+            ("BD_semanas.xlsx", "Week metadata — professor, dates, location, invoice", SEMANAS_FILE_ID),
+            ("BD_listas.xlsx", "Enrollment, payments & program catalog per week", LISTAS_FILE_ID),
+            ("BD_presupuesto.xlsx", "Budget by concept — income & expenses, per week", PRESUPUESTO_FILE_ID),
+            ("BD_encuesta_curso.xlsx", "Course evaluation survey — frecuencias & comentarios", ENCUESTA_FILE_ID),
+        ]
+        for fname, desc, fid in files:
+            fc1, fc2 = st.columns([5, 1])
+            with fc1:
+                st.markdown(
+                    f'<span style="font-size:12.5px;color:{INK};">{fname}</span><br>'
+                    f'<span style="font-size:11px;color:{MUTED};">{desc}</span>',
+                    unsafe_allow_html=True,
+                )
+            with fc2:
+                st.download_button(
+                    "⇩", data=_download_drive_file_bytes(fid), file_name=fname,
+                    key=f"cover_dl_{fname}", use_container_width=True,
+                )
+        st.markdown(
+            f'<div style="text-align:center;margin-top:14px;font-size:11.5px;color:{MUTED};">'
+            f"{len(files)} sources loaded · {totals['weeks']} international weeks</div>",
+            unsafe_allow_html=True,
+        )
 
 
 # ── 8) PÁGINA — Overview ─────────────────────────────────────────────────
@@ -660,8 +852,16 @@ def page_week(key: str):
 
     _render_header(w["name"], w["course"])
 
+    logo_path = _partner_logo_path(w["key"])
+    logo_html = ""
+    if logo_path:
+        with open(logo_path, "rb") as f:
+            _logo_b64 = base64.b64encode(f.read()).decode()
+        logo_html = f'<img src="data:image/png;base64,{_logo_b64}" style="height:34px;margin-right:14px;">'
+
     st.markdown(
         f'<div class="week-band" style="background:{w["colorSoft"]};">'
+        f'{logo_html}'
         f'<div><div class="eyebrow" style="color:{w["color"]};">{w["name"]}</div>'
         f'<h2>{w["course"]}</h2>'
         f'<div class="loc">{FLAGS.get(w["country"], "")} {w["location"]}, {w["country"]} · {w["dates"]}</div></div>'
@@ -671,6 +871,16 @@ def page_week(key: str):
         f'</div>',
         unsafe_allow_html=True,
     )
+
+    prof_photo = _photo_path(w["professor"])
+    if prof_photo:
+        col_photo, col_photo_gap = st.columns([1, 5])
+        with col_photo:
+            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+            try:
+                st.image(prof_photo, width=110)
+            except Exception:
+                pass
 
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -1049,36 +1259,49 @@ def _wrap_text(text: str, width: int) -> List[str]:
 
 
 # ── 12) NAVEGACIÓN ────────────────────────────────────────────────────────
+# Mismo esqueleto que EIV_report.py: portada oculta el sidebar, nav superior
+# con page_link + popover "More...", y flechas laterales fijas para pasar
+# de sección. El emoji de cada semana es la bandera del país del socio en
+# vez de un icono genérico, para diferenciarlas de un vistazo.
 _weeks_for_nav, _ = build_weeks()
 
 week_page_by_key: Dict[str, st.Page] = {
     w["key"]: st.Page(functools.partial(page_week, key=w["key"]), title=w["key"],
-                       url_path=w["key"].lower(), icon="🎓")
+                       url_path=w["key"].lower(), icon=FLAGS.get(w["country"], "🎓"))
     for w in _weeks_for_nav
 }
 
 pages = (
-    [st.Page(page_datacenter, title="Data Center", icon="🗄️", url_path="datacenter", default=True),
+    [st.Page(page_cover, title="Data Center", icon="🌐", url_path="cover", default=True),
      st.Page(page_overview, title="Overview", icon="🌍", url_path="overview")]
     + list(week_page_by_key.values())
     + [st.Page(page_financial, title="Financial Detail", icon="💰", url_path="financial")]
 )
 pg = st.navigation(pages, position="hidden")
-IS_DATACENTER = pg is pages[0]
+IS_COVER = pg is pages[0]
 nav_pages = pages[1:]
 _NAV_VISIBLE = 6
 
-with st.sidebar:
+if IS_COVER:
     st.markdown(
-        f'<div style="color:{INK};font-size:22px;font-weight:800;line-height:1.1;">'
-        'International Weeks</div>',
+        "<style>section[data-testid='stSidebar']{display:none !important;}"
+        "div[data-testid='stSidebarCollapsedControl']{display:none !important;}</style>",
         unsafe_allow_html=True,
     )
-    st.caption("Facultad de Administración · Universidad de los Andes")
-    st.page_link(pages[0], label="Back to Data Center", icon=":material/home:")
-    st.markdown("---")
 
-if not IS_DATACENTER:
+if not IS_COVER:
+    with st.sidebar:
+        st.markdown(
+            f'<div style="color:{INK};font-size:22px;font-weight:800;line-height:1.1;">'
+            'International Weeks</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption("Facultad de Administración · Universidad de los Andes")
+        with st.container(key="go_to_datacenter_btn"):
+            st.page_link(pages[0], label="Go to Data Center", icon=":material/home:")
+        st.markdown("---")
+
+if not IS_COVER:
     with st.container(key="nav_toggle"):
         visible_pages = nav_pages[:_NAV_VISIBLE]
         overflow_pages = nav_pages[_NAV_VISIBLE:]
@@ -1092,6 +1315,17 @@ if not IS_DATACENTER:
                 with st.popover("More...", use_container_width=False):
                     for page_obj in overflow_pages:
                         st.page_link(page_obj)
+
+    # ---- Flechas laterales para pasar de sección ----
+    _idx = nav_pages.index(pg)
+    _prev_pg = nav_pages[_idx - 1]
+    _next_pg = nav_pages[(_idx + 1) % len(nav_pages)]
+    with st.container(key="side_arrows"):
+        arrow_l, arrow_r = st.columns(2)
+        with arrow_l:
+            st.page_link(_prev_pg, label="‹")
+        with arrow_r:
+            st.page_link(_next_pg, label="›")
 
 pg.run()
 
