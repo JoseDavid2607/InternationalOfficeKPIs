@@ -1974,8 +1974,9 @@ def _render_professor_detail(entry: dict, entries: List[dict], siblings: Optiona
         for i, (qid, label) in enumerate(all_groups.items()):
             with ccols[i % 2]:
                 group = prof_comments.get(qid, {"items": []})
+                exact_q = group.get("text") or label
                 sorted_items = sorted(group["items"], key=lambda it: {"202613": 0, "202618": 1}.get(it.get("periodo"), 2))
-                st.markdown(f"**{label} ({len(sorted_items)})**")
+                st.markdown(f"**{exact_q} ({len(sorted_items)})**")
                 if sorted_items:
                     with st.container(height=200):
                         for item in sorted_items:
@@ -2554,6 +2555,16 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             c.drawString(col_x[ci] * mm, top_pt(y + 4), col_title[ci])
         y += 8
 
+        def check_dual(y_l, y_r, needed):
+            nonlocal page_num
+            if max(y_l, y_r) + needed > PH - 16:
+                draw_footer(page_num)
+                c.showPage()
+                page_num += 1
+                draw_continuation_header()
+                return 24.0, 24.0
+            return y_l, y_r
+
         for asp in all_aspects:
             check(16)
             for ci in range(2):
@@ -2565,8 +2576,10 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             y_start = y + 8.5
             y_l, y_r = y_start, y_start
             for q in by_aspect_cols[0].get(asp, []):
+                y_l, y_r = check_dual(y_l, y_r, 22)  # espacio estimado de una pregunta (texto+barra+leyenda)
                 y_l = draw_likert_q_col(q, col_x[0], col_w, y_l)
             for q in by_aspect_cols[1].get(asp, []):
+                y_l, y_r = check_dual(y_l, y_r, 22)
                 y_r = draw_likert_q_col(q, col_x[1], col_w, y_r)
             y = max(y_l, y_r) + 1
 
@@ -2574,6 +2587,11 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         nps_q13 = (p13 or {}).get("questions", {}).get(NPS_QID)
         nps_q18 = (p18 or {}).get("questions", {}).get(NPS_QID)
         if nps_q13 or nps_q18:
+            draw_footer(page_num)
+            c.showPage()
+            page_num += 1
+            draw_continuation_header()
+            y = 24.0
             section_bar("RECOMMENDATION (0-10)")
             for periodo, nps_q, grp in (("202613", nps_q13, "GR"), ("202618", nps_q18, "UG")):
                 if not nps_q:
@@ -2667,12 +2685,10 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         return sorted(items, key=lambda it: order.get(it.get("periodo"), 2))
 
     comment_groups = []
-    for qid, label in POSITIVE_QIDS.items():
+    for qid, label in {**POSITIVE_QIDS, **IMPROVE_QIDS}.items():
         g = com_qs.get(qid)
-        comment_groups.append({"label": f"{label} — Valued Most", "items": _sort_by_period(g["items"]) if g else []})
-    for qid, label in IMPROVE_QIDS.items():
-        g = com_qs.get(qid)
-        comment_groups.append({"label": f"{label} — Could Improve", "items": _sort_by_period(g["items"]) if g else []})
+        exact_q = (g.get("text") if g else None) or label
+        comment_groups.append({"label": exact_q, "items": _sort_by_period(g["items"]) if g else []})
 
     def ensure_space(needed):
         nonlocal y, page_num
