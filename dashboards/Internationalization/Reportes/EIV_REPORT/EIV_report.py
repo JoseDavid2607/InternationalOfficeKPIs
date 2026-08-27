@@ -2171,6 +2171,27 @@ OBJ_COLOR_PDF = {
 }
 
 
+def _wrap_to_width(c, text: str, font_name: str, font_size: float, max_width_mm: float) -> list:
+    """Envuelve texto según el ANCHO REAL renderizado (c.stringWidth), no
+    una estimación de caracteres por línea -- esa estimación quedaba corta
+    para columnas angostas y dejaba preguntas largas en una sola línea que
+    se salía del margen."""
+    from reportlab.lib.units import mm
+    max_w_pt = max_width_mm * mm
+    words = str(text).split()
+    lines, cur = [], ""
+    for w in words:
+        trial = f"{cur} {w}".strip()
+        if c.stringWidth(trial, font_name, font_size) <= max_w_pt or not cur:
+            cur = trial
+        else:
+            lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    return lines or [""]
+
+
 def _pdf_file_bytes(path: str) -> Optional[bytes]:
     try:
         with open(path, "rb") as f:
@@ -2324,7 +2345,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     y = 34.0
     c.setFillColor(pink)
     c.setFont("Helvetica-Bold", 17)
-    course_lines = textwrap.wrap(str(info["curso"] if info else (curso or "")), width=52) or [""]
+    course_lines = _wrap_to_width(c, info["curso"] if info else (curso or ""), "Helvetica-Bold", 17, cW)
     for i, line in enumerate(course_lines):
         c.drawCentredString((mg + cW / 2) * mm, top_pt(y + i * 7), line)
     y += len(course_lines) * 7 + 3
@@ -2337,11 +2358,13 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     if period_program_dist:
         pkeys = list(period_program_dist.keys())
         bw2 = cW / max(len(pkeys), 1)
+        periods_for_resp = ed.get("periods", {})
         for i, pk in enumerate(pkeys):
             total_p = sum(n for _, n in period_program_dist[pk])
+            responded_p = periods_for_resp.get(pk, {}).get("respondents")
             bx = mg + i * bw2
             c.setFillColor(rl_colors.HexColor("#FBE3ED"))
-            c.roundRect((bx + 1) * mm, top_pt(y + 16), (bw2 - 3) * mm, 16 * mm, 3 * mm, fill=1, stroke=0)
+            c.roundRect((bx + 1) * mm, top_pt(y + 19), (bw2 - 3) * mm, 19 * mm, 3 * mm, fill=1, stroke=0)
             c.setFillColor(pink)
             c.setFont("Helvetica-Bold", 13)
             c.drawCentredString((bx + bw2 / 2 - 1) * mm, top_pt(y + 8.5), f"{total_p} enrolled")
@@ -2349,7 +2372,11 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             c.setFont("Helvetica", 6.5)
             c.drawCentredString((bx + bw2 / 2 - 1) * mm, top_pt(y + 14),
                                  PERIOD_TOTAL_LABELS.get(pk, pk))
-        y += 20
+            if responded_p is not None:
+                c.setFillColor(muted)
+                c.setFont("Helvetica-Oblique", 6)
+                c.drawCentredString((bx + bw2 / 2 - 1) * mm, top_pt(y + 18.3), f"{responded_p} responded the survey")
+        y += 23
         c.setFillColor(muted)
         c.setFont("Helvetica-Oblique", 6.5)
         c.drawCentredString((mg + cW / 2) * mm, top_pt(y), "GR = Graduate (EPOS)   ·   UG = Undergraduate")
@@ -2365,7 +2392,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             max_n = max((n for _, n in pairs), default=1)
             yy = y
             for prog_name, n in pairs:
-                label_lines = textwrap.wrap(str(prog_name), width=34) or [""]
+                label_lines = _wrap_to_width(c, prog_name, "Helvetica", 6.5, bw2 - 2)
                 c.setFillColor(ink)
                 c.setFont("Helvetica", 6.5)
                 for li, line in enumerate(label_lines):
@@ -2442,7 +2469,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     def draw_likert_q(q):
         nonlocal y
         text = q.get("text") or ""
-        q_lines = textwrap.wrap(str(text), width=110) or [""]
+        q_lines = _wrap_to_width(c, text, "Helvetica", 8, cW)
         needed = len(q_lines) * 4 + 7 + 14
         check(needed)
         c.setFillColor(ink)
@@ -2516,7 +2543,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             """Misma lógica que draw_likert_q pero en un ancho/columna
             propios, para el layout de 2 columnas lado a lado."""
             text = q.get("text") or ""
-            q_lines = textwrap.wrap(str(text), width=int(w * 1.7)) or [""]
+            q_lines = _wrap_to_width(c, text, "Helvetica", 7, w)
             c.setFillColor(ink)
             c.setFont("Helvetica", 7)
             for i, line in enumerate(q_lines):
@@ -2601,7 +2628,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
                 c.setFont("Helvetica-Bold", 7.5)
                 c.drawString(mg * mm, top_pt(y + 3), f"Period {periodo} ({grp})")
                 y += 6
-                q_lines = textwrap.wrap(str(nps_q.get("text") or ""), width=110) or [""]
+                q_lines = _wrap_to_width(c, nps_q.get("text") or "", "Helvetica", 7.5, cW)
                 c.setFillColor(ink)
                 c.setFont("Helvetica", 7.5)
                 for i, line in enumerate(q_lines):
@@ -2622,7 +2649,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             y0 = y + 6
             y_l = y_r = y0
             if obj_q13:
-                q_lines = textwrap.wrap(str(obj_q13.get("text") or ""), width=55) or [""]
+                q_lines = _wrap_to_width(c, obj_q13.get("text") or "", "Helvetica", 6.8, col_w)
                 c.setFillColor(ink); c.setFont("Helvetica", 6.8)
                 for i, line in enumerate(q_lines):
                     c.drawString(col_x[0] * mm, top_pt(y_l + i * 3.4), line)
@@ -2630,7 +2657,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
                 y_l = _pdf_stacked_bar(c, obj_q13["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, col_x[0], y_l, col_w, 6, PH)
                 y_l = _pdf_legend(c, obj_q13["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, col_x[0], y_l, col_w, PH)
             if obj_q18:
-                q_lines = textwrap.wrap(str(obj_q18.get("text") or ""), width=55) or [""]
+                q_lines = _wrap_to_width(c, obj_q18.get("text") or "", "Helvetica", 6.8, col_w)
                 c.setFillColor(ink); c.setFont("Helvetica", 6.8)
                 for i, line in enumerate(q_lines):
                     c.drawString(col_x[1] * mm, top_pt(y_r + i * 3.4), line)
@@ -2651,7 +2678,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             y0 = y + 6
             y_l = y_r = y0
             if wl_q13:
-                q_lines = textwrap.wrap(str(wl_q13.get("text") or ""), width=55) or [""]
+                q_lines = _wrap_to_width(c, wl_q13.get("text") or "", "Helvetica", 6.8, col_w)
                 c.setFillColor(ink); c.setFont("Helvetica", 6.8)
                 for i, line in enumerate(q_lines):
                     c.drawString(col_x[0] * mm, top_pt(y_l + i * 3.4), line)
@@ -2659,7 +2686,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
                 y_l = _pdf_stacked_bar(c, wl_q13["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, col_x[0], y_l, col_w, 6, PH)
                 y_l = _pdf_legend(c, wl_q13["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, col_x[0], y_l, col_w, PH)
             if wl_q18:
-                q_lines = textwrap.wrap(str(wl_q18.get("text") or ""), width=55) or [""]
+                q_lines = _wrap_to_width(c, wl_q18.get("text") or "", "Helvetica", 6.8, col_w)
                 c.setFillColor(ink); c.setFont("Helvetica", 6.8)
                 for i, line in enumerate(q_lines):
                     c.drawString(col_x[1] * mm, top_pt(y_r + i * 3.4), line)
@@ -2727,7 +2754,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
                 continue
             for i, item in enumerate(g["items"]):
                 tag = f'[{item["periodo"]}] ' if item.get("periodo") else ""
-                lines = textwrap.wrap(f'{i + 1}. {tag}"{item["text"]}"', width=115) or [""]
+                lines = _wrap_to_width(c, f'{i + 1}. {tag}"{item["text"]}"', "Helvetica", 8, cW)
                 needed = len(lines) * 4 + 2
                 ensure_space(needed)
                 c.setFont("Helvetica", 8)
