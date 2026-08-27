@@ -130,8 +130,11 @@ st.markdown(
     "font-size:16px !important;font-weight:700 !important;height:52px !important;"
     "box-shadow:0 4px 14px rgba(230,17,102,.28) !important;}"
     ".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{background:#B00D50 !important;}"
-    ".st-key-cover_banner{display:flex;justify-content:center;}"
-    ".st-key-cover_banner img{margin:0 auto;display:block;}"
+    ".st-key-cover_banner{display:flex !important;justify-content:center !important;width:100% !important;}"
+    ".st-key-cover_banner div[data-testid='stImage']{margin:0 auto !important;width:auto !important;"
+    "display:flex !important;justify-content:center !important;}"
+    ".st-key-cover_banner img{margin:0 auto !important;display:block !important;}"
+    ".block-container{padding-top:3.2rem !important;}"
     ".st-key-go_to_datacenter_btn a{"
     f"display:flex !important;align-items:center;justify-content:center;gap:6px;"
     f"background:{PINK} !important;border:none !important;border-radius:10px !important;"
@@ -847,14 +850,12 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
 # ── 8) PÁGINA — Cover (portada, sin sidebar ni nav) ──────────────────────
 # ── 8) PÁGINA — Cover (portada, funciona como Data Center — sin sidebar) ──
 def page_cover():
-    st.markdown(f"<div style='height:0.5vh;'></div>", unsafe_allow_html=True)
-    col_l, col_mid, col_r = st.columns([1, 2, 1])
-    with col_mid:
-        with st.container(key="cover_banner"):
-            try:
-                _show_eiv_banner(width=660)  # 550 * 1.2 (20% más grande)
-            except Exception:
-                pass
+    st.markdown(f"<div style='height:0.2vh;'></div>", unsafe_allow_html=True)
+    with st.container(key="cover_banner"):
+        try:
+            _show_eiv_banner(width=1111)
+        except Exception:
+            pass
     col_l2, col_mid2, col_r2 = st.columns([1, 2, 1])
     with col_mid2:
         st.markdown(
@@ -1247,7 +1248,8 @@ def page_dashboard():
                 out.append("font-weight:700;")
         return out
 
-    st.dataframe(comp_df.style.apply(_style_comp, axis=1), use_container_width=True, hide_index=True, height=420)
+    comp_height = 38 * (len(comp_df) + 1) + 3  # sin scroll: alto = todas las filas + encabezado
+    st.dataframe(comp_df.style.apply(_style_comp, axis=1), use_container_width=True, hide_index=True, height=comp_height)
     st.download_button("Download as Excel", data=_xlsx_bytes(comp_df, "Enrollment_Composition"),
                         file_name="Enrollment_Composition.xlsx", key="dl_enrollment_comp")
 
@@ -1414,21 +1416,24 @@ def page_visiting():
     with c_btn:
         st.caption(f"One PDF per faculty member ({len(prof_names)}), as a ZIP.")
         if st.button("📄 Generate PDF Reports (ZIP)", key="btn_bulk_pdf", use_container_width=True):
-            import zipfile
-            zbuf = io.BytesIO()
-            with st.spinner(f"Generando {len(prof_names)} reportes…"), zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
-                for name in prof_names:
-                    ed_name = build_professor_eval_data(name)
-                    if not ed_name:
-                        continue
-                    entry_name = next((e for e in scope_entries if e.get("Profesor") == name), None)
-                    curso_name = entry_name["Curso"] if entry_name else ""
-                    row_name = _find_satisfaction_row(df_sat, curso_name, name) if entry_name else None
-                    pdf_bytes = _build_professor_pdf(name, curso_name, ed_name, row_name or {})
-                    fname = f"ISS_{name.replace(' ', '_')}_Evaluation_Report.pdf"
-                    zf.writestr(fname, pdf_bytes)
-            zbuf.seek(0)
-            st.session_state["_eiv_bulk_pdf_zip"] = zbuf.getvalue()
+            try:
+                import zipfile
+                zbuf = io.BytesIO()
+                with st.spinner(f"Generando {len(prof_names)} reportes…"), zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for name in prof_names:
+                        ed_name = build_professor_eval_data(name)
+                        if not ed_name:
+                            continue
+                        entry_name = next((e for e in scope_entries if e.get("Profesor") == name), None)
+                        curso_name = entry_name["Curso"] if entry_name else ""
+                        row_name = _find_satisfaction_row(df_sat, curso_name, name) if entry_name else None
+                        pdf_bytes = _build_professor_pdf(name, curso_name, ed_name, row_name or {})
+                        fname = f"ISS_{name.replace(' ', '_')}_Evaluation_Report.pdf"
+                        zf.writestr(fname, pdf_bytes)
+                zbuf.seek(0)
+                st.session_state["_eiv_bulk_pdf_zip"] = zbuf.getvalue()
+            except ModuleNotFoundError:
+                st.caption("⚠️ PDF export needs `reportlab` in requirements.txt (not installed on this deployment yet).")
         if st.session_state.get("_eiv_bulk_pdf_zip"):
             st.download_button(
                 "⬇️ Download ZIP", data=st.session_state["_eiv_bulk_pdf_zip"],
@@ -1738,7 +1743,7 @@ def _render_professor_detail(entry: dict, entries: List[dict]):
     col_photo, col_info = st.columns([1, 3])
     with col_photo:
         try:
-            st.image(_photo_path(profesor), width=140)
+            st.image(_photo_path(profesor), width=220)
         except Exception:
             pass
     with col_info:
@@ -1863,13 +1868,16 @@ def _render_professor_detail(entry: dict, entries: List[dict]):
 
     if not ed:
         return
-    with st.spinner("Preparando reporte…"):
-        pdf_bytes = _build_professor_pdf(profesor, curso, ed, row if row else {})
-    st.download_button(
-        "📄 Generate Evaluation Report", data=pdf_bytes,
-        file_name=f"EIV_{profesor.replace(' ', '_')}_Evaluation_Report.pdf", mime="application/pdf",
-        key=f"dl_pdf_{profesor}",
-    )
+    try:
+        with st.spinner("Preparando reporte…"):
+            pdf_bytes = _build_professor_pdf(profesor, curso, ed, row if row else {})
+        st.download_button(
+            "📄 Generate Evaluation Report", data=pdf_bytes,
+            file_name=f"EIV_{profesor.replace(' ', '_')}_Evaluation_Report.pdf", mime="application/pdf",
+            key=f"dl_pdf_{profesor}",
+        )
+    except ModuleNotFoundError:
+        st.caption("⚠️ PDF export needs `reportlab` in requirements.txt (not installed on this deployment yet).")
 
 
 # ── 14) PDF — Evaluation Report per professor ────────────────────────────
