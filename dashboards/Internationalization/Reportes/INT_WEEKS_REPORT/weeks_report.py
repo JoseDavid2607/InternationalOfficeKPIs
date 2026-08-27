@@ -45,15 +45,15 @@ st.set_page_config(
 
 # Paleta — misma arquitectura visual que EIV_report.py (header degradado,
 # KPI cards, botones, nav superior con flechas), con un acento propio de
-# International Weeks: verde yerbabuena. Los colores propios de cada
-# semana (KLU/NOVA/FGV/BABSON) se conservan tal cual — son identidad del
-# socio, no "color principal".
+# International Weeks: plateado/grafito elegante. Los colores propios de
+# cada semana (KLU/NOVA/FGV/BABSON) se conservan tal cual — son identidad
+# del socio, no "color principal".
 INK = "#241420"; INK_SOFT = "#6E5C68"; PAPER = "#FAF8FA"
 LINE = "#E9E2E7"; MUTED = "#8C7F87"
-ACCENT = "#2F8F5B"           # verde yerbabuena — reemplaza el rol de "PINK" de EIV
-ACCENT_DARK = "#1B5C3A"      # hover / degradado oscuro
-ACCENT_LIGHT = "#5FBE8B"     # degradado claro
-ACCENT_SOFT = "#E1F3E9"      # fondo suave para tablas / chips
+ACCENT = "#7C838C"           # plateado/grafito — reemplaza el rol de "PINK" de EIV
+ACCENT_DARK = "#454B54"      # hover / degradado oscuro (grafito profundo)
+ACCENT_LIGHT = "#B8BEC6"     # degradado claro (plata)
+ACCENT_SOFT = "#EDEEF0"      # fondo suave para tablas / chips
 GOLD = "#C9A227"             # acento cálido secundario (detalles, no botones)
 INCOME = "#2E8B57"; INCOME_SOFT = "#E3F3EA"
 EXPENSE = "#C23B3B"; EXPENSE_SOFT = "#FBE6E6"
@@ -64,9 +64,9 @@ st.markdown(
     f".suite-header{{display:flex;flex-direction:column;align-items:center;"
     "padding:16px 24px 12px;"
     f"background:linear-gradient(135deg,{ACCENT_DARK} 0%,{ACCENT} 55%,{ACCENT_LIGHT} 100%);"
-    f"border-radius:12px;box-shadow:0 2px 8px rgba(47,143,91,.22);margin-bottom:14px;}}"
+    f"border-radius:12px;box-shadow:0 2px 8px rgba(124,131,140,.22);margin-bottom:14px;}}"
     f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
-    "color:#DDF3E6 !important;text-transform:uppercase;margin-bottom:2px;}}"
+    "color:#E7E9EC !important;text-transform:uppercase;margin-bottom:2px;}}"
     ".sh-title{font-size:26px !important;font-weight:800 !important;color:#fff !important;"
     "text-align:center !important;line-height:1.2 !important;margin:0 !important;padding:0 !important;}"
     ".sh-sub{font-size:13px;color:rgba(255,255,255,.80) !important;margin-top:4px;text-align:center;}"
@@ -105,12 +105,12 @@ st.markdown(
     f".survey-quote{{background:#FAF8FA;border-left:3px solid {ACCENT};"
     "border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12.5px;"
     "font-style:italic;color:#3B2C34;}}"
-    ".week-band{border-radius:16px;padding:22px 26px;display:flex;align-items:center;"
-    "gap:20px;flex-wrap:wrap;}"
-    ".week-band .eyebrow{font-family:monospace;font-size:11px;text-transform:uppercase;"
+    ".week-band{border-radius:14px;padding:19px 22px;display:flex;align-items:center;"
+    "gap:17px;flex-wrap:wrap;}"
+    ".week-band .eyebrow{font-family:monospace;font-size:10px;text-transform:uppercase;"
     "letter-spacing:.06em;font-weight:600;}"
-    ".week-band h2{font-size:19px;margin:4px 0 0;}"
-    ".week-band .loc{font-size:12.5px;color:#6E5C68;margin-top:5px;}"
+    ".week-band h2{font-size:16px;margin:3px 0 0;}"
+    ".week-band .loc{font-size:11px;color:#6E5C68;margin-top:4px;}"
     ".st-key-nav_toggle{position:fixed !important;top:0.25rem;left:50%;transform:translateX(-50%);"
     "z-index:999999;width:auto !important;max-width:96vw;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
@@ -150,7 +150,7 @@ st.markdown(
     ".st-key-cover_enter_btn div[data-testid='stButton'] button{"
     f"background:{ACCENT} !important;border:none !important;color:#fff !important;"
     "font-size:16px !important;font-weight:700 !important;height:52px !important;"
-    "box-shadow:0 4px 14px rgba(47,143,91,.28) !important;}"
+    "box-shadow:0 4px 14px rgba(124,131,140,.28) !important;}"
     f".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{{background:{ACCENT_DARK} !important;}}"
     ".st-key-cover_banner{display:flex !important;justify-content:center !important;width:100% !important;}"
     ".st-key-cover_banner div[data-testid='stImage']{margin:0 auto !important;width:auto !important;"
@@ -166,7 +166,7 @@ st.markdown(
     "div[class*='st-key-gen_report_btn_'] div[data-testid='stDownloadButton'] button{"
     f"background:{ACCENT} !important;color:#fff !important;border:none !important;"
     "text-decoration:none !important;font-weight:700 !important;height:50px !important;"
-    f"box-shadow:0 3px 10px rgba(47,143,91,.28) !important;}}"
+    f"box-shadow:0 3px 10px rgba(124,131,140,.28) !important;}}"
     "div[class*='st-key-gen_report_btn_'] div[data-testid='stDownloadButton'] button:hover{"
     f"background:{ACCENT_DARK} !important;}}"
     "</style>",
@@ -931,8 +931,8 @@ def page_week(key: str):
             _logo_b64 = base64.b64encode(f.read()).decode()
         logo_html = (
             f'<img src="data:image/png;base64,{_logo_b64}" '
-            f'style="height:92px;max-width:230px;object-fit:contain;'
-            f'flex-shrink:0;margin-right:26px;">'
+            f'style="height:78px;max-width:196px;object-fit:contain;'
+            f'flex-shrink:0;margin-right:22px;">'
         )
 
     prof_photo = _photo_path(w["professor"])
@@ -942,17 +942,17 @@ def page_week(key: str):
         _prof_ext = "jpeg" if prof_photo.lower().endswith((".jpg", ".jpeg")) else "png"
         prof_photo_html = (
             f'<img src="data:image/{_prof_ext};base64,{_prof_b64}" '
-            'style="width:72px;height:72px;border-radius:50%;object-fit:cover;'
+            'style="width:61px;height:61px;border-radius:50%;object-fit:cover;'
             'flex-shrink:0;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.18);">'
         )
     else:
         prof_photo_html = ""
 
     prof_html = (
-        f'<div style="margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:14px;">'
+        f'<div style="margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:12px;">'
         f'<div style="text-align:right;">'
-        f'<div style="font-weight:700;font-size:14px;color:{INK};white-space:nowrap;">{w["professor"]}</div>'
-        f'<div style="font-size:10px;color:{MUTED};text-transform:uppercase;'
+        f'<div style="font-weight:700;font-size:12px;color:{INK};white-space:nowrap;">{w["professor"]}</div>'
+        f'<div style="font-size:9px;color:{MUTED};text-transform:uppercase;'
         f'font-family:monospace;letter-spacing:.04em;">Faculty Lead</div></div>'
         f'{prof_photo_html}</div>'
     )
@@ -983,6 +983,7 @@ def page_week(key: str):
         st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
         _kpi("Registered, Did Not Travel", w["registeredCount"] - w["abroadCount"])
     with col_map:
+        fig_geo = go.Figure()
         if w.get("countryCode"):
             fig_geo.add_trace(go.Choropleth(
                 locations=[w["countryCode"]], z=[1], locationmode="ISO-3",
@@ -1417,14 +1418,34 @@ if not IS_COVER:
         overflow_pages = nav_pages[_NAV_VISIBLE:]
         n_cols = len(visible_pages) + (1 if overflow_pages else 0)
         nav_cols = st.columns(n_cols)
+
+        def _nav_item(page_obj):
+            # Streamlit's page-link `icon` only accepts an emoji or a
+            # ":material/xxx:" name — no custom images — so a real logo
+            # can't go *inside* the native icon slot. As a close
+            # equivalent, the partner's mini logo renders right above the
+            # week's label (the link underneath is still the real,
+            # working st.page_link).
+            logo_path = _partner_logo_path(page_obj.title) if page_obj.title in week_page_by_key else None
+            if logo_path:
+                with open(logo_path, "rb") as f:
+                    _b64 = base64.b64encode(f.read()).decode()
+                st.markdown(
+                    f'<div style="text-align:center;line-height:1;">'
+                    f'<img src="data:image/png;base64,{_b64}" '
+                    f'style="height:16px;object-fit:contain;margin-bottom:1px;"></div>',
+                    unsafe_allow_html=True,
+                )
+            st.page_link(page_obj)
+
         for col, page_obj in zip(nav_cols, visible_pages):
             with col:
-                st.page_link(page_obj)
+                _nav_item(page_obj)
         if overflow_pages:
             with nav_cols[-1]:
                 with st.popover("More...", use_container_width=False):
                     for page_obj in overflow_pages:
-                        st.page_link(page_obj)
+                        _nav_item(page_obj)
 
     # ---- Flechas laterales para pasar de sección ----
     _idx = nav_pages.index(pg)
