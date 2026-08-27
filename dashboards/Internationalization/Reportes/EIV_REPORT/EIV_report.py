@@ -2134,6 +2134,28 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             "inscritos": d0["inscritos_por_curso"].get(entry.get("Curso"), 0),
         }
 
+    # ---- Distribución de programas por periodo, para el curso de este
+    # profesor -- 202613 (EPOS Admi) y 202618 (Pregrado Admin y otros
+    # programas) son los dos periodos de matrícula reales de EIV. Se
+    # calculan directo de BD_listas.xlsx (columnas Periodo / Nombre
+    # Programa), filtrando por el mismo _curso ya resuelto (por profesor,
+    # no por el nombre truncado de BD_evaluacion_curso.xlsx).
+    period_program_dist: Dict[str, List[Tuple[str, int]]] = {}
+    if info:
+        d0 = compute_all()
+        df_listas_all = d0["df_listas"]
+        periodo_col = next((c for c in df_listas_all.columns if c.strip().casefold() == "periodo"), None)
+        programa_col = next((c for c in df_listas_all.columns
+                              if c.strip().casefold() in ("nombre programa", "programa principal", "programa")), None)
+        if periodo_col and programa_col:
+            course_rows = df_listas_all[df_listas_all["_curso"] == info["curso"]]
+            for periodo_val in ("202613", "202618"):
+                sub = course_rows[course_rows[periodo_col].astype(str).str.strip() == periodo_val]
+                if sub.empty:
+                    continue
+                counts = sub[programa_col].dropna().astype(str).str.strip().value_counts()
+                period_program_dist[periodo_val] = list(counts.items())
+
     logo_bytes = None
     try:
         _base = _os.path.dirname(_os.path.abspath(__file__))
@@ -2171,9 +2193,11 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
                 pass
         c.setFillColor(rl_colors.white)
         c.setFont("Helvetica-Bold", 13)
-        c.drawRightString(name_right_edge * mm, top_pt(12), profesor)
-        c.setFont("Helvetica", 9)
-        c.drawRightString(name_right_edge * mm, top_pt(19), info["curso"] if info else (curso or ""))
+        c.drawRightString(name_right_edge * mm, top_pt(11), profesor)
+        c.setFont("Helvetica", 8.5)
+        c.drawRightString(name_right_edge * mm, top_pt(17), info["universidad"] if info else "")
+        c.setFont("Helvetica", 8)
+        c.drawRightString(name_right_edge * mm, top_pt(22.5), info["pais"] if info else "")
 
     def draw_continuation_header():
         c.setFillColor(pink)
@@ -2192,14 +2216,20 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
 
     page_num = 1
 
-    # ---- Página 1: banda + KPIs ----
+    # ---- Página 1: banda + título de curso + KPIs + distribución por periodo ----
     draw_stats_header()
-    y = 38.0
-    c.setFillColor(ink)
+    y = 34.0
+    c.setFillColor(pink)
+    c.setFont("Helvetica-Bold", 17)
+    course_lines = textwrap.wrap(str(info["curso"] if info else (curso or "")), width=52) or [""]
+    for i, line in enumerate(course_lines):
+        c.drawString(mg * mm, top_pt(y + i * 7), line)
+    y += len(course_lines) * 7 + 3
     if info:
-        c.setFont("Helvetica", 9)
-        c.drawString(mg * mm, top_pt(y), f"{info['universidad']}  |  {info['pais']}  |  Block {info['bloque']}  |  {info['modalidad']}")
-        y += 10
+        c.setFillColor(muted)
+        c.setFont("Helvetica", 8.5)
+        c.drawString(mg * mm, top_pt(y), f"Block {info['bloque']}  ·  {info['modalidad']}")
+        y += 8
 
     stats = [
         (f"{ed['respondents']} / {ed['inscritos']}" if ed.get("inscritos") else str(ed["respondents"]), "Students Responded"),
@@ -2220,7 +2250,73 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         c.setFont("Helvetica", 6)
         c.drawCentredString((bx + bw / 2 - 1) * mm, top_pt(y + 18), label)
     y += 32
+
+    # ---- KPI de matriculados por periodo (202613 EPOS / 202618 Pregrado y
+    # otros), justo debajo de los KPIs generales ----
+    if period_program_dist:
+        period_labels = {"202613": "202613 — EPOS Admi", "202618": "202618 — Pregrado Admin & Others"}
+        pkeys = list(period_program_dist.keys())
+        bw2 = cW / max(len(pkeys), 1)
+        for i, pk in enumerate(pkeys):
+            total_p = sum(n for _, n in period_program_dist[pk])
+            bx = mg + i * bw2
+            c.setFillColor(rl_colors.HexColor("#FBE3ED"))
+            c.roundRect((bx + 1) * mm, top_pt(y + 16), (bw2 - 3) * mm, 16 * mm, 3 * mm, fill=1, stroke=0)
+            c.setFillColor(pink)
+            c.setFont("Helvetica-Bold", 13)
+            c.drawCentredString((bx + bw2 / 2 - 1) * mm, top_pt(y + 8.5), f"{total_p} enrolled")
+            c.setFillColor(ink)
+            c.setFont("Helvetica", 6.5)
+            c.drawCentredString((bx + bw2 / 2 - 1) * mm, top_pt(y + 14), period_labels.get(pk, pk))
+        y += 22
+
     draw_footer(page_num)
+
+    # ---- Página de distribución de programas por periodo ----
+    if period_program_dist:
+        c.showPage()
+        page_num += 1
+        draw_continuation_header()
+        draw_footer(page_num)
+        y = 24.0
+        c.setFillColor(ink)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(mg * mm, top_pt(y), "PROGRAM DISTRIBUTION BY ENROLLMENT PERIOD")
+        y += 9
+        period_labels = {"202613": "202613 — EPOS Admi", "202618": "202618 — Pregrado Admin & Others"}
+        for pk, pairs in period_program_dist.items():
+            c.setFillColor(pink)
+            c.rect(mg * mm, top_pt(y + 6.5), cW * mm, 6.5 * mm, fill=1, stroke=0)
+            c.setFillColor(rl_colors.white)
+            c.setFont("Helvetica-Bold", 8.5)
+            total_p = sum(n for _, n in pairs)
+            c.drawString((mg + 4) * mm, top_pt(y + 4.6), f"{period_labels.get(pk, pk)}  ({total_p} students)")
+            y += 10
+            max_n = max((n for _, n in pairs), default=1)
+            for prog_name, n in pairs:
+                if y + 6 > PH - 16:
+                    draw_footer(page_num)
+                    c.showPage()
+                    page_num += 1
+                    draw_continuation_header()
+                    y = 24.0
+                label_lines = textwrap.wrap(str(prog_name), width=44) or [""]
+                c.setFillColor(ink)
+                c.setFont("Helvetica", 7.5)
+                c.drawString(mg * mm, top_pt(y + 3), label_lines[0])
+                bar_x = (mg + 68) * mm
+                bar_w = (cW - 68 - 12) * mm
+                fill_w = bar_w * (n / max_n)
+                c.setFillColor(rl_colors.HexColor("#F1D9E7"))
+                c.rect(bar_x, top_pt(y + 5.2), bar_w, 4 * mm, fill=1, stroke=0)
+                c.setFillColor(pink)
+                c.rect(bar_x, top_pt(y + 5.2), fill_w, 4 * mm, fill=1, stroke=0)
+                c.setFillColor(ink)
+                c.setFont("Helvetica-Bold", 7.5)
+                c.drawString(bar_x + bar_w + 2, top_pt(y + 4), str(n))
+                y += 7
+            y += 4
+        draw_footer(page_num)
 
     # ---- Páginas de evaluación cuantitativa (barras apiladas por aspecto) ----
     c.showPage()
