@@ -1974,10 +1974,11 @@ def _render_professor_detail(entry: dict, entries: List[dict], siblings: Optiona
         for i, (qid, label) in enumerate(all_groups.items()):
             with ccols[i % 2]:
                 group = prof_comments.get(qid, {"items": []})
-                st.markdown(f"**{label} ({len(group['items'])})**")
-                if group["items"]:
+                sorted_items = sorted(group["items"], key=lambda it: {"202613": 0, "202618": 1}.get(it.get("periodo"), 2))
+                st.markdown(f"**{label} ({len(sorted_items)})**")
+                if sorted_items:
                     with st.container(height=200):
-                        for item in group["items"]:
+                        for item in sorted_items:
                             tag = f'<strong style="color:{PINK};">[{item["periodo"]}]</strong> ' if item.get("periodo") else ""
                             st.markdown(f'<div class="prof-quote">{tag}“{item["text"]}”</div>', unsafe_allow_html=True)
                 else:
@@ -2225,9 +2226,22 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     if info:
         d0 = compute_all()
         df_listas_all = d0["df_listas"]
+        df_programas_all = d0["df_programas"]
         periodo_col = next((c for c in df_listas_all.columns if c.strip().casefold() == "periodo"), None)
         programa_col = next((c for c in df_listas_all.columns
                               if c.strip().casefold() in ("nombre programa", "programa principal", "programa")), None)
+        # Traduce el nombre del programa (español) al nombre oficial en
+        # inglés, usando la hoja 'programas' de BD_listas.xlsx (columna
+        # PRORGAMA=español, PROGRAM=inglés) -- el PDF va siempre en inglés.
+        prog_es_to_en: Dict[str, str] = {}
+        prorgama_col = next((c for c in df_programas_all.columns if c.strip().casefold() == "prorgama"), None)
+        program_col = next((c for c in df_programas_all.columns if c.strip().casefold() == "program"), None)
+        if prorgama_col and program_col:
+            for _, pr in df_programas_all.iterrows():
+                es = pr.get(prorgama_col)
+                en = pr.get(program_col)
+                if pd.notna(es) and pd.notna(en):
+                    prog_es_to_en[str(es).strip().casefold()] = str(en).strip()
         if periodo_col and programa_col:
             course_rows = df_listas_all[df_listas_all["_curso"] == info["curso"]]
             for periodo_val in ("202613", "202618"):
@@ -2235,7 +2249,10 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
                 if sub.empty:
                     continue
                 counts = sub[programa_col].dropna().astype(str).str.strip().value_counts()
-                period_program_dist[periodo_val] = list(counts.items())
+                translated = [
+                    (prog_es_to_en.get(name.casefold(), name), n) for name, n in counts.items()
+                ]
+                period_program_dist[periodo_val] = translated
 
     logo_bytes = None
     try:
@@ -2337,37 +2354,43 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         c.drawCentredString((mg + cW / 2) * mm, top_pt(y), "GR = Graduate (EPOS)   ·   UG = Undergraduate")
         y += 8
 
-        # Gráficas de barras de programas, una por periodo, lado a lado
+        # Gráficas de barras de programas, una por periodo, lado a lado --
+        # la etiqueta va ARRIBA de la barra (no al lado) para tener todo el
+        # ancho de la columna disponible y que el nombre nunca se corte.
+        col_heights = []
         for i, pk in enumerate(pkeys):
             bx = mg + i * bw2
             pairs = period_program_dist[pk]
             max_n = max((n for _, n in pairs), default=1)
             yy = y
             for prog_name, n in pairs:
-                label_lines = textwrap.wrap(str(prog_name), width=22) or [""]
+                label_lines = textwrap.wrap(str(prog_name), width=34) or [""]
                 c.setFillColor(ink)
-                c.setFont("Helvetica", 6.3)
-                c.drawString(bx * mm, top_pt(yy + 3), label_lines[0])
-                bar_x = (bx + 24) * mm
-                bar_w = (bw2 - 24 - 8) * mm
+                c.setFont("Helvetica", 6.5)
+                for li, line in enumerate(label_lines):
+                    c.drawString(bx * mm, top_pt(yy + 3 + li * 3.2), line)
+                yy += len(label_lines) * 3.2 + 1
+                bar_w = (bw2 - 14) * mm
                 fill_w = max(bar_w * (n / max_n), 1)
                 c.setFillColor(rl_colors.HexColor("#F1D9E7"))
-                c.rect(bar_x, top_pt(yy + 5), bar_w, 3.6 * mm, fill=1, stroke=0)
+                c.rect(bx * mm, top_pt(yy + 3.6), bar_w, 3.6 * mm, fill=1, stroke=0)
                 c.setFillColor(pink)
-                c.rect(bar_x, top_pt(yy + 5), fill_w, 3.6 * mm, fill=1, stroke=0)
+                c.rect(bx * mm, top_pt(yy + 3.6), fill_w, 3.6 * mm, fill=1, stroke=0)
                 c.setFillColor(ink)
-                c.setFont("Helvetica-Bold", 6.3)
-                c.drawString(bar_x + bar_w + 1.5, top_pt(yy + 4), str(n))
+                c.setFont("Helvetica-Bold", 6.5)
+                c.drawString(bx * mm + bar_w + 1.5, top_pt(yy + 2.6), str(n))
                 yy += 6.5
-        y += max((len(period_program_dist[pk]) for pk in pkeys), default=0) * 6.5 + 6
+            col_heights.append(yy - y)
+        y += max(col_heights, default=0) + 6
 
-    draw_footer(page_num)
-
-    # ---- Página de KPIs de respuesta (después de la matrícula) ----
-    c.showPage()
-    page_num += 1
-    draw_continuation_header()
-    y = 24.0
+    # ---- KPIs de respuesta, al final de esta MISMA página 1 (no en una
+    # página aparte) -- solo salta de página si de verdad no cabe.
+    if y + 32 > PH - 16:
+        draw_footer(page_num)
+        c.showPage()
+        page_num += 1
+        draw_continuation_header()
+        y = 24.0
     stats = [
         (f"{ed['respondents']} / {ed['inscritos']}" if ed.get("inscritos") else str(ed["respondents"]), "Students Responded"),
         (f"{ed['respondents']/ed['inscritos']*100:.0f}%" if ed.get("inscritos") else "—", "Response Rate"),
@@ -2440,20 +2463,21 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         c.line(mg * mm, top_pt(y), (mg + cW) * mm, top_pt(y))
         y += 5
 
-    periods_sorted = sorted(ed.get("periods", {}).items(), key=lambda kv: kv[0])
-    if not periods_sorted:
-        periods_sorted = [(None, ed)]  # respaldo: si no hay periodo_EIV, usa el combinado de siempre
+    periods_dict = ed.get("periods", {})
+    p13 = periods_dict.get("202613")
+    p18 = periods_dict.get("202618")
+    has_periods = bool(p13 or p18)
 
-    for period_idx, (periodo, pdata) in enumerate(periods_sorted):
-        period_label = f"Period {periodo} ({pdata.get('group', periodo)})" if periodo else "All Responses"
+    if not has_periods:
+        # Respaldo: si no hay periodo_EIV en los datos, usa el combinado de
+        # siempre en una sola columna (comportamiento previo).
         by_aspect: Dict[str, list] = {}
-        for q in pdata["questions"].values():
+        for q in ed["questions"].values():
             if not any(k in LIKERT_WEIGHTS for k in q["options"]):
                 continue
             asp = q.get("aspect") or "General"
             by_aspect.setdefault(asp, []).append(q)
-
-        section_bar(f"RESPONSES — {period_label.upper()}")
+        section_bar("QUANTITATIVE EVALUATION")
         for asp, qs in by_aspect.items():
             check(16)
             c.setFillColor(rl_colors.HexColor("#FBE3ED"))
@@ -2465,63 +2489,168 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             for q in qs:
                 draw_likert_q(q)
             y += 2
-
-        nps_q = pdata["questions"].get(NPS_QID)
-        obj_q = pdata["questions"].get(OBJ_QID)
-        wl_q = pdata["questions"].get(WORKLOAD_QID)
-
-        if nps_q or obj_q or wl_q:
-            c.showPage()
-            page_num += 1
-            draw_continuation_header()
-            draw_footer(page_num)
-            y = 24.0
-
+        nps_q = ed["questions"].get(NPS_QID)
+        obj_q = ed["questions"].get(OBJ_QID)
+        wl_q = ed["questions"].get(WORKLOAD_QID)
         if nps_q:
-            section_bar(f"RECOMMENDATION (0-10) — {period_label}")
-            q_lines = textwrap.wrap(str(nps_q.get("text") or ""), width=110) or [""]
-            check(len(q_lines) * 4 + 20)
-            c.setFillColor(ink)
-            c.setFont("Helvetica", 8)
-            for i, line in enumerate(q_lines):
-                c.drawString(mg * mm, top_pt(y + i * 4), line)
-            y += len(q_lines) * 4 + 5
-            y = _pdf_nps_bar(c, nps_q["options"], mg, y, cW, 10, PH) + 8
-
+            section_bar("RECOMMENDATION (0-10)")
+            y = _pdf_nps_bar(c, nps_q["options"], mg, y + 5, cW, 10, PH) + 8
         if obj_q:
-            check(24)
-            section_bar(f"COURSE OBJECTIVES — {period_label}")
-            q_lines = textwrap.wrap(str(obj_q.get("text") or ""), width=110) or [""]
-            check(len(q_lines) * 4 + 20)
-            c.setFillColor(ink)
-            c.setFont("Helvetica", 8)
-            for i, line in enumerate(q_lines):
-                c.drawString(mg * mm, top_pt(y + i * 4), line)
-            y += len(q_lines) * 4 + 3
+            section_bar("COURSE OBJECTIVES")
             y = _pdf_stacked_bar(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, 7, PH)
             y = _pdf_legend(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, PH) + 8
-
         if wl_q:
-            check(24)
-            section_bar(f"ACADEMIC WORKLOAD — {period_label}")
-            q_lines = textwrap.wrap(str(wl_q.get("text") or ""), width=110) or [""]
-            check(len(q_lines) * 4 + 20)
-            c.setFillColor(ink)
-            c.setFont("Helvetica", 8)
-            for i, line in enumerate(q_lines):
-                c.drawString(mg * mm, top_pt(y + i * 4), line)
-            y += len(q_lines) * 4 + 3
+            section_bar("ACADEMIC WORKLOAD")
             y = _pdf_stacked_bar(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, 7, PH)
             _pdf_legend(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, PH)
+        draw_footer(page_num)
+    else:
+        col_gap = 6.0
+        col_w = (cW - col_gap) / 2
+        col_x = [mg, mg + col_w + col_gap]
+        col_title = ["Period 202613 (GR)", "Period 202618 (UG)"]
+        col_data = [p13, p18]
+
+        def draw_likert_q_col(q, x_off, w, y_in):
+            """Misma lógica que draw_likert_q pero en un ancho/columna
+            propios, para el layout de 2 columnas lado a lado."""
+            text = q.get("text") or ""
+            q_lines = textwrap.wrap(str(text), width=int(w * 1.7)) or [""]
+            c.setFillColor(ink)
+            c.setFont("Helvetica", 7)
+            for i, line in enumerate(q_lines):
+                c.drawString(x_off * mm, top_pt(y_in + i * 3.6), line)
+            y_in += len(q_lines) * 3.6 + 2
+            y_in = _pdf_stacked_bar(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, x_off, y_in, w, 6, PH)
+            y_in = _pdf_legend(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, x_off, y_in, w, PH)
+            c.setStrokeColor(rl_colors.HexColor("#E6E6E6"))
+            c.setLineWidth(0.3)
+            c.line(x_off * mm, top_pt(y_in), (x_off + w) * mm, top_pt(y_in))
+            return y_in + 4
+
+        def col_aspects(pdata):
+            by_asp: Dict[str, list] = {}
+            if not pdata:
+                return by_asp
+            for q in pdata["questions"].values():
+                if not any(k in LIKERT_WEIGHTS for k in q["options"]):
+                    continue
+                asp = q.get("aspect") or "General"
+                by_asp.setdefault(asp, []).append(q)
+            return by_asp
+
+        by_aspect_cols = [col_aspects(p13), col_aspects(p18)]
+        all_aspects, seen_asp = [], set()
+        for bac in by_aspect_cols:
+            for asp in bac:
+                if asp not in seen_asp:
+                    seen_asp.add(asp)
+                    all_aspects.append(asp)
+
+        section_bar("RESPONSES BY CATEGORY")
+        for ci in range(2):
+            c.setFillColor(pink)
+            c.setFont("Helvetica-Bold", 8)
+            c.drawString(col_x[ci] * mm, top_pt(y + 4), col_title[ci])
+        y += 8
+
+        for asp in all_aspects:
+            check(16)
+            for ci in range(2):
+                c.setFillColor(rl_colors.HexColor("#FBE3ED"))
+                c.rect(col_x[ci] * mm, top_pt(y + 6), col_w * mm, 6 * mm, fill=1, stroke=0)
+                c.setFillColor(ink)
+                c.setFont("Helvetica-Bold", 6.8)
+                c.drawString((col_x[ci] + 3) * mm, top_pt(y + 4.3), str(asp).upper())
+            y_start = y + 8.5
+            y_l, y_r = y_start, y_start
+            for q in by_aspect_cols[0].get(asp, []):
+                y_l = draw_likert_q_col(q, col_x[0], col_w, y_l)
+            for q in by_aspect_cols[1].get(asp, []):
+                y_r = draw_likert_q_col(q, col_x[1], col_w, y_r)
+            y = max(y_l, y_r) + 1
+
+        # ---- Recommendation (NPS): periodo 202613 arriba, 202618 abajo ----
+        nps_q13 = (p13 or {}).get("questions", {}).get(NPS_QID)
+        nps_q18 = (p18 or {}).get("questions", {}).get(NPS_QID)
+        if nps_q13 or nps_q18:
+            section_bar("RECOMMENDATION (0-10)")
+            for periodo, nps_q, grp in (("202613", nps_q13, "GR"), ("202618", nps_q18, "UG")):
+                if not nps_q:
+                    continue
+                check(20)
+                c.setFillColor(pink)
+                c.setFont("Helvetica-Bold", 7.5)
+                c.drawString(mg * mm, top_pt(y + 3), f"Period {periodo} ({grp})")
+                y += 6
+                q_lines = textwrap.wrap(str(nps_q.get("text") or ""), width=110) or [""]
+                c.setFillColor(ink)
+                c.setFont("Helvetica", 7.5)
+                for i, line in enumerate(q_lines):
+                    c.drawString(mg * mm, top_pt(y + i * 3.6), line)
+                y += len(q_lines) * 3.6 + 3
+                y = _pdf_nps_bar(c, nps_q["options"], mg, y, cW, 9, PH) + 7
+
+        # ---- Objectives y Academic Workload: 202613 / 202618 lado a lado ----
+        obj_q13 = (p13 or {}).get("questions", {}).get(OBJ_QID)
+        obj_q18 = (p18 or {}).get("questions", {}).get(OBJ_QID)
+        if obj_q13 or obj_q18:
+            check(24)
+            section_bar("COURSE OBJECTIVES")
+            for ci in range(2):
+                c.setFillColor(pink)
+                c.setFont("Helvetica-Bold", 7.5)
+                c.drawString(col_x[ci] * mm, top_pt(y + 3), col_title[ci])
+            y0 = y + 6
+            y_l = y_r = y0
+            if obj_q13:
+                q_lines = textwrap.wrap(str(obj_q13.get("text") or ""), width=55) or [""]
+                c.setFillColor(ink); c.setFont("Helvetica", 6.8)
+                for i, line in enumerate(q_lines):
+                    c.drawString(col_x[0] * mm, top_pt(y_l + i * 3.4), line)
+                y_l += len(q_lines) * 3.4 + 2
+                y_l = _pdf_stacked_bar(c, obj_q13["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, col_x[0], y_l, col_w, 6, PH)
+                y_l = _pdf_legend(c, obj_q13["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, col_x[0], y_l, col_w, PH)
+            if obj_q18:
+                q_lines = textwrap.wrap(str(obj_q18.get("text") or ""), width=55) or [""]
+                c.setFillColor(ink); c.setFont("Helvetica", 6.8)
+                for i, line in enumerate(q_lines):
+                    c.drawString(col_x[1] * mm, top_pt(y_r + i * 3.4), line)
+                y_r += len(q_lines) * 3.4 + 2
+                y_r = _pdf_stacked_bar(c, obj_q18["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, col_x[1], y_r, col_w, 6, PH)
+                y_r = _pdf_legend(c, obj_q18["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, col_x[1], y_r, col_w, PH)
+            y = max(y_l, y_r) + 6
+
+        wl_q13 = (p13 or {}).get("questions", {}).get(WORKLOAD_QID)
+        wl_q18 = (p18 or {}).get("questions", {}).get(WORKLOAD_QID)
+        if wl_q13 or wl_q18:
+            check(24)
+            section_bar("ACADEMIC WORKLOAD")
+            for ci in range(2):
+                c.setFillColor(pink)
+                c.setFont("Helvetica-Bold", 7.5)
+                c.drawString(col_x[ci] * mm, top_pt(y + 3), col_title[ci])
+            y0 = y + 6
+            y_l = y_r = y0
+            if wl_q13:
+                q_lines = textwrap.wrap(str(wl_q13.get("text") or ""), width=55) or [""]
+                c.setFillColor(ink); c.setFont("Helvetica", 6.8)
+                for i, line in enumerate(q_lines):
+                    c.drawString(col_x[0] * mm, top_pt(y_l + i * 3.4), line)
+                y_l += len(q_lines) * 3.4 + 2
+                y_l = _pdf_stacked_bar(c, wl_q13["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, col_x[0], y_l, col_w, 6, PH)
+                y_l = _pdf_legend(c, wl_q13["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, col_x[0], y_l, col_w, PH)
+            if wl_q18:
+                q_lines = textwrap.wrap(str(wl_q18.get("text") or ""), width=55) or [""]
+                c.setFillColor(ink); c.setFont("Helvetica", 6.8)
+                for i, line in enumerate(q_lines):
+                    c.drawString(col_x[1] * mm, top_pt(y_r + i * 3.4), line)
+                y_r += len(q_lines) * 3.4 + 2
+                y_r = _pdf_stacked_bar(c, wl_q18["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, col_x[1], y_r, col_w, 6, PH)
+                y_r = _pdf_legend(c, wl_q18["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, col_x[1], y_r, col_w, PH)
+            y = max(y_l, y_r) + 4
 
         draw_footer(page_num)
-
-        if period_idx < len(periods_sorted) - 1:
-            c.showPage()
-            page_num += 1
-            draw_continuation_header()
-            draw_footer(page_num)
-            y = 24.0
 
     # ---- Página de comentarios ----
     c.showPage()
@@ -2531,13 +2660,19 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
 
     com_by_prof = comments_by_professor()
     com_qs = com_by_prof.get(_resolve_alias(profesor), {})
+
+    def _sort_by_period(items):
+        # 202613 primero, luego 202618, luego cualquier otro/():sin periodo
+        order = {"202613": 0, "202618": 1}
+        return sorted(items, key=lambda it: order.get(it.get("periodo"), 2))
+
     comment_groups = []
     for qid, label in POSITIVE_QIDS.items():
         g = com_qs.get(qid)
-        comment_groups.append({"label": f"{label} — Valued Most", "items": g["items"] if g else []})
+        comment_groups.append({"label": f"{label} — Valued Most", "items": _sort_by_period(g["items"]) if g else []})
     for qid, label in IMPROVE_QIDS.items():
         g = com_qs.get(qid)
-        comment_groups.append({"label": f"{label} — Could Improve", "items": g["items"] if g else []})
+        comment_groups.append({"label": f"{label} — Could Improve", "items": _sort_by_period(g["items"]) if g else []})
 
     def ensure_space(needed):
         nonlocal y, page_num
