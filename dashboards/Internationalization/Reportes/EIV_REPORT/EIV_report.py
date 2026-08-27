@@ -2302,8 +2302,9 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     photo_bytes = _pdf_file_bytes(_photo_path(profesor))
 
     def draw_stats_header():
+        band_h = 34
         c.setFillColor(pink)
-        c.rect(0, top_pt(26), PW * mm, 26 * mm, fill=1, stroke=0)
+        c.rect(0, top_pt(band_h), PW * mm, band_h * mm, fill=1, stroke=0)
         if logo_bytes:
             try:
                 c.setFillColor(rl_colors.white)
@@ -2317,11 +2318,11 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         if photo_bytes:
             try:
                 c.setFillColor(rl_colors.white)
-                c.roundRect((PW - mg - 18) * mm, top_pt(23), 18 * mm, 20 * mm, 2 * mm, fill=1, stroke=0)
+                c.roundRect((PW - mg - 24) * mm, top_pt(31), 24 * mm, 28 * mm, 2.5 * mm, fill=1, stroke=0)
                 img = ImageReader(io.BytesIO(photo_bytes))
-                c.drawImage(img, (PW - mg - 17) * mm, top_pt(22), width=16 * mm, height=18 * mm,
+                c.drawImage(img, (PW - mg - 23) * mm, top_pt(30), width=22 * mm, height=26 * mm,
                             preserveAspectRatio=True, mask="auto")
-                name_right_edge = PW - mg - 22
+                name_right_edge = PW - mg - 28
             except Exception:
                 pass
         c.setFillColor(rl_colors.white)
@@ -2331,13 +2332,15 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         c.drawRightString(name_right_edge * mm, top_pt(17), info["universidad"] if info else "")
         c.setFont("Helvetica", 8)
         c.drawRightString(name_right_edge * mm, top_pt(22.5), info["pais"] if info else "")
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(mg * mm, top_pt(29.5), "COURSE EVALUATION")
 
     def draw_continuation_header():
         c.setFillColor(pink)
         c.rect(0, top_pt(14), PW * mm, 14 * mm, fill=1, stroke=0)
         c.setFillColor(rl_colors.white)
         c.setFont("Helvetica-Bold", 10)
-        c.drawRightString((PW - mg) * mm, top_pt(9), f"{profesor} — continued")
+        c.drawRightString((PW - mg) * mm, top_pt(9), profesor)
 
     def draw_footer(page_num):
         c.setFillColor(lgray)
@@ -2381,7 +2384,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         h += 32  # tarjetas KPI
         return h
 
-    header_bottom_y = 26.0
+    header_bottom_y = 34.0
     footer_top_y = PH - 10.0
     available_h = footer_top_y - header_bottom_y
     total_h = _estimate_page1_height()
