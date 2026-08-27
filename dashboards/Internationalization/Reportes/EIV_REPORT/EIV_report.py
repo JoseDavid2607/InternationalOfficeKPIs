@@ -1418,7 +1418,18 @@ def page_visiting():
 
     # ---- Aggregate view ----
     scope_entries = entries if bloque == "all" else [e for e in entries if str(e.get("Ciclo")) == str(bloque)]
-    prof_names = list({e["Profesor"] for e in scope_entries if e.get("Profesor")})
+    # Deduplicar por nombre NORMALIZADO (no crudo): si 'Profesor' en BD_cursos
+    # trae el mismo profesor con distinta mayúscula/espacio en dos filas (p.
+    # ej. por un curso co-dictado), un set() sobre el valor crudo los trataría
+    # como 2 personas distintas y sus datos se sumarían dos veces en el
+    # agregado (Students Responded, Avg. Satisfaction, etc.).
+    seen_prof_norm: Dict[str, str] = {}
+    for e in scope_entries:
+        p = e.get("Profesor")
+        if not p:
+            continue
+        seen_prof_norm.setdefault(_norm_name(p), p)
+    prof_names = list(seen_prof_norm.values())
 
     st.markdown("### Course Evaluation")
     resp_total = insc_total = 0
@@ -1524,6 +1535,7 @@ def page_visiting():
                                paper_bgcolor="rgba(0,0,0,0)", height=max(200, 28 * len(ranked_n)))
             st.plotly_chart(fig, use_container_width=True)
 
+    st.markdown("---")
     st.markdown("### Faculty Satisfaction")
     df_sat = load_satisfaccion()
     sat_rows = []
