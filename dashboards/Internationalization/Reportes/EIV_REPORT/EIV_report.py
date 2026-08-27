@@ -2355,7 +2355,37 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     # periodo (GR/UG) con su gráfica de programas debajo -- los KPIs de
     # respuesta van DESPUÉS de esto, no antes ----
     draw_stats_header()
-    y = 34.0
+
+    def _estimate_page1_height():
+        """'Ensayo en seco' del mismo bloque de la página 1 (sin dibujar
+        nada), solo para saber cuánta altura total ocupa y poder centrarlo
+        verticalmente entre la banda superior y el pie de página."""
+        h = 0.0
+        course_lines_est = _wrap_to_width(c, info["curso"] if info else (curso or ""), "Helvetica-Bold", 17, cW)
+        h += len(course_lines_est) * 7 + 3
+        if info:
+            h += 9
+        if period_program_dist:
+            pkeys_est = list(period_program_dist.keys())
+            bw2_est = cW / max(len(pkeys_est), 1)
+            h += 23 + 8
+            col_heights_est = []
+            for pk in pkeys_est:
+                pairs = period_program_dist[pk]
+                yy = 0.0
+                for prog_name, _n in pairs:
+                    label_lines_est = _wrap_to_width(c, prog_name, "Helvetica", 6.5, bw2_est - 2)
+                    yy += len(label_lines_est) * 3.2 + 1 + 6.5
+                col_heights_est.append(yy)
+            h += max(col_heights_est, default=0) + 6
+        h += 32  # tarjetas KPI
+        return h
+
+    header_bottom_y = 26.0
+    footer_top_y = PH - 10.0
+    available_h = footer_top_y - header_bottom_y
+    total_h = _estimate_page1_height()
+    y = header_bottom_y + max(2.0, (available_h - total_h) / 2)
     c.setFillColor(pink)
     c.setFont("Helvetica-Bold", 17)
     course_lines = _wrap_to_width(c, info["curso"] if info else (curso or ""), "Helvetica-Bold", 17, cW)
