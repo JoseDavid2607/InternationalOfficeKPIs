@@ -2554,16 +2554,36 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         col_title = ["Period 202613 (GR)", "Period 202618 (UG)"]
         col_data = [p13, p18]
 
+        def _count_legend_rows(options, order, w):
+            """Cuenta las filas EXACTAS que ocupará la leyenda en un ancho
+            `w` (misma lógica de empaquetado que _pdf_legend), en vez de
+            adivinar 1 o 2 filas -- una leyenda con opciones/etiquetas
+            largas en columna angosta puede necesitar 3+ filas, y quedarse
+            corto en la estimación era lo que cortaba preguntas a la mitad
+            entre páginas."""
+            lx = 0.0
+            rows = 1
+            for k in order:
+                n = options.get(k, 0)
+                if not n:
+                    continue
+                label = f"{k} ({n})"
+                item_w = (c.stringWidth(label, "Helvetica", 6.5) / mm) + 5 + 3
+                if lx + item_w > w and lx > 0:
+                    rows += 1
+                    lx = 0.0
+                lx += item_w
+            return rows
+
         def estimate_q_height(q, w):
             """Alto real necesario para una pregunta en la columna de ancho
-            `w`: líneas del texto envuelto + barra + hasta 2 filas de
-            leyenda (antes se usaba un estimado fijo de 22mm que se quedaba
-            corto con preguntas largas de varias líneas, cortándolas a la
+            `w`: líneas del texto envuelto + barra + filas EXACTAS de
+            leyenda (antes se usaba una heurística de 1-2 filas que se
+            quedaba corta con etiquetas largas, cortando preguntas a la
             mitad entre páginas)."""
             text = q.get("text") or ""
             n_lines = len(_wrap_to_width(c, text, "Helvetica", 7, w))
-            n_opts = sum(1 for k in LIKERT_ORDER_PDF if q["options"].get(k))
-            legend_rows = 2 if n_opts >= 3 else 1
+            legend_rows = _count_legend_rows(q["options"], LIKERT_ORDER_PDF, w)
             return n_lines * 3.6 + 2 + 6 + legend_rows * 5 + 6
 
         def draw_likert_q_col(q, x_off, w, y_in):
