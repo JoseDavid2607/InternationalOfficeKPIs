@@ -155,10 +155,29 @@ st.markdown(
 
 # ── 2) HELPERS COMPARTIDOS ──────────────────────────────────────────────
 def _render_header(title: str, subtitle: str = ""):
-    sub = f'<div class="sh-sub">{subtitle}</div>' if subtitle else ""
+    # Estilos inline (no clases CSS): máxima especificidad posible, no puede
+    # perder contra ninguna hoja de estilos de Streamlit -- si el título
+    # sigue sin verse distinto con esto, el problema ya no es de CSS sino
+    # de que el despliegue no está sirviendo este archivo actualizado
+    # (revisar: ¿se reemplazó el archivo en GitHub? ¿se reinició la app en
+    # Streamlit Cloud / "Manage app" → "Reboot"? ¿caché del navegador?).
+    banner_style = (
+        "display:flex;flex-direction:column;align-items:center;padding:16px 24px 12px;"
+        f"background:linear-gradient(135deg,#7A0A3C 0%,#B00D50 55%,{PINK} 100%);"
+        "border-radius:12px;box-shadow:0 2px 8px rgba(230,17,102,.18);margin-bottom:14px;"
+    )
+    super_style = (
+        "font-size:11px;font-weight:700;letter-spacing:2px;color:#FBD6E4;"
+        "text-transform:uppercase;margin-bottom:2px;"
+    )
+    title_style = "font-size:26px;font-weight:800;color:#ffffff;text-align:center;line-height:1.2;"
+    sub_style = "font-size:13px;color:rgba(255,255,255,.80);margin-top:4px;text-align:center;"
+
+    sub = f'<div style="{sub_style}">{subtitle}</div>' if subtitle else ""
     st.markdown(
-        f'<div class="suite-header"><div class="sh-super">EIV · International Summer School</div>'
-        f'<div class="sh-title">{title}</div>{sub}</div>',
+        f'<div style="{banner_style}">'
+        f'<div style="{super_style}">EIV · International Summer School</div>'
+        f'<div style="{title_style}">{title}</div>{sub}</div>',
         unsafe_allow_html=True,
     )
 
