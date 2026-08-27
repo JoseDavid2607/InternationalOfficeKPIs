@@ -27,6 +27,7 @@ import io
 import time
 import re
 import unicodedata
+import base64
 from typing import Optional, Dict, List, Tuple
 
 try:
@@ -141,6 +142,11 @@ st.markdown(
     "color:#fff !important;font-weight:700 !important;height:44px !important;text-decoration:none !important;}"
     ".st-key-go_to_datacenter_btn a span{color:#fff !important;}"
     ".st-key-go_to_datacenter_btn a:hover{background:#B00D50 !important;}"
+    "div[class*='st-key-pdf_btn_'] div[data-testid='stDownloadButton'] button{"
+    f"background:{PINK} !important;color:#fff !important;border:none !important;"
+    "text-decoration:none !important;font-weight:700 !important;height:48px !important;"
+    "box-shadow:0 3px 10px rgba(230,17,102,.25) !important;}"
+    "div[class*='st-key-pdf_btn_'] div[data-testid='stDownloadButton'] button:hover{background:#B00D50 !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -222,26 +228,35 @@ def _show_eiv_logo(width: int):
 
 
 def _show_eiv_banner(width: Optional[int] = None, use_container_width: bool = False):
-    """El banner de portada (Banner_EIV.png), para el Data Center — distinto
-    del logo pequeño que va en el sidebar del resto de páginas."""
+    """El banner de portada (Banner_EIV.png), centrado con HTML+base64 en vez
+    de st.image -- st.image no se dejaba centrar de forma confiable con CSS
+    (el wrapper que genera Streamlit no respondía a flex/margin:auto)."""
     base = _os.path.dirname(_os.path.abspath(__file__))
-    for rel in _BANNER_CANDIDATES:
-        full = _os.path.join(base, rel)
-        if _os.path.exists(full):
-            if use_container_width:
-                st.image(full, use_container_width=True)
-            else:
-                st.image(full, width=width)
-            return
-    logo_dir = _os.path.join(base, "PICS", "LOGO", "2026")
-    if _os.path.isdir(logo_dir):
-        for fname in sorted(_os.listdir(logo_dir)):
-            if fname.lower().endswith(".png") and "banner" in fname.lower():
-                if use_container_width:
-                    st.image(_os.path.join(logo_dir, fname), use_container_width=True)
-                else:
-                    st.image(_os.path.join(logo_dir, fname), width=width)
-                return
+
+    def _find_banner_path():
+        for rel in _BANNER_CANDIDATES:
+            full = _os.path.join(base, rel)
+            if _os.path.exists(full):
+                return full
+        logo_dir = _os.path.join(base, "PICS", "LOGO", "2026")
+        if _os.path.isdir(logo_dir):
+            for fname in sorted(_os.listdir(logo_dir)):
+                if fname.lower().endswith(".png") and "banner" in fname.lower():
+                    return _os.path.join(logo_dir, fname)
+        return None
+
+    path = _find_banner_path()
+    if not path:
+        return
+    with open(path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode()
+    width_css = "100%" if use_container_width else f"{width}px"
+    st.markdown(
+        f'<div style="width:100%;text-align:center;">'
+        f'<img src="data:image/png;base64,{b64}" style="width:{width_css};max-width:100%;">'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def color_scale(pct: float) -> str:
@@ -853,7 +868,7 @@ def page_cover():
     st.markdown(f"<div style='height:0.2vh;'></div>", unsafe_allow_html=True)
     with st.container(key="cover_banner"):
         try:
-            _show_eiv_banner(width=1111)
+            _show_eiv_banner(width=777)
         except Exception:
             pass
     col_l2, col_mid2, col_r2 = st.columns([1, 2, 1])
@@ -1371,7 +1386,9 @@ def page_visiting():
     if curso != "all":
         matches = [e for e in entries if e.get("Curso") == curso]
         if matches:
-            _render_professor_detail(matches[0], entries)
+            idx_key = f"vf_prof_idx__{curso}"
+            idx = st.session_state.get(idx_key, 0) % len(matches)
+            _render_professor_detail(matches[idx], entries, siblings=matches, sib_idx=idx, sib_key=idx_key)
             return
 
     # ---- Aggregate view ----
@@ -1433,7 +1450,7 @@ def page_visiting():
                 zbuf.seek(0)
                 st.session_state["_eiv_bulk_pdf_zip"] = zbuf.getvalue()
             except ModuleNotFoundError:
-                st.caption("⚠️ PDF export needs `reportlab` in requirements.txt (not installed on this deployment yet).")
+                pass
         if st.session_state.get("_eiv_bulk_pdf_zip"):
             st.download_button(
                 "⬇️ Download ZIP", data=st.session_state["_eiv_bulk_pdf_zip"],
@@ -1730,7 +1747,8 @@ def _photo_path(profesor: str) -> str:
     return _os.path.join(base, f"PICS/PROFES/2026/{fname}.jpg")
 
 
-def _render_professor_detail(entry: dict, entries: List[dict]):
+def _render_professor_detail(entry: dict, entries: List[dict], siblings: Optional[list] = None,
+                              sib_idx: int = 0, sib_key: str = ""):
     d = compute_all()
     curso = entry["Curso"]
     profesor = entry["Profesor"]
@@ -1740,7 +1758,24 @@ def _render_professor_detail(entry: dict, entries: List[dict]):
 
     co_entries = [e for e in entries if e.get("Curso") == curso]
 
-    col_photo, col_info = st.columns([1, 3])
+    if siblings and len(siblings) > 1:
+        col_prev, col_mid_nav, col_next = st.columns([1, 8, 1])
+        with col_prev:
+            if st.button("‹", key=f"{sib_key}_prev", help="Previous faculty on this course", use_container_width=True):
+                st.session_state[sib_key] = (sib_idx - 1) % len(siblings)
+                st.rerun()
+        with col_mid_nav:
+            st.markdown(
+                f'<div style="text-align:center;font-size:11.5px;color:{MUTED};padding-top:8px;">'
+                f'Co-teaching faculty {sib_idx + 1} of {len(siblings)} on this course</div>',
+                unsafe_allow_html=True,
+            )
+        with col_next:
+            if st.button("›", key=f"{sib_key}_next", help="Next faculty on this course", use_container_width=True):
+                st.session_state[sib_key] = (sib_idx + 1) % len(siblings)
+                st.rerun()
+
+    col_photo, col_info, col_pdf = st.columns([1, 2.4, 1])
     with col_photo:
         try:
             st.image(_photo_path(profesor), width=220)
@@ -1756,11 +1791,26 @@ def _render_professor_detail(entry: dict, entries: List[dict]):
         if len(co_entries) > 1:
             st.caption(f"Co-teaching faculty: {len(co_entries)} on this course.")
 
-    st.markdown("---")
-    st.markdown("### Course Evaluation")
     ed = build_professor_eval_data(profesor)
     df_sat = load_satisfaccion()
     row = _find_satisfaction_row(df_sat, curso, profesor)
+
+    with col_pdf:
+        st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+        if ed:
+            try:
+                pdf_bytes = _build_professor_pdf(profesor, curso, ed, row if row else {})
+                with st.container(key=f"pdf_btn_{profesor}"):
+                    st.download_button(
+                        "📄 Evaluation Report (PDF)", data=pdf_bytes,
+                        file_name=f"EIV_{profesor.replace(' ', '_')}_Evaluation_Report.pdf",
+                        mime="application/pdf", key=f"dl_pdf_{profesor}", use_container_width=True,
+                    )
+            except ModuleNotFoundError:
+                pass
+
+    st.markdown("---")
+    st.markdown("### Course Evaluation")
     if not ed:
         st.info("No course evaluation data found for this professor.")
     else:
@@ -1865,19 +1915,6 @@ def _render_professor_detail(entry: dict, entries: List[dict]):
             st.markdown(_quote("Teaching assistant support to improve", _fcol(row, "Are there any aspects that should be improved by the teaching assistants?")), unsafe_allow_html=True)
             st.markdown(_quote("Visit logistics to improve", _fcol(row, "Are there any logistical aspects that should be improved?")), unsafe_allow_html=True)
             st.markdown(_quote("General observations", _fcol(row, "General observations or suggestions")), unsafe_allow_html=True)
-
-    if not ed:
-        return
-    try:
-        with st.spinner("Preparando reporte…"):
-            pdf_bytes = _build_professor_pdf(profesor, curso, ed, row if row else {})
-        st.download_button(
-            "📄 Generate Evaluation Report", data=pdf_bytes,
-            file_name=f"EIV_{profesor.replace(' ', '_')}_Evaluation_Report.pdf", mime="application/pdf",
-            key=f"dl_pdf_{profesor}",
-        )
-    except ModuleNotFoundError:
-        st.caption("⚠️ PDF export needs `reportlab` in requirements.txt (not installed on this deployment yet).")
 
 
 # ── 14) PDF — Evaluation Report per professor ────────────────────────────
