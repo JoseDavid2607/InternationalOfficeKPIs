@@ -44,17 +44,16 @@ st.set_page_config(
 )
 
 # Paleta — misma arquitectura visual que EIV_report.py (header degradado,
-# KPI cards, botones, nav superior con flechas), pero con un acento propio
-# de International Weeks: vino/oro elegante en vez del rosa/fucsia de EIV,
-# y evitando menta-azulado y morado en los elementos "de marca" (header,
-# botones, tabla). Los colores propios de cada semana (KLU/NOVA/FGV/BABSON)
-# se conservan tal cual — son identidad del socio, no "color principal".
+# KPI cards, botones, nav superior con flechas), con un acento propio de
+# International Weeks: verde yerbabuena. Los colores propios de cada
+# semana (KLU/NOVA/FGV/BABSON) se conservan tal cual — son identidad del
+# socio, no "color principal".
 INK = "#241420"; INK_SOFT = "#6E5C68"; PAPER = "#FAF8FA"
 LINE = "#E9E2E7"; MUTED = "#8C7F87"
-ACCENT = "#7A1F3D"           # vino profundo — reemplaza el rol de "PINK" de EIV
-ACCENT_DARK = "#4A1226"      # hover / degradado oscuro
-ACCENT_LIGHT = "#A9445A"     # degradado claro (nunca fucsia)
-ACCENT_SOFT = "#F3E3E7"      # fondo suave para tablas / chips
+ACCENT = "#2F8F5B"           # verde yerbabuena — reemplaza el rol de "PINK" de EIV
+ACCENT_DARK = "#1B5C3A"      # hover / degradado oscuro
+ACCENT_LIGHT = "#5FBE8B"     # degradado claro
+ACCENT_SOFT = "#E1F3E9"      # fondo suave para tablas / chips
 GOLD = "#C9A227"             # acento cálido secundario (detalles, no botones)
 INCOME = "#2E8B57"; INCOME_SOFT = "#E3F3EA"
 EXPENSE = "#C23B3B"; EXPENSE_SOFT = "#FBE6E6"
@@ -65,9 +64,9 @@ st.markdown(
     f".suite-header{{display:flex;flex-direction:column;align-items:center;"
     "padding:16px 24px 12px;"
     f"background:linear-gradient(135deg,{ACCENT_DARK} 0%,{ACCENT} 55%,{ACCENT_LIGHT} 100%);"
-    f"border-radius:12px;box-shadow:0 2px 8px rgba(122,31,61,.22);margin-bottom:14px;}}"
+    f"border-radius:12px;box-shadow:0 2px 8px rgba(47,143,91,.22);margin-bottom:14px;}}"
     f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
-    "color:#F0D9DE;text-transform:uppercase;margin-bottom:2px;}}"
+    "color:#DDF3E6;text-transform:uppercase;margin-bottom:2px;}}"
     ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
     ".sh-sub{font-size:13px;color:rgba(255,255,255,.80);margin-top:4px;text-align:center;}"
     f".kv{{font-size:26px;font-weight:700;line-height:1.1;font-family:monospace;color:{INK};}}"
@@ -100,6 +99,9 @@ st.markdown(
     ".partner-card .n-label{font-size:11.5px;color:#6E5C68;margin-bottom:10px;}"
     ".margin-pill{display:inline-block;margin-top:8px;padding:3px 10px;border-radius:20px;"
     "font-size:11px;font-weight:600;}"
+    f".survey-quote{{background:#FAF8FA;border-left:3px solid {ACCENT};"
+    "border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12.5px;"
+    "font-style:italic;color:#3B2C34;}}"
     ".week-band{border-radius:16px;padding:22px 26px;display:flex;align-items:center;"
     "gap:20px;flex-wrap:wrap;}"
     ".week-band .eyebrow{font-family:monospace;font-size:11px;text-transform:uppercase;"
@@ -145,7 +147,7 @@ st.markdown(
     ".st-key-cover_enter_btn div[data-testid='stButton'] button{"
     f"background:{ACCENT} !important;border:none !important;color:#fff !important;"
     "font-size:16px !important;font-weight:700 !important;height:52px !important;"
-    "box-shadow:0 4px 14px rgba(122,31,61,.28) !important;}"
+    "box-shadow:0 4px 14px rgba(47,143,91,.28) !important;}"
     f".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{{background:{ACCENT_DARK} !important;}}"
     ".st-key-cover_banner{display:flex !important;justify-content:center !important;width:100% !important;}"
     ".st-key-cover_banner div[data-testid='stImage']{margin:0 auto !important;width:auto !important;"
@@ -158,6 +160,12 @@ st.markdown(
     "color:#fff !important;font-weight:700 !important;height:44px !important;text-decoration:none !important;}"
     ".st-key-go_to_datacenter_btn a span{color:#fff !important;}"
     f".st-key-go_to_datacenter_btn a:hover{{background:{ACCENT_DARK} !important;}}"
+    "div[class*='st-key-gen_report_btn_'] div[data-testid='stDownloadButton'] button{"
+    f"background:{ACCENT} !important;color:#fff !important;border:none !important;"
+    "text-decoration:none !important;font-weight:700 !important;height:50px !important;"
+    f"box-shadow:0 3px 10px rgba(47,143,91,.28) !important;}}"
+    "div[class*='st-key-gen_report_btn_'] div[data-testid='stDownloadButton'] button:hover{"
+    f"background:{ACCENT_DARK} !important;}}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -276,37 +284,56 @@ def _show_weeks_banner(width: Optional[int] = None, use_container_width: bool = 
     )
 
 
-def _normalize_name_for_file(name: str) -> List[str]:
-    """Genera variantes de nombre de archivo (con/sin acentos, guion/underscore)
-    a partir del nombre del profesor, para tolerar la inconsistencia observada
-    en los archivos de muestra (eduardo-boada.jpg vs marcus_thiell.jpg)."""
-    import unicodedata
-    n = str(name).strip()
-    n_ascii = unicodedata.normalize("NFKD", n).encode("ascii", "ignore").decode().strip()
-    parts = n_ascii.lower().split()
-    variants = set()
-    if parts:
-        variants.add("-".join(parts))
-        variants.add("_".join(parts))
-    variants.add(n_ascii.lower().replace(" ", "-"))
-    variants.add(n_ascii.lower().replace(" ", "_"))
-    return [v for v in variants if v]
+def _name_tokens(name: str) -> set:
+    """Tokens en minúsculas y sin acentos (p.ej. 'Marcus Thiell' -> {marcus,
+    thiell}), usados para emparejar el profesor con su foto sin importar si
+    el archivo usa guion o underscore, o si trae solo parte del nombre."""
+    import unicodedata, re as _re
+    n_ascii = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode()
+    return set(t for t in _re.split(r"[^a-zA-Z]+", n_ascii.lower()) if t)
 
 
 def _photo_path(professor: str) -> Optional[str]:
+    """Busca la foto del profesor en PICS/PROFES/2026 emparejando por
+    tokens del nombre (tolera 'eduardo-boada.jpg' vs 'Eduardo Boada', y
+    'marcus_thiell.jpg' vs 'Marcus Thiell'; también resuelve el caso de
+    varios profesores en un mismo campo, p.ej. 'Marcus Thiell / Natalia
+    Franco', probando cada nombre por separado)."""
     if not professor:
         return None
     base = _os.path.dirname(_os.path.abspath(__file__))
-    candidates = []
+    photo_dir = None
+    for d in ("PICS/PROFES/2026", "PICS/PROFES", "pics/PROFES/2026"):
+        full = _os.path.join(base, d)
+        if _os.path.isdir(full):
+            photo_dir = full
+            break
+    if not photo_dir:
+        return None
+
+    files = [f for f in _os.listdir(photo_dir) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+    if not files:
+        return None
+
+    import re as _re
+    individual_names = [n for n in _re.split(r"[,/&]| y | and ", professor) if n.strip()] or [professor]
     if professor in PHOTO_FILENAME_OVERRIDES:
-        candidates.append(PHOTO_FILENAME_OVERRIDES[professor])
-    candidates += _normalize_name_for_file(professor)
-    for stem in candidates:
-        for rel in (f"PICS/PROFES/2026/{stem}.jpg", f"PICS/PROFES/{stem}.jpg",
-                    f"PICS/PROFES/2026/{stem}.jpeg", f"PICS/PROFES/2026/{stem}.png"):
-            full = _os.path.join(base, rel)
-            if _os.path.exists(full):
-                return full
+        for f in files:
+            if _os.path.splitext(f)[0] == PHOTO_FILENAME_OVERRIDES[professor]:
+                return _os.path.join(photo_dir, f)
+
+    best_file, best_score = None, 0
+    for person in individual_names:
+        p_tokens = _name_tokens(person)
+        if not p_tokens:
+            continue
+        for f in files:
+            f_tokens = _name_tokens(_os.path.splitext(f)[0])
+            score = len(p_tokens & f_tokens)
+            if score > best_score:
+                best_score, best_file = score, f
+    if best_file and best_score > 0:
+        return _os.path.join(photo_dir, best_file)
     return None
 
 
@@ -401,7 +428,13 @@ PRODUCT_TO_KEY = {
     "NOVA": "NOVA", "FGV": "FGV", "BABSON": "BABSON",
 }
 
+# Nota: los emojis de bandera (🇩🇪 🇵🇹 🇧🇷 🇺🇸) son en realidad 2 "regional
+# indicator symbols" combinados — sin una fuente de emoji con esa ligadura,
+# el navegador/Streamlit cae al código de país en texto plano (p.ej. "BR",
+# "PT"), que fue justo lo que se veía en la navegación. Se reemplazan por un
+# emoji de un solo glifo, distinto por semana, que siempre renderiza igual.
 FLAGS = {"Germany": "🇩🇪", "Portugal": "🇵🇹", "Brazil": "🇧🇷", "USA": "🇺🇸"}
+WEEK_ICON = {"KLU": "🍺", "NOVA": "⛵", "FGV": "⚽", "BABSON": "🗽"}
 
 BOGOTA = (4.711, -74.0721)
 
@@ -692,8 +725,9 @@ def page_cover():
                 )
             with fc2:
                 st.download_button(
-                    "⇩", data=_download_drive_file_bytes(fid), file_name=fname,
+                    "", data=_download_drive_file_bytes(fid), file_name=fname,
                     key=f"cover_dl_{fname}", use_container_width=True,
+                    icon=":material/download:",
                 )
         st.markdown(
             f'<div style="text-align:center;margin-top:14px;font-size:11.5px;color:{MUTED};">'
@@ -705,16 +739,16 @@ def page_cover():
 # ── 8) PÁGINA — Overview ─────────────────────────────────────────────────
 def _partner_card(w: dict, show_link: bool = True):
     gender_txt = "   ".join(f'{"♀" if g == "F" else "♂"} {n}' for g, n in w["gender"].items())
-    flag = FLAGS.get(w["country"], "")
+    flag = WEEK_ICON.get(w["key"], "🌍")
     st.markdown(
         f'<div class="partner-card" style="--wc:{w["color"]};">'
         f'<div class="loc">{flag} {w["location"]}, {w["country"]} · {w["dates"]}</div>'
         f'<div class="n">{w["abroadCount"]}</div><div class="n-label">Students Abroad</div>'
         f'<div style="font-family:monospace;font-size:16px;font-weight:600;margin-bottom:10px;">{gender_txt}</div>'
         f'<div style="display:flex;justify-content:space-between;border-top:1px solid {LINE};'
-        f'padding-top:8px;font-size:12px;"><span>Ingresos</span>'
+        f'padding-top:8px;font-size:12px;"><span>Income</span>'
         f'<span style="font-family:monospace;color:{INCOME};font-weight:600;">{_fmt_money(w["ingresos"])}</span></div>'
-        f'<div style="display:flex;justify-content:space-between;font-size:12px;"><span>Egresos</span>'
+        f'<div style="display:flex;justify-content:space-between;font-size:12px;"><span>Expenses</span>'
         f'<span style="font-family:monospace;color:{EXPENSE};font-weight:600;">{_fmt_money(w["egresos"])}</span></div>'
         f'<div style="display:flex;justify-content:space-between;font-size:12px;"><span>Balance</span>'
         f'<span style="font-family:monospace;font-weight:600;">{_fmt_money(w["balance"])}</span></div>'
@@ -723,7 +757,19 @@ def _partner_card(w: dict, show_link: bool = True):
         unsafe_allow_html=True,
     )
     if show_link:
-        st.page_link(week_page_by_key[w["key"]], label=f"Open {w['key']} →")
+        btn_key = f"open_week_btn_{w['key']}"
+        st.markdown(
+            f"<style>.st-key-{btn_key} a{{display:flex !important;align-items:center;"
+            "justify-content:center;gap:6px;margin-top:10px;"
+            f"background:{w['color']} !important;border:none !important;border-radius:10px !important;"
+            "color:#fff !important;font-weight:700 !important;height:44px !important;"
+            f"text-decoration:none !important;box-shadow:0 3px 10px rgba(0,0,0,.15) !important;}}"
+            f".st-key-{btn_key} a span{{color:#fff !important;}}"
+            f".st-key-{btn_key} a:hover{{opacity:.88;}}</style>",
+            unsafe_allow_html=True,
+        )
+        with st.container(key=btn_key):
+            st.page_link(week_page_by_key[w["key"]], label=f"Open {w['key']} Report →")
 
 
 def page_overview():
@@ -733,6 +779,7 @@ def page_overview():
         "Graduate international immersions this year, each pairing a partner business school abroad with a School of Management cohort.",
     )
 
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns(3)
     with col1:
         _kpi("International Weeks", totals["weeks"])
@@ -743,13 +790,13 @@ def page_overview():
 
     col_fin, col_margin = st.columns([1, 2])
     with col_fin:
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            _kpi("Total Income", _fmt_money(totals["totalIncome"]), "income")
-        with c2:
-            _kpi("Total Expenses", _fmt_money(totals["totalExpense"]), "expense")
-        with c3:
-            _kpi("Total Balance", _fmt_money(totals["totalBalance"]), "balance")
+        st.markdown("##### Financial Balance")
+        _kpi("Total Income", _fmt_money(totals["totalIncome"]), "income")
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _kpi("Total Expenses", _fmt_money(totals["totalExpense"]), "expense")
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _kpi("Total Balance", _fmt_money(totals["totalBalance"]), "balance")
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
         _kpi("Total Margin", f"{totals['marginPct']}%")
     with col_margin:
         st.markdown("##### Margin by Week")
@@ -767,23 +814,37 @@ def page_overview():
 
     st.markdown("---")
     st.markdown("### Where Students Went")
-    st.caption("Choose a week to focus the map and program breakdown, or leave on 'All' to see everyone.")
-    focus = st.selectbox("Focus week", ["All International Weeks"] + [w["key"] for w in weeks], key="ov_focus")
-    focus_key = None if focus == "All International Weeks" else focus
+    st.caption("Click a marker on the map to see that week's partner card, roster, and financials.")
+
+    # Lee la selección del click anterior sobre el mapa (antes de construirlo) —
+    # mismo patrón que el mapa clicable de Summary en EIV_report.py.
+    _sel = st.session_state.get("ov_map", {})
+    _sel_points = _sel.get("selection", {}).get("points", []) if _sel else []
+    focus_key = None
+    if _sel_points:
+        cd = _sel_points[0].get("customdata")
+        if cd:
+            focus_key = cd[0] if isinstance(cd, (list, tuple)) else cd
 
     col_map, col_card = st.columns([2, 1])
     with col_map:
         fig_map = go.Figure()
         for w in weeks:
+            highlight = not focus_key or focus_key == w["key"]
             fig_map.add_trace(go.Scattergeo(
                 lat=[BOGOTA[0], w["lat"]], lon=[BOGOTA[1], w["lon"]], mode="lines",
-                line=dict(color=w["color"], width=1.6), opacity=0.7, showlegend=False, hoverinfo="skip",
+                line=dict(color=w["color"], width=1.6), opacity=0.7 if highlight else 0.12,
+                showlegend=False, hoverinfo="skip",
             ))
         fig_map.add_trace(go.Scattergeo(
             lat=[w["lat"] for w in weeks], lon=[w["lon"] for w in weeks], mode="markers+text",
-            text=[w["key"] for w in weeks], textposition="top center", textfont=dict(size=11, color=INK),
-            marker=dict(size=13, color=[w["color"] for w in weeks], line=dict(color="#fff", width=1.5)),
-            hovertext=[f'{w["location"]}, {w["country"]} — {w["abroadCount"]} students' for w in weeks],
+            text=[w["key"] for w in weeks], customdata=[w["key"] for w in weeks],
+            textposition="top center",
+            textfont=dict(size=11, color=[INK if (not focus_key or focus_key == w["key"]) else "#C9BEC5" for w in weeks]),
+            marker=dict(size=13, color=[w["color"] for w in weeks],
+                        opacity=[1 if (not focus_key or focus_key == w["key"]) else 0.25 for w in weeks],
+                        line=dict(color="#fff", width=1.5)),
+            hovertext=[f'{w["location"]}, {w["country"]} — {w["abroadCount"]} students — click to select' for w in weeks],
             hoverinfo="text",
         ))
         fig_map.add_trace(go.Scattergeo(
@@ -796,13 +857,17 @@ def page_overview():
                              projection_type="natural earth")
         fig_map.update_layout(margin=dict(t=6, r=6, b=6, l=6), height=380, showlegend=False,
                                paper_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_map, use_container_width=True)
+        st.plotly_chart(fig_map, use_container_width=True, on_select="rerun",
+                         selection_mode="points", key="ov_map")
+        if focus_key:
+            st.caption("Click the marker again (or double-click the map) to clear the selection.")
     with col_card:
         if focus_key:
-            w_sel = next(w for w in weeks if w["key"] == focus_key)
-            _partner_card(w_sel)
+            w_sel = next((w for w in weeks if w["key"] == focus_key), None)
+            if w_sel:
+                _partner_card(w_sel)
         else:
-            st.info("Select a week above to see its partner card here.")
+            st.info("Click a week's marker on the map to see its partner card here.")
 
     # ---- Participants by Program ----
     st.markdown("##### Participants by Program")
@@ -831,7 +896,7 @@ def page_overview():
         )
         st.plotly_chart(fig_p, use_container_width=True)
     else:
-        st.info("No hay datos de programas para este filtro.")
+        st.info("No program data available for this filter.")
 
     st.markdown("---")
     st.markdown("### By Partner")
@@ -847,7 +912,7 @@ def page_week(key: str):
     weeks, _ = build_weeks()
     w = next((x for x in weeks if x["key"] == key), None)
     if w is None:
-        st.error(f"No encontré datos para la semana '{key}'.")
+        st.error(f"No data found for week '{key}'.")
         return
 
     _render_header(w["name"], w["course"])
@@ -864,35 +929,43 @@ def page_week(key: str):
         f'{logo_html}'
         f'<div><div class="eyebrow" style="color:{w["color"]};">{w["name"]}</div>'
         f'<h2>{w["course"]}</h2>'
-        f'<div class="loc">{FLAGS.get(w["country"], "")} {w["location"]}, {w["country"]} · {w["dates"]}</div></div>'
-        f'<div style="margin-left:auto;background:#fff;border-radius:12px;padding:8px 14px;">'
-        f'<div style="font-weight:600;font-size:13px;">{w["professor"]}</div>'
-        f'<div style="font-size:10.5px;color:{MUTED};text-transform:uppercase;font-family:monospace;">Faculty Lead</div></div>'
+        f'<div class="loc">{WEEK_ICON.get(w["key"], "🌍")} {w["location"]}, {w["country"]} · {w["dates"]}</div></div>'
         f'</div>',
         unsafe_allow_html=True,
     )
 
+    # ---- Faculty lead card (photo + name), en su propia fila para que la
+    # foto se vea siempre a tamaño legible en vez de escondida en el band ----
     prof_photo = _photo_path(w["professor"])
-    if prof_photo:
-        col_photo, col_photo_gap = st.columns([1, 5])
-        with col_photo:
-            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+    col_photo, col_prof, col_gap = st.columns([1, 3, 4])
+    with col_photo:
+        if prof_photo:
             try:
-                st.image(prof_photo, width=110)
+                st.image(prof_photo, width=120)
             except Exception:
                 pass
+    with col_prof:
+        st.markdown(
+            f'<div style="padding-top:{"22px" if prof_photo else "0"};">'
+            f'<div style="font-weight:700;font-size:16px;color:{INK};">{w["professor"]}</div>'
+            f'<div style="font-size:11px;color:{MUTED};text-transform:uppercase;'
+            f'font-family:monospace;letter-spacing:.04em;">Faculty Lead</div></div>',
+            unsafe_allow_html=True,
+        )
 
+    st.markdown("<div style='height:22px;'></div>", unsafe_allow_html=True)
     col1, col2 = st.columns([2, 1])
     with col1:
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            _kpi("Ingresos", _fmt_money(w["ingresos"]), "income")
+            _kpi("Income", _fmt_money(w["ingresos"]), "income")
         with c2:
-            _kpi("Egresos", _fmt_money(w["egresos"]), "expense")
+            _kpi("Expenses", _fmt_money(w["egresos"]), "expense")
         with c3:
             _kpi("Balance", _fmt_money(w["balance"]), "balance")
         with c4:
-            _kpi("% Margin", f'{w["marginPct"]}%')
+            _kpi("Margin", f'{w["marginPct"]}%')
     with col2:
         c1, c2 = st.columns(2)
         with c1:
@@ -947,24 +1020,45 @@ def page_week(key: str):
         )
         st.plotly_chart(fig_pyr, use_container_width=True)
     else:
-        st.info("No hay participantes matriculados para esta semana.")
+        st.info("No enrolled/traveling participants for this week yet.")
 
     # ---- Roster ----
+    # Estudiantes sin ningún pago registrado quedan al final y en gris tenue,
+    # como si no hubieran viajado — el resto conserva el orden original.
     st.markdown(f'### Roster ({w["registeredCount"]} registered · {w["abroadCount"]} traveled)')
+    participants_sorted = sorted(
+        w["participantsList"], key=lambda p: 0 if (p["pago1"] or p["pago2"]) else 1
+    )
     roster_df = pd.DataFrame([{
         "Name": p["nombre"], "Code": p["codigo"] if p["codigo"] else "—", "Program": p["programa"],
-        "Type": p["tipoPrograma"], "1er Pago": tick(p["pago1"]), "2do Pago": tick(p["pago2"]),
-        "Matrícula": tick(p["matricula"]),
-    } for p in w["participantsList"]])
-    st.dataframe(roster_df, use_container_width=True, hide_index=True, height=420)
+        "Type": p["tipoPrograma"], "1st Payment": tick(p["pago1"]), "2nd Payment": tick(p["pago2"]),
+        "Enrolled": tick(p["matricula"]),
+        "_no_payment": not (p["pago1"] or p["pago2"]),
+    } for p in participants_sorted])
+
+    def _style_roster(d: pd.DataFrame) -> pd.DataFrame:
+        s = pd.DataFrame("", index=d.index, columns=d.columns)
+        for i in d.index:
+            if d.loc[i, "_no_payment"]:
+                for c in d.columns:
+                    if c != "_no_payment":
+                        s.loc[i, c] = "color:#ADA6AB;"
+        return s
+
+    styled_roster = (
+        roster_df.style.apply(_style_roster, axis=None)
+        .hide(axis="columns", subset=["_no_payment"])
+    )
+    st.dataframe(styled_roster, use_container_width=True, hide_index=True, height=420)
     st.download_button(
         "Download as Excel",
         data=_xlsx_bytes(pd.DataFrame([{
             "Name": p["nombre"], "Code": p["codigo"], "Program": p["programa"], "Type": p["tipoPrograma"],
-            "Primer Pago": "Yes" if p["pago1"] else "No", "Segundo Pago": "Yes" if p["pago2"] else "No",
-            "Matrícula": "Yes" if p["matricula"] else "No",
-        } for p in w["participantsList"]]), "Roster"),
+            "1st Payment": "Yes" if p["pago1"] else "No", "2nd Payment": "Yes" if p["pago2"] else "No",
+            "Enrolled": "Yes" if p["matricula"] else "No",
+        } for p in participants_sorted]), "Roster"),
         file_name=f'{w["key"]}_Roster.xlsx', key=f'dl_roster_{w["key"]}',
+        icon=":material/download:",
     )
 
     # ---- Survey ----
@@ -1004,18 +1098,25 @@ def page_week(key: str):
             st.markdown(f'**{g["label"]} ({g["n"]})**')
             if g["items"]:
                 with st.container(height=200):
-                    for item in g["items"]:
-                        st.markdown(f"- {item}")
+                    quotes_html = "".join(
+                        f'<div class="survey-quote">“{item}”</div>' for item in g["items"]
+                    )
+                    st.markdown(quotes_html, unsafe_allow_html=True)
             else:
                 st.caption("No comments for this question.")
 
-    with st.spinner("Preparando reporte…"):
+    st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
+    with st.spinner("Preparing report…"):
         pdf_bytes = _build_week_survey_pdf(w)
-    st.download_button(
-        "📄 Generate Evaluation Report", data=pdf_bytes,
-        file_name=f'ISS_{w["key"]}_Evaluation_Report.pdf', mime="application/pdf",
-        key=f'dl_pdf_{w["key"]}',
-    )
+    col_l, col_mid, col_r = st.columns([1, 2, 1])
+    with col_mid:
+        with st.container(key=f"gen_report_btn_{w['key']}"):
+            st.download_button(
+                "📄 Generate Evaluation Report", data=pdf_bytes,
+                file_name=f'ISS_{w["key"]}_Evaluation_Report.pdf', mime="application/pdf",
+                key=f'dl_pdf_{w["key"]}', use_container_width=True,
+                icon=":material/picture_as_pdf:",
+            )
 
 
 # ── 10) PÁGINA — Financial Detail ────────────────────────────────────────
@@ -1027,6 +1128,7 @@ def page_financial():
         "\"Executed\" fills in once a line item is reconciled.",
     )
 
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         _kpi("Total Income", _fmt_money(totals["totalIncome"]), "income")
@@ -1037,12 +1139,12 @@ def page_financial():
     with c4:
         _kpi("Total Margin", f'{totals["marginPct"]}%')
 
-    st.markdown("##### Ingresos vs. Egresos by Week")
+    st.markdown("##### Income vs. Expenses by Week")
     fig = go.Figure()
     fig.add_trace(go.Bar(x=[w["key"] for w in weeks], y=[w["ingresos"] for w in weeks],
-                          name="Ingresos", marker=dict(color=INCOME)))
+                          name="Income", marker=dict(color=INCOME)))
     fig.add_trace(go.Bar(x=[w["key"] for w in weeks], y=[w["egresos"] for w in weeks],
-                          name="Egresos", marker=dict(color=EXPENSE)))
+                          name="Expenses", marker=dict(color=EXPENSE)))
     fig.update_layout(
         barmode="group", margin=dict(t=20, r=10, b=30, l=90),
         legend=dict(orientation="h", x=0, y=1.14), yaxis=dict(tickformat="$,.0f", gridcolor="#EFEBEE"),
@@ -1052,24 +1154,25 @@ def page_financial():
 
     st.markdown("##### Comparison")
     compare_df = pd.DataFrame([{
-        "Week": w["name"], "Ingresos": _fmt_money(w["ingresos"]), "Egresos": _fmt_money(w["egresos"]),
+        "Week": w["name"], "Income": _fmt_money(w["ingresos"]), "Expenses": _fmt_money(w["egresos"]),
         "Balance": _fmt_money(w["balance"]), "Margin": f'{w["marginPct"]}%',
     } for w in weeks] + [{
-        "Week": "Total", "Ingresos": _fmt_money(totals["totalIncome"]), "Egresos": _fmt_money(totals["totalExpense"]),
+        "Week": "Total", "Income": _fmt_money(totals["totalIncome"]), "Expenses": _fmt_money(totals["totalExpense"]),
         "Balance": _fmt_money(totals["totalBalance"]), "Margin": f'{totals["marginPct"]}%',
     }])
     st.dataframe(compare_df, use_container_width=True, hide_index=True)
 
     compare_raw = pd.DataFrame([{
-        "Week": w["name"], "Ingresos": w["ingresos"], "Egresos": w["egresos"],
+        "Week": w["name"], "Income": w["ingresos"], "Expenses": w["egresos"],
         "Balance": w["balance"], "Margin %": w["marginPct"],
     } for w in weeks] + [{
-        "Week": "Total", "Ingresos": totals["totalIncome"], "Egresos": totals["totalExpense"],
+        "Week": "Total", "Income": totals["totalIncome"], "Expenses": totals["totalExpense"],
         "Balance": totals["totalBalance"], "Margin %": totals["marginPct"],
     }])
     st.download_button(
         "Download as Excel", data=_xlsx_bytes(compare_raw, "Comparison"),
         file_name="International_Weeks_Financial_Comparison.xlsx", key="dl_fin_comparison",
+        icon=":material/download:",
     )
 
     st.markdown("---")
@@ -1120,6 +1223,7 @@ def page_financial():
         st.download_button(
             "Download as Excel", data=_xlsx_bytes(budget_full_df, "Budget"),
             file_name=f'{w["key"]}_Budget.xlsx', key=f'dl_budget_{w["key"]}',
+            icon=":material/download:",
         )
         st.markdown("---")
 
@@ -1267,7 +1371,7 @@ _weeks_for_nav, _ = build_weeks()
 
 week_page_by_key: Dict[str, st.Page] = {
     w["key"]: st.Page(functools.partial(page_week, key=w["key"]), title=w["key"],
-                       url_path=w["key"].lower(), icon=FLAGS.get(w["country"], "🎓"))
+                       url_path=w["key"].lower(), icon=WEEK_ICON.get(w["key"], "🎓"))
     for w in _weeks_for_nav
 }
 
