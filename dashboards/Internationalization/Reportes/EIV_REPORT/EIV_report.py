@@ -875,7 +875,19 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
     )
 
     d = compute_all()
-    course = next(iter(q["courses"]), None)
+    # OJO: 'nombre_curso' de BD_evaluacion_curso.xlsx viene TRUNCADO (ej.
+    # "LEAD. DISRUPT: RESIL. & INNOV"), mientras que df_listas/_curso usa el
+    # nombre COMPLETO de BD_cursos.xlsx (ej. "LEADING THROUGH DISRUPTION:
+    # BUILDING RESILIENCE AND INNOVATION") -- comparar esos dos strings
+    # directamente casi nunca calza, dejando 'inscritos' en 0 para casi
+    # todos los profesores (y por eso Response Rate salía sobre 100%: el
+    # numerador sumaba bien pero el denominador casi no acumulaba). Se
+    # resuelve el curso real por el PROFESOR (consistente entre archivos),
+    # no por el nombre truncado.
+    df_cursos_all = d["df_cursos"]
+    prof_norm_key = _norm_name(prof_name)
+    match_row = df_cursos_all[df_cursos_all["Profesor"].astype(str).apply(_norm_name) == prof_norm_key]
+    course = match_row["Curso"].iloc[0] if not match_row.empty else next(iter(q["courses"]), None)
     row = d["df_listas"][d["df_listas"]["_curso"] == course] if course else pd.DataFrame()
     inscritos = len(row)
 
