@@ -743,6 +743,7 @@ def _resolve_alias(name: str) -> str:
 def evaluation_by_professor() -> Dict[str, dict]:
     frec, _ = load_evaluacion()
     lang_map = professor_language_map()
+    periodo_eiv_col = next((c for c in frec.columns if re.sub(r"\s+", "", c).strip().casefold() == "periodo_eiv"), None)
     profs: Dict[str, dict] = {}
     for _, r in frec.iterrows():
         prof = r.get("nombre_profesor")
@@ -768,9 +769,21 @@ def evaluation_by_professor() -> Dict[str, dict]:
         d = profs.setdefault(prof, {"questions": {}, "courses": set(), "lang": lang})
         if pd.notna(r.get("nombre_curso")):
             d["courses"].add(r["nombre_curso"])
-        q = d["questions"].setdefault(qid, {"text": pregunta, "aspect": aspecto, "options": {}})
+        q = d["questions"].setdefault(qid, {"text": pregunta, "aspect": aspecto, "options": {}, "by_cursec": {}, "by_period": {}})
         n = int(r.get("respuestas_por_opcion") or 0)
         q["options"][respuesta] = q["options"].get(respuesta, 0) + n
+        cursec_val = r.get("curSec")
+        cursec_key = str(cursec_val).strip() if pd.notna(cursec_val) else "?"
+        cs = q["by_cursec"].setdefault(cursec_key, {})
+        cs[respuesta] = cs.get(respuesta, 0) + n
+        # periodo_EIV: columna nueva que identifica el periodo REAL de
+        # matrícula del estudiante que respondió (202613 EPOS / 202618
+        # Pregrado y otros) -- permite partir resultados por periodo de
+        # verdad, en vez de la heurística por prefijo de curSec.
+        periodo_val = r.get(periodo_eiv_col) if periodo_eiv_col else None
+        periodo_key = str(periodo_val).strip() if pd.notna(periodo_val) else "?"
+        pe = q["by_period"].setdefault(periodo_key, {})
+        pe[respuesta] = pe.get(respuesta, 0) + n
     return profs
 
 
@@ -780,6 +793,7 @@ def comments_by_professor() -> Dict[str, dict]:
     lang_map = professor_language_map()
     respuesta_candidates_es = ["respuesta", "Respuesta"]
     respuesta_candidates_en = ["answer", "Answer", "respuesta en inglés", "respuesta_ingles"]
+    periodo_eiv_col = next((c for c in com.columns if re.sub(r"\s+", "", c).strip().casefold() == "periodo_eiv"), None)
     profs: Dict[str, dict] = {}
     for _, r in com.iterrows():
         prof = r.get("nombre_profesor")
@@ -804,7 +818,9 @@ def comments_by_professor() -> Dict[str, dict]:
         pregunta_col = "question" if (lang == "en" and "question" in r.index and pd.notna(r.get("question"))) else "pregunta"
         d = profs.setdefault(prof, {})
         q = d.setdefault(qid, {"text": r.get(pregunta_col), "items": []})
-        q["items"].append(clean)
+        periodo_val = r.get(periodo_eiv_col) if periodo_eiv_col else None
+        periodo = str(periodo_val).strip() if pd.notna(periodo_val) else None
+        q["items"].append({"text": clean, "periodo": periodo})
     return profs
 
 
@@ -891,10 +907,74 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
     row = d["df_listas"][d["df_listas"]["_curso"] == course] if course else pd.DataFrame()
     inscritos = len(row)
 
+    # ---- División por periodo real de matrícula (columna periodo_EIV en
+    # BD_evaluacion_curso.xlsx: 202613 = EPOS/GR, 202618 = Pregrado y otros
+    # /UG) -- calcula el mismo set de estadísticas (avg, NPS, objetivos,
+    # aspectos) para CADA periodo que de verdad aparezca en las respuestas
+    # de este profesor, sin inventar una división si no hay datos.
+    PERIOD_GROUP_LABEL = {"202613": "GR", "202618": "UG"}
+    all_periods = set()
+    for qd in questions.values():
+        all_periods.update(qd.get("by_period", {}).keys())
+    all_periods.discard("?")
+
+    periods: Dict[str, dict] = {}
+    for periodo in all_periods:
+        p_aspects: Dict[str, dict] = {}
+        p_nps_counts: Dict[str, int] = {}
+        p_obj_counts: Dict[str, int] = {}
+        p_workload_counts: Dict[str, int] = {}
+        p_questions: Dict[str, dict] = {}
+        for qid, qd in questions.items():
+            opts = qd.get("by_period", {}).get(periodo, {})
+            if not opts:
+                continue
+            p_questions[qid] = {"text": qd["text"], "aspect": qd["aspect"], "options": opts}
+            for ans, c in opts.items():
+                w = LIKERT_WEIGHTS.get(ans)
+                if w is not None:
+                    asp = qd["aspect"] or "Unknown"
+                    a = p_aspects.setdefault(asp, {"sum": 0.0, "n": 0})
+                    a["sum"] += w * c
+                    a["n"] += c
+            if qid == NPS_QID:
+                for ans, c in opts.items():
+                    p_nps_counts[ans] = p_nps_counts.get(ans, 0) + c
+            if qid == OBJ_QID:
+                for ans, c in opts.items():
+                    p_obj_counts[ans] = p_obj_counts.get(ans, 0) + c
+            if qid == WORKLOAD_QID:
+                for ans, c in opts.items():
+                    p_workload_counts[ans] = p_workload_counts.get(ans, 0) + c
+        p_aspects_list = sorted(
+            [{"aspect": a, "avg": v["sum"] / v["n"], "n": v["n"]} for a, v in p_aspects.items()],
+            key=lambda x: -x["avg"],
+        )
+        p_n_total = sum(v["n"] for v in p_aspects.values())
+        p_score_total = sum(v["sum"] for v in p_aspects.values())
+        p_avg = (p_score_total / p_n_total) if p_n_total else None
+        p_nps_n = sum(p_nps_counts.values())
+        p_nps = None
+        if p_nps_n:
+            s = sum(int(m.group()) * c for ans, c in p_nps_counts.items() for m in [re.search(r"\d+", str(ans))] if m)
+            p_nps = s / p_nps_n
+        p_obj_n = sum(p_obj_counts.values())
+        p_obj_pct = None
+        if p_obj_n:
+            todos = sum(c for ans, c in p_obj_counts.items() if str(ans).strip().casefold() in OBJ_ALL_VALUES)
+            p_obj_pct = todos / p_obj_n * 100
+        periods[periodo] = {
+            "group": PERIOD_GROUP_LABEL.get(periodo, periodo), "avg": p_avg, "n": p_n_total,
+            "nps": p_nps, "npsN": p_nps_n, "objectivesAllPct": p_obj_pct, "objN": p_obj_n,
+            "respondents": p_nps_n, "aspects": p_aspects_list, "questions": p_questions,
+            "workloadCounts": p_workload_counts,
+        }
+
     return {
         "avg": avg, "n": total_n, "nps": nps, "npsN": nps_n, "objectivesAllPct": obj_pct, "objN": obj_n,
         "workloadCounts": workload_counts, "aspects": aspects_list, "respondents": nps_n,
         "inscritos": inscritos, "course": course, "questions": questions, "lang": q.get("lang", "en"),
+        "periods": periods,
     }
 
 
@@ -1898,7 +1978,8 @@ def _render_professor_detail(entry: dict, entries: List[dict], siblings: Optiona
                 if group["items"]:
                     with st.container(height=200):
                         for item in group["items"]:
-                            st.markdown(f'<div class="prof-quote">“{item}”</div>', unsafe_allow_html=True)
+                            tag = f'<strong style="color:{PINK};">[{item["periodo"]}]</strong> ' if item.get("periodo") else ""
+                            st.markdown(f'<div class="prof-quote">{tag}“{item["text"]}”</div>', unsafe_allow_html=True)
                 else:
                     st.caption("No comments for this question.")
 
@@ -2215,22 +2296,78 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         c.drawRightString((PW - 12) * mm, 4 * mm, str(page_num))
 
     page_num = 1
+    PERIOD_LABELS = {"202613": "GR", "202618": "UG"}
+    PERIOD_TOTAL_LABELS = {"202613": "GR — 202613", "202618": "UG — 202618"}
 
-    # ---- Página 1: banda + título de curso + KPIs + distribución por periodo ----
+    # ---- Página 1: banda + título de curso centrado + matrícula por
+    # periodo (GR/UG) con su gráfica de programas debajo -- los KPIs de
+    # respuesta van DESPUÉS de esto, no antes ----
     draw_stats_header()
     y = 34.0
     c.setFillColor(pink)
     c.setFont("Helvetica-Bold", 17)
     course_lines = textwrap.wrap(str(info["curso"] if info else (curso or "")), width=52) or [""]
     for i, line in enumerate(course_lines):
-        c.drawString(mg * mm, top_pt(y + i * 7), line)
+        c.drawCentredString((mg + cW / 2) * mm, top_pt(y + i * 7), line)
     y += len(course_lines) * 7 + 3
     if info:
         c.setFillColor(muted)
         c.setFont("Helvetica", 8.5)
-        c.drawString(mg * mm, top_pt(y), f"Block {info['bloque']}  ·  {info['modalidad']}")
+        c.drawCentredString((mg + cW / 2) * mm, top_pt(y), f"Block {info['bloque']}  ·  {info['modalidad']}")
+        y += 9
+
+    if period_program_dist:
+        pkeys = list(period_program_dist.keys())
+        bw2 = cW / max(len(pkeys), 1)
+        for i, pk in enumerate(pkeys):
+            total_p = sum(n for _, n in period_program_dist[pk])
+            bx = mg + i * bw2
+            c.setFillColor(rl_colors.HexColor("#FBE3ED"))
+            c.roundRect((bx + 1) * mm, top_pt(y + 16), (bw2 - 3) * mm, 16 * mm, 3 * mm, fill=1, stroke=0)
+            c.setFillColor(pink)
+            c.setFont("Helvetica-Bold", 13)
+            c.drawCentredString((bx + bw2 / 2 - 1) * mm, top_pt(y + 8.5), f"{total_p} enrolled")
+            c.setFillColor(ink)
+            c.setFont("Helvetica", 6.5)
+            c.drawCentredString((bx + bw2 / 2 - 1) * mm, top_pt(y + 14),
+                                 PERIOD_TOTAL_LABELS.get(pk, pk))
+        y += 20
+        c.setFillColor(muted)
+        c.setFont("Helvetica-Oblique", 6.5)
+        c.drawCentredString((mg + cW / 2) * mm, top_pt(y), "GR = Graduate (EPOS)   ·   UG = Undergraduate")
         y += 8
 
+        # Gráficas de barras de programas, una por periodo, lado a lado
+        for i, pk in enumerate(pkeys):
+            bx = mg + i * bw2
+            pairs = period_program_dist[pk]
+            max_n = max((n for _, n in pairs), default=1)
+            yy = y
+            for prog_name, n in pairs:
+                label_lines = textwrap.wrap(str(prog_name), width=22) or [""]
+                c.setFillColor(ink)
+                c.setFont("Helvetica", 6.3)
+                c.drawString(bx * mm, top_pt(yy + 3), label_lines[0])
+                bar_x = (bx + 24) * mm
+                bar_w = (bw2 - 24 - 8) * mm
+                fill_w = max(bar_w * (n / max_n), 1)
+                c.setFillColor(rl_colors.HexColor("#F1D9E7"))
+                c.rect(bar_x, top_pt(yy + 5), bar_w, 3.6 * mm, fill=1, stroke=0)
+                c.setFillColor(pink)
+                c.rect(bar_x, top_pt(yy + 5), fill_w, 3.6 * mm, fill=1, stroke=0)
+                c.setFillColor(ink)
+                c.setFont("Helvetica-Bold", 6.3)
+                c.drawString(bar_x + bar_w + 1.5, top_pt(yy + 4), str(n))
+                yy += 6.5
+        y += max((len(period_program_dist[pk]) for pk in pkeys), default=0) * 6.5 + 6
+
+    draw_footer(page_num)
+
+    # ---- Página de KPIs de respuesta (después de la matrícula) ----
+    c.showPage()
+    page_num += 1
+    draw_continuation_header()
+    y = 24.0
     stats = [
         (f"{ed['respondents']} / {ed['inscritos']}" if ed.get("inscritos") else str(ed["respondents"]), "Students Responded"),
         (f"{ed['respondents']/ed['inscritos']*100:.0f}%" if ed.get("inscritos") else "—", "Response Rate"),
@@ -2250,73 +2387,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         c.setFont("Helvetica", 6)
         c.drawCentredString((bx + bw / 2 - 1) * mm, top_pt(y + 18), label)
     y += 32
-
-    # ---- KPI de matriculados por periodo (202613 EPOS / 202618 Pregrado y
-    # otros), justo debajo de los KPIs generales ----
-    if period_program_dist:
-        period_labels = {"202613": "202613 — EPOS Admi", "202618": "202618 — Pregrado Admin & Others"}
-        pkeys = list(period_program_dist.keys())
-        bw2 = cW / max(len(pkeys), 1)
-        for i, pk in enumerate(pkeys):
-            total_p = sum(n for _, n in period_program_dist[pk])
-            bx = mg + i * bw2
-            c.setFillColor(rl_colors.HexColor("#FBE3ED"))
-            c.roundRect((bx + 1) * mm, top_pt(y + 16), (bw2 - 3) * mm, 16 * mm, 3 * mm, fill=1, stroke=0)
-            c.setFillColor(pink)
-            c.setFont("Helvetica-Bold", 13)
-            c.drawCentredString((bx + bw2 / 2 - 1) * mm, top_pt(y + 8.5), f"{total_p} enrolled")
-            c.setFillColor(ink)
-            c.setFont("Helvetica", 6.5)
-            c.drawCentredString((bx + bw2 / 2 - 1) * mm, top_pt(y + 14), period_labels.get(pk, pk))
-        y += 22
-
     draw_footer(page_num)
-
-    # ---- Página de distribución de programas por periodo ----
-    if period_program_dist:
-        c.showPage()
-        page_num += 1
-        draw_continuation_header()
-        draw_footer(page_num)
-        y = 24.0
-        c.setFillColor(ink)
-        c.setFont("Helvetica-Bold", 11)
-        c.drawString(mg * mm, top_pt(y), "PROGRAM DISTRIBUTION BY ENROLLMENT PERIOD")
-        y += 9
-        period_labels = {"202613": "202613 — EPOS Admi", "202618": "202618 — Pregrado Admin & Others"}
-        for pk, pairs in period_program_dist.items():
-            c.setFillColor(pink)
-            c.rect(mg * mm, top_pt(y + 6.5), cW * mm, 6.5 * mm, fill=1, stroke=0)
-            c.setFillColor(rl_colors.white)
-            c.setFont("Helvetica-Bold", 8.5)
-            total_p = sum(n for _, n in pairs)
-            c.drawString((mg + 4) * mm, top_pt(y + 4.6), f"{period_labels.get(pk, pk)}  ({total_p} students)")
-            y += 10
-            max_n = max((n for _, n in pairs), default=1)
-            for prog_name, n in pairs:
-                if y + 6 > PH - 16:
-                    draw_footer(page_num)
-                    c.showPage()
-                    page_num += 1
-                    draw_continuation_header()
-                    y = 24.0
-                label_lines = textwrap.wrap(str(prog_name), width=44) or [""]
-                c.setFillColor(ink)
-                c.setFont("Helvetica", 7.5)
-                c.drawString(mg * mm, top_pt(y + 3), label_lines[0])
-                bar_x = (mg + 68) * mm
-                bar_w = (cW - 68 - 12) * mm
-                fill_w = bar_w * (n / max_n)
-                c.setFillColor(rl_colors.HexColor("#F1D9E7"))
-                c.rect(bar_x, top_pt(y + 5.2), bar_w, 4 * mm, fill=1, stroke=0)
-                c.setFillColor(pink)
-                c.rect(bar_x, top_pt(y + 5.2), fill_w, 4 * mm, fill=1, stroke=0)
-                c.setFillColor(ink)
-                c.setFont("Helvetica-Bold", 7.5)
-                c.drawString(bar_x + bar_w + 2, top_pt(y + 4), str(n))
-                y += 7
-            y += 4
-        draw_footer(page_num)
 
     # ---- Páginas de evaluación cuantitativa (barras apiladas por aspecto) ----
     c.showPage()
@@ -2369,75 +2440,88 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         c.line(mg * mm, top_pt(y), (mg + cW) * mm, top_pt(y))
         y += 5
 
-    by_aspect: Dict[str, list] = {}
-    for q in ed["questions"].values():
-        if not any(k in LIKERT_WEIGHTS for k in q["options"]):
-            continue
-        asp = q.get("aspect") or "General"
-        by_aspect.setdefault(asp, []).append(q)
+    periods_sorted = sorted(ed.get("periods", {}).items(), key=lambda kv: kv[0])
+    if not periods_sorted:
+        periods_sorted = [(None, ed)]  # respaldo: si no hay periodo_EIV, usa el combinado de siempre
 
-    section_bar("QUANTITATIVE EVALUATION")
-    for asp, qs in by_aspect.items():
-        check(16)
-        c.setFillColor(rl_colors.HexColor("#FBE3ED"))
-        c.rect(mg * mm, top_pt(y + 6.5), cW * mm, 6.5 * mm, fill=1, stroke=0)
-        c.setFillColor(ink)
-        c.setFont("Helvetica-Bold", 7.5)
-        c.drawString((mg + 4) * mm, top_pt(y + 4.6), str(asp).upper())
-        y += 9.5
-        for q in qs:
-            draw_likert_q(q)
-        y += 2
+    for period_idx, (periodo, pdata) in enumerate(periods_sorted):
+        period_label = f"Period {periodo} ({pdata.get('group', periodo)})" if periodo else "All Responses"
+        by_aspect: Dict[str, list] = {}
+        for q in pdata["questions"].values():
+            if not any(k in LIKERT_WEIGHTS for k in q["options"]):
+                continue
+            asp = q.get("aspect") or "General"
+            by_aspect.setdefault(asp, []).append(q)
 
-    nps_q = ed["questions"].get(NPS_QID)
-    obj_q = ed["questions"].get(OBJ_QID)
-    wl_q = ed["questions"].get(WORKLOAD_QID)
+        section_bar(f"RESPONSES — {period_label.upper()}")
+        for asp, qs in by_aspect.items():
+            check(16)
+            c.setFillColor(rl_colors.HexColor("#FBE3ED"))
+            c.rect(mg * mm, top_pt(y + 6.5), cW * mm, 6.5 * mm, fill=1, stroke=0)
+            c.setFillColor(ink)
+            c.setFont("Helvetica-Bold", 7.5)
+            c.drawString((mg + 4) * mm, top_pt(y + 4.6), str(asp).upper())
+            y += 9.5
+            for q in qs:
+                draw_likert_q(q)
+            y += 2
 
-    if nps_q or obj_q or wl_q:
-        c.showPage()
-        page_num += 1
-        draw_continuation_header()
+        nps_q = pdata["questions"].get(NPS_QID)
+        obj_q = pdata["questions"].get(OBJ_QID)
+        wl_q = pdata["questions"].get(WORKLOAD_QID)
+
+        if nps_q or obj_q or wl_q:
+            c.showPage()
+            page_num += 1
+            draw_continuation_header()
+            draw_footer(page_num)
+            y = 24.0
+
+        if nps_q:
+            section_bar(f"RECOMMENDATION (0-10) — {period_label}")
+            q_lines = textwrap.wrap(str(nps_q.get("text") or ""), width=110) or [""]
+            check(len(q_lines) * 4 + 20)
+            c.setFillColor(ink)
+            c.setFont("Helvetica", 8)
+            for i, line in enumerate(q_lines):
+                c.drawString(mg * mm, top_pt(y + i * 4), line)
+            y += len(q_lines) * 4 + 5
+            y = _pdf_nps_bar(c, nps_q["options"], mg, y, cW, 10, PH) + 8
+
+        if obj_q:
+            check(24)
+            section_bar(f"COURSE OBJECTIVES — {period_label}")
+            q_lines = textwrap.wrap(str(obj_q.get("text") or ""), width=110) or [""]
+            check(len(q_lines) * 4 + 20)
+            c.setFillColor(ink)
+            c.setFont("Helvetica", 8)
+            for i, line in enumerate(q_lines):
+                c.drawString(mg * mm, top_pt(y + i * 4), line)
+            y += len(q_lines) * 4 + 3
+            y = _pdf_stacked_bar(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, 7, PH)
+            y = _pdf_legend(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, PH) + 8
+
+        if wl_q:
+            check(24)
+            section_bar(f"ACADEMIC WORKLOAD — {period_label}")
+            q_lines = textwrap.wrap(str(wl_q.get("text") or ""), width=110) or [""]
+            check(len(q_lines) * 4 + 20)
+            c.setFillColor(ink)
+            c.setFont("Helvetica", 8)
+            for i, line in enumerate(q_lines):
+                c.drawString(mg * mm, top_pt(y + i * 4), line)
+            y += len(q_lines) * 4 + 3
+            y = _pdf_stacked_bar(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, 7, PH)
+            _pdf_legend(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, PH)
+
         draw_footer(page_num)
-        y = 24.0
 
-    if nps_q:
-        section_bar("RECOMMENDATION (0-10)")
-        q_lines = textwrap.wrap(str(nps_q.get("text") or ""), width=110) or [""]
-        check(len(q_lines) * 4 + 20)
-        c.setFillColor(ink)
-        c.setFont("Helvetica", 8)
-        for i, line in enumerate(q_lines):
-            c.drawString(mg * mm, top_pt(y + i * 4), line)
-        y += len(q_lines) * 4 + 5
-        y = _pdf_nps_bar(c, nps_q["options"], mg, y, cW, 10, PH) + 8
-
-    if obj_q:
-        check(24)
-        section_bar("COURSE OBJECTIVES")
-        q_lines = textwrap.wrap(str(obj_q.get("text") or ""), width=110) or [""]
-        check(len(q_lines) * 4 + 20)
-        c.setFillColor(ink)
-        c.setFont("Helvetica", 8)
-        for i, line in enumerate(q_lines):
-            c.drawString(mg * mm, top_pt(y + i * 4), line)
-        y += len(q_lines) * 4 + 3
-        y = _pdf_stacked_bar(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, 7, PH)
-        y = _pdf_legend(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, PH) + 8
-
-    if wl_q:
-        check(24)
-        section_bar("ACADEMIC WORKLOAD")
-        q_lines = textwrap.wrap(str(wl_q.get("text") or ""), width=110) or [""]
-        check(len(q_lines) * 4 + 20)
-        c.setFillColor(ink)
-        c.setFont("Helvetica", 8)
-        for i, line in enumerate(q_lines):
-            c.drawString(mg * mm, top_pt(y + i * 4), line)
-        y += len(q_lines) * 4 + 3
-        y = _pdf_stacked_bar(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, 7, PH)
-        _pdf_legend(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, PH)
-
-    draw_footer(page_num)
+        if period_idx < len(periods_sorted) - 1:
+            c.showPage()
+            page_num += 1
+            draw_continuation_header()
+            draw_footer(page_num)
+            y = 24.0
 
     # ---- Página de comentarios ----
     c.showPage()
@@ -2490,8 +2574,9 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
                 c.drawString(mg * mm, top_pt(y), "No comments for this question.")
                 y += 6
                 continue
-            for i, txt in enumerate(g["items"]):
-                lines = textwrap.wrap(f'{i + 1}. "{txt}"', width=115) or [""]
+            for i, item in enumerate(g["items"]):
+                tag = f'[{item["periodo"]}] ' if item.get("periodo") else ""
+                lines = textwrap.wrap(f'{i + 1}. {tag}"{item["text"]}"', width=115) or [""]
                 needed = len(lines) * 4 + 2
                 ensure_space(needed)
                 c.setFont("Helvetica", 8)
