@@ -57,10 +57,11 @@ st.markdown(
     "padding:16px 24px 12px;"
     f"background:linear-gradient(135deg,#7A0A3C 0%,#B00D50 55%,{PINK} 100%);"
     "border-radius:12px;box-shadow:0 2px 8px rgba(230,17,102,.18);margin-bottom:14px;}}"
-    f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
+    f".sh-super{{font-size:11px;font-weight:900;letter-spacing:2px;"
+    "font-family:'Arial Black',Arial,sans-serif;"
     "color:#FBD6E4;text-transform:uppercase;margin-bottom:2px;}}"
-    ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
-    ".sh-sub{font-size:13px;color:rgba(255,255,255,.75);margin-top:4px;text-align:center;}"
+    ".sh-title{font-size:29px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
+    ".sh-sub{font-size:13px;color:#FDF0F6;margin-top:4px;text-align:center;}"
     f".kv{{font-size:24px;font-weight:700;line-height:1.1;font-family:monospace;color:{INK};}}"
     f".kv.accent{{color:{PINK};}}"
     f".kl{{font-size:11px;font-weight:600;color:{MUTED};"
@@ -129,6 +130,8 @@ st.markdown(
     "font-size:16px !important;font-weight:700 !important;height:52px !important;"
     "box-shadow:0 4px 14px rgba(230,17,102,.28) !important;}"
     ".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{background:#B00D50 !important;}"
+    ".st-key-cover_banner{display:flex;justify-content:center;}"
+    ".st-key-cover_banner img{margin:0 auto;display:block;}"
     ".st-key-go_to_datacenter_btn a{"
     f"display:flex !important;align-items:center;justify-content:center;gap:6px;"
     f"background:{PINK} !important;border:none !important;border-radius:10px !important;"
@@ -844,13 +847,14 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
 # ── 8) PÁGINA — Cover (portada, sin sidebar ni nav) ──────────────────────
 # ── 8) PÁGINA — Cover (portada, funciona como Data Center — sin sidebar) ──
 def page_cover():
-    st.markdown(f"<div style='height:4vh;'></div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='height:0.5vh;'></div>", unsafe_allow_html=True)
     col_l, col_mid, col_r = st.columns([1, 2, 1])
     with col_mid:
-        try:
-            _show_eiv_banner(width=550)  # ~30% más chico que el ancho de contenedor que tenía antes
-        except Exception:
-            pass
+        with st.container(key="cover_banner"):
+            try:
+                _show_eiv_banner(width=660)  # 550 * 1.2 (20% más grande)
+            except Exception:
+                pass
     col_l2, col_mid2, col_r2 = st.columns([1, 2, 1])
     with col_mid2:
         st.markdown(
@@ -1100,13 +1104,13 @@ def page_summary():
     with col_donut:
         st.markdown("##### By Area")
         area_counts = tabla_f.drop_duplicates(subset=["curso"])["area"].value_counts()
-        area_labels = [str(a).replace(" & ", " &<br>") for a in area_counts.index]
+        area_labels = [f"<b>{str(a).replace(' & ', ' &<br>')}</b>" for a in area_counts.index]
         fig_area = go.Figure(go.Pie(
             labels=area_labels, values=area_counts.values, hole=0.55,
             marker=dict(colors=[BLUE, PURPLE, PINK, GREEN, "#F2994A", "#3FA34D", "#8C7F87"],
                         line=dict(color="#fff", width=1.5)),
             textinfo="label+value", textposition="inside", insidetextorientation="horizontal",
-            textfont=dict(size=13, color=INK),
+            textfont=dict(size=15, color=INK),
         ))
         fig_area.update_layout(margin=dict(t=10, r=10, b=10, l=10), showlegend=False,
                                 paper_bgcolor="rgba(0,0,0,0)", height=460, uniformtext_minsize=10,
@@ -1713,7 +1717,12 @@ def _render_insight_cards(cards: List[Tuple[str, str, str]]):
 
 def _photo_path(profesor: str) -> str:
     fname = PHOTO_FILENAME_OVERRIDES.get(profesor, profesor.title())
-    return f"PICS/PROFES/{fname}.jpg"
+    base = _os.path.dirname(_os.path.abspath(__file__))
+    for candidate in (f"PICS/PROFES/2026/{fname}.jpg", f"PICS/PROFES/{fname}.jpg"):
+        full = _os.path.join(base, candidate)
+        if _os.path.exists(full):
+            return full
+    return _os.path.join(base, f"PICS/PROFES/2026/{fname}.jpg")
 
 
 def _render_professor_detail(entry: dict, entries: List[dict]):
