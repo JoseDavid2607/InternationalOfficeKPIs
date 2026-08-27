@@ -2629,18 +2629,28 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             c.drawString(col_x[ci] * mm, top_pt(y + 4), col_title[ci])
         y += 8
 
-        def check_dual(y_l, y_r, needed):
-            nonlocal page_num
-            if max(y_l, y_r) + needed > PH - 16:
+        for asp in all_aspects:
+            qs_l = by_aspect_cols[0].get(asp, [])
+            qs_r = by_aspect_cols[1].get(asp, [])
+            # Revisa el bloque COMPLETO del aspecto (encabezado + TODAS las
+            # preguntas de AMBAS columnas) de una sola vez, antes de dibujar
+            # nada -- antes se revisaba pregunta por pregunta comparando
+            # max(y_l, y_r), y como las columnas se dibujan una después de
+            # la otra (todo el periodo 13 primero, luego todo el 18), el
+            # y_l ya "gastado" del periodo 13 terminado quedaba cerca del
+            # fondo de la página y forzaba un salto de página innecesario
+            # justo al empezar el periodo 18, aunque su propio espacio
+            # disponible (y_r) sí alcanzaba.
+            total_l = sum(estimate_q_height(q, col_w) for q in qs_l)
+            total_r = sum(estimate_q_height(q, col_w) for q in qs_r)
+            block_needed = 8.5 + max(total_l, total_r)
+            if y + min(block_needed, PH - 40) > PH - 16 and y > 24.0:
                 draw_footer(page_num)
                 c.showPage()
                 page_num += 1
                 draw_continuation_header()
-                return 24.0, 24.0
-            return y_l, y_r
+                y = 24.0
 
-        for asp in all_aspects:
-            check(16)
             for ci in range(2):
                 c.setFillColor(rl_colors.HexColor("#FBE3ED"))
                 c.rect(col_x[ci] * mm, top_pt(y + 6), col_w * mm, 6 * mm, fill=1, stroke=0)
@@ -2649,11 +2659,9 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
                 c.drawString((col_x[ci] + 3) * mm, top_pt(y + 4.3), str(asp).upper())
             y_start = y + 8.5
             y_l, y_r = y_start, y_start
-            for q in by_aspect_cols[0].get(asp, []):
-                y_l, y_r = check_dual(y_l, y_r, estimate_q_height(q, col_w))
+            for q in qs_l:
                 y_l = draw_likert_q_col(q, col_x[0], col_w, y_l)
-            for q in by_aspect_cols[1].get(asp, []):
-                y_l, y_r = check_dual(y_l, y_r, estimate_q_height(q, col_w))
+            for q in qs_r:
                 y_r = draw_likert_q_col(q, col_x[1], col_w, y_r)
             y = max(y_l, y_r) + 1
 
