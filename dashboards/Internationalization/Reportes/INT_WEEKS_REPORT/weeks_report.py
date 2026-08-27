@@ -105,8 +105,9 @@ st.markdown(
     f".survey-quote{{background:#FAF8FA;border-left:3px solid {ACCENT};"
     "border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12.5px;"
     "font-style:italic;color:#3B2C34;}}"
-    ".st-key-nav_toggle{position:fixed !important;top:0.25rem;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:auto !important;max-width:96vw;}"
+    ".st-key-nav_toggle{position:fixed !important;top:0 !important;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:auto !important;max-width:96vw;background:#fff;"
+    "padding:6px 10px 4px;border-radius:0 0 10px 10px;box-shadow:0 2px 6px rgba(0,0,0,.06);}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
     "display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;width:auto !important;"
     "justify-content:center !important;align-items:center !important;gap:14px !important;"
@@ -150,7 +151,7 @@ st.markdown(
     ".st-key-cover_banner div[data-testid='stImage']{margin:0 auto !important;width:auto !important;"
     "display:flex !important;justify-content:center !important;}"
     ".st-key-cover_banner img{margin:0 auto !important;display:block !important;}"
-    ".block-container{padding-top:3.2rem !important;}"
+    ".block-container{padding-top:2.6rem !important;}"
     ".st-key-go_to_datacenter_btn a{"
     f"display:flex !important;align-items:center;justify-content:center;gap:6px;"
     f"background:{ACCENT} !important;border:none !important;border-radius:10px !important;"
@@ -936,8 +937,8 @@ def page_week(key: str):
             _logo_b64 = base64.b64encode(f.read()).decode()
         logo_html = (
             f'<img src="data:image/png;base64,{_logo_b64}" '
-            f'style="height:66px;max-width:167px;object-fit:contain;'
-            f'flex:0 0 auto;margin-right:19px;">'
+            f'style="height:80px;max-width:200px;object-fit:contain;'
+            f'flex:0 0 auto;margin-right:20px;">'
         )
 
     prof_photo = _photo_path(w["professor"])
@@ -947,7 +948,7 @@ def page_week(key: str):
         _prof_ext = "jpeg" if prof_photo.lower().endswith((".jpg", ".jpeg")) else "png"
         prof_photo_html = (
             f'<img src="data:image/{_prof_ext};base64,{_prof_b64}" '
-            'style="width:72px;height:72px;border-radius:50%;object-fit:cover;'
+            'style="width:86px;height:86px;border-radius:50%;object-fit:cover;'
             'flex:0 0 auto;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.18);">'
         )
     else:
@@ -955,25 +956,25 @@ def page_week(key: str):
 
     prof_html = (
         '<div style="margin-left:auto;flex:0 0 auto;display:flex;'
-        'flex-direction:row;align-items:center;gap:12px;">'
+        'flex-direction:row;align-items:center;gap:14px;">'
         '<div style="text-align:right;">'
-        f'<div style="font-weight:700;font-size:12px;color:{INK};white-space:nowrap;">{w["professor"]}</div>'
-        f'<div style="font-size:9px;color:{MUTED};text-transform:uppercase;'
+        f'<div style="font-weight:700;font-size:15px;color:{INK};white-space:nowrap;">{w["professor"]}</div>'
+        f'<div style="font-size:10.5px;color:{MUTED};text-transform:uppercase;'
         'font-family:monospace;letter-spacing:.04em;">Faculty Lead</div></div>'
         f'{prof_photo_html}</div>'
     )
 
     band_style = (
         "display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;"
-        f"border-radius:12px;padding:16px 19px;background:{w['colorSoft']};"
+        f"border-radius:12px;padding:20px 24px;background:{w['colorSoft']};"
     )
     info_html = (
         '<div style="min-width:0;flex:1 1 auto;overflow:hidden;">'
-        f'<div style="font-family:monospace;font-size:9px;text-transform:uppercase;'
+        f'<div style="font-family:monospace;font-size:11.5px;text-transform:uppercase;'
         f'letter-spacing:.06em;font-weight:600;color:{w["color"]};">{w["name"]}</div>'
-        '<h2 style="font-size:14px;margin:3px 0 0;white-space:nowrap;'
+        '<h2 style="font-size:19px;margin:4px 0 0;white-space:nowrap;'
         f'overflow:hidden;text-overflow:ellipsis;">{w["course"]}</h2>'
-        '<div style="font-size:9.5px;color:#6E5C68;margin-top:3px;white-space:nowrap;'
+        '<div style="font-size:13px;color:#6E5C68;margin-top:4px;white-space:nowrap;'
         f'overflow:hidden;text-overflow:ellipsis;">{w["location"]}, {w["country"]} · {w["dates"]}</div>'
         '</div>'
     )
