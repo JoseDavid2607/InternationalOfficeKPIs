@@ -51,6 +51,7 @@ st.set_page_config(
 PINK = "#E61166"; INK = "#241420"; INK_SOFT = "#6E5C68"; PAPER = "#FAF8FA"
 LINE = "#E9E2E7"; MUTED = "#8C7F87"
 BLUE = "#12BDFB"; PURPLE = "#B540D7"; GREEN = "#BFD466"; ORANGE = "#F2994A"
+ELEGANT_PURPLE = "#5B3A8E"
 
 st.markdown(
     "<style>"
@@ -143,11 +144,15 @@ st.markdown(
     "color:#fff !important;font-weight:700 !important;height:44px !important;text-decoration:none !important;}"
     ".st-key-go_to_datacenter_btn a span{color:#fff !important;}"
     ".st-key-go_to_datacenter_btn a:hover{background:#B00D50 !important;}"
-    "div[class*='st-key-pdf_btn_'] div[data-testid='stDownloadButton'] button{"
-    f"background:{PINK} !important;color:#fff !important;border:none !important;"
+    "div[class*='st-key-pdf_btn_'] div[data-testid='stDownloadButton'] button, "
+    "div[class*='st-key-bulk_pdf_'] div[data-testid='stButton'] button, "
+    "div[class*='st-key-bulk_pdf_'] div[data-testid='stDownloadButton'] button{"
+    f"background:{ELEGANT_PURPLE} !important;color:#fff !important;border:none !important;"
     "text-decoration:none !important;font-weight:700 !important;height:48px !important;"
-    "box-shadow:0 3px 10px rgba(230,17,102,.25) !important;}"
-    "div[class*='st-key-pdf_btn_'] div[data-testid='stDownloadButton'] button:hover{background:#B00D50 !important;}"
+    "box-shadow:0 3px 10px rgba(91,58,142,.28) !important;}"
+    "div[class*='st-key-pdf_btn_'] div[data-testid='stDownloadButton'] button:hover, "
+    "div[class*='st-key-bulk_pdf_'] div[data-testid='stButton'] button:hover, "
+    "div[class*='st-key-bulk_pdf_'] div[data-testid='stDownloadButton'] button:hover{background:#4A2F73 !important;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -167,11 +172,11 @@ def _render_header(title: str, subtitle: str = ""):
         "border-radius:12px;box-shadow:0 2px 8px rgba(230,17,102,.18);margin-bottom:14px;"
     )
     super_style = (
-        "font-size:11px;font-weight:700;letter-spacing:2px;color:#FBD6E4;"
+        "font-size:11px;font-weight:700;letter-spacing:2px;color:#EAF7DE;"
         "text-transform:uppercase;margin-bottom:2px;"
     )
     title_style = "font-size:26px;font-weight:800;color:#ffffff;text-align:center;line-height:1.2;"
-    sub_style = "font-size:13px;color:rgba(255,255,255,.80);margin-top:4px;text-align:center;"
+    sub_style = "font-size:13px;color:#EAF7DE;margin-top:4px;text-align:center;"
 
     sub = f'<div style="{sub_style}">{subtitle}</div>' if subtitle else ""
     st.markdown(
@@ -1452,7 +1457,10 @@ def page_visiting():
         _kpi("Response Rate", f"{resp_total/insc_total*100:.1f}%" if insc_total else "—", "accent")
     with c_btn:
         st.caption(f"One PDF per faculty member ({len(prof_names)}), as a ZIP.")
-        if st.button("📄 Generate PDF Reports (ZIP)", key="btn_bulk_pdf", use_container_width=True):
+        with st.container(key="bulk_pdf_generate"):
+            gen_clicked = st.button("Generate PDF Reports (ZIP)", key="btn_bulk_pdf",
+                                     icon=":material/picture_as_pdf:", use_container_width=True)
+        if gen_clicked:
             try:
                 import zipfile
                 zbuf = io.BytesIO()
@@ -1472,11 +1480,12 @@ def page_visiting():
             except ModuleNotFoundError:
                 pass
         if st.session_state.get("_eiv_bulk_pdf_zip"):
-            st.download_button(
-                "⬇️ Download ZIP", data=st.session_state["_eiv_bulk_pdf_zip"],
-                file_name="ISS_2026_Evaluation_Reports.zip", mime="application/zip", key="dl_bulk_pdf_zip",
-                use_container_width=True,
-            )
+            with st.container(key="bulk_pdf_download"):
+                st.download_button(
+                    "Download ZIP", data=st.session_state["_eiv_bulk_pdf_zip"],
+                    file_name="ISS_2026_Evaluation_Reports.zip", mime="application/zip", key="dl_bulk_pdf_zip",
+                    icon=":material/download:", use_container_width=True,
+                )
     c3, c4, c5 = st.columns(3)
     with c3:
         _kpi("Avg. Satisfaction", f"{combined_avg:.2f} / 5" if combined_avg is not None else "—", "accent")
@@ -1816,9 +1825,10 @@ def _render_professor_detail(entry: dict, entries: List[dict], siblings: Optiona
                 pdf_bytes = _build_professor_pdf(profesor, curso, ed, row if row else {})
                 with st.container(key=f"pdf_btn_{profesor}"):
                     st.download_button(
-                        "📄 Evaluation Report (PDF)", data=pdf_bytes,
+                        "Evaluation Report (PDF)", data=pdf_bytes,
                         file_name=f"EIV_{profesor.replace(' ', '_')}_Evaluation_Report.pdf",
                         mime="application/pdf", key=f"dl_pdf_{profesor}", use_container_width=True,
+                        icon=":material/picture_as_pdf:",
                     )
             except ModuleNotFoundError:
                 pass
