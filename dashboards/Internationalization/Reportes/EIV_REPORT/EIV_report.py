@@ -2632,15 +2632,20 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         for asp in all_aspects:
             qs_l = by_aspect_cols[0].get(asp, [])
             qs_r = by_aspect_cols[1].get(asp, [])
+
+            def draw_aspect_header():
+                nonlocal y
+                for ci in range(2):
+                    c.setFillColor(rl_colors.HexColor("#FBE3ED"))
+                    c.rect(col_x[ci] * mm, top_pt(y + 6), col_w * mm, 6 * mm, fill=1, stroke=0)
+                    c.setFillColor(ink)
+                    c.setFont("Helvetica-Bold", 6.8)
+                    c.drawString((col_x[ci] + 3) * mm, top_pt(y + 4.3), str(asp).upper())
+                y += 8.5
+
             # Revisa el bloque COMPLETO del aspecto (encabezado + TODAS las
-            # preguntas de AMBAS columnas) de una sola vez, antes de dibujar
-            # nada -- antes se revisaba pregunta por pregunta comparando
-            # max(y_l, y_r), y como las columnas se dibujan una después de
-            # la otra (todo el periodo 13 primero, luego todo el 18), el
-            # y_l ya "gastado" del periodo 13 terminado quedaba cerca del
-            # fondo de la página y forzaba un salto de página innecesario
-            # justo al empezar el periodo 18, aunque su propio espacio
-            # disponible (y_r) sí alcanzaba.
+            # preguntas de AMBAS columnas) antes de dibujar nada, para
+            # empezarlo en página nueva si de plano no cabe.
             total_l = sum(estimate_q_height(q, col_w) for q in qs_l)
             total_r = sum(estimate_q_height(q, col_w) for q in qs_r)
             block_needed = 8.5 + max(total_l, total_r)
@@ -2651,18 +2656,36 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
                 draw_continuation_header()
                 y = 24.0
 
-            for ci in range(2):
-                c.setFillColor(rl_colors.HexColor("#FBE3ED"))
-                c.rect(col_x[ci] * mm, top_pt(y + 6), col_w * mm, 6 * mm, fill=1, stroke=0)
-                c.setFillColor(ink)
-                c.setFont("Helvetica-Bold", 6.8)
-                c.drawString((col_x[ci] + 3) * mm, top_pt(y + 4.3), str(asp).upper())
-            y_start = y + 8.5
-            y_l, y_r = y_start, y_start
-            for q in qs_l:
-                y_l = draw_likert_q_col(q, col_x[0], col_w, y_l)
-            for q in qs_r:
-                y_r = draw_likert_q_col(q, col_x[1], col_w, y_r)
+            draw_aspect_header()
+            y_l = y_r = y
+
+            # Dibuja las columnas EMPAREJADAS pregunta por pregunta (no toda
+            # la izquierda y luego toda la derecha) -- así, si de verdad no
+            # alcanza el espacio para una pareja, ambas columnas saltan de
+            # página JUNTAS y se repite el encabezado del aspecto en la
+            # página nueva. Antes, una columna podía terminar de dibujar
+            # sus preguntas cerca del fondo de la página mientras la otra
+            # apenas empezaba, dejando el encabezado de un lado sin sus
+            # preguntas y esas preguntas reapareciendo solas, sin
+            # encabezado, en la siguiente página.
+            n_pairs = max(len(qs_l), len(qs_r))
+            for i in range(n_pairs):
+                q_l = qs_l[i] if i < len(qs_l) else None
+                q_r = qs_r[i] if i < len(qs_r) else None
+                needed_l = estimate_q_height(q_l, col_w) if q_l else 0
+                needed_r = estimate_q_height(q_r, col_w) if q_r else 0
+                if max(y_l + needed_l, y_r + needed_r) > PH - 16:
+                    draw_footer(page_num)
+                    c.showPage()
+                    page_num += 1
+                    draw_continuation_header()
+                    y = 24.0
+                    draw_aspect_header()
+                    y_l = y_r = y
+                if q_l:
+                    y_l = draw_likert_q_col(q_l, col_x[0], col_w, y_l)
+                if q_r:
+                    y_r = draw_likert_q_col(q_r, col_x[1], col_w, y_r)
             y = max(y_l, y_r) + 1
 
         # ---- Recommendation (NPS): periodo 202613 arriba, 202618 abajo ----
