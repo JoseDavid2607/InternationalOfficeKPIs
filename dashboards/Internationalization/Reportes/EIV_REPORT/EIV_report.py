@@ -2339,7 +2339,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     try:
         _uniandes_path = _find_asset_upwards("../imagenes/Uniandes_logo.png")
         uniandes_logo_bytes = _pdf_file_bytes(_uniandes_path) if _uniandes_path else None
-        _uasm_path = _find_asset_upwards("../imagenes/UASM_logo.png")
+        _uasm_path = _find_asset_upwards("../imagenes/UASM_logo_blanco.png")
         uasm_logo_bytes = _pdf_file_bytes(_uasm_path) if _uasm_path else None
     except Exception:
         uniandes_logo_bytes = None
