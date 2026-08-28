@@ -2206,7 +2206,7 @@ def _wrap_to_width(c, text: str, font_name: str, font_size: float, max_width_mm:
 
 
 def _find_asset_upwards(filename_rel: str, max_up: int = 8) -> Optional[str]:
-    """Busca un archivo (p.ej. '../../imagenes/Uniandes_logo.png') subiendo por
+    """Busca un archivo (p.ej. '../imagenes/Uniandes_logo.png') subiendo por
     los directorios padres desde la ubicación de este script y también
     desde el directorio de trabajo actual -- la carpeta 'imagenes/' vive
     en la raíz del repo, varios niveles arriba de EIV_report.py (que está
@@ -2337,9 +2337,9 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     # en adelante) -- 'imagenes/' vive en la raíz del repo, no al lado de
     # este script, así que se busca subiendo por los directorios padres.
     try:
-        _uniandes_path = _find_asset_upwards("../../imagenes/Uniandes_logo.png")
+        _uniandes_path = _find_asset_upwards("../imagenes/Uniandes_logo.png")
         uniandes_logo_bytes = _pdf_file_bytes(_uniandes_path) if _uniandes_path else None
-        _uasm_path = _find_asset_upwards("../imagenes/UASM_logo_blanco.png")
+        _uasm_path = _find_asset_upwards("../imagenes/UASM_logo.png")
         uasm_logo_bytes = _pdf_file_bytes(_uasm_path) if _uasm_path else None
     except Exception:
         uniandes_logo_bytes = None
