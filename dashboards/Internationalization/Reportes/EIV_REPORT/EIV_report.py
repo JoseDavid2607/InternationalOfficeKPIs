@@ -2360,7 +2360,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
                 pass
         if uniandes_logo_bytes:
             try:
-                box_w, box_h = 34.0, 16.0
+                box_w, box_h = 35.0, 17.0
                 box_x = (PW - box_w) / 2
                 img_uniandes = ImageReader(io.BytesIO(uniandes_logo_bytes))
                 c.drawImage(img_uniandes, box_x * mm, top_pt(25), width=box_w * mm,
@@ -2407,7 +2407,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         c.rect(0, 0, PW * mm, 10 * mm, fill=1, stroke=0)
         c.setFont("Helvetica", 7)
         c.setFillColor(muted)
-        c.drawString(12 * mm, 4 * mm, "International Summer School 2026 — Course Evaluation")
+        c.drawString(12 * mm, 4 * mm, "Universidad de los Andes School of Management - International Summer School 2026 — Course Evaluation")
         c.drawRightString((PW - 12) * mm, 4 * mm, str(page_num))
 
     page_num = 1
