@@ -2360,10 +2360,10 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
                 pass
         if uniandes_logo_bytes:
             try:
-                box_w, box_h = 46.0, 22.0
+                box_w, box_h = 34.0, 16.0
                 box_x = (PW - box_w) / 2
                 img_uniandes = ImageReader(io.BytesIO(uniandes_logo_bytes))
-                c.drawImage(img_uniandes, box_x * mm, top_pt(28), width=box_w * mm,
+                c.drawImage(img_uniandes, box_x * mm, top_pt(25), width=box_w * mm,
                             height=box_h * mm, preserveAspectRatio=True, mask="auto")
             except Exception:
                 pass
