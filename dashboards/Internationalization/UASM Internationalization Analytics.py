@@ -1061,7 +1061,7 @@ if IS_UPDATE_PAGE:
         st.markdown('<div style="height:26vh;"></div>', unsafe_allow_html=True)
         with st.container(key="update_sidebar_group"):
             try:
-                st.image("imagenes/Int_Uniandes_logo.jpg", width=65)
+                st.image("imagenes/Int_Uniandes_logo.png", width=65)
             except Exception:
                 pass
             st.markdown(
@@ -1077,7 +1077,7 @@ else:
         col_logo, col_title = st.columns([1, 3])
         with col_logo:
             try:
-                st.image("imagenes/Int_Uniandes_logo.jpg", width=65)
+                st.image("imagenes/Int_Uniandes_logo.png", width=65)
             except Exception:
                 pass
         with col_title:
