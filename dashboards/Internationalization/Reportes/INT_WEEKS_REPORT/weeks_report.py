@@ -1283,7 +1283,7 @@ def _pdf_stacked_bar(c, options: dict, order: list, color_map: dict, x_mm, y_mm,
         c.setFillColor(rl_colors.Color(col[0] / 255, col[1] / 255, col[2] / 255))
         c.rect(cx, top_pt - h_pt, sw, h_pt, fill=1, stroke=0)
         if sw > 14:
-            c.setFont("Helvetica-Bold", 6.5)
+            c.setFont("Helvetica-Bold", 7.5)
             c.setFillColor(rl_colors.white)
             c.drawCentredString(cx + sw / 2, top_pt - h_pt / 2 - 2.2, f"{round(n / total * 100)}%")
         cx += sw
@@ -1297,13 +1297,13 @@ def _pdf_legend(c, options: dict, order: list, color_map: dict, x_mm, y_mm, w_mm
     from reportlab.lib import colors as rl_colors
     from reportlab.lib.units import mm
     lx_mm, ly_mm = x_mm, y_mm
-    c.setFont("Helvetica", 6.5)
+    c.setFont("Helvetica", 7.5)
     for k in order:
         n = options.get(k, 0)
         if not n:
             continue
         label = f"{k} ({n})"
-        item_w_mm = (c.stringWidth(label, "Helvetica", 6.5) / mm) + 5 + 3
+        item_w_mm = (c.stringWidth(label, "Helvetica", 7.5) / mm) + 5 + 3
         if lx_mm + item_w_mm > x_mm + w_mm and lx_mm > x_mm:
             lx_mm, ly_mm = x_mm, ly_mm + 5
         col = color_map.get(k, (180, 180, 180))
@@ -1326,7 +1326,7 @@ def _pdf_nps_bar(c, options: dict, x_mm, y_mm, w_mm, h_mm, page_h_mm):
     sw_mm = w_mm / 11
     top_pt = (page_h_mm - y_mm) * mm
     h_pt = h_mm * mm
-    c.setFont("Helvetica", 6)
+    c.setFont("Helvetica", 7)
     c.setFillColor(rl_colors.HexColor("#8C7F87"))
     for i in range(11):
         c.drawCentredString((x_mm + i * sw_mm + sw_mm / 2) * mm, top_pt + 2 * mm, str(i))
@@ -1340,7 +1340,7 @@ def _pdf_nps_bar(c, options: dict, x_mm, y_mm, w_mm, h_mm, page_h_mm):
         c.setFillColor(rl_colors.Color(col[0] / 255, col[1] / 255, col[2] / 255))
         c.rect(cx, top_pt - h_pt, sw_mm * mm - 0.4 * mm, h_pt, fill=1, stroke=0)
         if n > 0:
-            c.setFont("Helvetica-Bold", 7)
+            c.setFont("Helvetica-Bold", 8)
             c.setFillColor(rl_colors.white)
             c.drawCentredString(cx + (sw_mm * mm) / 2, top_pt - h_pt / 2 - 2.5, str(n))
     c.setStrokeColor(rl_colors.HexColor("#C8C8C8"))
@@ -1394,6 +1394,38 @@ def _wrap_to_width(c, text: str, font_name: str, font_size: float, max_width_mm:
     return lines or [""]
 
 
+def _find_asset_upwards(filename_rel: str, max_up: int = 8) -> Optional[str]:
+    """Busca un archivo (p.ej. 'imagenes/Uniandes_logo_blanco.png') subiendo por
+    los directorios padres desde la ubicación de este script y también
+    desde el directorio de trabajo actual -- la carpeta 'imagenes/' vive
+    en la raíz del repo, varios niveles arriba de weeks_report.py (que está
+    anidado en dashboards/Internationalization/Reportes/INT_WEEKS_REPORT/),
+    así que no basta con mirar solo el directorio del script."""
+    bases = []
+    try:
+        bases.append(_os.path.dirname(_os.path.abspath(__file__)))
+    except Exception:
+        pass
+    try:
+        bases.append(_os.getcwd())
+    except Exception:
+        pass
+    seen = set()
+    for base in bases:
+        cur = base
+        for _ in range(max_up + 1):
+            full = _os.path.join(cur, filename_rel)
+            if full not in seen:
+                seen.add(full)
+                if _os.path.exists(full):
+                    return full
+            parent = _os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+    return None
+
+
 def _pdf_file_bytes(path: Optional[str]) -> Optional[bytes]:
     if not path:
         return None
@@ -1437,6 +1469,19 @@ def _build_week_survey_pdf(w: dict) -> bytes:
     sv = w["survey"]
     logo_bytes = _pdf_file_bytes(_partner_logo_path(w["key"]))
     photo_bytes = _pdf_file_bytes(_photo_path(w["professor"]))
+    # Logo de Uniandes (centro del header, página 1) y logo de la facultad
+    # UASM en blanco (esquina superior izquierda del header, página 2 en
+    # adelante) -- 'imagenes/' vive en la raíz del repo, no al lado de este
+    # script, así que se busca subiendo por los directorios padres. Mismo
+    # diseño y mismas rutas que en EIV_report.py.
+    try:
+        _uniandes_path = _find_asset_upwards("imagenes/Uniandes_logo_blanco.png")
+        uniandes_logo_bytes = _pdf_file_bytes(_uniandes_path) if _uniandes_path else None
+        _uasm_path = _find_asset_upwards("imagenes/UASM_logo_blanco.png")
+        uasm_logo_bytes = _pdf_file_bytes(_uasm_path) if _uasm_path else None
+    except Exception:
+        uniandes_logo_bytes = None
+        uasm_logo_bytes = None
 
     def draw_stats_header():
         band_h = 34
@@ -1449,6 +1494,15 @@ def _build_week_survey_pdf(w: dict) -> bytes:
                 img = ImageReader(io.BytesIO(logo_bytes))
                 c.drawImage(img, (mg + 2) * mm, top_pt(21), width=38 * mm, height=16 * mm,
                             preserveAspectRatio=True, mask="auto")
+            except Exception:
+                pass
+        if uniandes_logo_bytes:
+            try:
+                box_w, box_h = 35.0, 17.0
+                box_x = (PW - box_w) / 2
+                img_uniandes = ImageReader(io.BytesIO(uniandes_logo_bytes))
+                c.drawImage(img_uniandes, box_x * mm, top_pt(25), width=box_w * mm,
+                            height=box_h * mm, preserveAspectRatio=True, mask="auto")
             except Exception:
                 pass
         name_right_edge = PW - mg
@@ -1475,6 +1529,13 @@ def _build_week_survey_pdf(w: dict) -> bytes:
     def draw_continuation_header():
         c.setFillColor(accent)
         c.rect(0, top_pt(14), PW * mm, 14 * mm, fill=1, stroke=0)
+        if uasm_logo_bytes:
+            try:
+                img_uasm = ImageReader(io.BytesIO(uasm_logo_bytes))
+                c.drawImage(img_uasm, mg * mm, top_pt(12), width=48 * mm, height=10 * mm,
+                            preserveAspectRatio=True, mask="auto")
+            except Exception:
+                pass
         c.setFillColor(rl_colors.white)
         c.setFont("Helvetica-Bold", 10)
         c.drawRightString((PW - mg) * mm, top_pt(9), w["professor"])
@@ -1520,15 +1581,15 @@ def _build_week_survey_pdf(w: dict) -> bytes:
     # el mismo periodo), a diferencia de EIV que muestra GR/UG lado a lado.
     c.setFillColor(soft)
     c.roundRect((mg + cW / 2 - 40) * mm, top_pt(y + 19), 80 * mm, 19 * mm, 3 * mm, fill=1, stroke=0)
-    c.setFillColor(accent)
-    c.setFont("Helvetica-Bold", 13)
-    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 8.5), f'{w["abroadCount"]} viajaron')
     c.setFillColor(ink)
-    c.setFont("Helvetica", 6.5)
-    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 14), w["name"])
+    c.setFont("Helvetica-Bold", 7.5)
+    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 6.5), w["name"])
+    c.setFillColor(accent)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 12.8), f'{w["abroadCount"]} viajaron')
     c.setFillColor(muted)
-    c.setFont("Helvetica-Oblique", 6)
-    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 18.3), f'{sv["respondents"]} respondieron la encuesta')
+    c.setFont("Helvetica-Oblique", 7)
+    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 17.3), f'{sv["respondents"]} respondieron la encuesta')
     y += 23 + 8
 
     # ---- KPIs de respuesta, en esta misma página 1 ----
@@ -1552,7 +1613,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
         c.setFillColor(lgray)
         c.roundRect((bx + 1) * mm, top_pt(y + 22), (bw - 3) * mm, 22 * mm, 3 * mm, fill=1, stroke=0)
         c.setFillColor(accent)
-        c.setFont("Helvetica-Bold", 12)
+        c.setFont("Helvetica-Bold", 13)
         c.drawCentredString((bx + bw / 2 - 1) * mm, top_pt(y + 11), val)
         c.setFillColor(muted)
         c.setFont("Helvetica", 6)
@@ -1602,7 +1663,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
         if total:
             c.setFillColor(lgray)
             c.roundRect((mg + cW - 22) * mm, top_pt(y - 2), 22 * mm, 6 * mm, 2 * mm, fill=1, stroke=0)
-            c.setFont("Helvetica", 7)
+            c.setFont("Helvetica", 8)
             c.setFillColor(muted)
             c.drawCentredString((mg + cW - 11) * mm, top_pt(y + 0.5), f"n={total}")
         y += len(q_lines) * 4.6 + 3
@@ -1682,7 +1743,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
                 group_needed += 6
             else:
                 for item in g["items"]:
-                    lines_est = _wrap_to_width(c, f'1. "{item}"', "Helvetica", 8, cW)
+                    lines_est = _wrap_to_width(c, f'1. "{item}"', "Helvetica", 9, cW)
                     group_needed += len(lines_est) * 4 + 2
                 group_needed += 4
             if y + min(group_needed, 260) > 283 and y > 24.0:
@@ -1691,7 +1752,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
                 page_num += 1
                 draw_continuation_header()
                 y = 24.0
-            c.setFont("Helvetica-Bold", 8.5)
+            c.setFont("Helvetica-Bold", 9.5)
             c.setFillColor(accent)
             c.drawString(mg * mm, top_pt(y), f"{g['label'].upper()}")
             y += 5.5
@@ -1702,10 +1763,10 @@ def _build_week_survey_pdf(w: dict) -> bytes:
                 y += 6
                 continue
             for i, item in enumerate(g["items"]):
-                lines = _wrap_to_width(c, f'{i + 1}. "{item}"', "Helvetica", 8, cW)
+                lines = _wrap_to_width(c, f'{i + 1}. "{item}"', "Helvetica", 9, cW)
                 needed = len(lines) * 4 + 2
                 ensure_space(needed)
-                c.setFont("Helvetica", 8)
+                c.setFont("Helvetica", 9)
                 c.setFillColor(rl_colors.HexColor("#50484E"))
                 for j, line in enumerate(lines):
                     c.drawString(mg * mm, top_pt(y + j * 4), line)
