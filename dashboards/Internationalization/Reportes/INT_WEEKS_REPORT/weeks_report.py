@@ -110,12 +110,46 @@ st.markdown(
     "font-size:16px !important;font-weight:700 !important;height:52px !important;"
     "box-shadow:0 4px 14px rgba(44,74,107,.28) !important;}"
     f".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{{background:{ACCENT_DARK} !important;}}"
-    ".wk-nav-link:hover{text-decoration:underline !important;}"
-    ".wk-nav-link, .wk-nav-link:link, .wk-nav-link:visited{color:#000000 !important;}"
     ".st-key-cover_banner{display:flex !important;justify-content:center !important;width:100% !important;}"
     ".st-key-cover_banner div[data-testid='stImage']{margin:0 auto !important;width:auto !important;"
     "display:flex !important;justify-content:center !important;}"
     ".st-key-cover_banner img{margin:0 auto !important;display:block !important;}"
+    ".st-key-nav_toggle{position:fixed !important;top:0.25rem;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:auto !important;max-width:96vw;}"
+    ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
+    "display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;width:auto !important;"
+    "justify-content:center !important;align-items:center !important;gap:14px !important;"
+    "overflow:visible;max-width:96vw;}"
+    ".st-key-nav_toggle div[data-testid='stHorizontalBlock'] > div{"
+    "flex:0 0 auto !important;width:auto !important;min-width:0 !important;}"
+    ".st-key-nav_toggle div[data-testid='column'], .st-key-nav_toggle div[data-testid='stColumn']{"
+    "width:auto !important;min-width:fit-content !important;flex:0 0 auto !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;font-size:13px !important;padding:6px 4px !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink'] a p{white-space:nowrap !important;overflow:visible !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover']{width:auto !important;min-width:fit-content !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button{"
+    "background:transparent !important;border:none !important;box-shadow:none !important;"
+    f"color:{ACCENT} !important;font-size:13px !important;font-weight:400 !important;"
+    "height:auto !important;width:auto !important;min-width:fit-content !important;"
+    "padding:6px 4px !important;white-space:nowrap !important;}"
+    f".st-key-nav_toggle div[data-testid='stPopover'] button:hover{{color:{INK} !important;}}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button svg{display:none !important;}"
+    ".st-key-side_arrows{position:fixed !important;top:50%;left:0;right:0;transform:translateY(-50%);"
+    "z-index:999998;width:100%;pointer-events:none;}"
+    ".st-key-side_arrows div[data-testid='stHorizontalBlock']{"
+    "display:flex !important;flex-direction:row !important;width:100% !important;"
+    "justify-content:space-between !important;padding:0 6px;pointer-events:none;}"
+    ".st-key-side_arrows div[data-testid='column'], .st-key-side_arrows div[data-testid='stColumn']{"
+    "width:auto !important;flex:0 0 auto !important;pointer-events:auto;}"
+    ".st-key-side_arrows a{"
+    "display:flex !important;align-items:center;justify-content:center;"
+    "background:transparent !important;border:none !important;box-shadow:none !important;"
+    f"font-size:0 !important;font-weight:400;color:{ACCENT} !important;opacity:.55;text-decoration:none;"
+    "transition:opacity .15s ease;}"
+    ".st-key-side_arrows a p{font-size:26px !important;}"
+    ".st-key-side_arrows a span:first-child{display:none !important;}"
+    ".st-key-side_arrows a:hover{opacity:1;}"
     ".block-container{padding-top:3.2rem !important;}"
     ".st-key-go_to_datacenter_btn a{"
     f"display:flex !important;align-items:center;justify-content:center;gap:6px;"
@@ -1732,81 +1766,30 @@ if not IS_COVER:
         st.markdown("---")
 
 if not IS_COVER:
-    # ---- Menú superior + flechas laterales: reconstruido con HTML/CSS
-    # propio (en vez de st.container(key=...) + CSS por clase "st-key-*").
-    # El enfoque anterior dependía de que Streamlit generara la clase
-    # "st-key-nav_toggle" en el contenedor, lo cual varía según la versión
-    # de Streamlit del despliegue; por eso en Weeks se veía "en la página"
-    # en vez de fijo. Este bloque usa un <div style="position:fixed"> que
-    # nosotros mismos controlamos al 100%, sin depender de esa clase.
-    visible_pages = nav_pages[:_NAV_VISIBLE]
-    overflow_pages = nav_pages[_NAV_VISIBLE:]
-
-    def _nav_href(page_obj) -> str:
-        return "/" + (page_obj.url_path or "")
-
-    def _nav_link(page_obj, small: bool = False) -> str:
-        # Diseño calcado del menú de referencia (UASM Intl. KPIs): texto
-        # negro normal, ícono/emoji siempre visible (bandera del país en
-        # las semanas, emoji en Overview/Financial), y un recuadro gris
-        # suave solo en la sección activa — nada de color de acento en el
-        # texto ni "More..." resaltado.
-        active = page_obj is pg
-        bg = "#EEF0F2" if active else "transparent"
-        icon = page_obj.icon or ""
-        icon_html = f'{icon} ' if icon else ""
-        return (
-            f'<a href="{_nav_href(page_obj)}" target="_self" class="wk-nav-link" '
-            f'style="display:inline-flex;align-items:center;white-space:nowrap;'
-            f'text-decoration:none;background:{bg};border-radius:20px;'
-            f'color:#000000 !important;font-weight:400;font-size:13px;'
-            f'padding:6px 12px;">{icon_html}{page_obj.title}</a>'
-        )
-
-    links_html = "".join(_nav_link(p) for p in visible_pages)
-    if overflow_pages:
-        overflow_items = "".join(
-            f'<div style="padding:4px 10px;">{_nav_link(p, small=True)}</div>' for p in overflow_pages
-        )
-        links_html += (
-            '<details style="position:relative;display:inline-block;">'
-            '<summary style="cursor:pointer;list-style:none;color:#8C7F87;'
-            'font-weight:400;font-size:12.5px;padding:6px 4px;white-space:nowrap;" '
-            'class="wk-nav-link">More...</summary>'
-            '<div style="position:absolute;top:100%;right:0;background:#fff;'
-            'border:1px solid #E9E2E7;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.12);'
-            f'padding:8px 4px;margin-top:4px;z-index:1000000;">{overflow_items}</div>'
-            '</details>'
-        )
-
-    st.markdown(
-        '<div style="position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);'
-        'z-index:999999;width:82vw;max-width:1050px;'
-        'display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;'
-        'justify-content:center;gap:10px;overflow-x:auto;">'
-        f'{links_html}</div>',
-        unsafe_allow_html=True,
-    )
+    with st.container(key="nav_toggle"):
+        visible_pages = nav_pages[:_NAV_VISIBLE]
+        overflow_pages = nav_pages[_NAV_VISIBLE:]
+        n_cols = len(visible_pages) + (1 if overflow_pages else 0)
+        nav_cols = st.columns(n_cols)
+        for col, page_obj in zip(nav_cols, visible_pages):
+            with col:
+                st.page_link(page_obj)
+        if overflow_pages:
+            with nav_cols[-1]:
+                with st.popover("More...", use_container_width=False):
+                    for page_obj in overflow_pages:
+                        st.page_link(page_obj)
 
     # ---- Flechas laterales para pasar de sección ----
     _idx = nav_pages.index(pg)
     _prev_pg = nav_pages[_idx - 1]
     _next_pg = nav_pages[(_idx + 1) % len(nav_pages)]
-    st.markdown(
-        '<div style="position:fixed;top:50%;left:0;right:0;transform:translateY(-50%);'
-        'z-index:999998;width:100%;pointer-events:none;display:flex;'
-        'justify-content:space-between;padding:0 10px;">'
-        f'<a href="{_nav_href(_prev_pg)}" target="_self" style="pointer-events:auto;'
-        f'text-decoration:none;color:{ACCENT};opacity:.55;font-size:28px;'
-        'font-weight:400;transition:opacity .15s ease;" '
-        'onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.55">‹</a>'
-        f'<a href="{_nav_href(_next_pg)}" target="_self" style="pointer-events:auto;'
-        f'text-decoration:none;color:{ACCENT};opacity:.55;font-size:28px;'
-        'font-weight:400;transition:opacity .15s ease;" '
-        'onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.55">›</a>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    with st.container(key="side_arrows"):
+        arrow_l, arrow_r = st.columns(2)
+        with arrow_l:
+            st.page_link(_prev_pg, label="‹")
+        with arrow_r:
+            st.page_link(_next_pg, label="›")
 
 pg.run()
 
