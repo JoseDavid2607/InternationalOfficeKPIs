@@ -1774,7 +1774,7 @@ if not IS_COVER:
             'font-weight:400;font-size:12.5px;padding:6px 4px;white-space:nowrap;" '
             'class="wk-nav-link">More...</summary>'
             '<div style="position:absolute;top:100%;right:0;background:#fff;'
-            'border:1px solid #E9E2E7;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.12);'
+            'border:1px solid #E9E2E7;border-radius:3px;box-shadow:0 4px 14px rgba(0,0,0,.12);'
             f'padding:8px 4px;margin-top:4px;z-index:1000000;">{overflow_items}</div>'
             '</details>'
         )
