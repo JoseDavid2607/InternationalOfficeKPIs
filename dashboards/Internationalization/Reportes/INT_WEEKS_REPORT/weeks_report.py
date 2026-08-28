@@ -38,7 +38,7 @@ import base64
 # ── 1) CONFIGURACIÓN GLOBAL ────────────────────────────────────────────────
 st.set_page_config(
     page_title="International Weeks Analytics",
-    page_icon="🌍",
+    page_icon="🛫",
     layout="wide",
     initial_sidebar_state="expanded",
 )
