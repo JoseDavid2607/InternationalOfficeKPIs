@@ -2205,6 +2205,38 @@ def _wrap_to_width(c, text: str, font_name: str, font_size: float, max_width_mm:
     return lines or [""]
 
 
+def _find_asset_upwards(filename_rel: str, max_up: int = 8) -> Optional[str]:
+    """Busca un archivo (p.ej. 'imagenes/Uniandes_logo.png') subiendo por
+    los directorios padres desde la ubicación de este script y también
+    desde el directorio de trabajo actual -- la carpeta 'imagenes/' vive
+    en la raíz del repo, varios niveles arriba de EIV_report.py (que está
+    anidado en dashboards/Internationalization/Reportes/EIV_REPORT/), así
+    que no basta con mirar solo el directorio del script."""
+    bases = []
+    try:
+        bases.append(_os.path.dirname(_os.path.abspath(__file__)))
+    except Exception:
+        pass
+    try:
+        bases.append(_os.getcwd())
+    except Exception:
+        pass
+    seen = set()
+    for base in bases:
+        cur = base
+        for _ in range(max_up + 1):
+            full = _os.path.join(cur, filename_rel)
+            if full not in seen:
+                seen.add(full)
+                if _os.path.exists(full):
+                    return full
+            parent = _os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+    return None
+
+
 def _pdf_file_bytes(path: str) -> Optional[bytes]:
     try:
         with open(path, "rb") as f:
@@ -2302,11 +2334,13 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     photo_bytes = _pdf_file_bytes(_photo_path(profesor))
     # Logo de Uniandes (centro del header, página 1) y logo de la facultad
     # UASM en blanco (esquina superior izquierda del header rosa, página 2
-    # en adelante) -- rutas exactas indicadas para el ajuste de diseño.
+    # en adelante) -- 'imagenes/' vive en la raíz del repo, no al lado de
+    # este script, así que se busca subiendo por los directorios padres.
     try:
-        _base = _os.path.dirname(_os.path.abspath(__file__))
-        uniandes_logo_bytes = _pdf_file_bytes(_os.path.join(_base, "imagenes/Uniandes_logo.png"))
-        uasm_logo_bytes = _pdf_file_bytes(_os.path.join(_base, "imagenes/UASM_logo_blanco.png"))
+        _uniandes_path = _find_asset_upwards("imagenes/Uniandes_logo.png")
+        uniandes_logo_bytes = _pdf_file_bytes(_uniandes_path) if _uniandes_path else None
+        _uasm_path = _find_asset_upwards("imagenes/UASM_logo_blanco.png")
+        uasm_logo_bytes = _pdf_file_bytes(_uasm_path) if _uasm_path else None
     except Exception:
         uniandes_logo_bytes = None
         uasm_logo_bytes = None
