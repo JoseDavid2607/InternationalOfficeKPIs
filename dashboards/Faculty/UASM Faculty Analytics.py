@@ -48,7 +48,7 @@ except ImportError:
 # 1) CONFIGURACIÓN GLOBAL (una sola vez para toda la app)
 st.set_page_config(
     page_title="UASM Faculty Analytics",
-    page_icon="🎓",
+    page_icon="🧑🏻‍🏫",
     layout="wide",
     initial_sidebar_state="expanded",
 )
