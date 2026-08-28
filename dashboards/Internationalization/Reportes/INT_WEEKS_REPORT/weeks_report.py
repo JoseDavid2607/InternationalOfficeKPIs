@@ -1758,7 +1758,7 @@ if not IS_COVER:
             f'<a href="{_nav_href(page_obj)}" target="_self" class="wk-nav-link" '
             f'style="display:inline-flex;align-items:center;white-space:nowrap;'
             f'text-decoration:none;background:{bg};border-radius:20px;'
-            f'color:#1F2937 !important;font-weight:400;font-size:13px;'
+            f'color:#000000 !important;font-weight:400;font-size:13px;'
             f'padding:6px 12px;">{icon_html}{page_obj.title}</a>'
         )
 
