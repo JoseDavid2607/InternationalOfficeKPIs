@@ -970,10 +970,11 @@ def page_week(key: str):
     info_html = (
         '<div style="min-width:0;flex:1 1 auto;overflow:hidden;">'
         f'<div style="font-family:monospace;font-size:11.5px;text-transform:uppercase;'
-        f'letter-spacing:.06em;font-weight:600;color:{w["color"]};margin-bottom:1px;">{w["name"]}</div>'
-        '<h2 style="font-size:19px;margin:1px 0 0;line-height:1.15;white-space:nowrap;'
+        f'letter-spacing:.06em;font-weight:600;color:{w["color"]};margin-bottom:0;'
+        f'line-height:1;">{w["name"]}</div>'
+        '<h2 style="font-size:19px;margin:0;line-height:1.05;white-space:nowrap;'
         f'overflow:hidden;text-overflow:ellipsis;">{w["course"]}</h2>'
-        '<div style="font-size:13px;color:#6E5C68;margin-top:1px;white-space:nowrap;'
+        '<div style="font-size:13px;color:#6E5C68;margin-top:0;line-height:1.05;white-space:nowrap;'
         f'overflow:hidden;text-overflow:ellipsis;">{w["location"]}, {w["country"]} · {w["dates"]}</div>'
         '</div>'
     )
