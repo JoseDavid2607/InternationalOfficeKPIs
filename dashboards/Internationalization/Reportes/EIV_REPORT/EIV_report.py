@@ -2206,7 +2206,7 @@ def _wrap_to_width(c, text: str, font_name: str, font_size: float, max_width_mm:
 
 
 def _find_asset_upwards(filename_rel: str, max_up: int = 8) -> Optional[str]:
-    """Busca un archivo (p.ej. '../imagenes/Uniandes_logo.png') subiendo por
+    """Busca un archivo (p.ej. 'imagenes/Uniandes_logo.png') subiendo por
     los directorios padres desde la ubicación de este script y también
     desde el directorio de trabajo actual -- la carpeta 'imagenes/' vive
     en la raíz del repo, varios niveles arriba de EIV_report.py (que está
@@ -2337,9 +2337,9 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     # en adelante) -- 'imagenes/' vive en la raíz del repo, no al lado de
     # este script, así que se busca subiendo por los directorios padres.
     try:
-        _uniandes_path = _find_asset_upwards("../imagenes/Uniandes_logo.png")
+        _uniandes_path = _find_asset_upwards("imagenes/Uniandes_logo.png")
         uniandes_logo_bytes = _pdf_file_bytes(_uniandes_path) if _uniandes_path else None
-        _uasm_path = _find_asset_upwards("../imagenes/UASM_logo_blanco.png")
+        _uasm_path = _find_asset_upwards("imagenes/UASM_logo_blanco.png")
         uasm_logo_bytes = _pdf_file_bytes(_uasm_path) if _uasm_path else None
     except Exception:
         uniandes_logo_bytes = None
@@ -2362,11 +2362,9 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             try:
                 box_w, box_h = 46.0, 22.0
                 box_x = (PW - box_w) / 2
-                c.setFillColor(rl_colors.white)
-                c.roundRect(box_x * mm, top_pt(28), box_w * mm, box_h * mm, 3 * mm, fill=1, stroke=0)
                 img_uniandes = ImageReader(io.BytesIO(uniandes_logo_bytes))
-                c.drawImage(img_uniandes, (box_x + 2) * mm, top_pt(26), width=(box_w - 4) * mm,
-                            height=(box_h - 4) * mm, preserveAspectRatio=True, mask="auto")
+                c.drawImage(img_uniandes, box_x * mm, top_pt(28), width=box_w * mm,
+                            height=box_h * mm, preserveAspectRatio=True, mask="auto")
             except Exception:
                 pass
         name_right_edge = PW - mg
@@ -2396,7 +2394,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         if uasm_logo_bytes:
             try:
                 img_uasm = ImageReader(io.BytesIO(uasm_logo_bytes))
-                c.drawImage(img_uasm, mg * mm, top_pt(11), width=26 * mm, height=8 * mm,
+                c.drawImage(img_uasm, mg * mm, top_pt(12), width=48 * mm, height=10 * mm,
                             preserveAspectRatio=True, mask="auto")
             except Exception:
                 pass
