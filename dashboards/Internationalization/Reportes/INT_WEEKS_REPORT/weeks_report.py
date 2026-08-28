@@ -111,6 +111,7 @@ st.markdown(
     "box-shadow:0 4px 14px rgba(44,74,107,.28) !important;}"
     f".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{{background:{ACCENT_DARK} !important;}}"
     ".wk-nav-link:hover{text-decoration:underline !important;}"
+    ".wk-nav-link, .wk-nav-link:link, .wk-nav-link:visited{color:#000000 !important;}"
     ".st-key-cover_banner{display:flex !important;justify-content:center !important;width:100% !important;}"
     ".st-key-cover_banner div[data-testid='stImage']{margin:0 auto !important;width:auto !important;"
     "display:flex !important;justify-content:center !important;}"
@@ -663,9 +664,9 @@ def page_cover():
     col_l, col_mid, col_r = st.columns([1, 2, 1])
     with col_mid:
         st.markdown(
-            f'<div style="text-align:center;font-size:34px;font-weight:800;color:{INK};margin-top:18px;">'
+            f'<div style="text-align:center;font-size:38px;font-weight:800;color:{INK};margin-top:18px;">'
             'International Weeks</div>'
-            f'<div style="text-align:center;font-size:16px;color:{MUTED};margin:10px auto 0;line-height:1.5;">'
+            f'<div style="text-align:center;font-size:18px;color:{MUTED};margin:10px auto 0;line-height:1.5;">'
             "Analytics for the 2026 edition of International Weeks — enrollment, roster & payments, "
             "course evaluation, and financial performance across every partner-school immersion.</div>",
             unsafe_allow_html=True,
@@ -1554,15 +1555,15 @@ def _build_week_survey_pdf(w: dict) -> bytes:
     def draw_likert_q(q):
         nonlocal y
         text = q.get("text") or ""
-        q_lines = _wrap_to_width(c, text, "Helvetica", 8, cW)
+        q_lines = _wrap_to_width(c, text, "Helvetica", 9, cW)
         n_opts = sum(1 for k in LIKERT_ORDER_PDF if q["options"].get(k))
         legend_rows = 2 if n_opts >= 4 else 1
-        needed = len(q_lines) * 4 + 7 + 14 + (legend_rows - 1) * 5
+        needed = len(q_lines) * 4.6 + 7 + 14 + (legend_rows - 1) * 5
         check(needed)
         c.setFillColor(ink)
-        c.setFont("Helvetica", 8)
+        c.setFont("Helvetica", 9)
         for i, line in enumerate(q_lines):
-            c.drawString(mg * mm, top_pt(y + i * 4), line)
+            c.drawString(mg * mm, top_pt(y + i * 4.6), line)
         total = sum(q["options"].values())
         if total:
             c.setFillColor(lgray)
@@ -1570,7 +1571,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
             c.setFont("Helvetica", 7)
             c.setFillColor(muted)
             c.drawCentredString((mg + cW - 11) * mm, top_pt(y + 0.5), f"n={total}")
-        y += len(q_lines) * 4 + 3
+        y += len(q_lines) * 4.6 + 3
         y = _pdf_stacked_bar(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, mg, y, cW, 7, PH)
         y = _pdf_legend(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, mg, y, cW, PH)
         c.setStrokeColor(rl_colors.HexColor("#E6E6E6"))
