@@ -93,6 +93,8 @@ st.markdown(
     ".st-key-nav_toggle div[data-testid='stPageLink'] a:hover{background:#EEF0F2 !important;text-decoration:none !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a[aria-current='page']{background:#EEF0F2 !important;border-radius:6px !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a p{white-space:nowrap !important;overflow:visible !important;}"
+    "div[data-testid='stSidebarCollapsedControl']{left:0.4rem !important;z-index:1000001 !important;}"
+    "div[data-testid='stSidebarCollapseButton']{z-index:1000001 !important;}"
     ".st-key-nav_toggle div[data-testid='stPopover']{width:auto !important;min-width:fit-content !important;}"
     ".st-key-nav_toggle div[data-testid='stPopover'] button{"
     "background:transparent !important;border:none !important;box-shadow:none !important;"
