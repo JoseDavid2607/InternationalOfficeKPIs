@@ -1743,16 +1743,27 @@ if not IS_COVER:
     def _nav_href(page_obj) -> str:
         return "/" + (page_obj.url_path or "")
 
+    def _nav_icon(page_obj) -> str:
+        # Solo se muestra si es un emoji real (las semanas usan la bandera
+        # del país); los ":material/...:" de Data Center/Overview/Financial
+        # no son texto imprimible, así que esas quedan sin icono.
+        ic = page_obj.icon or ""
+        return "" if ic.startswith(":material/") else ic
+
     def _nav_link(page_obj, small: bool = False) -> str:
         active = page_obj is pg
+        bg = ACCENT_SOFT if active else "#F1F1F3"
         color = ACCENT if active else "#374151"
         weight = "700" if active else "500"
         fsize = "12.5px" if small else "13px"
+        icon = _nav_icon(page_obj)
+        icon_html = f'{icon} ' if icon else ""
         return (
             f'<a href="{_nav_href(page_obj)}" target="_self" '
-            f'style="display:block;white-space:nowrap;text-decoration:none;'
+            f'style="display:inline-block;white-space:nowrap;text-decoration:none;'
+            f'background:{bg};border-radius:8px;'
             f'color:{color} !important;font-weight:{weight};font-size:{fsize};'
-            f'padding:6px 10px;">{page_obj.title}</a>'
+            f'padding:6px 12px;">{icon_html}{page_obj.title}</a>'
         )
 
     links_html = "".join(_nav_link(p) for p in visible_pages)
@@ -1762,8 +1773,9 @@ if not IS_COVER:
         )
         links_html += (
             '<details style="position:relative;display:inline-block;">'
-            f'<summary style="cursor:pointer;list-style:none;color:{ACCENT};'
-            'font-size:13px;padding:6px 10px;white-space:nowrap;">More...</summary>'
+            f'<summary style="cursor:pointer;list-style:none;background:#F1F1F3;'
+            f'border-radius:8px;color:{ACCENT};font-weight:500;'
+            'font-size:13px;padding:6px 12px;white-space:nowrap;">More...</summary>'
             '<div style="position:absolute;top:100%;right:0;background:#fff;'
             'border:1px solid #E9E2E7;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.12);'
             f'padding:6px 10px;margin-top:4px;z-index:1000000;">{overflow_items}</div>'
@@ -1772,10 +1784,10 @@ if not IS_COVER:
 
     st.markdown(
         '<div style="position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);'
-        'z-index:999999;max-width:96vw;background:#fff;border-radius:999px;'
-        'box-shadow:0 2px 10px rgba(0,0,0,.10);padding:2px 6px;'
+        'z-index:999999;max-width:96vw;background:#fff;border-radius:14px;'
+        'box-shadow:0 2px 10px rgba(0,0,0,.10);padding:4px;'
         'display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;'
-        f'gap:2px;overflow-x:auto;">{links_html}</div>',
+        f'gap:6px;overflow-x:auto;">{links_html}</div>',
         unsafe_allow_html=True,
     )
 
