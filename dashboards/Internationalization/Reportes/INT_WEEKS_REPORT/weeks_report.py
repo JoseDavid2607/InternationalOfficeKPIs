@@ -105,9 +105,8 @@ st.markdown(
     f".survey-quote{{background:#FAF8FA;border-left:3px solid {ACCENT};"
     "border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12.5px;"
     "font-style:italic;color:#3B2C34;}}"
-    ".st-key-nav_toggle{position:fixed !important;top:0 !important;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:auto !important;max-width:96vw;background:#fff;"
-    "padding:6px 10px 4px;border-radius:0 0 10px 10px;box-shadow:0 2px 6px rgba(0,0,0,.06);}"
+    ".st-key-nav_toggle{position:fixed !important;top:0.25rem;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:auto !important;max-width:96vw;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
     "display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;width:auto !important;"
     "justify-content:center !important;align-items:center !important;gap:14px !important;"
@@ -151,7 +150,7 @@ st.markdown(
     ".st-key-cover_banner div[data-testid='stImage']{margin:0 auto !important;width:auto !important;"
     "display:flex !important;justify-content:center !important;}"
     ".st-key-cover_banner img{margin:0 auto !important;display:block !important;}"
-    ".block-container{padding-top:2.6rem !important;}"
+    ".block-container{padding-top:3.2rem !important;}"
     ".st-key-go_to_datacenter_btn a{"
     f"display:flex !important;align-items:center;justify-content:center;gap:6px;"
     f"background:{ACCENT} !important;border:none !important;border-radius:10px !important;"
@@ -275,7 +274,7 @@ def _show_weeks_banner(width: Optional[int] = None, use_container_width: bool = 
     ext = "jpeg" if path.lower().endswith((".jpg", ".jpeg")) else "png"
     width_css = "100%" if use_container_width else f"{width}px"
     st.markdown(
-        f'<div style="width:100%;text-align:center;">'
+        f'<div style="width:100%;text-align:center;margin-bottom:10px;">'
         f'<img src="data:image/{ext};base64,{b64}" style="width:{width_css};max-width:100%;border-radius:10px;">'
         f'</div>',
         unsafe_allow_html=True,
@@ -971,10 +970,10 @@ def page_week(key: str):
     info_html = (
         '<div style="min-width:0;flex:1 1 auto;overflow:hidden;">'
         f'<div style="font-family:monospace;font-size:11.5px;text-transform:uppercase;'
-        f'letter-spacing:.06em;font-weight:600;color:{w["color"]};">{w["name"]}</div>'
-        '<h2 style="font-size:19px;margin:4px 0 0;white-space:nowrap;'
+        f'letter-spacing:.06em;font-weight:600;color:{w["color"]};margin-bottom:1px;">{w["name"]}</div>'
+        '<h2 style="font-size:19px;margin:1px 0 0;line-height:1.15;white-space:nowrap;'
         f'overflow:hidden;text-overflow:ellipsis;">{w["course"]}</h2>'
-        '<div style="font-size:13px;color:#6E5C68;margin-top:4px;white-space:nowrap;'
+        '<div style="font-size:13px;color:#6E5C68;margin-top:1px;white-space:nowrap;'
         f'overflow:hidden;text-overflow:ellipsis;">{w["location"]}, {w["country"]} · {w["dates"]}</div>'
         '</div>'
     )
@@ -1129,13 +1128,21 @@ def page_week(key: str):
                 st.caption("No comments for this question.")
 
     st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
-    with st.spinner("Preparing report…"):
-        pdf_bytes = _build_week_survey_pdf(w)
+    # Misma lógica de EIV_report.py: cachea el PDF en session_state por
+    # semana, así solo se reconstruye cuando cambian los datos de esa
+    # semana en vez de en cada rerun de Streamlit.
+    pdf_key = w["key"]
+    cache = st.session_state.get("_weeks_pdf_cache", {})
+    if cache.get("key") != pdf_key:
+        with st.spinner("Preparing report…"):
+            pdf_bytes = _build_week_survey_pdf(w)
+        st.session_state["_weeks_pdf_cache"] = {"key": pdf_key, "data": pdf_bytes}
+        cache = st.session_state["_weeks_pdf_cache"]
     col_l, col_mid, col_r = st.columns([1, 2, 1])
     with col_mid:
         with st.container(key=f"gen_report_btn_{w['key']}"):
             st.download_button(
-                "Generate Evaluation Report", data=pdf_bytes,
+                "Generate Evaluation Report", data=cache["data"],
                 file_name=f'ISS_{w["key"]}_Evaluation_Report.pdf', mime="application/pdf",
                 key=f'dl_pdf_{w["key"]}', use_container_width=True,
                 icon=":material/picture_as_pdf:",
@@ -1252,137 +1259,462 @@ def page_financial():
 
 
 # ── 11) PDF — Evaluation Report per week ─────────────────────────────────
+# Helpers de dibujo — traducidos 1:1 de EIV_report.py (_pdf_stacked_bar,
+# _pdf_legend, _pdf_nps_bar, _wrap_to_width, _pdf_file_bytes): todo se
+# razona en mm (y_mm = distancia desde ARRIBA de la página), convirtiendo a
+# puntos de reportlab solo al dibujar. Reutilizables tal cual porque no
+# dependen de nada específico de EIV (reciben color y datos por parámetro).
+def _pdf_stacked_bar(c, options: dict, order: list, color_map: dict, x_mm, y_mm, w_mm, h_mm, page_h_mm):
+    from reportlab.lib import colors as rl_colors
+    from reportlab.lib.units import mm
+    total = sum(options.get(k, 0) for k in order)
+    if not total:
+        return y_mm + h_mm + 2
+    top_pt = (page_h_mm - y_mm) * mm
+    h_pt = h_mm * mm
+    cx = x_mm * mm
+    for k in order:
+        n = options.get(k, 0)
+        if not n:
+            continue
+        sw = (w_mm * mm) * (n / total)
+        col = color_map.get(k, (180, 180, 180))
+        c.setFillColor(rl_colors.Color(col[0] / 255, col[1] / 255, col[2] / 255))
+        c.rect(cx, top_pt - h_pt, sw, h_pt, fill=1, stroke=0)
+        if sw > 14:
+            c.setFont("Helvetica-Bold", 6.5)
+            c.setFillColor(rl_colors.white)
+            c.drawCentredString(cx + sw / 2, top_pt - h_pt / 2 - 2.2, f"{round(n / total * 100)}%")
+        cx += sw
+    c.setStrokeColor(rl_colors.HexColor("#C8C8C8"))
+    c.setLineWidth(0.4)
+    c.rect(x_mm * mm, top_pt - h_pt, w_mm * mm, h_pt, fill=0, stroke=1)
+    return y_mm + h_mm + 2
+
+
+def _pdf_legend(c, options: dict, order: list, color_map: dict, x_mm, y_mm, w_mm, page_h_mm):
+    from reportlab.lib import colors as rl_colors
+    from reportlab.lib.units import mm
+    lx_mm, ly_mm = x_mm, y_mm
+    c.setFont("Helvetica", 6.5)
+    for k in order:
+        n = options.get(k, 0)
+        if not n:
+            continue
+        label = f"{k} ({n})"
+        item_w_mm = (c.stringWidth(label, "Helvetica", 6.5) / mm) + 5 + 3
+        if lx_mm + item_w_mm > x_mm + w_mm and lx_mm > x_mm:
+            lx_mm, ly_mm = x_mm, ly_mm + 5
+        col = color_map.get(k, (180, 180, 180))
+        top_pt = (page_h_mm - ly_mm) * mm
+        c.setFillColor(rl_colors.Color(col[0] / 255, col[1] / 255, col[2] / 255))
+        c.rect(lx_mm * mm, top_pt - 2.4 * mm, 3.5 * mm, 3.2 * mm, fill=1, stroke=0)
+        c.setFillColor(rl_colors.HexColor(INK))
+        c.drawString(lx_mm * mm + 5 * mm, top_pt - 2.4 * mm, label)
+        lx_mm += item_w_mm + 5
+    return ly_mm + 6
+
+
+def _pdf_nps_bar(c, options: dict, x_mm, y_mm, w_mm, h_mm, page_h_mm):
+    from reportlab.lib import colors as rl_colors
+    from reportlab.lib.units import mm
+    NPS_COL = {
+        0: (210, 45, 45), 1: (220, 55, 55), 2: (225, 85, 55), 3: (240, 110, 40), 4: (255, 145, 0),
+        5: (255, 190, 0), 6: (205, 215, 55), 7: (155, 200, 80), 8: (95, 175, 95), 9: (55, 155, 75), 10: (25, 135, 55),
+    }
+    sw_mm = w_mm / 11
+    top_pt = (page_h_mm - y_mm) * mm
+    h_pt = h_mm * mm
+    c.setFont("Helvetica", 6)
+    c.setFillColor(rl_colors.HexColor("#8C7F87"))
+    for i in range(11):
+        c.drawCentredString((x_mm + i * sw_mm + sw_mm / 2) * mm, top_pt + 2 * mm, str(i))
+    for i in range(11):
+        n = 0
+        for k, v in options.items():
+            if str(k).strip() == str(i):
+                n += v
+        col = NPS_COL[i]
+        cx = (x_mm + i * sw_mm) * mm
+        c.setFillColor(rl_colors.Color(col[0] / 255, col[1] / 255, col[2] / 255))
+        c.rect(cx, top_pt - h_pt, sw_mm * mm - 0.4 * mm, h_pt, fill=1, stroke=0)
+        if n > 0:
+            c.setFont("Helvetica-Bold", 7)
+            c.setFillColor(rl_colors.white)
+            c.drawCentredString(cx + (sw_mm * mm) / 2, top_pt - h_pt / 2 - 2.5, str(n))
+    c.setStrokeColor(rl_colors.HexColor("#C8C8C8"))
+    c.setLineWidth(0.4)
+    c.rect(x_mm * mm, top_pt - h_pt, w_mm * mm, h_pt, fill=0, stroke=1)
+    return y_mm + h_mm + 3
+
+
+# Los datos de BD_encuesta_curso.xlsx ya vienen en español (LIKERT_SCORE
+# arriba usa esas mismas claves), así que solo hace falta el juego de
+# claves en español — se deja también el equivalente en inglés por si un
+# futuro socio carga la encuesta en ese idioma.
+LIKERT_ORDER_PDF = [
+    "Totalmente en desacuerdo", "Strongly Disagree", "En desacuerdo", "Disagree",
+    "Ni de acuerdo ni en desacuerdo", "Neither agree nor disagree",
+    "De acuerdo", "Agree", "Totalmente de acuerdo", "Strongly Agree",
+]
+LIKERT_COLOR_PDF = {
+    "Totalmente en desacuerdo": (210, 45, 45), "Strongly Disagree": (210, 45, 45),
+    "En desacuerdo": (255, 112, 67), "Disagree": (255, 112, 67),
+    "Ni de acuerdo ni en desacuerdo": (255, 193, 7), "Neither agree nor disagree": (255, 193, 7),
+    "De acuerdo": (139, 195, 74), "Agree": (139, 195, 74),
+    "Totalmente de acuerdo": (46, 125, 50), "Strongly Agree": (46, 125, 50),
+}
+WORKLOAD_ORDER_PDF = ["Nada", "Nothing", "Poco", "Low", "Mucho", "A lot", "Demasiado", "Too much"]
+WORKLOAD_COLOR_PDF = {
+    "Nada": (46, 125, 50), "Nothing": (46, 125, 50), "Poco": (139, 195, 74), "Low": (139, 195, 74),
+    "Mucho": (255, 112, 67), "A lot": (255, 112, 67), "Demasiado": (210, 45, 45), "Too much": (210, 45, 45),
+}
+OBJ_ORDER_PDF = ["Ninguno", "None", "Algunos", "Some", "Todos", "All"]
+OBJ_COLOR_PDF = {
+    "Ninguno": (210, 45, 45), "None": (210, 45, 45), "Algunos": (255, 193, 7), "Some": (255, 193, 7),
+    "Todos": (46, 125, 50), "All": (46, 125, 50),
+}
+
+
+def _wrap_to_width(c, text: str, font_name: str, font_size: float, max_width_mm: float) -> list:
+    from reportlab.lib.units import mm
+    max_w_pt = max_width_mm * mm * 0.98
+    words = str(text).split()
+    lines, cur = [], ""
+    for word in words:
+        trial = f"{cur} {word}".strip()
+        if c.stringWidth(trial, font_name, font_size) <= max_w_pt or not cur:
+            cur = trial
+        else:
+            lines.append(cur)
+            cur = word
+    if cur:
+        lines.append(cur)
+    return lines or [""]
+
+
+def _pdf_file_bytes(path: Optional[str]) -> Optional[bytes]:
+    if not path:
+        return None
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except Exception:
+        return None
+
+
 def _build_week_survey_pdf(w: dict) -> bytes:
-    """Reporte PDF de evaluación (solo encuesta, sin financieros) para una
-    semana — mismo contenido que 'Generate Evaluation Report' del HTML.
-    Construido con reportlab en vez de jsPDF: mismo contenido numérico y
-    mismos comentarios, con un layout propio en vez de réplica pixel-a-pixel
-    de las barras apiladas con degradado del original."""
+    """Réplica en reportlab del PDF de evaluación de EIV_report.py
+    (_build_professor_pdf): misma banda con logo+foto, mismas tarjetas KPI,
+    mismas barras apiladas con leyenda por aspecto, misma barra NPS 0-10, y
+    mismos comentarios paginados — mismo diseño y misma lógica de dibujo.
+    Dos diferencias reales frente a EIV: (1) International Weeks no maneja
+    periodos de matrícula (GR/UG) — cada semana es un solo periodo, así que
+    se usa directo la rama de una sola columna; y (2) todo el texto del PDF
+    va en español (idioma original de la encuesta y del reporte de Weeks),
+    no en inglés."""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.lib import colors as rl_colors
     from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib.utils import ImageReader
 
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
-    W, H = A4
-    mg = 14 * mm
-    week_color = rl_colors.HexColor(w["color"])
+    PW, PH = 210.0, 297.0
+    mg = 14.0
+    cW = PW - 2 * mg
+    accent = rl_colors.HexColor(w["color"])
+    ink = rl_colors.HexColor(INK)
+    muted = rl_colors.HexColor("#8C7F87")
+    lgray = rl_colors.HexColor("#F8F6F8")
+    soft = rl_colors.HexColor(w["colorSoft"])
 
-    def header_band():
-        c.setFillColor(week_color)
-        c.rect(0, H - 26 * mm, W, 26 * mm, fill=1, stroke=0)
-        c.setFillColor(rl_colors.white)
-        c.setFont("Helvetica-Bold", 15)
-        c.drawString(mg, H - 15 * mm, f'{w["name"]} — Evaluation Report')
-        c.setFont("Helvetica", 9)
-        c.drawString(mg, H - 21 * mm, f'{w["course"]} · {w["professor"]}')
+    def top_pt(y_mm):
+        return (PH - y_mm) * mm
 
-    def check_page(y, needed):
-        if y - needed < 16 * mm:
-            c.showPage()
-            header_band()
-            return H - 34 * mm
-        return y
-
-    header_band()
-    y = H - 34 * mm
     sv = w["survey"]
+    logo_bytes = _pdf_file_bytes(_partner_logo_path(w["key"]))
+    photo_bytes = _pdf_file_bytes(_photo_path(w["professor"]))
 
-    c.setFillColor(rl_colors.HexColor(INK))
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(mg, y, "SURVEY SUMMARY")
-    y -= 8 * mm
-
-    kpis = [
-        ("Students Responded", str(sv["respondents"])),
-        ("Response Rate", f'{sv["responseRate"]}%'),
-        ("Avg. Satisfaction", f'{sv["avg"]} / 5.0' if sv["avg"] is not None else "—"),
-        ("Would Recommend", f'{sv["nps"]} / 10' if sv["npsN"] else "—"),
-        ("Objectives Met", f'{sv["objectivesAllPct"]}%' if sv["objectivesN"] else "—"),
-    ]
-    kw = (W - 2 * mg) / len(kpis)
-    for i, (label, val) in enumerate(kpis):
-        x = mg + i * kw
-        c.setFillColor(rl_colors.HexColor("#F6F8FB"))
-        c.roundRect(x, y - 18 * mm, kw - 4, 18 * mm, 3, fill=1, stroke=0)
-        c.setFillColor(week_color)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawCentredString(x + (kw - 4) / 2, y - 9 * mm, val)
-        c.setFillColor(rl_colors.HexColor("#8B97AC"))
-        c.setFont("Helvetica", 6.5)
-        c.drawCentredString(x + (kw - 4) / 2, y - 15 * mm, label)
-    y -= 26 * mm
-
-    c.setFillColor(rl_colors.HexColor(INK))
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(mg, y, "BY ASPECT")
-    y -= 7 * mm
-    for a in sv["aspects"]:
-        y = check_page(y, 6 * mm)
-        c.setFillColor(rl_colors.HexColor(INK))
+    def draw_stats_header():
+        band_h = 34
+        c.setFillColor(accent)
+        c.rect(0, top_pt(band_h), PW * mm, band_h * mm, fill=1, stroke=0)
+        if logo_bytes:
+            try:
+                c.setFillColor(rl_colors.white)
+                c.roundRect(mg * mm, top_pt(23), 42 * mm, 20 * mm, 3 * mm, fill=1, stroke=0)
+                img = ImageReader(io.BytesIO(logo_bytes))
+                c.drawImage(img, (mg + 2) * mm, top_pt(21), width=38 * mm, height=16 * mm,
+                            preserveAspectRatio=True, mask="auto")
+            except Exception:
+                pass
+        name_right_edge = PW - mg
+        if photo_bytes:
+            try:
+                c.setFillColor(rl_colors.white)
+                c.roundRect((PW - mg - 24) * mm, top_pt(31), 24 * mm, 28 * mm, 2.5 * mm, fill=1, stroke=0)
+                img = ImageReader(io.BytesIO(photo_bytes))
+                c.drawImage(img, (PW - mg - 23) * mm, top_pt(30), width=22 * mm, height=26 * mm,
+                            preserveAspectRatio=True, mask="auto")
+                name_right_edge = PW - mg - 28
+            except Exception:
+                pass
+        c.setFillColor(rl_colors.white)
+        c.setFont("Helvetica-Bold", 13)
+        c.drawRightString(name_right_edge * mm, top_pt(11), w["professor"])
+        c.setFont("Helvetica", 8.5)
+        c.drawRightString(name_right_edge * mm, top_pt(17), f'{w["location"]}, {w["country"]}')
         c.setFont("Helvetica", 8)
-        c.drawString(mg, y, a["aspect"])
-        c.setFont("Helvetica-Bold", 8)
-        c.drawRightString(W - mg, y, f'{a["avg"]:.2f} / 5.0  (n={a["n"]})')
-        y -= 5.5 * mm
-    y -= 4 * mm
+        c.drawRightString(name_right_edge * mm, top_pt(22.5), w["dates"])
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(mg * mm, top_pt(29.5), "EVALUACIÓN DEL CURSO")
 
-    c.setFillColor(rl_colors.HexColor(INK))
-    c.setFont("Helvetica-Bold", 10)
-    y = check_page(y, 8 * mm)
-    c.drawString(mg, y, "QUESTION-LEVEL RESPONSES")
-    y -= 7 * mm
-    for q in sv["questions"]:
-        y = check_page(y, 14 * mm)
-        c.setFont("Helvetica-Oblique", 7.5)
-        c.setFillColor(rl_colors.HexColor("#5B6B85"))
-        text_lines = _wrap_text(q["text"], 95)
-        for line in text_lines:
-            y = check_page(y, 5 * mm)
-            c.drawString(mg, y, line)
-            y -= 4 * mm
-        opts_str = "  ·  ".join(f"{k}: {v}" for k, v in q["options"].items())
-        c.setFont("Helvetica", 7.5)
-        c.setFillColor(rl_colors.HexColor(INK))
-        for line in _wrap_text(opts_str, 100):
-            y = check_page(y, 5 * mm)
-            c.drawString(mg + 4, y, line)
-            y -= 4.2 * mm
-        y -= 2 * mm
-
-    for g in sv["commentGroups"]:
-        y = check_page(y, 12 * mm)
-        c.setFillColor(week_color)
+    def draw_continuation_header():
+        c.setFillColor(accent)
+        c.rect(0, top_pt(14), PW * mm, 14 * mm, fill=1, stroke=0)
+        c.setFillColor(rl_colors.white)
         c.setFont("Helvetica-Bold", 10)
-        c.drawString(mg, y, f'{g["label"]} ({g["n"]})')
-        y -= 6 * mm
-        if not g["items"]:
-            c.setFont("Helvetica-Oblique", 8)
-            c.setFillColor(rl_colors.HexColor("#8B97AC"))
-            c.drawString(mg, y, "No comments for this question.")
-            y -= 6 * mm
-        for item in g["items"]:
-            for line in _wrap_text(str(item), 100):
-                y = check_page(y, 5 * mm)
-                c.setFont("Helvetica", 7.5)
-                c.setFillColor(rl_colors.HexColor(INK))
-                c.drawString(mg, y, "• " + line if line == _wrap_text(str(item), 100)[0] else "  " + line)
-                y -= 4.2 * mm
-            y -= 1.5 * mm
-        y -= 4 * mm
+        c.drawRightString((PW - mg) * mm, top_pt(9), w["professor"])
 
-    c.setFont("Helvetica", 7)
-    c.setFillColor(rl_colors.HexColor("#8B97AC"))
-    c.drawString(mg, 10 * mm, "International Weeks · Facultad de Administración · Universidad de los Andes")
+    def draw_footer(page_num):
+        c.setFillColor(lgray)
+        c.rect(0, 0, PW * mm, 10 * mm, fill=1, stroke=0)
+        c.setFont("Helvetica", 7)
+        c.setFillColor(muted)
+        c.drawString(12 * mm, 4 * mm, "International Weeks 2026 — Evaluación del Curso")
+        c.drawRightString((PW - 12) * mm, 4 * mm, str(page_num))
+
+    page_num = 1
+    draw_stats_header()
+
+    def _estimate_page1_height():
+        h = 0.0
+        course_lines_est = _wrap_to_width(c, w["course"] or "", "Helvetica-Bold", 17, cW)
+        h += len(course_lines_est) * 7 + 3
+        h += 9  # subtítulo ubicación/fechas
+        h += 23 + 8  # tarjeta de matrícula
+        h += 32  # tarjetas KPI
+        return h
+
+    header_bottom_y = 34.0
+    footer_top_y = PH - 10.0
+    available_h = footer_top_y - header_bottom_y
+    total_h = _estimate_page1_height()
+    y = header_bottom_y + max(2.0, (available_h - total_h) / 2)
+
+    c.setFillColor(accent)
+    c.setFont("Helvetica-Bold", 17)
+    course_lines = _wrap_to_width(c, w["course"] or "", "Helvetica-Bold", 17, cW)
+    for i, line in enumerate(course_lines):
+        c.drawCentredString((mg + cW / 2) * mm, top_pt(y + i * 7), line)
+    y += len(course_lines) * 7 + 3
+    c.setFillColor(muted)
+    c.setFont("Helvetica", 8.5)
+    c.drawCentredString((mg + cW / 2) * mm, top_pt(y), f'{w["location"]}, {w["country"]}  ·  {w["dates"]}')
+    y += 9
+
+    # ---- Tarjeta de matrícula: un solo periodo (todas las semanas caen en
+    # el mismo periodo), a diferencia de EIV que muestra GR/UG lado a lado.
+    c.setFillColor(soft)
+    c.roundRect((mg + cW / 2 - 40) * mm, top_pt(y + 19), 80 * mm, 19 * mm, 3 * mm, fill=1, stroke=0)
+    c.setFillColor(accent)
+    c.setFont("Helvetica-Bold", 13)
+    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 8.5), f'{w["abroadCount"]} viajaron')
+    c.setFillColor(ink)
+    c.setFont("Helvetica", 6.5)
+    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 14), w["name"])
+    c.setFillColor(muted)
+    c.setFont("Helvetica-Oblique", 6)
+    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 18.3), f'{sv["respondents"]} respondieron la encuesta')
+    y += 23 + 8
+
+    # ---- KPIs de respuesta, en esta misma página 1 ----
+    if y + 32 > PH - 16:
+        draw_footer(page_num)
+        c.showPage()
+        page_num += 1
+        draw_continuation_header()
+        y = 24.0
+    stats = [
+        (f'{sv["respondents"]} / {w["abroadCount"]}' if w["abroadCount"] else str(sv["respondents"]),
+         "Estudiantes que Respondieron"),
+        (f'{sv["responseRate"]}%', "Tasa de Respuesta"),
+        (f'{sv["avg"]:.2f} / 5.0' if sv["avg"] is not None else "N/A", "Satisfacción Promedio"),
+        (f'{sv["nps"]:.1f} / 10' if sv["npsN"] else "N/A", "Recomendación Promedio"),
+        (f'{sv["objectivesAllPct"]:.0f}%' if sv["objectivesN"] else "N/A", "Objetivos Cumplidos (Todos)"),
+    ]
+    bw = cW / 5
+    for i, (val, label) in enumerate(stats):
+        bx = mg + i * bw
+        c.setFillColor(lgray)
+        c.roundRect((bx + 1) * mm, top_pt(y + 22), (bw - 3) * mm, 22 * mm, 3 * mm, fill=1, stroke=0)
+        c.setFillColor(accent)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawCentredString((bx + bw / 2 - 1) * mm, top_pt(y + 11), val)
+        c.setFillColor(muted)
+        c.setFont("Helvetica", 6)
+        c.drawCentredString((bx + bw / 2 - 1) * mm, top_pt(y + 18), label)
+    y += 32
+    draw_footer(page_num)
+
+    # ---- Evaluación cuantitativa (barras apiladas por aspecto) ----
+    c.showPage()
+    page_num += 1
+    draw_continuation_header()
+    draw_footer(page_num)
+    y = 24.0
+
+    def check(needed):
+        nonlocal y, page_num
+        if y + needed > PH - 16:
+            c.showPage()
+            page_num += 1
+            draw_continuation_header()
+            draw_footer(page_num)
+            y = 24.0
+
+    def section_bar(title):
+        nonlocal y
+        check(12)
+        c.setFillColor(accent)
+        c.rect(mg * mm, top_pt(y + 7.5), cW * mm, 7.5 * mm, fill=1, stroke=0)
+        c.setFillColor(rl_colors.white)
+        c.setFont("Helvetica-Bold", 8.5)
+        c.drawString((mg + 5) * mm, top_pt(y + 5.3), title)
+        y += 11
+
+    def draw_likert_q(q):
+        nonlocal y
+        text = q.get("text") or ""
+        q_lines = _wrap_to_width(c, text, "Helvetica", 8, cW)
+        n_opts = sum(1 for k in LIKERT_ORDER_PDF if q["options"].get(k))
+        legend_rows = 2 if n_opts >= 4 else 1
+        needed = len(q_lines) * 4 + 7 + 14 + (legend_rows - 1) * 5
+        check(needed)
+        c.setFillColor(ink)
+        c.setFont("Helvetica", 8)
+        for i, line in enumerate(q_lines):
+            c.drawString(mg * mm, top_pt(y + i * 4), line)
+        total = sum(q["options"].values())
+        if total:
+            c.setFillColor(lgray)
+            c.roundRect((mg + cW - 22) * mm, top_pt(y - 2), 22 * mm, 6 * mm, 2 * mm, fill=1, stroke=0)
+            c.setFont("Helvetica", 7)
+            c.setFillColor(muted)
+            c.drawCentredString((mg + cW - 11) * mm, top_pt(y + 0.5), f"n={total}")
+        y += len(q_lines) * 4 + 3
+        y = _pdf_stacked_bar(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, mg, y, cW, 7, PH)
+        y = _pdf_legend(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, mg, y, cW, PH)
+        c.setStrokeColor(rl_colors.HexColor("#E6E6E6"))
+        c.setLineWidth(0.3)
+        c.line(mg * mm, top_pt(y), (mg + cW) * mm, top_pt(y))
+        y += 5
+
+    by_aspect: Dict[str, list] = {}
+    nps_q = obj_q = wl_q = None
+    for q in sv["questions"]:
+        qtype = q.get("type")
+        if qtype == "acuerdo":
+            by_aspect.setdefault(q.get("aspect") or "General", []).append(q)
+        elif qtype == "escala010" and nps_q is None:
+            nps_q = q
+        elif qtype == "cantidad" and obj_q is None:
+            obj_q = q
+        elif qtype == "carga" and wl_q is None:
+            wl_q = q
+
+    section_bar("EVALUACIÓN CUANTITATIVA")
+    for asp, qs in by_aspect.items():
+        check(16)
+        c.setFillColor(soft)
+        c.rect(mg * mm, top_pt(y + 6.5), cW * mm, 6.5 * mm, fill=1, stroke=0)
+        c.setFillColor(ink)
+        c.setFont("Helvetica-Bold", 7.5)
+        c.drawString((mg + 4) * mm, top_pt(y + 4.6), str(asp).upper())
+        y += 9.5
+        for q in qs:
+            draw_likert_q(q)
+        y += 2
+
+    if nps_q:
+        section_bar("RECOMENDACIÓN (0-10)")
+        y = _pdf_nps_bar(c, nps_q["options"], mg, y + 5, cW, 10, PH) + 8
+    if obj_q:
+        section_bar("OBJETIVOS DEL CURSO")
+        y = _pdf_stacked_bar(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, 7, PH)
+        y = _pdf_legend(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, PH) + 8
+    if wl_q:
+        section_bar("CARGA ACADÉMICA")
+        y = _pdf_stacked_bar(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, 7, PH)
+        y = _pdf_legend(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, PH)
+    draw_footer(page_num)
+
+    # ---- Comentarios de los estudiantes ----
+    def ensure_space(needed):
+        nonlocal y, page_num
+        if y + needed > 283:
+            draw_footer(page_num)
+            c.showPage()
+            page_num += 1
+            draw_continuation_header()
+            y = 24.0
+
+    ensure_space(10)
+    c.setFillColor(ink)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(mg * mm, top_pt(y), "COMENTARIOS DE LOS ESTUDIANTES")
+    y += 7
+
+    comment_groups = sv["commentGroups"]
+    with_items = [g for g in comment_groups if g["items"]]
+    if not with_items:
+        c.setFont("Helvetica", 8)
+        c.setFillColor(rl_colors.HexColor("#50484E"))
+        c.drawString(mg * mm, top_pt(y), "No se recogieron comentarios para esta semana.")
+        draw_footer(page_num)
+    else:
+        for g in comment_groups:
+            group_needed = 7.0
+            if not g["items"]:
+                group_needed += 6
+            else:
+                for item in g["items"]:
+                    lines_est = _wrap_to_width(c, f'1. "{item}"', "Helvetica", 8, cW)
+                    group_needed += len(lines_est) * 4 + 2
+                group_needed += 4
+            if y + min(group_needed, 260) > 283 and y > 24.0:
+                draw_footer(page_num)
+                c.showPage()
+                page_num += 1
+                draw_continuation_header()
+                y = 24.0
+            c.setFont("Helvetica-Bold", 8.5)
+            c.setFillColor(accent)
+            c.drawString(mg * mm, top_pt(y), f"{g['label'].upper()}")
+            y += 5.5
+            if not g["items"]:
+                c.setFont("Helvetica", 8)
+                c.setFillColor(muted)
+                c.drawString(mg * mm, top_pt(y), "No hay comentarios para esta pregunta.")
+                y += 6
+                continue
+            for i, item in enumerate(g["items"]):
+                lines = _wrap_to_width(c, f'{i + 1}. "{item}"', "Helvetica", 8, cW)
+                needed = len(lines) * 4 + 2
+                ensure_space(needed)
+                c.setFont("Helvetica", 8)
+                c.setFillColor(rl_colors.HexColor("#50484E"))
+                for j, line in enumerate(lines):
+                    c.drawString(mg * mm, top_pt(y + j * 4), line)
+                y += needed
+            y += 4
+        draw_footer(page_num)
+
     c.save()
     buf.seek(0)
     return buf.getvalue()
-
-
-def _wrap_text(text: str, width: int) -> List[str]:
-    import textwrap
-    return textwrap.wrap(text, width=width) or [""]
 
 
 # ── 12) NAVEGACIÓN ────────────────────────────────────────────────────────
@@ -1418,6 +1750,10 @@ if IS_COVER:
 
 if not IS_COVER:
     with st.sidebar:
+        try:
+            _show_weeks_banner(use_container_width=True)
+        except Exception:
+            pass
         st.markdown(
             f'<div style="color:{INK};font-size:22px;font-weight:800;line-height:1.1;">'
             'International Weeks</div>',
