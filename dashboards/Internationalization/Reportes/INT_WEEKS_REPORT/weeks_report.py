@@ -110,6 +110,7 @@ st.markdown(
     "font-size:16px !important;font-weight:700 !important;height:52px !important;"
     "box-shadow:0 4px 14px rgba(44,74,107,.28) !important;}"
     f".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{{background:{ACCENT_DARK} !important;}}"
+    ".wk-nav-link:hover{text-decoration:underline !important;}"
     ".st-key-cover_banner{display:flex !important;justify-content:center !important;width:100% !important;}"
     ".st-key-cover_banner div[data-testid='stImage']{margin:0 auto !important;width:auto !important;"
     "display:flex !important;justify-content:center !important;}"
@@ -1752,42 +1753,40 @@ if not IS_COVER:
 
     def _nav_link(page_obj, small: bool = False) -> str:
         active = page_obj is pg
-        bg = ACCENT_SOFT if active else "#F1F1F3"
         color = ACCENT if active else "#374151"
-        weight = "700" if active else "500"
-        fsize = "12.5px" if small else "13px"
+        weight = "700" if active else "400"
+        fsize = "13px" if not small else "13px"
         icon = _nav_icon(page_obj)
         icon_html = f'{icon} ' if icon else ""
         return (
-            f'<a href="{_nav_href(page_obj)}" target="_self" '
+            f'<a href="{_nav_href(page_obj)}" target="_self" class="wk-nav-link" '
             f'style="display:inline-block;white-space:nowrap;text-decoration:none;'
-            f'background:{bg};border-radius:8px;'
             f'color:{color} !important;font-weight:{weight};font-size:{fsize};'
-            f'padding:6px 12px;">{icon_html}{page_obj.title}</a>'
+            f'padding:6px 4px;">{icon_html}{page_obj.title}</a>'
         )
 
     links_html = "".join(_nav_link(p) for p in visible_pages)
     if overflow_pages:
         overflow_items = "".join(
-            f'<div style="padding:2px 0;">{_nav_link(p, small=True)}</div>' for p in overflow_pages
+            f'<div style="padding:4px 10px;">{_nav_link(p, small=True)}</div>' for p in overflow_pages
         )
         links_html += (
             '<details style="position:relative;display:inline-block;">'
-            f'<summary style="cursor:pointer;list-style:none;background:#F1F1F3;'
-            f'border-radius:8px;color:{ACCENT};font-weight:500;'
-            'font-size:13px;padding:6px 12px;white-space:nowrap;">More...</summary>'
+            f'<summary style="cursor:pointer;list-style:none;color:{ACCENT};'
+            'font-weight:400;font-size:13px;padding:6px 4px;white-space:nowrap;" '
+            'class="wk-nav-link">More...</summary>'
             '<div style="position:absolute;top:100%;right:0;background:#fff;'
             'border:1px solid #E9E2E7;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.12);'
-            f'padding:6px 10px;margin-top:4px;z-index:1000000;">{overflow_items}</div>'
+            f'padding:8px 4px;margin-top:4px;z-index:1000000;">{overflow_items}</div>'
             '</details>'
         )
 
     st.markdown(
         '<div style="position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);'
-        'z-index:999999;max-width:96vw;background:#fff;border-radius:14px;'
-        'box-shadow:0 2px 10px rgba(0,0,0,.10);padding:4px;'
+        'z-index:999999;width:82vw;max-width:1050px;'
         'display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;'
-        f'gap:6px;overflow-x:auto;">{links_html}</div>',
+        'justify-content:center;gap:18px;overflow-x:auto;">'
+        f'{links_html}</div>',
         unsafe_allow_html=True,
     )
 
