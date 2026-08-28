@@ -1698,9 +1698,9 @@ week_page_by_key: Dict[str, st.Page] = {
 
 pages = (
     [st.Page(page_cover, title="Data Center", icon=":material/dashboard:", url_path="cover", default=True),
-     st.Page(page_overview, title="Overview", icon=":material/public:", url_path="overview")]
+     st.Page(page_overview, title="Overview", icon="🌍", url_path="overview")]
     + list(week_page_by_key.values())
-    + [st.Page(page_financial, title="Financial Detail", icon=":material/payments:", url_path="financial")]
+    + [st.Page(page_financial, title="Financial Detail", icon="💰", url_path="financial")]
 )
 pg = st.navigation(pages, position="hidden")
 IS_COVER = pg is pages[0]
@@ -1744,25 +1744,22 @@ if not IS_COVER:
     def _nav_href(page_obj) -> str:
         return "/" + (page_obj.url_path or "")
 
-    def _nav_icon(page_obj) -> str:
-        # Solo se muestra si es un emoji real (las semanas usan la bandera
-        # del país); los ":material/...:" de Data Center/Overview/Financial
-        # no son texto imprimible, así que esas quedan sin icono.
-        ic = page_obj.icon or ""
-        return "" if ic.startswith(":material/") else ic
-
     def _nav_link(page_obj, small: bool = False) -> str:
+        # Diseño calcado del menú de referencia (UASM Intl. KPIs): texto
+        # negro normal, ícono/emoji siempre visible (bandera del país en
+        # las semanas, emoji en Overview/Financial), y un recuadro gris
+        # suave solo en la sección activa — nada de color de acento en el
+        # texto ni "More..." resaltado.
         active = page_obj is pg
-        color = ACCENT if active else "#374151"
-        weight = "700" if active else "400"
-        fsize = "13px" if not small else "13px"
-        icon = _nav_icon(page_obj)
+        bg = "#EEF0F2" if active else "transparent"
+        icon = page_obj.icon or ""
         icon_html = f'{icon} ' if icon else ""
         return (
             f'<a href="{_nav_href(page_obj)}" target="_self" class="wk-nav-link" '
-            f'style="display:inline-block;white-space:nowrap;text-decoration:none;'
-            f'color:{color} !important;font-weight:{weight};font-size:{fsize};'
-            f'padding:6px 4px;">{icon_html}{page_obj.title}</a>'
+            f'style="display:inline-flex;align-items:center;white-space:nowrap;'
+            f'text-decoration:none;background:{bg};border-radius:20px;'
+            f'color:#1F2937 !important;font-weight:400;font-size:13px;'
+            f'padding:6px 12px;">{icon_html}{page_obj.title}</a>'
         )
 
     links_html = "".join(_nav_link(p) for p in visible_pages)
@@ -1772,8 +1769,8 @@ if not IS_COVER:
         )
         links_html += (
             '<details style="position:relative;display:inline-block;">'
-            f'<summary style="cursor:pointer;list-style:none;color:{ACCENT};'
-            'font-weight:400;font-size:13px;padding:6px 4px;white-space:nowrap;" '
+            '<summary style="cursor:pointer;list-style:none;color:#8C7F87;'
+            'font-weight:400;font-size:12.5px;padding:6px 4px;white-space:nowrap;" '
             'class="wk-nav-link">More...</summary>'
             '<div style="position:absolute;top:100%;right:0;background:#fff;'
             'border:1px solid #E9E2E7;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.12);'
@@ -1785,7 +1782,7 @@ if not IS_COVER:
         '<div style="position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);'
         'z-index:999999;width:82vw;max-width:1050px;'
         'display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;'
-        'justify-content:center;gap:18px;overflow-x:auto;">'
+        'justify-content:center;gap:10px;overflow-x:auto;">'
         f'{links_html}</div>',
         unsafe_allow_html=True,
     )
