@@ -1674,12 +1674,6 @@ def _build_week_survey_pdf(w: dict) -> bytes:
         for i, line in enumerate(q_lines):
             c.drawString(mg * mm, top_pt(y + i * 4.6), line)
         total = sum(q["options"].values())
-        if total:
-            c.setFillColor(lgray)
-            c.roundRect((mg + cW - 22) * mm, top_pt(y + 2.5), 22 * mm, 6 * mm, 2 * mm, fill=1, stroke=0)
-            c.setFont("Helvetica", 8)
-            c.setFillColor(muted)
-            c.drawCentredString((mg + cW - 11) * mm, top_pt(y + 0.5), f"n={total}")
         y += len(q_lines) * 4.6 + 3
         y = _pdf_stacked_bar(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, mg, y, cW, 7, PH)
         y = _pdf_legend(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, mg, y, cW, PH)
