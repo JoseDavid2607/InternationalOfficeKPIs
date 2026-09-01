@@ -1715,6 +1715,12 @@ def _build_week_survey_pdf(w: dict) -> bytes:
             draw_likert_q(q)
         y += 2
 
+    if nps_q or obj_q or wl_q:
+        draw_footer(page_num)
+        c.showPage()
+        page_num += 1
+        draw_continuation_header()
+        y = 24.0
     if nps_q:
         section_bar("RECOMENDACIÓN (0-10)")
         y = _pdf_nps_bar(c, nps_q["options"], mg, y + 5, cW, 10, PH) + 8
