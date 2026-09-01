@@ -645,8 +645,22 @@ def build_weeks() -> Tuple[List[dict], dict]:
         # el número real de estudiantes que respondieron esa pregunta).
         c_rows = df_com[df_com["nombre_profesor"].astype(str).str.strip().str.upper() == prof_name.upper()]
         comment_groups = []
-        for qid, label in COMMENT_QID_LABELS.items():
-            items = c_rows[c_rows["id_pregunta"] == qid]["respuesta"].fillna("NA").tolist()
+        has_pregunta_col = "pregunta" in df_com.columns
+        for qid, fallback_label in COMMENT_QID_LABELS.items():
+            q_rows = c_rows[c_rows["id_pregunta"] == qid]
+            label = None
+            if has_pregunta_col:
+                # Texto exacto de la pregunta tal como está en la hoja
+                # 'comentarios' del Excel (columna 'pregunta'), sin
+                # abreviar. Si este profesor no tiene filas para este
+                # id_pregunta, se busca el texto en el resto de la hoja
+                # (la pregunta es la misma para todos los profesores).
+                src_rows = q_rows if not q_rows.empty else df_com[df_com["id_pregunta"] == qid]
+                if not src_rows.empty and pd.notna(src_rows["pregunta"].iloc[0]):
+                    label = str(src_rows["pregunta"].iloc[0]).strip()
+            if not label:
+                label = fallback_label
+            items = q_rows["respuesta"].fillna("NA").tolist()
             items = [str(x).strip() if str(x).strip() else "NA" for x in items]
             comment_groups.append({"label": label, "items": items, "n": len(items)})
 
@@ -1662,7 +1676,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
         total = sum(q["options"].values())
         if total:
             c.setFillColor(lgray)
-            c.roundRect((mg + cW - 22) * mm, top_pt(y - 2), 22 * mm, 6 * mm, 2 * mm, fill=1, stroke=0)
+            c.roundRect((mg + cW - 22) * mm, top_pt(y + 2.5), 22 * mm, 6 * mm, 2 * mm, fill=1, stroke=0)
             c.setFont("Helvetica", 8)
             c.setFillColor(muted)
             c.drawCentredString((mg + cW - 11) * mm, top_pt(y + 0.5), f"n={total}")
@@ -1714,6 +1728,13 @@ def _build_week_survey_pdf(w: dict) -> bytes:
     draw_footer(page_num)
 
     # ---- Comentarios de los estudiantes ----
+    # Esta sección siempre arranca en una página nueva, sin importar cuánto
+    # espacio haya quedado libre después de la evaluación cuantitativa.
+    c.showPage()
+    page_num += 1
+    draw_continuation_header()
+    y = 24.0
+
     def ensure_space(needed):
         nonlocal y, page_num
         if y + needed > 283:
@@ -1723,7 +1744,6 @@ def _build_week_survey_pdf(w: dict) -> bytes:
             draw_continuation_header()
             y = 24.0
 
-    ensure_space(10)
     c.setFillColor(ink)
     c.setFont("Helvetica-Bold", 10)
     c.drawString(mg * mm, top_pt(y), "COMENTARIOS DE LOS ESTUDIANTES")
@@ -1738,7 +1758,10 @@ def _build_week_survey_pdf(w: dict) -> bytes:
         draw_footer(page_num)
     else:
         for g in comment_groups:
-            group_needed = 7.0
+            label_upper = g["label"].upper()
+            label_lines = _wrap_to_width(c, label_upper, "Helvetica-Bold", 9.5, cW)
+            label_h = len(label_lines) * 4.6 + 1.0
+            group_needed = label_h
             if not g["items"]:
                 group_needed += 6
             else:
@@ -1754,8 +1777,9 @@ def _build_week_survey_pdf(w: dict) -> bytes:
                 y = 24.0
             c.setFont("Helvetica-Bold", 9.5)
             c.setFillColor(accent)
-            c.drawString(mg * mm, top_pt(y), f"{g['label'].upper()}")
-            y += 5.5
+            for li, line in enumerate(label_lines):
+                c.drawString(mg * mm, top_pt(y + li * 4.6), line)
+            y += label_h
             if not g["items"]:
                 c.setFont("Helvetica", 8)
                 c.setFillColor(muted)
