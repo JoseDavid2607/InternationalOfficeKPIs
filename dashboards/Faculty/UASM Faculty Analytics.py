@@ -6207,6 +6207,22 @@ def _needs_fix(v) -> bool:
     return False
 
 
+def _norm_id(v) -> str:
+    """Normaliza un ID de profesor a texto comparable, sin importar si llegó
+    como int, float (p.ej. 123456.0 -- típico cuando pandas infiere la
+    columna ID como numérica) o str -- para que un mismo ID nunca deje de
+    hacer match solo por venir de una fuente distinta (pandas vía
+    _load_profesores_lookup vs. lectura directa de celdas con openpyxl)."""
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    s = str(v).strip()
+    if s.endswith(".0") and s[:-2].isdigit():
+        s = s[:-2]
+    return s
+
+
 def _semestre_from_periodo(periodo) -> str:
     """Regla real de Uniandes para pasar de un código de Periodo (YYYYNN) al
     Semestre limpio que usa el resto de la app -- NUNCA se inventa/adivina,
@@ -6895,7 +6911,7 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
             pid = ws_info.cell(row=r, column=2).value
             if pid is None:
                 continue
-            key = str(pid).strip()
+            key = _norm_id(pid)
             info_lookup[key] = (
                 ws_info.cell(row=r, column=1).value,  # Profesor
                 ws_info.cell(row=r, column=3).value,  # AREA_PROFESOR
@@ -6911,7 +6927,7 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
             per = ws_planta.cell(row=r, column=1).value
             if pid is None or per is None:
                 continue
-            key = (str(per).strip(), str(pid).strip())
+            key = (str(per).strip(), _norm_id(pid))
             planta_lookup[key] = (
                 ws_planta.cell(row=r, column=24).value,  # Faculty Qualific. (TIPO en planta)
                 ws_planta.cell(row=r, column=25).value,  # P/S
@@ -6920,14 +6936,14 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
         existing_pairs = set()
         for r in range(2, last_row + 1):
             p = str(ws.cell(row=r, column=1).value or "").strip()
-            i = str(ws.cell(row=r, column=3).value or "").strip()
+            i = _norm_id(ws.cell(row=r, column=3).value)
             existing_pairs.add((p, i))
 
         append_start = last_row + 1
         n_written = 0
         for periodo, ids in periodo_to_ids.items():
             for prof_id in ids:
-                periodo_s, id_s = str(periodo).strip(), str(prof_id).strip()
+                periodo_s, id_s = str(periodo).strip(), _norm_id(prof_id)
                 pair = (periodo_s, id_s)
                 if pair in existing_pairs:
                     continue
@@ -7493,7 +7509,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                 pid = ws_planta_ref.cell(row=r, column=3).value   # ID Nr.
                 if per is None or pid is None:
                     continue
-                key = (str(per).strip(), str(pid).strip())
+                key = (str(per).strip(), _norm_id(pid))
                 planta_lookup[key] = (
                     ws_planta_ref.cell(row=r, column=24).value,  # Faculty Qualific. (TIPO en planta)
                     ws_planta_ref.cell(row=r, column=25).value,  # P/S
@@ -7549,7 +7565,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             tipo_val, ps_val = "", ""
             if match_prof:
                 id_val, area_prof_val, tipo_info, ps_info = match_prof
-                planta_key = (str(b_cell.value).strip(), str(id_val).strip())
+                planta_key = (str(b_cell.value).strip(), _norm_id(id_val))
                 planta_match = planta_lookup.get(planta_key)
                 tipo_final = planta_match[0] if planta_match else tipo_info
                 ps_final = planta_match[1] if planta_match else ps_info
