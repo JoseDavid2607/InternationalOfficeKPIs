@@ -7474,6 +7474,31 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
         append_start_ct = last_row_ct2 + 1
 
         lookup = profesor_lookup or {}
+
+        # ── Lookup adicional para PLANTA: TIPO (O) y P/S (P) pueden cambiar
+        # de un semestre a otro para un mismo profesor, así que si es de
+        # PLANTA se buscan por (Periodo, ID) contra la hoja 'planta' de
+        # BD_profesores.xlsx -- mismo patrón que ya usa
+        # push_faculty_distribution_updates (columnas A=Periodo, C=ID Nr.,
+        # X=Faculty Qualific./TIPO, Y=P/S). Si no es planta (o el par
+        # Periodo+ID no aparece ahí), se conserva TIPO/P-S de 'Info.
+        # Profesores' (por nombre), igual que antes.
+        raw_prof_bytes = _download_drive_file_bytes(PROFESORES_FILE_ID)
+        wb_prof = openpyxl.load_workbook(io.BytesIO(raw_prof_bytes))
+        planta_lookup: Dict[Tuple[str, str], Tuple] = {}
+        if "planta" in wb_prof.sheetnames:
+            ws_planta_ref = wb_prof["planta"]
+            for r in range(2, ws_planta_ref.max_row + 1):
+                per = ws_planta_ref.cell(row=r, column=1).value   # Periodo
+                pid = ws_planta_ref.cell(row=r, column=3).value   # ID Nr.
+                if per is None or pid is None:
+                    continue
+                key = (str(per).strip(), str(pid).strip())
+                planta_lookup[key] = (
+                    ws_planta_ref.cell(row=r, column=24).value,  # Faculty Qualific. (TIPO en planta)
+                    ws_planta_ref.cell(row=r, column=25).value,  # P/S
+                )
+
         for i, r in enumerate(cartelera_df.itertuples(index=False, name=None)):
             rn = append_start_ct + i
             periodo, campus, materia, secc, creditos, nombre, profesor = (r + ("",) * 7)[:7]
@@ -7511,16 +7536,28 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             k_cell.font = base_font
             k_cell.fill = calc_fill
 
-            # M,N,O,P — ID, AREA_PROFESOR, TIPO, P/S (valor literal, buscado por nombre)
+            # M,N,O,P — ID, AREA_PROFESOR, TIPO, P/S (valor literal).
+            # M (ID) y N (AREA_PROFESOR) se buscan por nombre en 'Info.
+            # Profesores' (vía profesor_lookup), como antes. O (TIPO) y P
+            # (P/S) primero intentan resolverse por (Periodo, ID) contra
+            # 'planta' -- porque para profesores de PLANTA esos valores
+            # pueden cambiar de un semestre a otro -- y solo si ese par no
+            # aparece en 'planta' (profesor de CÁTEDRA, o sin registro ese
+            # semestre) se usa el TIPO/P-S de 'Info. Profesores' por nombre.
             prof_key = str(profesor).strip().upper()
             match_prof = lookup.get(prof_key)
             tipo_val, ps_val = "", ""
             if match_prof:
-                for col, val in zip((13, 14, 15, 16), match_prof):
+                id_val, area_prof_val, tipo_info, ps_info = match_prof
+                planta_key = (str(b_cell.value).strip(), str(id_val).strip())
+                planta_match = planta_lookup.get(planta_key)
+                tipo_final = planta_match[0] if planta_match else tipo_info
+                ps_final = planta_match[1] if planta_match else ps_info
+                for col, val in zip((13, 14, 15, 16), (id_val, area_prof_val, tipo_final, ps_final)):
                     cell = ws_cart.cell(row=rn, column=col, value=val)
                     cell.font = base_font
                     cell.fill = area_fill
-                tipo_val, ps_val = str(match_prof[2]).strip().upper(), str(match_prof[3]).strip().upper()
+                tipo_val, ps_val = str(tipo_final).strip().upper(), str(ps_final).strip().upper()
 
             # Q,R,S,T,U,V,W — desglose de créditos por P/S y TIPO (misma lógica que la fórmula real:
             # Créditos si coincide con la etiqueta de la columna, si no 0)
