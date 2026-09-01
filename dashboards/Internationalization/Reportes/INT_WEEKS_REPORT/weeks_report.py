@@ -1674,13 +1674,13 @@ def _build_week_survey_pdf(w: dict) -> bytes:
         for i, line in enumerate(q_lines):
             c.drawString(mg * mm, top_pt(y + i * 4.6), line)
         total = sum(q["options"].values())
-        y += len(q_lines) * 4.6 + 5
+        y += len(q_lines) * 4.6 + 2
         y = _pdf_stacked_bar(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, mg, y, cW, 7, PH)
         y = _pdf_legend(c, q["options"], LIKERT_ORDER_PDF, LIKERT_COLOR_PDF, mg, y, cW, PH)
         c.setStrokeColor(rl_colors.HexColor("#E6E6E6"))
         c.setLineWidth(0.3)
         c.line(mg * mm, top_pt(y), (mg + cW) * mm, top_pt(y))
-        y += 7
+        y += 9
 
     by_aspect: Dict[str, list] = {}
     nps_q = obj_q = wl_q = None
@@ -1697,7 +1697,14 @@ def _build_week_survey_pdf(w: dict) -> bytes:
 
     section_bar("EVALUACIÓN CUANTITATIVA")
     for asp, qs in by_aspect.items():
-        check(16)
+        first_needed = 0.0
+        if qs:
+            fq = qs[0]
+            fq_lines = _wrap_to_width(c, fq.get("text") or "", "Helvetica", 9, cW)
+            fq_opts = sum(1 for k in LIKERT_ORDER_PDF if fq["options"].get(k))
+            fq_legend_rows = 2 if fq_opts >= 4 else 1
+            first_needed = len(fq_lines) * 4.6 + 9 + 14 + (fq_legend_rows - 1) * 5
+        check(9.5 + first_needed)
         c.setFillColor(soft)
         c.rect(mg * mm, top_pt(y + 6.5), cW * mm, 6.5 * mm, fill=1, stroke=0)
         c.setFillColor(ink)
