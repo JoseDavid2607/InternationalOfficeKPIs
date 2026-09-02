@@ -7790,14 +7790,24 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     sel_cell = ws_qual.cell(row=1, column=2, value="(Todos)")
     sel_cell.font = Font(name="Arial", size=11, bold=True, color="1F6F54")
     sel_cell.fill = PatternFill(fill_type="solid", fgColor="D9EDE7")
-    dv_list = ",".join(['"(Todos)"'] + [f'"{p}"' for p in period_options])
-    dv = DataValidation(type="list", formula1=f"={dv_list}" if len(dv_list) <= 253 else None, allow_blank=False)
-    if dv.formula1 is None:  # demasiadas opciones para una lista inline -- usa una hoja auxiliar
+    all_options = ["(Todos)"] + period_options
+    dv_list = ",".join(all_options)
+    # Sintaxis correcta de una lista inline en Data Validation: un solo
+    # string entre comillas, valores separados por coma, SIN '=' adelante
+    # ni comillas por cada elemento -- con la sintaxis de fórmula (que
+    # tenía antes) el desplegable no aparecía y Excel mostraba el aviso de
+    # "recuperar información" al abrir el archivo.
+    if len(dv_list) + 2 <= 255:
+        dv = DataValidation(type="list", formula1=f'"{dv_list}"', allow_blank=False, showDropDown=False, showErrorMessage=True)
+    else:  # demasiadas opciones para una lista inline -- usa una hoja auxiliar
         ws_aux = wb_out.create_sheet("_periodos")
         ws_aux.sheet_state = "hidden"
-        for i, p in enumerate(["(Todos)"] + period_options, start=1):
+        for i, p in enumerate(all_options, start=1):
             ws_aux.cell(row=i, column=1, value=p)
-        dv = DataValidation(type="list", formula1=f"=_periodos!$A$1:$A${len(period_options) + 1}", allow_blank=False)
+        dv = DataValidation(
+            type="list", formula1=f"_periodos!$A$1:$A${len(all_options)}",
+            allow_blank=False, showDropDown=False, showErrorMessage=True,
+        )
     ws_qual.add_data_validation(dv)
     dv.add(sel_cell)
     ws_qual.cell(row=1, column=4, value="⟵ elegí un periodo puntual o \"(Todos)\" para ver la suma combinada").font = Font(
