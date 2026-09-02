@@ -7555,6 +7555,38 @@ def _filter_ws_rows_by_period(ws, col_name: str, keep_periods, header_row: int =
     _delete_rows_batched(ws, to_delete)
 
 
+def _is_specialization_program(program: str, cod_program: str) -> bool:
+    """Especialización = nombre de programa que empieza por 'Specialization'
+    o código de programa que empieza por 'E-' (mismo criterio que se usa en
+    Qualifications)."""
+    p = str(program or "").strip().upper()
+    c = str(cod_program or "").strip().upper()
+    return p.startswith("SPECIALIZATION") or c.startswith("E-")
+
+
+def _filter_ws_rows_exclude_specializations(ws, header_row: int = 1):
+    """Borra las filas de 'cartelera' que correspondan a programas de
+    Especialización (nombre 'Specialization...' o código 'E-...'), para que
+    el reporte descargado nunca incluya esa información."""
+    col_program = col_codprog = None
+    for c in range(1, ws.max_column + 1):
+        name = str(ws.cell(row=header_row, column=c).value or "").strip()
+        if name == "Program":
+            col_program = c
+        elif name == "Cod program":
+            col_codprog = c
+    if col_program is None and col_codprog is None:
+        return
+    to_delete = [
+        r for r in range(header_row + 1, ws.max_row + 1)
+        if _is_specialization_program(
+            ws.cell(row=r, column=col_program).value if col_program else "",
+            ws.cell(row=r, column=col_codprog).value if col_codprog else "",
+        )
+    ]
+    _delete_rows_batched(ws, to_delete)
+
+
 def _write_simple_table(ws, dfx: pd.DataFrame):
     """Escribe un DataFrame en una hoja nueva con estilo de template limpio:
     encabezado en negrilla blanca sobre fondo oscuro, bordes finos en todas
@@ -7640,7 +7672,27 @@ def _write_qualifications_block(ws, start_row: int, labels: list, label_title: s
     ws.cell(row=hdr_row, column=13).fill = header_fill
     ws.merge_cells(start_row=hdr_row, start_column=13, end_row=hdr_row, end_column=14)
 
-    data_start = hdr_row + 1
+    # Fila de subtítulos con la fórmula de cada indicador (J..N), en un
+    # color distinto al encabezado verde de arriba -- igual que en el
+    # archivo original.
+    sub_font = Font(name="Arial", size=9, bold=True, color="FFFFFF")
+    sub_fill = PatternFill(fill_type="solid", fgColor="2E86AB")
+    sub_row = hdr_row + 1
+    sub_labels = [
+        "SA/(SA+PA+IP+SP+O)", "(SA+PA+SP)/(SA+PA+IP+SP+O)", "(SA+PA+SP+IP)/(SA+PA+IP+SP+O)",
+        "P/(P+S)", "S/(P+S)",
+    ]
+    for i, txt in enumerate(sub_labels):
+        cell = ws.cell(row=sub_row, column=10 + i, value=txt)
+        cell.font = sub_font
+        cell.fill = sub_fill
+        cell.border = border
+        ws.column_dimensions[cell.column_letter].width = 16
+    for c in range(1, 10):  # A..I quedan en blanco bajo el encabezado principal, misma fila
+        ws.cell(row=sub_row, column=c).border = border
+        ws.cell(row=sub_row, column=c).fill = sub_fill
+
+    data_start = sub_row + 1
     if not labels:
         ws.cell(row=data_start, column=1, value="(sin datos para este periodo)")
         return data_start + 2
@@ -7756,11 +7808,17 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
 
     # DataFrame de cartelera filtrado al/los periodo(s), para calcular la
     # hoja 5 -- se lee aparte con pandas porque es más simple para agrupar.
+    # Se excluyen especializaciones (Program 'Specialization...' o Cod
+    # program 'E-...') para que el reporte nunca muestre esa información.
     df_cart_full = pd.read_excel(io.BytesIO(raw_cart_bytes), sheet_name="cartelera")
     keep_norm = {str(p).strip().replace(".0", "") for p in target_periods}
     df_cart_period = df_cart_full[
         df_cart_full["Semestre"].astype(str).str.strip().str.replace(".0", "", regex=False).isin(keep_norm)
     ].copy()
+    _spec_mask = df_cart_period.apply(
+        lambda r: _is_specialization_program(r.get("Program", ""), r.get("Cod program", "")), axis=1
+    )
+    df_cart_period = df_cart_period[~_spec_mask].copy()
 
     # --- 1) Faculty Distribution (filtrada) ---
     raw_fd = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
@@ -7773,9 +7831,12 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     ws_pn = wb_out.create_sheet("Profesores Nuevos")
     _write_simple_table(ws_pn, new_profs_df)
 
-    # --- 3) cartelera (filtrada, igual que la hoja 1) ---
+    # --- 3) cartelera (filtrada por periodo, y sin especializaciones --
+    # las mismas fórmulas SUMIFS de la hoja 5 leen de aquí, así que
+    # excluirlas acá alcanza para que tampoco aparezcan en Qualifications) ---
     if "cartelera" in wb_out.sheetnames:
         _filter_ws_rows_by_period(wb_out["cartelera"], "Semestre", target_periods)
+        _filter_ws_rows_exclude_specializations(wb_out["cartelera"])
 
     # --- 4) Cursos Nuevos ---
     ws_cn = wb_out.create_sheet("Cursos Nuevos")
