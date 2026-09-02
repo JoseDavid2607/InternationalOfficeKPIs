@@ -3033,10 +3033,26 @@ def page_qualifications():
                 key=lambda x: int(str(x).split()[0])
             )
             x_labels = inter
-        # Solo se visualizan los últimos 5 periodos en las gráficas de
-        # Evolution (ya sea semestre, año o intersemestral) -- x_labels ya
-        # viene ordenado ascendente, así que nos quedamos con la cola.
-        x_labels = x_labels[-5:]
+        # Ventana de 5 periodos que SIEMPRE incluye el periodo seleccionado
+        # en el Timeframe del sidebar -- no siempre los 5 más recientes de
+        # TODO el histórico. Si no se ancla al periodo seleccionado, elegir
+        # un periodo antiguo para analizar (p.ej. 2022) igual mostraba solo
+        # los últimos periodos cargados (2025+), como si lo viejo no se
+        # hubiera leído -- cuando en realidad sí estaba, solo fuera de la
+        # ventana visible.
+        anchor = None
+        if time_mode == "Semestral":
+            anchor = st.session_state.get("sel_sem")
+        elif time_mode == "Anual":
+            anchor = st.session_state.get("sel_year")
+        else:
+            _y = st.session_state.get("sel_year")
+            anchor = f"{_y} Intersemestral" if _y else None
+        if anchor is not None and anchor in x_labels:
+            idx = x_labels.index(anchor)
+            x_labels = x_labels[max(0, idx - 4): idx + 1]
+        else:
+            x_labels = x_labels[-5:]
         x_map = {lab: i for i, lab in enumerate(x_labels)}
         return "_SEM", x_labels, x_map
 
@@ -4901,9 +4917,22 @@ def page_qualifications():
                             df_x["_X"].dropna().astype(str).unique().tolist(),
                             key=lambda s: int(str(s).split()[0]) if str(s).split() else 0
                         )
-                    # Solo los últimos 5 periodos (semestre, año o
-                    # intersemestral, según el modo activo).
-                    x_labels = x_labels[-5:]
+                    # Ventana de 5 periodos anclada al periodo seleccionado
+                    # en el sidebar (no siempre los 5 más recientes del
+                    # dataset completo) -- mismo criterio que
+                    # build_time_axis_for_history.
+                    if tm == "Semestral":
+                        anchor = st.session_state.get("sel_sem")
+                    elif tm == "Anual":
+                        anchor = st.session_state.get("sel_year")
+                    else:
+                        _y = st.session_state.get("sel_year")
+                        anchor = f"{_y} Intersemestral" if _y else None
+                    if anchor is not None and anchor in x_labels:
+                        idx = x_labels.index(anchor)
+                        x_labels = x_labels[max(0, idx - 4): idx + 1]
+                    else:
+                        x_labels = x_labels[-5:]
                     x_map = {lab: i for i, lab in enumerate(x_labels)}
                     return x_labels, x_map
 
