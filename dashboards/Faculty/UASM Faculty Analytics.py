@@ -7514,10 +7514,15 @@ def _copy_ws_with_style(src_ws, dst_wb, sheet_name: str):
 
 
 def _filter_ws_rows_by_period(ws, col_name: str, keep_periods, header_row: int = 1):
-    """Borra (de abajo hacia arriba) todas las filas de datos cuyo valor en
-    la columna col_name no esté en keep_periods -- comparando como texto y
-    sin '.0', para que no importe si el periodo quedó guardado como número
-    o como texto."""
+    """Borra todas las filas de datos cuyo valor en la columna col_name no
+    esté en keep_periods -- comparando como texto y sin '.0', para que no
+    importe si el periodo quedó guardado como número o como texto.
+    Agrupa las filas a borrar en bloques CONTIGUOS y los borra de a bloque
+    (de abajo hacia arriba) en vez de fila por fila: ws.delete_rows(fila)
+    individual miles de veces es muy lento (cada llamada recorre toda la
+    hoja) -- en 'cartelera' (5000+ filas) tardaba más de dos minutos y
+    parecía que la app se había colgado; de a bloque tarda una fracción de
+    segundo."""
     keep_norm = {str(p).strip().replace(".0", "") for p in keep_periods}
     col_idx = None
     for c in range(1, ws.max_column + 1):
@@ -7526,10 +7531,23 @@ def _filter_ws_rows_by_period(ws, col_name: str, keep_periods, header_row: int =
             break
     if col_idx is None:
         return
-    for r in range(ws.max_row, header_row, -1):
-        v = str(ws.cell(row=r, column=col_idx).value or "").strip().replace(".0", "")
-        if v not in keep_norm:
-            ws.delete_rows(r)
+    to_delete = [
+        r for r in range(header_row + 1, ws.max_row + 1)
+        if str(ws.cell(row=r, column=col_idx).value or "").strip().replace(".0", "") not in keep_norm
+    ]
+    if not to_delete:
+        return
+    blocks = []
+    start = prev = to_delete[0]
+    for r in to_delete[1:]:
+        if r == prev + 1:
+            prev = r
+        else:
+            blocks.append((start, prev))
+            start = prev = r
+    blocks.append((start, prev))
+    for b_start, b_end in reversed(blocks):
+        ws.delete_rows(b_start, b_end - b_start + 1)
 
 
 def _write_simple_table(ws, dfx: pd.DataFrame):
