@@ -6761,13 +6761,12 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
             if r[0] is not None and _norm_period(r[0]) != ""
         )
 
-        # 1) Borra filas existentes con esos periodos (columna A), de abajo hacia arriba
+        # 1) Borra filas existentes con esos periodos (columna A)
         rows_to_delete = [
             r for r in range(2, ws.max_row + 1)
             if _norm_period(ws.cell(row=r, column=1).value) in periodos
         ]
-        for r in sorted(rows_to_delete, reverse=True):
-            ws.delete_rows(r)
+        _delete_rows_batched(ws, rows_to_delete)
 
         # 1.5) Numero indicativo (Nro) consecutivo: continua desde el maximo
         # existente en la columna B, ya que la template no lo trae mas.
@@ -7513,16 +7512,36 @@ def _copy_ws_with_style(src_ws, dst_wb, sheet_name: str):
     return dst_ws
 
 
+def _delete_rows_batched(ws, rows_to_delete):
+    """Borra una lista de filas (índices 1-based, en cualquier orden) del
+    modo más rápido posible: agrupa filas CONTIGUAS en bloques y llama
+    ws.delete_rows(inicio, cantidad) una vez por bloque, de abajo hacia
+    arriba. Llamar ws.delete_rows(fila) individualmente miles de veces es
+    muy lento -- cada llamada recorre toda la hoja -- y en hojas grandes
+    (cartelera, planta con varios periodos) podía tardar minutos y disparar
+    el throttling de CPU de Streamlit Cloud."""
+    rows_sorted = sorted(set(rows_to_delete))
+    if not rows_sorted:
+        return
+    blocks = []
+    start = prev = rows_sorted[0]
+    for r in rows_sorted[1:]:
+        if r == prev + 1:
+            prev = r
+        else:
+            blocks.append((start, prev))
+            start = prev = r
+    blocks.append((start, prev))
+    for b_start, b_end in reversed(blocks):
+        ws.delete_rows(b_start, b_end - b_start + 1)
+
+
 def _filter_ws_rows_by_period(ws, col_name: str, keep_periods, header_row: int = 1):
     """Borra todas las filas de datos cuyo valor en la columna col_name no
     esté en keep_periods -- comparando como texto y sin '.0', para que no
     importe si el periodo quedó guardado como número o como texto.
-    Agrupa las filas a borrar en bloques CONTIGUOS y los borra de a bloque
-    (de abajo hacia arriba) en vez de fila por fila: ws.delete_rows(fila)
-    individual miles de veces es muy lento (cada llamada recorre toda la
-    hoja) -- en 'cartelera' (5000+ filas) tardaba más de dos minutos y
-    parecía que la app se había colgado; de a bloque tarda una fracción de
-    segundo."""
+    Usa _delete_rows_batched para que sea rápido incluso en hojas grandes
+    como 'cartelera' (5000+ filas)."""
     keep_norm = {str(p).strip().replace(".0", "") for p in keep_periods}
     col_idx = None
     for c in range(1, ws.max_column + 1):
@@ -7535,19 +7554,7 @@ def _filter_ws_rows_by_period(ws, col_name: str, keep_periods, header_row: int =
         r for r in range(header_row + 1, ws.max_row + 1)
         if str(ws.cell(row=r, column=col_idx).value or "").strip().replace(".0", "") not in keep_norm
     ]
-    if not to_delete:
-        return
-    blocks = []
-    start = prev = to_delete[0]
-    for r in to_delete[1:]:
-        if r == prev + 1:
-            prev = r
-        else:
-            blocks.append((start, prev))
-            start = prev = r
-    blocks.append((start, prev))
-    for b_start, b_end in reversed(blocks):
-        ws.delete_rows(b_start, b_end - b_start + 1)
+    _delete_rows_batched(ws, to_delete)
 
 
 def _write_simple_table(ws, dfx: pd.DataFrame):
@@ -7840,8 +7847,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             r for r in range(2, last_row_ct + 1)
             if str(ws_cart.cell(row=r, column=1).value or "").strip() in periodos
         ]
-        for r in sorted(rows_to_delete, reverse=True):
-            ws_cart.delete_rows(r)
+        _delete_rows_batched(ws_cart, rows_to_delete)
 
         # ── Auto-reparación silenciosa ──────────────────────────────────
         # Filas de cargas anteriores (antes de este arreglo) pueden haber
