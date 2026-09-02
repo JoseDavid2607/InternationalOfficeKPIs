@@ -2686,7 +2686,7 @@ def page_qualifications():
     # propio dentro de Semestral, o sumados dentro del año en Anual. El
     # checkbox en sí se dibuja más abajo, en el sidebar, pero
     # st.session_state ya trae su valor persistido de la corrida anterior.
-    if not st.session_state.get("qual_include_inter", False):
+    if not st.session_state.get("qual_include_inter", True):
         if "Semestre" in df_car.columns:
             df_car = df_car[~df_car["Semestre"].astype(str).str.lower().str.contains("inter", na=False)].copy()
         if "Semestre" in df_fd.columns:
@@ -3521,9 +3521,8 @@ def page_qualifications():
             st.session_state["time_mode"] = "Semestral"
         time_mode = st.radio("Timeframe", ["Semestral", "Anual"], key="time_mode", label_visibility="collapsed", horizontal=False)
         st.checkbox(
-            "Include intersemestral", value=st.session_state.get("qual_include_inter", False),
+            "Include intersemestral", value=st.session_state.get("qual_include_inter", True),
             key="qual_include_inter",
-            help="Marcado: los periodos intersemestrales se incluyen (como periodo propio en Semestral, o sumados dentro del año en Anual). Desmarcado: se excluyen de toda la página.",
         )
 
         if time_mode == "Semestral":
@@ -6949,70 +6948,6 @@ def repair_planta_catedra_cache() -> Tuple[bool, str]:
         return False, f"Error al reparar PLANTA_CATEDRA: {e}"
 
 
-def repair_area_del_curso() -> Tuple[bool, str]:
-    """Reparación de una sola vez: la columna H ('Area del curso') de la
-    hoja 'cartelera' quedó vacía en TODAS las filas cargadas antes de que
-    el guardado empezara a rellenarla automáticamente (se detectó en los
-    periodos 2020-2024) -- el autosanado normal dentro de
-    push_cartelera_updates nunca la incluía en su lista de columnas a
-    reparar (solo B, I, J, K y Q-W), así que nunca se corregía sola.
-    Esta función la rellena, por Código Materia, contra 'cursos' (columna
-    'Area del curso'), igual que hace push_cartelera_updates con las filas
-    nuevas -- sin necesidad de subir ninguna template."""
-    if not _OPENPYXL_OK:
-        return False, "Falta la librería `openpyxl` en el entorno."
-    token = _get_gspread_access_token()
-    if not token:
-        return False, "No hay credenciales configuradas para escribir en Drive."
-    try:
-        raw_bytes = _download_drive_file_bytes(CARTELERA_FILE_ID)
-        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
-        if "cartelera" not in wb.sheetnames:
-            return False, "No encontré la hoja 'cartelera' en BD_cartelera.xlsx."
-        ws_cart = wb["cartelera"]
-
-        area_map = _load_cursos_area_map()
-        base_font = _BASE_ARIAL_FONT
-        calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
-
-        info = _table_info(ws_cart, "tabla_cartelera")
-        last_row = _last_data_row(ws_cart, key_col=1, header_row=info[2] if info else 1,
-                                   upper_bound=ws_cart.max_row) if info else ws_cart.max_row
-
-        n_fixed = 0
-        for r in range(2, last_row + 1):
-            h_val = ws_cart.cell(row=r, column=8).value
-            if h_val is not None and str(h_val).strip() != "":
-                continue
-            materia = ws_cart.cell(row=r, column=4).value
-            materia_key = str(materia).strip() if materia is not None else ""
-            new_area = area_map.get(materia_key)
-            if new_area is None or str(new_area).strip() == "":
-                continue
-            c = ws_cart.cell(row=r, column=8, value=new_area)
-            c.font = base_font
-            c.fill = calc_fill
-            n_fixed += 1
-
-        if n_fixed == 0:
-            return True, "No había filas con 'Area del curso' vacía -- nada que reparar."
-
-        wb.calculation.fullCalcOnLoad = True
-        buf = io.BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-        ok, err = _drive_upload_file_bytes(CARTELERA_FILE_ID, buf.getvalue())
-        if not ok:
-            return False, f"Error al subir el archivo reparado a Drive: {err}"
-
-        qual_load_cartelera.clear()
-        _download_drive_file_bytes.clear()
-        _load_cursos_area_map.clear()
-        return True, f"✓ Reparadas {n_fixed} fila(s) de 'Area del curso' en cartelera."
-    except Exception as e:
-        return False, f"Error al reparar 'Area del curso': {e}"
-
-
 def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[bool, str]:
     """Agrega a 'Faculty Distribution' (BD_profesores.xlsx) una fila por cada
     ID único que quedó en la cartelera recién cargada, agrupado por periodo:
@@ -7863,21 +7798,6 @@ def page_update_data():
 
         last_cart_period = _with_dash(sorted(_cart_periods_raw, key=_period_sort_key)[-1]) if _cart_periods_raw else "—"
         st.caption(f"Último periodo registrado en la Base: **{last_cart_period}**")
-
-        with st.expander("Reparación de datos históricos", expanded=False, icon=":material/build:"):
-            st.caption(
-                "Rellena 'Area del curso' en filas antiguas que quedaron vacías "
-                "antes de que el guardado empezara a calcularla automáticamente "
-                "(afecta principalmente a periodos 2020-2024). No requiere subir "
-                "ninguna template."
-            )
-            if st.button("Reparar 'Area del curso'", key="btn_repair_area_del_curso", icon=":material/build:"):
-                with st.spinner("Reparando…"):
-                    ok_rep, msg_rep = repair_area_del_curso()
-                if ok_rep:
-                    st.success(msg_rep)
-                else:
-                    st.error(msg_rep)
 
         st.download_button(
             "Descargar Template_cartelera.xlsx", data=_download_drive_file_bytes(TEMPLATE_CARTELERA_FILE_ID),
