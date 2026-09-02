@@ -42,6 +42,7 @@ try:
     from openpyxl.utils import range_boundaries, get_column_letter, column_index_from_string
     from openpyxl.formula.translate import Translator
     from openpyxl.worksheet.formula import ArrayFormula
+    from openpyxl.formatting.rule import CellIsRule, FormulaRule
     _OPENPYXL_OK = True
 except ImportError:
     _OPENPYXL_OK = False
@@ -6932,11 +6933,6 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
         periodos_txt = ", ".join(sorted(periodos)) if periodos else "?"
         msg = f"\u2713 BD_profesores.xlsx (hoja 'planta') actualizada \u2014 {len(rows)} filas para el/los periodo(s) {periodos_txt}."
         msg += f" · :blue[{n_new_total} nuevo(s)] · :red[{n_left_total} se retiraron]"
-        if not match:
-            msg += (
-                " \u26a0\ufe0f No encontre una Tabla de Excel llamada 'tabla_planta' en la hoja -- "
-                "las filas se agregaron igual, pero quedaran fuera de la tabla."
-            )
         return True, msg
     except Exception as e:
         return False, f"Error al escribir en la hoja 'planta': {e}"
@@ -7685,7 +7681,64 @@ def _write_qualifications_block(ws, start_row: int, dfx: pd.DataFrame, label: st
             if fill:
                 cell.fill = fill
 
+    last_row = data_start + len(dfx) - 1
+    total_row_num = last_row if str(dfx.iloc[-1, 0]).strip().upper() == "TOTAL GENERAL" else None
+    regular_last_row = (total_row_num - 1) if total_row_num else last_row
+
+    red_fill = PatternFill(fill_type="solid", fgColor="FFC7CE")
+    red_font = Font(name="Arial", size=10, color="9C0006")
+
+    # %SA (J) < 40% -- todas las filas, incluido el total
+    ws.conditional_formatting.add(
+        f"J{data_start}:J{last_row}",
+        CellIsRule(operator="lessThan", formula=["0.4"], fill=red_fill, font=red_font),
+    )
+    # (SA+PA+SP+IP)/Total (L) < 90% -- todas las filas, incluido el total
+    ws.conditional_formatting.add(
+        f"L{data_start}:L{last_row}",
+        CellIsRule(operator="lessThan", formula=["0.9"], fill=red_fill, font=red_font),
+    )
+    # %P y %S (M,N) < 60% -- filas normales (sin contar el total general)
+    if regular_last_row >= data_start:
+        ws.conditional_formatting.add(
+            f"M{data_start}:M{regular_last_row}",
+            CellIsRule(operator="lessThan", formula=["0.6"], fill=red_fill, font=red_font),
+        )
+        ws.conditional_formatting.add(
+            f"N{data_start}:N{regular_last_row}",
+            FormulaRule(formula=[f"$M{data_start}<0.6"], fill=red_fill, font=red_font),
+        )
+    # %P y %S (M,N) del Total general < 75% -- umbral distinto solo para esa fila
+    if total_row_num:
+        ws.conditional_formatting.add(
+            f"M{total_row_num}",
+            CellIsRule(operator="lessThan", formula=["0.75"], fill=red_fill, font=red_font),
+        )
+        ws.conditional_formatting.add(
+            f"N{total_row_num}",
+            FormulaRule(formula=[f"$M{total_row_num}<0.75"], fill=red_fill, font=red_font),
+        )
+
     return data_start + len(dfx) + 2  # +2 filas en blanco antes del siguiente bloque
+
+
+def _refresh_autofilter(ws, header_row: int = 1):
+    """Asegura que la hoja tenga filtro (flechas de Excel) sobre el rango de
+    datos actual. Si ya tiene una Tabla de Excel, le actualiza el 'ref' para
+    que cubra exactamente las filas que quedaron tras filtrar -- si se deja
+    con el rango viejo (más grande), Excel puede repararla al abrir o el
+    filtro queda inconsistente. Si no tiene Tabla, agrega un AutoFilter
+    simple (flechas de filtro sin el resto de funcionalidad de Tabla)."""
+    last_col = ws.max_column
+    last_row = ws.max_row
+    if last_row <= header_row or last_col < 1:
+        return
+    rng = f"A{header_row}:{get_column_letter(last_col)}{last_row}"
+    if ws.tables:
+        for tbl in list(ws.tables.values()):
+            tbl.ref = rng
+    else:
+        ws.auto_filter.ref = rng
 
 
 def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.DataFrame, new_profs_df: pd.DataFrame) -> bytes:
@@ -7728,6 +7781,7 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     if "Faculty Distribution" in wb_fd.sheetnames:
         ws_fd_new = _copy_ws_with_style(wb_fd["Faculty Distribution"], wb_out, "Faculty Distribution")
         _filter_ws_rows_by_period(ws_fd_new, "Semestre", target_periods)
+        _refresh_autofilter(ws_fd_new)
 
     # --- 2) Profesores Nuevos ---
     ws_pn = wb_out.create_sheet("Profesores Nuevos")
@@ -7736,6 +7790,7 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     # --- 3) cartelera (filtrada, igual que la hoja 1) ---
     if "cartelera" in wb_out.sheetnames:
         _filter_ws_rows_by_period(wb_out["cartelera"], "Semestre", target_periods)
+        _refresh_autofilter(wb_out["cartelera"])
 
     # --- 4) Cursos Nuevos ---
     ws_cn = wb_out.create_sheet("Cursos Nuevos")
