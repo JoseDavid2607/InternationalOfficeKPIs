@@ -344,7 +344,8 @@ def load_data():
 
     def _key(p):
         s = str(p)
-        return (int(s[:4]), 30 if "Intersemestral" in s else int(s[-2:]))
+        # 10 -> Intersemestral -> 20, mismo criterio que _period_sort_key
+        return (int(s[:4]), 15 if "Intersemestral" in s else int(s[-2:]))
 
     return df_.sort_values("Periodo", key=lambda c: c.map(_key))
 
@@ -7612,8 +7613,8 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     1) Faculty Distribution (BD_profesores) -- copia fiel del diseño
        original, filtrada al/los periodo(s) actualizado(s).
     2) Profesores nuevos agregados en esta carga (estilo de template).
-    3) cartelera completa (BD_cartelera) -- copia fiel del diseño original,
-       SIN filtrar (es la fuente de las tablas dinámicas de la hoja 5).
+    3) cartelera (BD_cartelera) -- copia fiel del diseño original,
+       filtrada al/los periodo(s) actualizado(s) igual que la hoja 1.
     4) Cursos nuevos agregados en esta carga (estilo de template).
     5) qualifications (BD_cartelera) -- la hoja tal cual está, con sus 3
        tablas dinámicas y su formato condicional intactos; lo único que se
@@ -7642,6 +7643,10 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     ws_pn = wb_out.create_sheet("Profesores Nuevos")
     _write_simple_table(ws_pn, new_profs_df)
 
+    # --- 3) cartelera (filtrada, igual que la hoja 1) ---
+    if "cartelera" in wb_out.sheetnames:
+        _filter_ws_rows_by_period(wb_out["cartelera"], "Semestre", target_periods)
+
     # --- 4) Cursos Nuevos ---
     ws_cn = wb_out.create_sheet("Cursos Nuevos")
     _write_simple_table(ws_cn, new_courses_df)
@@ -7653,6 +7658,13 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
                 _filter_pivot_to_periods(p, target_periods)
             except Exception:
                 pass  # si una tabla puntual falla, se deja tal cual venía
+
+    # Fuerza el recálculo completo del libro al abrirlo -- openpyxl no
+    # recalcula ni las tablas dinámicas ni las fórmulas de indicadores
+    # (columnas J:N) que dependen de ellas; sin esto, Excel podía mostrar
+    # valores viejos o '#¡VALOR!' hasta que alguien le diera F9/Actualizar
+    # todo manualmente.
+    wb_out.calculation.fullCalcOnLoad = True
 
     # --- Orden final de hojas ---
     order = ["Faculty Distribution", "Profesores Nuevos", "cartelera", "Cursos Nuevos", "qualifications"]
@@ -8441,7 +8453,9 @@ if not IS_UPDATE_PAGE:
 def _period_sort_key(p):
     s = str(p).strip()
     try:
-        return (int(s[:4]), 30 if "Intersemestral" in s else int(s[-2:].replace("-", "")))
+        # El orden cronológico dentro de un año siempre es: 10 (primer
+        # semestre) -> Intersemestral -> 20 (segundo semestre).
+        return (int(s[:4]), 15 if "Intersemestral" in s else int(s[-2:].replace("-", "")))
     except (ValueError, IndexError):
         return (-1, -1)  # valores no reconocibles (vacíos, ruido de datos) quedan al final al ordenar
 
