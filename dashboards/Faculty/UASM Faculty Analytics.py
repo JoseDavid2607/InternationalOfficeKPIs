@@ -43,6 +43,7 @@ try:
     from openpyxl.formula.translate import Translator
     from openpyxl.worksheet.formula import ArrayFormula
     from openpyxl.formatting.rule import CellIsRule, FormulaRule
+    from openpyxl.worksheet.table import Table, TableStyleInfo
     _OPENPYXL_OK = True
 except ImportError:
     _OPENPYXL_OK = False
@@ -7580,47 +7581,54 @@ def _write_simple_table(ws, dfx: pd.DataFrame):
 
 def _build_qualifications_group_table(df_cart_period: pd.DataFrame, group_col: str, label: str) -> pd.DataFrame:
     """Suma las columnas P, S, SA, PA, SP, IP, OTHER (ya calculadas por fila
-    en cartelera -- no hace falta normalizar nada) agrupando por group_col,
-    y agrega la fila 'Total general'. Es la misma agregación que hacía la
-    tabla dinámica de 'qualifications', pero como valores fijos."""
+    en cartelera -- no hace falta normalizar nada) agrupando por
+    (Semestre, group_col), y agrega una fila 'Total general'. Se conserva
+    el Semestre como columna propia (no se mezclan los periodos entre sí)
+    para poder filtrar por periodo en la tabla de Excel resultante."""
     cols_sum = ["Créditos", "P", "S", "SA", "PA", "SP", "IP", "OTHER"]
-    missing = [c for c in [group_col] + cols_sum if c not in df_cart_period.columns]
+    missing = [c for c in [group_col, "Semestre"] + cols_sum if c not in df_cart_period.columns]
     if missing or df_cart_period.empty:
-        return pd.DataFrame(columns=[label] + cols_sum)
+        return pd.DataFrame(columns=["Semestre", label] + cols_sum)
     d = df_cart_period.copy()
     for c in cols_sum:
         d[c] = pd.to_numeric(d[c], errors="coerce").fillna(0.0)
     d[group_col] = d[group_col].astype(str).str.strip()
-    g = d.groupby(group_col)[cols_sum].sum().reset_index().rename(columns={group_col: label})
-    g = g.sort_values(label).reset_index(drop=True)
-    total_row = pd.DataFrame([{label: "Total general", **g[cols_sum].sum().to_dict()}])
+    d["Semestre"] = d["Semestre"].astype(str).str.strip()
+    g = (
+        d.groupby(["Semestre", group_col])[cols_sum].sum().reset_index()
+        .rename(columns={group_col: label})
+    )
+    g = g.sort_values(["Semestre", label]).reset_index(drop=True)
+    total_row = pd.DataFrame([{"Semestre": "Total general", label: "", **g[cols_sum].sum().to_dict()}])
     return pd.concat([g, total_row], ignore_index=True)
 
 
-def _write_qualifications_block(ws, start_row: int, dfx: pd.DataFrame, label: str) -> int:
-    """Escribe un bloque de qualifications (encabezados + filas + Total
-    general) empezando en start_row. Columnas: A=label, B..I=Suma de
-    Créditos/P/S/SA/PA/SP/IP/OTHER (valores fijos), J..N=indicadores
-    (fórmulas reales de Excel que apuntan a las columnas C..I de la misma
-    fila -- las mismas que usa el archivo original):
-      J = SA/(SA+PA+SP+IP+OTHER)
-      K = (SA+PA+SP)/(SA+PA+SP+IP+OTHER)
-      L = (SA+PA+SP+IP)/(SA+PA+SP+IP+OTHER)
-      M = P/(P+S)
-      N = S/(P+S)
+def _write_qualifications_block(ws, start_row: int, dfx: pd.DataFrame, label: str, table_name: str) -> int:
+    """Escribe un bloque de qualifications (encabezado de una sola fila +
+    filas + Total general) empezando en start_row, como una Tabla de Excel
+    propia (table_name) -- así cada bloque tiene su propio filtro real de
+    Excel (flechas en el encabezado) independiente de los otros 2 bloques
+    de la misma hoja, y se puede filtrar por Semestre sin errores.
+    Columnas: A=Semestre, B=label, C..J=Suma de Créditos/P/S/SA/PA/SP/IP/
+    OTHER (valores fijos), K..O=indicadores (fórmulas reales de Excel que
+    apuntan a C..J de la misma fila -- las mismas del archivo original):
+      K = SA/(SA+PA+SP+IP+OTHER)
+      L = (SA+PA+SP)/(SA+PA+SP+IP+OTHER)
+      M = (SA+PA+SP+IP)/(SA+PA+SP+IP+OTHER)
+      N = P/(P+S)
+      O = S/(P+S)
     Devuelve la fila donde debe empezar el siguiente bloque."""
     header_font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
     header_fill = PatternFill(fill_type="solid", fgColor="1F6F54")
-    subhdr_font = Font(name="Arial", size=9, bold=True)
-    subhdr_fill = PatternFill(fill_type="solid", fgColor="D9EDE7")
     base_font = Font(name="Arial", size=10)
     total_font = Font(name="Arial", size=10, bold=True)
     total_fill = PatternFill(fill_type="solid", fgColor="E5E7EB")
     thin = Side(style="thin", color="D1D5DB")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    cols = [label, "Suma de Créditos", "Suma de P", "Suma de S", "Suma de SA",
-            "Suma de PA", "Suma de SP", "Suma de IP", "Suma de OTHER"]
+    cols = ["Semestre", label, "Suma de Créditos", "Suma de P", "Suma de S", "Suma de SA",
+            "Suma de PA", "Suma de SP", "Suma de IP", "Suma de OTHER",
+            "SA/(SA+PA+SP+IP+O)", "(SA+PA+SP)/Total", "(SA+PA+SP+IP)/Total", "P/(P+S)", "S/(P+S)"]
     hdr_row = start_row
     for c, name in enumerate(cols, start=1):
         cell = ws.cell(row=hdr_row, column=c, value=name)
@@ -7629,25 +7637,7 @@ def _write_qualifications_block(ws, start_row: int, dfx: pd.DataFrame, label: st
         cell.border = border
         ws.column_dimensions[cell.column_letter].width = max(14, len(name) + 2)
 
-    ws.cell(row=hdr_row, column=10, value="Indicadores de Cualificaciones").font = header_font
-    ws.cell(row=hdr_row, column=10).fill = header_fill
-    ws.merge_cells(start_row=hdr_row, start_column=10, end_row=hdr_row, end_column=12)
-    ws.cell(row=hdr_row, column=13, value="Indicadores P/S").font = header_font
-    ws.cell(row=hdr_row, column=13).fill = header_fill
-    ws.merge_cells(start_row=hdr_row, start_column=13, end_row=hdr_row, end_column=14)
-
-    sub_row = hdr_row + 1
-    sub_headers = [
-        "SA/(SA+PA+SP+IP+O)", "(SA+PA+SP)/Total", "(SA+PA+SP+IP)/Total", "P/(P+S)", "S/(P+S)",
-    ]
-    for i, name in enumerate(sub_headers):
-        cell = ws.cell(row=sub_row, column=10 + i, value=name)
-        cell.font = subhdr_font
-        cell.fill = subhdr_fill
-        cell.border = border
-        ws.column_dimensions[cell.column_letter].width = 15
-
-    data_start = sub_row + 1
+    data_start = hdr_row + 1
     if dfx is None or dfx.empty:
         ws.cell(row=data_start, column=1, value="(sin datos para este periodo)")
         return data_start + 2
@@ -7663,18 +7653,18 @@ def _write_qualifications_block(ws, start_row: int, dfx: pd.DataFrame, label: st
             cell.border = border
             if fill:
                 cell.fill = fill
-            if c > 1:
+            if c > 2:
                 cell.number_format = "#,##0"
-        # J:N -- fórmulas reales (no valores fijos), referenciando C:I de esta misma fila
+        # K:O -- fórmulas reales (no valores fijos), referenciando C:J de esta misma fila
         formulas = [
-            f"=E{rn}/(E{rn}+F{rn}+G{rn}+H{rn}+I{rn})",
-            f"=(E{rn}+F{rn}+G{rn})/(E{rn}+F{rn}+G{rn}+H{rn}+I{rn})",
-            f"=(E{rn}+F{rn}+G{rn}+H{rn})/(E{rn}+F{rn}+G{rn}+H{rn}+I{rn})",
-            f"=C{rn}/(C{rn}+D{rn})",
-            f"=D{rn}/(C{rn}+D{rn})",
+            f"=F{rn}/(F{rn}+G{rn}+H{rn}+I{rn}+J{rn})",
+            f"=(F{rn}+G{rn}+H{rn})/(F{rn}+G{rn}+H{rn}+I{rn}+J{rn})",
+            f"=(F{rn}+G{rn}+H{rn}+I{rn})/(F{rn}+G{rn}+H{rn}+I{rn}+J{rn})",
+            f"=D{rn}/(D{rn}+E{rn})",
+            f"=E{rn}/(D{rn}+E{rn})",
         ]
         for j, f in enumerate(formulas):
-            cell = ws.cell(row=rn, column=10 + j, value=f)
+            cell = ws.cell(row=rn, column=11 + j, value=f)
             cell.font = font
             cell.border = border
             cell.number_format = "0.0%"
@@ -7688,57 +7678,45 @@ def _write_qualifications_block(ws, start_row: int, dfx: pd.DataFrame, label: st
     red_fill = PatternFill(fill_type="solid", fgColor="FFC7CE")
     red_font = Font(name="Arial", size=10, color="9C0006")
 
-    # %SA (J) < 40% -- todas las filas, incluido el total
+    # %SA (K) < 40% -- todas las filas, incluido el total
     ws.conditional_formatting.add(
-        f"J{data_start}:J{last_row}",
+        f"K{data_start}:K{last_row}",
         CellIsRule(operator="lessThan", formula=["0.4"], fill=red_fill, font=red_font),
     )
-    # (SA+PA+SP+IP)/Total (L) < 90% -- todas las filas, incluido el total
+    # (SA+PA+SP+IP)/Total (M) < 90% -- todas las filas, incluido el total
     ws.conditional_formatting.add(
-        f"L{data_start}:L{last_row}",
+        f"M{data_start}:M{last_row}",
         CellIsRule(operator="lessThan", formula=["0.9"], fill=red_fill, font=red_font),
     )
-    # %P y %S (M,N) < 60% -- filas normales (sin contar el total general)
+    # %P y %S (N,O) < 60% -- filas normales (sin contar el total general)
     if regular_last_row >= data_start:
         ws.conditional_formatting.add(
-            f"M{data_start}:M{regular_last_row}",
+            f"N{data_start}:N{regular_last_row}",
             CellIsRule(operator="lessThan", formula=["0.6"], fill=red_fill, font=red_font),
         )
         ws.conditional_formatting.add(
-            f"N{data_start}:N{regular_last_row}",
-            FormulaRule(formula=[f"$M{data_start}<0.6"], fill=red_fill, font=red_font),
+            f"O{data_start}:O{regular_last_row}",
+            FormulaRule(formula=[f"$N{data_start}<0.6"], fill=red_fill, font=red_font),
         )
-    # %P y %S (M,N) del Total general < 75% -- umbral distinto solo para esa fila
+    # %P y %S (N,O) del Total general < 75% -- umbral distinto solo para esa fila
     if total_row_num:
         ws.conditional_formatting.add(
-            f"M{total_row_num}",
+            f"N{total_row_num}",
             CellIsRule(operator="lessThan", formula=["0.75"], fill=red_fill, font=red_font),
         )
         ws.conditional_formatting.add(
-            f"N{total_row_num}",
-            FormulaRule(formula=[f"$M{total_row_num}<0.75"], fill=red_fill, font=red_font),
+            f"O{total_row_num}",
+            FormulaRule(formula=[f"$N{total_row_num}<0.75"], fill=red_fill, font=red_font),
         )
 
+    # Tabla de Excel propia para este bloque: da flechas de filtro reales en
+    # el encabezado (incluida la columna Semestre), independientes de los
+    # otros 2 bloques de la misma hoja.
+    tbl = Table(displayName=table_name, ref=f"A{hdr_row}:O{last_row}")
+    tbl.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=False, showFirstColumn=False)
+    ws.add_table(tbl)
+
     return data_start + len(dfx) + 2  # +2 filas en blanco antes del siguiente bloque
-
-
-def _refresh_autofilter(ws, header_row: int = 1):
-    """Asegura que la hoja tenga filtro (flechas de Excel) sobre el rango de
-    datos actual. Si ya tiene una Tabla de Excel, le actualiza el 'ref' para
-    que cubra exactamente las filas que quedaron tras filtrar -- si se deja
-    con el rango viejo (más grande), Excel puede repararla al abrir o el
-    filtro queda inconsistente. Si no tiene Tabla, agrega un AutoFilter
-    simple (flechas de filtro sin el resto de funcionalidad de Tabla)."""
-    last_col = ws.max_column
-    last_row = ws.max_row
-    if last_row <= header_row or last_col < 1:
-        return
-    rng = f"A{header_row}:{get_column_letter(last_col)}{last_row}"
-    if ws.tables:
-        for tbl in list(ws.tables.values()):
-            tbl.ref = rng
-    else:
-        ws.auto_filter.ref = rng
 
 
 def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.DataFrame, new_profs_df: pd.DataFrame) -> bytes:
@@ -7781,7 +7759,6 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     if "Faculty Distribution" in wb_fd.sheetnames:
         ws_fd_new = _copy_ws_with_style(wb_fd["Faculty Distribution"], wb_out, "Faculty Distribution")
         _filter_ws_rows_by_period(ws_fd_new, "Semestre", target_periods)
-        _refresh_autofilter(ws_fd_new)
 
     # --- 2) Profesores Nuevos ---
     ws_pn = wb_out.create_sheet("Profesores Nuevos")
@@ -7790,7 +7767,6 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     # --- 3) cartelera (filtrada, igual que la hoja 1) ---
     if "cartelera" in wb_out.sheetnames:
         _filter_ws_rows_by_period(wb_out["cartelera"], "Semestre", target_periods)
-        _refresh_autofilter(wb_out["cartelera"])
 
     # --- 4) Cursos Nuevos ---
     ws_cn = wb_out.create_sheet("Cursos Nuevos")
@@ -7800,12 +7776,16 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     if "qualifications" in wb_out.sheetnames:
         del wb_out["qualifications"]
     ws_qual = wb_out.create_sheet("qualifications")
-    ws_qual.cell(row=1, column=1, value="Semestre").font = Font(name="Arial", size=10, bold=True)
+    ws_qual.cell(row=1, column=1, value="Periodo(s) actualizado(s)").font = Font(name="Arial", size=10, bold=True)
     ws_qual.cell(row=1, column=2, value=", ".join(target_periods))
     row_cursor = 3
-    for group_col, label in [("Area del curso", "Area del curso"), ("Field", "Field"), ("Cod program", "Cod program")]:
+    for group_col, label, tbl_name in [
+        ("Area del curso", "Area del curso", "tblQualArea"),
+        ("Field", "Field", "tblQualField"),
+        ("Cod program", "Cod program", "tblQualProgram"),
+    ]:
         tbl = _build_qualifications_group_table(df_cart_period, group_col, label)
-        row_cursor = _write_qualifications_block(ws_qual, row_cursor, tbl, label)
+        row_cursor = _write_qualifications_block(ws_qual, row_cursor, tbl, label, tbl_name)
 
     wb_out.calculation.fullCalcOnLoad = True
 
