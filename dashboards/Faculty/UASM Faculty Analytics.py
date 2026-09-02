@@ -817,16 +817,32 @@ def page_staffing():
 
     # Sidebar específico de esta página
     with st.sidebar:
-        st.markdown("#### Select Semester")
-        sem_periods_desc = sorted(sem_periods, key=_period_sort_key, reverse=True)  # solo para el desplegable
-        vis_opts = [p.replace("-", "") for p in sem_periods_desc]
-        sel_vis = st.selectbox("", vis_opts, index=0 if vis_opts else None, key="ft_staff_periodo")
-        sel_period_internal = sem_periods_desc[vis_opts.index(sel_vis)] if vis_opts else None
-        sel_period_label = sel_vis
+        st.markdown("#### Timeframe")
+        st.session_state.setdefault("staff_time_mode", "Semestral")
+        staff_time_mode = st.radio(
+            "Timeframe", ["Semestral", "Anual"], key="staff_time_mode", label_visibility="collapsed"
+        )
+        years_desc = sorted({p[:4] for p in sem_periods}, reverse=True)
+
+        if staff_time_mode == "Semestral":
+            st.markdown("#### Select Semester")
+            sem_periods_desc = sorted(sem_periods, key=_period_sort_key, reverse=True)  # solo para el desplegable
+            vis_opts = [p.replace("-", "") for p in sem_periods_desc]
+            sel_vis = st.selectbox("", vis_opts, index=0 if vis_opts else None, key="ft_staff_periodo")
+            sel_period_internal = sem_periods_desc[vis_opts.index(sel_vis)] if vis_opts else None
+            sel_period_label = sel_vis
+            sel_year_internal = None
+        else:
+            st.markdown("#### Select Year")
+            sel_year_internal = st.selectbox(
+                "", years_desc, index=0 if years_desc else None, key="ft_staff_year"
+            )
+            sel_period_internal = None
+            sel_period_label = sel_year_internal or ""
 
     _render_header("Full-time Faculty Staffing Levels", "New entrants, leavers, and headcount evolution")
 
-    # Helpers (solo semestral)
+    # Helpers
     def perlist_sem():
         return sem_periods
 
@@ -842,11 +858,43 @@ def page_staffing():
             ).sum())
         return pd.Series(counts)
 
+    def _last_sem_of_year(y):
+        candidates = [p for p in sem_periods if p.startswith(y)]
+        return sorted(candidates, key=_period_sort_key)[-1] if candidates else None
+
+    def perlist_anual():
+        return years_desc[::-1]  # cronológico ascendente, igual que perlist_sem()
+
+    def final_count_series_anual(df_):
+        out = {}
+        for y in perlist_anual():
+            last_sem = _last_sem_of_year(y)
+            out[y] = df_[df_["Periodo"].astype(str).eq(last_sem)]["ID"].nunique() if last_sem else 0
+        return pd.Series(out)
+
+    def in_out_counts_anual(df_, label):
+        counts = {}
+        for y in perlist_anual():
+            total = 0
+            for p in [p for p in sem_periods if p.startswith(y)]:
+                flat = p.replace("-", "")
+                total += int(df_["Notes"].astype(str).str.contains(
+                    fr"\b{label}\s+IN\s+\(?{flat}\)?\b", case=False, na=False
+                ).sum())
+            counts[y] = total
+        return pd.Series(counts)
+
     # Staffing summary table
-    cols_summary = perlist_sem()
-    fin_ser = final_count_series_sem(df).reindex(cols_summary, fill_value=0)
-    new_ser = in_out_counts_sem(df, "IN").reindex(cols_summary, fill_value=0)
-    out_ser = in_out_counts_sem(df, "OUT").reindex(cols_summary, fill_value=0)
+    if staff_time_mode == "Semestral":
+        cols_summary = perlist_sem()
+        fin_ser = final_count_series_sem(df).reindex(cols_summary, fill_value=0)
+        new_ser = in_out_counts_sem(df, "IN").reindex(cols_summary, fill_value=0)
+        out_ser = in_out_counts_sem(df, "OUT").reindex(cols_summary, fill_value=0)
+    else:
+        cols_summary = perlist_anual()
+        fin_ser = final_count_series_anual(df).reindex(cols_summary, fill_value=0)
+        new_ser = in_out_counts_anual(df, "IN").reindex(cols_summary, fill_value=0)
+        out_ser = in_out_counts_anual(df, "OUT").reindex(cols_summary, fill_value=0)
 
     rows = []
     for i, key in enumerate(cols_summary):
@@ -895,7 +943,7 @@ def page_staffing():
     sum_left, sum_right = st.columns([1, 5])
     with sum_left:
         simple_tbl = summary_df.reset_index().rename(columns={"index": "Metric"})
-        _download_link("Descargar tabla (Excel)", simple_tbl, "FT_New_Leavers_Semestral.xlsx")
+        _download_link("Descargar tabla (Excel)", simple_tbl, f"FT_New_Leavers_{staff_time_mode}.xlsx")
 
     # Charts layout
     areas = sorted(df.get("Academic Area", pd.Series(dtype=object)).dropna().unique().tolist())
@@ -905,8 +953,11 @@ def page_staffing():
         st.markdown(f"<div style='text-align:center;font-weight:700'>Period: {sel_period_label}</div>",
                    unsafe_allow_html=True)
 
-        current_period = sel_period_internal or ""
-        flat_list = [current_period.replace("-", "")] if current_period else []
+        if staff_time_mode == "Semestral":
+            current_period = sel_period_internal or ""
+            flat_list = [current_period.replace("-", "")] if current_period else []
+        else:
+            flat_list = [p.replace("-", "") for p in sem_periods if p.startswith(sel_year_internal or "")]
 
         pat_in = "|".join([re.escape(f) for f in flat_list]) if flat_list else r"$^"
         df_in = df[df["Notes"].astype(str).str.contains(fr"\bIN\s+IN\s+\(?({pat_in})\)?\b", case=False, na=False)]
@@ -940,6 +991,17 @@ def page_staffing():
 
         fig_tornado.update_xaxes(showticklabels=False, showgrid=False, zeroline=False, showline=False)
         fig_tornado.update_yaxes(autorange="reversed")
+
+        # Línea vertical al centro (x=0, donde se dividen Leavers/New)
+        fig_tornado.add_vline(x=0, line=dict(color="#333333", width=1.5))
+
+        # Líneas horizontales que separan cada área (entre categorías,
+        # posiciones 0.5, 1.5, ... según el orden ya definido en 'order')
+        for i in range(len(order) - 1):
+            fig_tornado.add_hline(
+                y=i + 0.5, line=dict(color="#D9D9D9", width=1), layer="below"
+            )
+
         fig_tornado.update_layout(
             title=f"New vs Leavers by Area — {sel_period_label}",
             barmode="relative",
@@ -987,7 +1049,7 @@ def page_staffing():
             legend=dict(orientation="h", y=-0.25, yanchor="top", x=0.5, xanchor="center"),
         )
 
-        sel_for_band = sel_period_internal
+        sel_for_band = sel_period_internal if staff_time_mode == "Semestral" else sel_year_internal
         if sel_for_band in x_periods:
             pos = x_periods.index(sel_for_band)
             fig_line.add_shape(
@@ -1002,7 +1064,8 @@ def page_staffing():
     # details" con número grande y gráfica de género se quitó de aquí: el
     # género ahora se muestra en Composition. 'active' se mantiene porque
     # alimenta la tabla completa de abajo.
-    active = df[df["Periodo"].astype(str).eq(sel_period_internal)].copy()
+    active_period = sel_period_internal if staff_time_mode == "Semestral" else _last_sem_of_year(sel_year_internal or "")
+    active = df[df["Periodo"].astype(str).eq(active_period)].copy()
 
     # Full table
     st.markdown("### Complete Full-time table")
@@ -1027,9 +1090,19 @@ def page_staffing():
     if "Year" in full.columns:
         full["Year"] = full["Year"].astype(str).str.extract(r'(\d{4})')
 
+    full.insert(0, "N°", range(1, len(full) + 1))
+
+    def _row_style_full(row):
+        style = _planta_note_style(row.get("Notes", ""))
+        if style == "blue_bold":
+            return ["color: #1d4ed8; font-weight: 700;"] * len(row)
+        if style == "red":
+            return ["color: #dc2626;"] * len(row)
+        return [""] * len(row)
+
     with st.expander("Show complete table"):
         _download_link("Descargar tabla completa (Excel)", full, f"FT_Complete_Table_{sel_period_label}.xlsx")
-        st.dataframe(full, use_container_width=False, hide_index=True)
+        st.dataframe(full.style.apply(_row_style_full, axis=1), use_container_width=False, hide_index=True)
 
     # Professor trajectory (PLANTA only)
     def _c(df0, *names):
@@ -6786,6 +6859,8 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
                 ids_by_period.setdefault(per, set()).add(pid)
         all_periods_present = sorted(ids_by_period.keys(), key=_period_sort_key)
 
+        n_new_total = 0
+        n_left_total = 0
         for p_new in periodos:
             if p_new not in ids_by_period:
                 continue
@@ -6806,6 +6881,7 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
                     if str(notes_cell.value or "").strip().upper().startswith("OUT IN"):
                         continue
                     notes_cell.value = f"OUT IN {p_new}"
+                    n_left_total += 1
                     for c in range(1, 29):
                         ws.cell(row=r, column=c).font = red_font
 
@@ -6817,6 +6893,7 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
                     if str(notes_cell.value or "").strip().upper().startswith("IN IN"):
                         continue
                     notes_cell.value = f"IN IN {p_new}"
+                    n_new_total += 1
                     for c in range(1, 29):
                         ws.cell(row=r, column=c).font = blue_bold_font
 
@@ -6853,6 +6930,7 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
 
         periodos_txt = ", ".join(sorted(periodos)) if periodos else "?"
         msg = f"\u2713 BD_profesores.xlsx (hoja 'planta') actualizada \u2014 {len(rows)} filas para el/los periodo(s) {periodos_txt}."
+        msg += f" \U0001F195 {n_new_total} profesor(es) nuevo(s) (IN IN) \u2014 \U0001F6AA {n_left_total} se retiraron (OUT IN)."
         if not match:
             msg += (
                 " \u26a0\ufe0f No encontre una Tabla de Excel llamada 'tabla_planta' en la hoja -- "
