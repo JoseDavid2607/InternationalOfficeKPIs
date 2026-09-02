@@ -6678,15 +6678,18 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
             return False, "No encontre la hoja 'planta' dentro de BD_profesores.xlsx."
         ws = wb["planta"]
 
+        def _norm_period(v) -> str:
+            return str(v or "").strip().replace(".0", "").replace("-", "")
+
         periodos = set(
-            str(r[0]).strip() for r in new_rows_df.itertuples(index=False, name=None)
-            if r[0] is not None and str(r[0]).strip() != ""
+            _norm_period(r[0]) for r in new_rows_df.itertuples(index=False, name=None)
+            if r[0] is not None and _norm_period(r[0]) != ""
         )
 
         # 1) Borra filas existentes con esos periodos (columna A), de abajo hacia arriba
         rows_to_delete = [
             r for r in range(2, ws.max_row + 1)
-            if str(ws.cell(row=r, column=1).value or "").strip().replace(".0", "") in periodos
+            if _norm_period(ws.cell(row=r, column=1).value) in periodos
         ]
         for r in sorted(rows_to_delete, reverse=True):
             ws.delete_rows(r)
@@ -6772,10 +6775,10 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
         # o "IN IN" (de una carga anterior, o puesta a mano), no se toca,
         # para no duplicar ni pisar una marca existente.
         all_rows_now = [
-            (r, str(ws.cell(row=r, column=1).value or "").strip().replace(".0", ""),
+            (r, _norm_period(ws.cell(row=r, column=1).value),
                 _norm_id(ws.cell(row=r, column=3).value))
             for r in range(2, ws.max_row + 1)
-            if str(ws.cell(row=r, column=1).value or "").strip() != ""
+            if _norm_period(ws.cell(row=r, column=1).value) != ""
         ]
         ids_by_period: Dict[str, set] = {}
         for _r, per, pid in all_rows_now:
