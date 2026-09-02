@@ -3941,21 +3941,22 @@ def page_qualifications():
                 fil_period_only[program_col0].dropna().astype(str).str.strip().unique().tolist()
             )
             with st.expander("Program filter", expanded=False, icon=":material/filter_alt:"):
-                include_specializations = st.checkbox(
-                    "Include specializations (E-*)", value=False,
-                    key=f"qual_include_spec_{_slugify(sel_label)}",
-                    help="Unchecked by default — specialization programs (codes starting with E-) start out deselected below.",
-                )
-                default_programs = [
-                    p for p in all_programs_period
-                    if p.strip().upper() not in DEFAULT_EXCLUDE_PROGRAMS
-                    and (include_specializations or not _is_specialization_program(p))
-                ]
-                selected_programs = st.multiselect(
-                    "Programs included in the tables below", options=all_programs_period,
-                    default=default_programs,
-                    key=f"qual_program_filter_{_slugify(sel_label)}_{include_specializations}",
-                )
+                st.caption("Toggle individual programs. Specializations (E-*) start unchecked.")
+                n_cols = 4
+                prog_cols = st.columns(n_cols)
+                selected_programs = []
+                for idx, p in enumerate(all_programs_period):
+                    default_checked = (
+                        p.strip().upper() not in DEFAULT_EXCLUDE_PROGRAMS
+                        and not _is_specialization_program(p)
+                    )
+                    with prog_cols[idx % n_cols]:
+                        checked = st.checkbox(
+                            p, value=default_checked,
+                            key=f"qual_prog_chk_{_slugify(sel_label)}_{_slugify(p)}",
+                        )
+                    if checked:
+                        selected_programs.append(p)
             mask_ok = fil_period_only[program_col0].astype(str).str.strip().isin(selected_programs)
             df_car_filt_all = fil_period_only[mask_ok].copy()
         else:
