@@ -20,6 +20,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import re
 import io
+import copy
 import base64
 import time
 import math
@@ -6930,7 +6931,7 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
 
         periodos_txt = ", ".join(sorted(periodos)) if periodos else "?"
         msg = f"\u2713 BD_profesores.xlsx (hoja 'planta') actualizada \u2014 {len(rows)} filas para el/los periodo(s) {periodos_txt}."
-        msg += f" \U0001F195 {n_new_total} profesor(es) nuevo(s) (IN IN) \u2014 \U0001F6AA {n_left_total} se retiraron (OUT IN)."
+        msg += f" · :blue[{n_new_total} nuevo(s)] · :red[{n_left_total} se retiraron]"
         if not match:
             msg += (
                 " \u26a0\ufe0f No encontre una Tabla de Excel llamada 'tabla_planta' en la hoja -- "
@@ -7481,39 +7482,184 @@ def _build_bsq_report_tables(df_fd_period: pd.DataFrame):
     return tbl7, tbl8
 
 
-def _build_cartelera_save_report(target_period: str, new_courses_df: pd.DataFrame, new_profs_df: pd.DataFrame) -> bytes:
-    """Reporte de 5 hojas generado justo después de guardar Cartelera con éxito:
-    1) Profesores (Faculty Distribution completa, filtrada al semestre subido)
-    2) Profesores nuevos agregados en esta carga
-    3) Cartelera completa, filtrada al MISMO semestre limpio (columna
-       'Semestre', no 'Periodo' -- así cubre TODOS los códigos crudos de
-       Periodo que caen en ese semestre, no solo el que se subió)
-    4) Cursos nuevos agregados en esta carga
-    5) Qualifications — las 3 tablas dinámicas de la página (Academic Area
-       %P/%S/%SA/%OTHER, y las 2 de BSQ Compensation), para el mismo semestre"""
-    raw_fd = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_fd = pd.read_excel(raw_fd, sheet_name="Faculty Distribution")
-    df_fd_period = df_fd[df_fd["Semestre"].astype(str).str.strip() == str(target_period).strip()].copy()
+def _copy_ws_with_style(src_ws, dst_wb, sheet_name: str):
+    """Copia una hoja completa (valores + estilo de celda: fuente, relleno,
+    borde, alineación, formato numérico) a una hoja nueva de dst_wb,
+    incluyendo anchos de columna, alto de fila, celdas combinadas y freeze
+    panes. Se usa para hojas 'planas' (sin tablas dinámicas ni formato
+    condicional) -- para esas (p.ej. 'qualifications') es mejor no copiar
+    celda a celda y en cambio partir directo del workbook original."""
+    dst_ws = dst_wb.create_sheet(sheet_name)
+    for row in src_ws.iter_rows():
+        for cell in row:
+            new_cell = dst_ws.cell(row=cell.row, column=cell.column, value=cell.value)
+            if cell.has_style:
+                new_cell.font = copy.copy(cell.font)
+                new_cell.fill = copy.copy(cell.fill)
+                new_cell.border = copy.copy(cell.border)
+                new_cell.alignment = copy.copy(cell.alignment)
+                new_cell.number_format = cell.number_format
+                new_cell.protection = copy.copy(cell.protection)
+    for col_letter, dim in src_ws.column_dimensions.items():
+        dst_ws.column_dimensions[col_letter].width = dim.width
+        dst_ws.column_dimensions[col_letter].hidden = dim.hidden
+    for row_idx, dim in src_ws.row_dimensions.items():
+        dst_ws.row_dimensions[row_idx].height = dim.height
+    for merged in src_ws.merged_cells.ranges:
+        dst_ws.merge_cells(str(merged))
+    if src_ws.freeze_panes:
+        dst_ws.freeze_panes = src_ws.freeze_panes
+    return dst_ws
+
+
+def _filter_ws_rows_by_period(ws, col_name: str, keep_periods, header_row: int = 1):
+    """Borra (de abajo hacia arriba) todas las filas de datos cuyo valor en
+    la columna col_name no esté en keep_periods -- comparando como texto y
+    sin '.0', para que no importe si el periodo quedó guardado como número
+    o como texto."""
+    keep_norm = {str(p).strip().replace(".0", "") for p in keep_periods}
+    col_idx = None
+    for c in range(1, ws.max_column + 1):
+        if str(ws.cell(row=header_row, column=c).value or "").strip() == col_name:
+            col_idx = c
+            break
+    if col_idx is None:
+        return
+    for r in range(ws.max_row, header_row, -1):
+        v = str(ws.cell(row=r, column=col_idx).value or "").strip().replace(".0", "")
+        if v not in keep_norm:
+            ws.delete_rows(r)
+
+
+def _write_simple_table(ws, dfx: pd.DataFrame):
+    """Escribe un DataFrame en una hoja nueva con estilo de template limpio:
+    encabezado en negrilla blanca sobre fondo oscuro, bordes finos en todas
+    las celdas."""
+    header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(fill_type="solid", fgColor="374151")
+    base_font = _BASE_ARIAL_FONT
+    thin = Side(style="thin", color="D1D5DB")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    if dfx is None or dfx.empty:
+        ws.cell(row=1, column=1, value="(sin filas nuevas en esta carga)")
+        return
+    for c, col in enumerate(dfx.columns, start=1):
+        cell = ws.cell(row=1, column=c, value=str(col))
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = border
+        ws.column_dimensions[cell.column_letter].width = max(14, len(str(col)) + 2)
+    for r, row_vals in enumerate(dfx.itertuples(index=False, name=None), start=2):
+        for c, val in enumerate(row_vals, start=1):
+            cell = ws.cell(row=r, column=c, value=val)
+            cell.font = base_font
+            cell.border = border
+
+
+def _filter_pivot_to_periods(pivot, target_periods) -> bool:
+    """Ajusta el filtro de página 'Semestre' de una PivotTable de openpyxl
+    para que solo queden visibles target_periods -- oculta (h=True) todos
+    los demás items del campo en el cache y activa
+    multipleItemSelectionAllowed cuando hay más de un periodo. No toca nada
+    más del diseño de la tabla dinámica (colores, formato condicional,
+    encabezados). Deja refreshOnLoad=True (ya venía así en el archivo
+    original) para que Excel recalcule los valores mostrados al abrir el
+    archivo -- openpyxl no recalcula tablas dinámicas, así que sin esto los
+    números seguirían siendo los de antes de filtrar hasta que alguien le
+    diera 'Actualizar' manualmente en Excel."""
+    sem_field_idx = next(
+        (i for i, cf in enumerate(pivot.cache.cacheFields) if cf.name == "Semestre"), None
+    )
+    if sem_field_idx is None:
+        return False
+    target_norm = {str(p).strip() for p in target_periods}
+
+    def _matches(v):
+        s = str(v).strip()
+        if s in target_norm:
+            return True
+        try:
+            fv = float(v)
+            if fv.is_integer() and str(int(fv)) in target_norm:
+                return True
+        except (TypeError, ValueError):
+            pass
+        return False
+
+    cache_items = pivot.cache.cacheFields[sem_field_idx].sharedItems._fields
+    target_idxs = {i for i, cf in enumerate(cache_items) if _matches(cf.v)}
+    if not target_idxs:
+        return False
+
+    pf = pivot.pivotFields[sem_field_idx]
+    if not pf.items:
+        return False
+    for item in pf.items:
+        if item.t == "default" or item.x is None:
+            continue  # item especial de subtotal, no es un valor real
+        item.h = (item.x not in target_idxs)
+    pf.multipleItemSelectionAllowed = True
+    for pgf in (pivot.pageFields or []):
+        if pgf.fld == sem_field_idx:
+            pgf.item = None  # "(Multiple Items)" en vez de un único valor
+    pivot.cache.refreshOnLoad = True
+    return True
+
+
+def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.DataFrame, new_profs_df: pd.DataFrame) -> bytes:
+    """Reporte 'Faculty Analytics Qualifications', 5 hojas, generado justo
+    después de guardar Cartelera con éxito:
+    1) Faculty Distribution (BD_profesores) -- copia fiel del diseño
+       original, filtrada al/los periodo(s) actualizado(s).
+    2) Profesores nuevos agregados en esta carga (estilo de template).
+    3) cartelera completa (BD_cartelera) -- copia fiel del diseño original,
+       SIN filtrar (es la fuente de las tablas dinámicas de la hoja 5).
+    4) Cursos nuevos agregados en esta carga (estilo de template).
+    5) qualifications (BD_cartelera) -- la hoja tal cual está, con sus 3
+       tablas dinámicas y su formato condicional intactos; lo único que se
+       ajusta es el filtro de página 'Semestre' para que muestre solo
+       target_periods.
+    Las hojas 3 y 5 se parten directo del workbook original (nunca se
+    reconstruyen celda a celda) para no arriesgar perder las tablas
+    dinámicas ni el formato condicional."""
+    if isinstance(target_periods, str):
+        target_periods = [target_periods]
 
     raw_cart = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
-    df_cart_full = pd.read_excel(raw_cart, sheet_name="cartelera")
-    cart_period_mask = df_cart_full["Semestre"].astype(str).str.strip() == str(target_period).strip()
-    df_cart_period = df_cart_full[cart_period_mask].copy()
+    wb_out = openpyxl.load_workbook(raw_cart)
+    for extra_sheet in ("programas", "cursos"):
+        if extra_sheet in wb_out.sheetnames:
+            del wb_out[extra_sheet]
 
-    tbl_area = _build_academic_area_pct_table(df_cart_period)
-    tbl7, tbl8 = _build_bsq_report_tables(df_fd_period)
+    # --- 1) Faculty Distribution (filtrada) ---
+    raw_fd = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    wb_fd = openpyxl.load_workbook(raw_fd)
+    if "Faculty Distribution" in wb_fd.sheetnames:
+        ws_fd_new = _copy_ws_with_style(wb_fd["Faculty Distribution"], wb_out, "Faculty Distribution")
+        _filter_ws_rows_by_period(ws_fd_new, "Semestre", target_periods)
+
+    # --- 2) Profesores Nuevos ---
+    ws_pn = wb_out.create_sheet("Profesores Nuevos")
+    _write_simple_table(ws_pn, new_profs_df)
+
+    # --- 4) Cursos Nuevos ---
+    ws_cn = wb_out.create_sheet("Cursos Nuevos")
+    _write_simple_table(ws_cn, new_courses_df)
+
+    # --- 5) qualifications: ajusta el filtro de las 3 tablas dinámicas ---
+    if "qualifications" in wb_out.sheetnames:
+        for p in wb_out["qualifications"]._pivots:
+            try:
+                _filter_pivot_to_periods(p, target_periods)
+            except Exception:
+                pass  # si una tabla puntual falla, se deja tal cual venía
+
+    # --- Orden final de hojas ---
+    order = ["Faculty Distribution", "Profesores Nuevos", "cartelera", "Cursos Nuevos", "qualifications"]
+    wb_out._sheets = [wb_out[name] for name in order if name in wb_out.sheetnames]
 
     buf = io.BytesIO()
-    with pd.ExcelWriter(buf) as writer:
-        df_fd_period.to_excel(writer, index=False, sheet_name="Profesores")
-        (new_profs_df if new_profs_df is not None else pd.DataFrame()).to_excel(
-            writer, index=False, sheet_name="Profesores Nuevos")
-        df_cart_period.to_excel(writer, index=False, sheet_name="Cartelera")
-        (new_courses_df if new_courses_df is not None else pd.DataFrame()).to_excel(
-            writer, index=False, sheet_name="Cursos Nuevos")
-        tbl_area.to_excel(writer, index=False, sheet_name="Qualifications", startrow=0)
-        tbl7.to_excel(writer, index=False, sheet_name="Qualifications", startrow=len(tbl_area) + 3)
-        tbl8.to_excel(writer, index=False, sheet_name="Qualifications", startrow=len(tbl_area) + len(tbl7) + 6)
+    wb_out.save(buf)
     buf.seek(0)
     return buf.getvalue()
 
@@ -8242,10 +8388,11 @@ def page_update_data():
                                 st.error(msg_fd)
                         st.balloons()
 
-                        target_period = sorted(periodo_to_ids.keys(), key=_period_sort_key)[-1] if periodo_to_ids else None
-                        if target_period:
+                        target_periods = sorted(periodo_to_ids.keys(), key=_period_sort_key)
+                        if target_periods:
                             with st.spinner("Preparando reporte…"):
-                                report_bytes = _build_cartelera_save_report(target_period, new_courses_df, new_profs_df)
+                                report_bytes = _build_faculty_qualifications_report(target_periods, new_courses_df, new_profs_df)
+                            periods_txt = "_".join(p.replace(" ", "") for p in target_periods)
                             st.markdown(
                                 "<style>.st-key-cartelera_report_btn div[data-testid='stDownloadButton'] button{"
                                 "background-color:#16A34A !important;color:#FFFFFF !important;"
@@ -8253,13 +8400,15 @@ def page_update_data():
                                 ".st-key-cartelera_report_btn div[data-testid='stDownloadButton'] button:hover{background-color:#15803D !important;}</style>",
                                 unsafe_allow_html=True,
                             )
-                            with st.container(key="cartelera_report_btn"):
-                                st.download_button(
-                                    "Descargar reporte en Excel", data=report_bytes,
-                                    file_name=f"Reporte_Cartelera_{target_period}.xlsx".replace(" ", "_"),
-                                    key="dl_cartelera_report", icon=":material/download:",
-                                    use_container_width=True,
-                                )
+                            _btn_l, _btn_c, _btn_r = st.columns([1, 1, 1])
+                            with _btn_c:
+                                with st.container(key="cartelera_report_btn"):
+                                    st.download_button(
+                                        "Descargar reporte en Excel", data=report_bytes,
+                                        file_name=f"Reporte Faculty Analytics Qualifications {periods_txt}.xlsx",
+                                        key="dl_cartelera_report", icon=":material/download:",
+                                        use_container_width=True,
+                                    )
                     else:
                         st.error(msg)
             elif cart_df is not None:
