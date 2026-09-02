@@ -7582,54 +7582,110 @@ def _write_simple_table(ws, dfx: pd.DataFrame):
             cell.border = border
 
 
-def _filter_pivot_to_periods(pivot, target_periods) -> bool:
-    """Ajusta el filtro de página 'Semestre' de una PivotTable de openpyxl
-    para que solo queden visibles target_periods -- oculta (h=True) todos
-    los demás items del campo en el cache y activa
-    multipleItemSelectionAllowed cuando hay más de un periodo. No toca nada
-    más del diseño de la tabla dinámica (colores, formato condicional,
-    encabezados). Deja refreshOnLoad=True (ya venía así en el archivo
-    original) para que Excel recalcule los valores mostrados al abrir el
-    archivo -- openpyxl no recalcula tablas dinámicas, así que sin esto los
-    números seguirían siendo los de antes de filtrar hasta que alguien le
-    diera 'Actualizar' manualmente en Excel."""
-    sem_field_idx = next(
-        (i for i, cf in enumerate(pivot.cache.cacheFields) if cf.name == "Semestre"), None
-    )
-    if sem_field_idx is None:
-        return False
-    target_norm = {str(p).strip() for p in target_periods}
+def _build_qualifications_group_table(df_cart_period: pd.DataFrame, group_col: str, label: str) -> pd.DataFrame:
+    """Suma las columnas P, S, SA, PA, SP, IP, OTHER (ya calculadas por fila
+    en cartelera -- no hace falta normalizar nada) agrupando por group_col,
+    y agrega la fila 'Total general'. Es la misma agregación que hacía la
+    tabla dinámica de 'qualifications', pero como valores fijos."""
+    cols_sum = ["Créditos", "P", "S", "SA", "PA", "SP", "IP", "OTHER"]
+    missing = [c for c in [group_col] + cols_sum if c not in df_cart_period.columns]
+    if missing or df_cart_period.empty:
+        return pd.DataFrame(columns=[label] + cols_sum)
+    d = df_cart_period.copy()
+    for c in cols_sum:
+        d[c] = pd.to_numeric(d[c], errors="coerce").fillna(0.0)
+    d[group_col] = d[group_col].astype(str).str.strip()
+    g = d.groupby(group_col)[cols_sum].sum().reset_index().rename(columns={group_col: label})
+    g = g.sort_values(label).reset_index(drop=True)
+    total_row = pd.DataFrame([{label: "Total general", **g[cols_sum].sum().to_dict()}])
+    return pd.concat([g, total_row], ignore_index=True)
 
-    def _matches(v):
-        s = str(v).strip()
-        if s in target_norm:
-            return True
-        try:
-            fv = float(v)
-            if fv.is_integer() and str(int(fv)) in target_norm:
-                return True
-        except (TypeError, ValueError):
-            pass
-        return False
 
-    cache_items = pivot.cache.cacheFields[sem_field_idx].sharedItems._fields
-    target_idxs = {i for i, cf in enumerate(cache_items) if _matches(cf.v)}
-    if not target_idxs:
-        return False
+def _write_qualifications_block(ws, start_row: int, dfx: pd.DataFrame, label: str) -> int:
+    """Escribe un bloque de qualifications (encabezados + filas + Total
+    general) empezando en start_row. Columnas: A=label, B..I=Suma de
+    Créditos/P/S/SA/PA/SP/IP/OTHER (valores fijos), J..N=indicadores
+    (fórmulas reales de Excel que apuntan a las columnas C..I de la misma
+    fila -- las mismas que usa el archivo original):
+      J = SA/(SA+PA+SP+IP+OTHER)
+      K = (SA+PA+SP)/(SA+PA+SP+IP+OTHER)
+      L = (SA+PA+SP+IP)/(SA+PA+SP+IP+OTHER)
+      M = P/(P+S)
+      N = S/(P+S)
+    Devuelve la fila donde debe empezar el siguiente bloque."""
+    header_font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+    header_fill = PatternFill(fill_type="solid", fgColor="1F6F54")
+    subhdr_font = Font(name="Arial", size=9, bold=True)
+    subhdr_fill = PatternFill(fill_type="solid", fgColor="D9EDE7")
+    base_font = Font(name="Arial", size=10)
+    total_font = Font(name="Arial", size=10, bold=True)
+    total_fill = PatternFill(fill_type="solid", fgColor="E5E7EB")
+    thin = Side(style="thin", color="D1D5DB")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    pf = pivot.pivotFields[sem_field_idx]
-    if not pf.items:
-        return False
-    for item in pf.items:
-        if item.t == "default" or item.x is None:
-            continue  # item especial de subtotal, no es un valor real
-        item.h = (item.x not in target_idxs)
-    pf.multipleItemSelectionAllowed = True
-    for pgf in (pivot.pageFields or []):
-        if pgf.fld == sem_field_idx:
-            pgf.item = None  # "(Multiple Items)" en vez de un único valor
-    pivot.cache.refreshOnLoad = True
-    return True
+    cols = [label, "Suma de Créditos", "Suma de P", "Suma de S", "Suma de SA",
+            "Suma de PA", "Suma de SP", "Suma de IP", "Suma de OTHER"]
+    hdr_row = start_row
+    for c, name in enumerate(cols, start=1):
+        cell = ws.cell(row=hdr_row, column=c, value=name)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = border
+        ws.column_dimensions[cell.column_letter].width = max(14, len(name) + 2)
+
+    ws.cell(row=hdr_row, column=10, value="Indicadores de Cualificaciones").font = header_font
+    ws.cell(row=hdr_row, column=10).fill = header_fill
+    ws.merge_cells(start_row=hdr_row, start_column=10, end_row=hdr_row, end_column=12)
+    ws.cell(row=hdr_row, column=13, value="Indicadores P/S").font = header_font
+    ws.cell(row=hdr_row, column=13).fill = header_fill
+    ws.merge_cells(start_row=hdr_row, start_column=13, end_row=hdr_row, end_column=14)
+
+    sub_row = hdr_row + 1
+    sub_headers = [
+        "SA/(SA+PA+SP+IP+O)", "(SA+PA+SP)/Total", "(SA+PA+SP+IP)/Total", "P/(P+S)", "S/(P+S)",
+    ]
+    for i, name in enumerate(sub_headers):
+        cell = ws.cell(row=sub_row, column=10 + i, value=name)
+        cell.font = subhdr_font
+        cell.fill = subhdr_fill
+        cell.border = border
+        ws.column_dimensions[cell.column_letter].width = 15
+
+    data_start = sub_row + 1
+    if dfx is None or dfx.empty:
+        ws.cell(row=data_start, column=1, value="(sin datos para este periodo)")
+        return data_start + 2
+
+    for i, row_vals in enumerate(dfx.itertuples(index=False, name=None)):
+        rn = data_start + i
+        is_total = str(row_vals[0]).strip().upper() == "TOTAL GENERAL"
+        font = total_font if is_total else base_font
+        fill = total_fill if is_total else None
+        for c, val in enumerate(row_vals, start=1):
+            cell = ws.cell(row=rn, column=c, value=val)
+            cell.font = font
+            cell.border = border
+            if fill:
+                cell.fill = fill
+            if c > 1:
+                cell.number_format = "#,##0"
+        # J:N -- fórmulas reales (no valores fijos), referenciando C:I de esta misma fila
+        formulas = [
+            f"=E{rn}/(E{rn}+F{rn}+G{rn}+H{rn}+I{rn})",
+            f"=(E{rn}+F{rn}+G{rn})/(E{rn}+F{rn}+G{rn}+H{rn}+I{rn})",
+            f"=(E{rn}+F{rn}+G{rn}+H{rn})/(E{rn}+F{rn}+G{rn}+H{rn}+I{rn})",
+            f"=C{rn}/(C{rn}+D{rn})",
+            f"=D{rn}/(C{rn}+D{rn})",
+        ]
+        for j, f in enumerate(formulas):
+            cell = ws.cell(row=rn, column=10 + j, value=f)
+            cell.font = font
+            cell.border = border
+            cell.number_format = "0.0%"
+            if fill:
+                cell.fill = fill
+
+    return data_start + len(dfx) + 2  # +2 filas en blanco antes del siguiente bloque
 
 
 def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.DataFrame, new_profs_df: pd.DataFrame) -> bytes:
@@ -7641,21 +7697,30 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     3) cartelera (BD_cartelera) -- copia fiel del diseño original,
        filtrada al/los periodo(s) actualizado(s) igual que la hoja 1.
     4) Cursos nuevos agregados en esta carga (estilo de template).
-    5) qualifications (BD_cartelera) -- la hoja tal cual está, con sus 3
-       tablas dinámicas y su formato condicional intactos; lo único que se
-       ajusta es el filtro de página 'Semestre' para que muestre solo
-       target_periods.
-    Las hojas 3 y 5 se parten directo del workbook original (nunca se
-    reconstruyen celda a celda) para no arriesgar perder las tablas
-    dinámicas ni el formato condicional."""
+    5) qualifications -- YA NO es una copia de la tabla dinámica del
+       archivo original (openpyxl no la recalcula al guardar, así que
+       llegaba vacía). Ahora son 3 bloques de VALORES FIJOS (uno por Area
+       del curso, Field y Cod program, en ese orden) con exactamente las
+       mismas columnas y las mismas fórmulas de indicadores que el archivo
+       original -- así siempre se ve con datos, sin depender de que Excel
+       la recalcule al abrir."""
     if isinstance(target_periods, str):
         target_periods = [target_periods]
 
-    raw_cart = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
+    raw_cart_bytes = _download_drive_file_bytes(CARTELERA_FILE_ID)
+    raw_cart = io.BytesIO(raw_cart_bytes)
     wb_out = openpyxl.load_workbook(raw_cart)
     for extra_sheet in ("programas", "cursos"):
         if extra_sheet in wb_out.sheetnames:
             del wb_out[extra_sheet]
+
+    # DataFrame de cartelera filtrado al/los periodo(s), para calcular la
+    # hoja 5 -- se lee aparte con pandas porque es más simple para agrupar.
+    df_cart_full = pd.read_excel(io.BytesIO(raw_cart_bytes), sheet_name="cartelera")
+    keep_norm = {str(p).strip().replace(".0", "") for p in target_periods}
+    df_cart_period = df_cart_full[
+        df_cart_full["Semestre"].astype(str).str.strip().str.replace(".0", "", regex=False).isin(keep_norm)
+    ].copy()
 
     # --- 1) Faculty Distribution (filtrada) ---
     raw_fd = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
@@ -7676,19 +7741,17 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     ws_cn = wb_out.create_sheet("Cursos Nuevos")
     _write_simple_table(ws_cn, new_courses_df)
 
-    # --- 5) qualifications: ajusta el filtro de las 3 tablas dinámicas ---
+    # --- 5) qualifications: 3 bloques de valores fijos ---
     if "qualifications" in wb_out.sheetnames:
-        for p in wb_out["qualifications"]._pivots:
-            try:
-                _filter_pivot_to_periods(p, target_periods)
-            except Exception:
-                pass  # si una tabla puntual falla, se deja tal cual venía
+        del wb_out["qualifications"]
+    ws_qual = wb_out.create_sheet("qualifications")
+    ws_qual.cell(row=1, column=1, value="Semestre").font = Font(name="Arial", size=10, bold=True)
+    ws_qual.cell(row=1, column=2, value=", ".join(target_periods))
+    row_cursor = 3
+    for group_col, label in [("Area del curso", "Area del curso"), ("Field", "Field"), ("Cod program", "Cod program")]:
+        tbl = _build_qualifications_group_table(df_cart_period, group_col, label)
+        row_cursor = _write_qualifications_block(ws_qual, row_cursor, tbl, label)
 
-    # Fuerza el recálculo completo del libro al abrirlo -- openpyxl no
-    # recalcula ni las tablas dinámicas ni las fórmulas de indicadores
-    # (columnas J:N) que dependen de ellas; sin esto, Excel podía mostrar
-    # valores viejos o '#¡VALOR!' hasta que alguien le diera F9/Actualizar
-    # todo manualmente.
     wb_out.calculation.fullCalcOnLoad = True
 
     # --- Orden final de hojas ---
