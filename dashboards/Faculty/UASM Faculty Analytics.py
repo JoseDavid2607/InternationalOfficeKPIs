@@ -3033,6 +3033,10 @@ def page_qualifications():
                 key=lambda x: int(str(x).split()[0])
             )
             x_labels = inter
+        # Solo se visualizan los últimos 5 periodos en las gráficas de
+        # Evolution (ya sea semestre, año o intersemestral) -- x_labels ya
+        # viene ordenado ascendente, así que nos quedamos con la cola.
+        x_labels = x_labels[-5:]
         x_map = {lab: i for i, lab in enumerate(x_labels)}
         return "_SEM", x_labels, x_map
 
@@ -3924,15 +3928,33 @@ def page_qualifications():
         # en la lista de opciones).
         program_col0 = _get_any(df_car_n, "Program", "PROGRAM", "program")
         DEFAULT_EXCLUDE_PROGRAMS = {"CONT", "E-IMER", "E-ENEG", "E-AFIN"}
+
+        def _is_specialization_program(code: str) -> bool:
+            # Cualquier código de programa que empiece por "E-" es una
+            # Especialización (no solo las 3 que ya estaban hardcodeadas en
+            # DEFAULT_EXCLUDE_PROGRAMS) -- se usa para que el checkbox de
+            # abajo controle TODAS las especializaciones, no solo esas 3.
+            return str(code).strip().upper().startswith("E-")
+
         if program_col0:
             all_programs_period = sorted(
                 fil_period_only[program_col0].dropna().astype(str).str.strip().unique().tolist()
             )
-            default_programs = [p for p in all_programs_period if p.strip().upper() not in DEFAULT_EXCLUDE_PROGRAMS]
             with st.expander("Program filter", expanded=False, icon=":material/filter_alt:"):
+                include_specializations = st.checkbox(
+                    "Include specializations (E-*)", value=False,
+                    key=f"qual_include_spec_{_slugify(sel_label)}",
+                    help="Unchecked by default — specialization programs (codes starting with E-) start out deselected below.",
+                )
+                default_programs = [
+                    p for p in all_programs_period
+                    if p.strip().upper() not in DEFAULT_EXCLUDE_PROGRAMS
+                    and (include_specializations or not _is_specialization_program(p))
+                ]
                 selected_programs = st.multiselect(
                     "Programs included in the tables below", options=all_programs_period,
-                    default=default_programs, key=f"qual_program_filter_{_slugify(sel_label)}",
+                    default=default_programs,
+                    key=f"qual_program_filter_{_slugify(sel_label)}_{include_specializations}",
                 )
             mask_ok = fil_period_only[program_col0].astype(str).str.strip().isin(selected_programs)
             df_car_filt_all = fil_period_only[mask_ok].copy()
@@ -4879,6 +4901,9 @@ def page_qualifications():
                             df_x["_X"].dropna().astype(str).unique().tolist(),
                             key=lambda s: int(str(s).split()[0]) if str(s).split() else 0
                         )
+                    # Solo los últimos 5 periodos (semestre, año o
+                    # intersemestral, según el modo activo).
+                    x_labels = x_labels[-5:]
                     x_map = {lab: i for i, lab in enumerate(x_labels)}
                     return x_labels, x_map
 
