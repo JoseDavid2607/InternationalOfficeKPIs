@@ -2680,17 +2680,43 @@ def page_qualifications():
     # ---- Include intersemestral ----
     # Se lee acá, antes de construir cualquier lista o tabla, para que TODA
     # la página (Semestral, Anual, gráficas de Evolution, Faculty
-    # Sufficiency) respete el toggle desde un único punto: si está
-    # desmarcado (default), los periodos intersemestrales desaparecen de
-    # toda la página; si está marcado, vuelven a aparecer -- como periodo
-    # propio dentro de Semestral, o sumados dentro del año en Anual. El
-    # checkbox en sí se dibuja más abajo, en el sidebar, pero
-    # st.session_state ya trae su valor persistido de la corrida anterior.
-    if not st.session_state.get("qual_include_inter", True):
-        if "Semestre" in df_car.columns:
-            df_car = df_car[~df_car["Semestre"].astype(str).str.lower().str.contains("inter", na=False)].copy()
-        if "Semestre" in df_fd.columns:
-            df_fd = df_fd[~df_fd["Semestre"].astype(str).str.lower().str.contains("inter", na=False)].copy()
+    # Sufficiency) respete el toggle desde un único punto. El intersemestral
+    # NUNCA aparece como periodo propio en ningún eje ni tabla: cuando el
+    # checkbox está marcado, sus créditos se SUMAN dentro del periodo 20
+    # (segundo semestre) del mismo año -- se logra remapeando la columna
+    # 'Semestre' de esas filas a 'YYYY20' antes de que cualquier otra
+    # función de la página las toque, así todo lo que agrupa por _SEM las ve
+    # como si fueran, literalmente, filas del periodo 20. Cuando está
+    # desmarcado, se excluyen por completo de toda la página. El checkbox en
+    # sí se dibuja más abajo, en el sidebar, pero st.session_state ya trae
+    # su valor persistido de la corrida anterior.
+    def _qual_year_of(s):
+        m = re.search(r"(19|20)\d{2}", str(s))
+        return m.group(0) if m else None
+
+    _include_inter = st.session_state.get("qual_include_inter", True)
+
+    if "Semestre" in df_car.columns:
+        _mask_car = df_car["Semestre"].astype(str).str.lower().str.contains("inter", na=False)
+        if _mask_car.any():
+            df_car = df_car.copy()
+            if _include_inter:
+                df_car.loc[_mask_car, "Semestre"] = df_car.loc[_mask_car, "Semestre"].map(
+                    lambda s: f"{_qual_year_of(s)}20" if _qual_year_of(s) else s
+                )
+            else:
+                df_car = df_car[~_mask_car].copy()
+
+    if "Semestre" in df_fd.columns:
+        _mask_fd = df_fd["Semestre"].astype(str).str.lower().str.contains("inter", na=False)
+        if _mask_fd.any():
+            df_fd = df_fd.copy()
+            if _include_inter:
+                df_fd.loc[_mask_fd, "Semestre"] = df_fd.loc[_mask_fd, "Semestre"].map(
+                    lambda s: f"{_qual_year_of(s)}20" if _qual_year_of(s) else s
+                )
+            else:
+                df_fd = df_fd[~_mask_fd].copy()
 
     # ------------------------ CONSTANTS & HELPERS ------------------------
     MINT = "#1FA89B"
@@ -2763,18 +2789,11 @@ def page_qualifications():
         if sem_col:
             vals = df_car[sem_col].dropna().astype(str).str.strip().tolist()
         regs = [v for v in vals if is_regular_period(v) and period_suffix(v) in {"10","20"}]
-        # Si 'Include intersemestral' está activo, df_car ya trae esas filas
-        # (si no, ya vinieron excluidas más arriba) -- se agregan aquí como
-        # periodo propio, seleccionable igual que un semestre normal.
-        inter_vals = sorted({v for v in vals if "inter" in v.lower()})
         def sort_key(p):
             y = extract_year_from_period(p) or -1
-            suf = period_suffix(p)
-            # El intersemestral cae cronológicamente entre el primer (10) y
-            # el segundo (20) semestre del mismo año.
-            suf_i = int(suf) if suf in {"10", "20"} else 15
-            return (y, suf_i)
-        return sorted(sorted(set(regs + inter_vals)), key=sort_key, reverse=True)
+            suf = int(period_suffix(p) or 0)
+            return (y, suf)
+        return sorted(sorted(set(regs)), key=sort_key, reverse=True)
 
     def list_years_from_sem():
         sem_col = _get_any(df_car, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
@@ -3027,11 +3046,9 @@ def page_qualifications():
     def _period_sort_key(p: str) -> tuple[int,int]:
         y = extract_year_from_period(p) or -1
         suf = period_suffix(p)
-        if suf in {"10", "20"}:
-            suf_i = int(suf)
-        elif "inter" in str(p).lower():
-            suf_i = 15  # cae cronológicamente entre el 10 y el 20 del mismo año
-        else:
+        try:
+            suf_i = int(suf) if suf is not None else 0
+        except Exception:
             suf_i = 0
         return (y, suf_i)
 
@@ -3044,7 +3061,7 @@ def page_qualifications():
             sem = df_hist["_SEM"].astype(str).str.strip()
         if time_mode == "Semestral":
             regs = sorted(
-                {s for s in sem.dropna().unique() if period_suffix(s) in {"10","20"} or "inter" in str(s).lower()},
+                {s for s in sem.dropna().unique() if period_suffix(s) in {"10","20"}},
                 key=_period_sort_key
             )
             x_labels = regs
@@ -4929,7 +4946,7 @@ def page_qualifications():
                 def build_axis(df_x: pd.DataFrame) -> tuple[list, dict]:
                     if tm == "Semestral":
                         x_labels = sorted(
-                            {x for x in df_x["_X"].dropna().astype(str) if period_suffix(x) in {"10","20"} or "inter" in str(x).lower()},
+                            {x for x in df_x["_X"].dropna().astype(str) if period_suffix(x) in {"10","20"}},
                             key=_period_sort_key
                         )
                     elif tm == "Anual":
