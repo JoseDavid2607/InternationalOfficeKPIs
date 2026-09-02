@@ -2677,6 +2677,21 @@ def page_qualifications():
     df_fd = qual_load_faculty_distribution()
     df_car = qual_load_cartelera()
 
+    # ---- Include intersemestral ----
+    # Se lee acá, antes de construir cualquier lista o tabla, para que TODA
+    # la página (Semestral, Anual, gráficas de Evolution, Faculty
+    # Sufficiency) respete el toggle desde un único punto: si está
+    # desmarcado (default), los periodos intersemestrales desaparecen de
+    # toda la página; si está marcado, vuelven a aparecer -- como periodo
+    # propio dentro de Semestral, o sumados dentro del año en Anual. El
+    # checkbox en sí se dibuja más abajo, en el sidebar, pero
+    # st.session_state ya trae su valor persistido de la corrida anterior.
+    if not st.session_state.get("qual_include_inter", False):
+        if "Semestre" in df_car.columns:
+            df_car = df_car[~df_car["Semestre"].astype(str).str.lower().str.contains("inter", na=False)].copy()
+        if "Semestre" in df_fd.columns:
+            df_fd = df_fd[~df_fd["Semestre"].astype(str).str.lower().str.contains("inter", na=False)].copy()
+
     # ------------------------ CONSTANTS & HELPERS ------------------------
     MINT = "#1FA89B"
     SUPPORTING = "#7FD3FF"
@@ -2748,11 +2763,18 @@ def page_qualifications():
         if sem_col:
             vals = df_car[sem_col].dropna().astype(str).str.strip().tolist()
         regs = [v for v in vals if is_regular_period(v) and period_suffix(v) in {"10","20"}]
+        # Si 'Include intersemestral' está activo, df_car ya trae esas filas
+        # (si no, ya vinieron excluidas más arriba) -- se agregan aquí como
+        # periodo propio, seleccionable igual que un semestre normal.
+        inter_vals = sorted({v for v in vals if "inter" in v.lower()})
         def sort_key(p):
             y = extract_year_from_period(p) or -1
-            suf = int(period_suffix(p) or 0)
-            return (y, suf)
-        return sorted(sorted(set(regs)), key=sort_key, reverse=True)
+            suf = period_suffix(p)
+            # El intersemestral cae cronológicamente entre el primer (10) y
+            # el segundo (20) semestre del mismo año.
+            suf_i = int(suf) if suf in {"10", "20"} else 15
+            return (y, suf_i)
+        return sorted(sorted(set(regs + inter_vals)), key=sort_key, reverse=True)
 
     def list_years_from_sem():
         sem_col = _get_any(df_car, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
@@ -3005,9 +3027,11 @@ def page_qualifications():
     def _period_sort_key(p: str) -> tuple[int,int]:
         y = extract_year_from_period(p) or -1
         suf = period_suffix(p)
-        try:
-            suf_i = int(suf) if suf is not None else 0
-        except Exception:
+        if suf in {"10", "20"}:
+            suf_i = int(suf)
+        elif "inter" in str(p).lower():
+            suf_i = 15  # cae cronológicamente entre el 10 y el 20 del mismo año
+        else:
             suf_i = 0
         return (y, suf_i)
 
@@ -3020,7 +3044,7 @@ def page_qualifications():
             sem = df_hist["_SEM"].astype(str).str.strip()
         if time_mode == "Semestral":
             regs = sorted(
-                {s for s in sem.dropna().unique() if period_suffix(s) in {"10","20"}},
+                {s for s in sem.dropna().unique() if period_suffix(s) in {"10","20"} or "inter" in str(s).lower()},
                 key=_period_sort_key
             )
             x_labels = regs
@@ -3493,8 +3517,14 @@ def page_qualifications():
             st.markdown("<hr style='margin:10px 0;opacity:.4'>", unsafe_allow_html=True)
 
         st.markdown("#### Timeframe")
-        st.session_state.setdefault("time_mode", "Semestral")
-        time_mode = st.radio("Timeframe", ["Semestral", "Anual", "Intersemestral"], key="time_mode", label_visibility="collapsed", horizontal=False)
+        if st.session_state.get("time_mode") not in ("Semestral", "Anual"):
+            st.session_state["time_mode"] = "Semestral"
+        time_mode = st.radio("Timeframe", ["Semestral", "Anual"], key="time_mode", label_visibility="collapsed", horizontal=False)
+        st.checkbox(
+            "Include intersemestral", value=st.session_state.get("qual_include_inter", False),
+            key="qual_include_inter",
+            help="Marcado: los periodos intersemestrales se incluyen (como periodo propio en Semestral, o sumados dentro del año en Anual). Desmarcado: se excluyen de toda la página.",
+        )
 
         if time_mode == "Semestral":
             default_sem = SEMESTRAL_PERIODS[0] if SEMESTRAL_PERIODS else "202510"
@@ -3502,19 +3532,12 @@ def page_qualifications():
             sel_sem = st.selectbox("Semester", SEMESTRAL_PERIODS or [default_sem], key="sel_sem")
             sel_year = extract_year_from_period(sel_sem) or (YEARS_ALL[0] if YEARS_ALL else 2025)
             sel_label = str(sel_sem)
-        elif time_mode == "Anual":
+        else:  # Anual
             default_year = YEARS_ALL[0] if YEARS_ALL else 2025
             st.session_state.setdefault("sel_year", default_year)
             sel_year = st.selectbox("Year", YEARS_ALL or [default_year], key="sel_year")
             sel_sem = None
             sel_label = f"{sel_year} (Annual)"
-        else:
-            default_i = INTER_YEARS[0] if INTER_YEARS else (YEARS_ALL[0] if YEARS_ALL else 2025)
-            # usa SIEMPRE "sel_year" como fuente de verdad
-            st.session_state.setdefault("sel_year", default_i)
-            sel_year = st.selectbox("Year (Intersemestral)", INTER_YEARS or YEARS_ALL or [default_i], key="sel_year")
-            sel_sem = None
-            sel_label = f"{sel_year} Intersemestral"
 
         st.session_state["sel_label"] = sel_label
         st.session_state.setdefault("view_mode", "By Academic Area")
@@ -4907,7 +4930,7 @@ def page_qualifications():
                 def build_axis(df_x: pd.DataFrame) -> tuple[list, dict]:
                     if tm == "Semestral":
                         x_labels = sorted(
-                            {x for x in df_x["_X"].dropna().astype(str) if period_suffix(x) in {"10","20"}},
+                            {x for x in df_x["_X"].dropna().astype(str) if period_suffix(x) in {"10","20"} or "inter" in str(x).lower()},
                             key=_period_sort_key
                         )
                     elif tm == "Anual":
@@ -6926,6 +6949,70 @@ def repair_planta_catedra_cache() -> Tuple[bool, str]:
         return False, f"Error al reparar PLANTA_CATEDRA: {e}"
 
 
+def repair_area_del_curso() -> Tuple[bool, str]:
+    """Reparación de una sola vez: la columna H ('Area del curso') de la
+    hoja 'cartelera' quedó vacía en TODAS las filas cargadas antes de que
+    el guardado empezara a rellenarla automáticamente (se detectó en los
+    periodos 2020-2024) -- el autosanado normal dentro de
+    push_cartelera_updates nunca la incluía en su lista de columnas a
+    reparar (solo B, I, J, K y Q-W), así que nunca se corregía sola.
+    Esta función la rellena, por Código Materia, contra 'cursos' (columna
+    'Area del curso'), igual que hace push_cartelera_updates con las filas
+    nuevas -- sin necesidad de subir ninguna template."""
+    if not _OPENPYXL_OK:
+        return False, "Falta la librería `openpyxl` en el entorno."
+    token = _get_gspread_access_token()
+    if not token:
+        return False, "No hay credenciales configuradas para escribir en Drive."
+    try:
+        raw_bytes = _download_drive_file_bytes(CARTELERA_FILE_ID)
+        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
+        if "cartelera" not in wb.sheetnames:
+            return False, "No encontré la hoja 'cartelera' en BD_cartelera.xlsx."
+        ws_cart = wb["cartelera"]
+
+        area_map = _load_cursos_area_map()
+        base_font = _BASE_ARIAL_FONT
+        calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
+
+        info = _table_info(ws_cart, "tabla_cartelera")
+        last_row = _last_data_row(ws_cart, key_col=1, header_row=info[2] if info else 1,
+                                   upper_bound=ws_cart.max_row) if info else ws_cart.max_row
+
+        n_fixed = 0
+        for r in range(2, last_row + 1):
+            h_val = ws_cart.cell(row=r, column=8).value
+            if h_val is not None and str(h_val).strip() != "":
+                continue
+            materia = ws_cart.cell(row=r, column=4).value
+            materia_key = str(materia).strip() if materia is not None else ""
+            new_area = area_map.get(materia_key)
+            if new_area is None or str(new_area).strip() == "":
+                continue
+            c = ws_cart.cell(row=r, column=8, value=new_area)
+            c.font = base_font
+            c.fill = calc_fill
+            n_fixed += 1
+
+        if n_fixed == 0:
+            return True, "No había filas con 'Area del curso' vacía -- nada que reparar."
+
+        wb.calculation.fullCalcOnLoad = True
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        ok, err = _drive_upload_file_bytes(CARTELERA_FILE_ID, buf.getvalue())
+        if not ok:
+            return False, f"Error al subir el archivo reparado a Drive: {err}"
+
+        qual_load_cartelera.clear()
+        _download_drive_file_bytes.clear()
+        _load_cursos_area_map.clear()
+        return True, f"✓ Reparadas {n_fixed} fila(s) de 'Area del curso' en cartelera."
+    except Exception as e:
+        return False, f"Error al reparar 'Area del curso': {e}"
+
+
 def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[bool, str]:
     """Agrega a 'Faculty Distribution' (BD_profesores.xlsx) una fila por cada
     ID único que quedó en la cartelera recién cargada, agrupado por periodo:
@@ -7504,6 +7591,10 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             h_materia = ws_cart.cell(row=r, column=4).value
             h_materia_key = str(h_materia).strip() if h_materia is not None else ""
             h_area = ws_cart.cell(row=r, column=8).value
+            if _needs_fix(h_area):
+                h_area = full_area_map.get(h_materia_key, "")
+                c = ws_cart.cell(row=r, column=8, value=h_area)
+                c.font = base_font; c.fill = calc_fill
             h_ps = str(ws_cart.cell(row=r, column=16).value or "").strip().upper()
             h_tipo = str(ws_cart.cell(row=r, column=15).value or "").strip().upper()
             h_creditos = pd.to_numeric(pd.Series([ws_cart.cell(row=r, column=6).value]), errors="coerce").iloc[0]
@@ -7772,6 +7863,21 @@ def page_update_data():
 
         last_cart_period = _with_dash(sorted(_cart_periods_raw, key=_period_sort_key)[-1]) if _cart_periods_raw else "—"
         st.caption(f"Último periodo registrado en la Base: **{last_cart_period}**")
+
+        with st.expander("Reparación de datos históricos", expanded=False, icon=":material/build:"):
+            st.caption(
+                "Rellena 'Area del curso' en filas antiguas que quedaron vacías "
+                "antes de que el guardado empezara a calcularla automáticamente "
+                "(afecta principalmente a periodos 2020-2024). No requiere subir "
+                "ninguna template."
+            )
+            if st.button("Reparar 'Area del curso'", key="btn_repair_area_del_curso", icon=":material/build:"):
+                with st.spinner("Reparando…"):
+                    ok_rep, msg_rep = repair_area_del_curso()
+                if ok_rep:
+                    st.success(msg_rep)
+                else:
+                    st.error(msg_rep)
 
         st.download_button(
             "Descargar Template_cartelera.xlsx", data=_download_drive_file_bytes(TEMPLATE_CARTELERA_FILE_ID),
