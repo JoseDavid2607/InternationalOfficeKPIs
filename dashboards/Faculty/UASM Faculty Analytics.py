@@ -3302,10 +3302,11 @@ def page_qualifications():
 
         tickvals = list(range(len(x_labels)))
         ticktext = [str(x) for x in x_labels]
+        x_range = [-0.5, len(x_labels) - 0.5] if x_labels else None
         if metric_choice == "%OTHER":
-            fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext), yaxis=dict(range=[y_min, y_max]))
+            fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, range=x_range), yaxis=dict(range=[y_min, y_max]))
         else:
-            fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext), yaxis=dict(range=[y_min, 100]))
+            fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, range=x_range), yaxis=dict(range=[y_min, 100]))
         fig.update_xaxes(title=None)
         fig.update_yaxes(title=None)
         st.plotly_chart(fig, use_container_width=True)
@@ -3930,11 +3931,9 @@ def page_qualifications():
         DEFAULT_EXCLUDE_PROGRAMS = {"CONT", "E-IMER", "E-ENEG", "E-AFIN"}
 
         def _is_specialization_program(code: str) -> bool:
-            # Cualquier código de programa que empiece por "E-" es una
-            # Especialización (no solo las 3 que ya estaban hardcodeadas en
-            # DEFAULT_EXCLUDE_PROGRAMS) -- se usa para que el checkbox de
-            # abajo controle TODAS las especializaciones, no solo esas 3.
-            return str(code).strip().upper().startswith("E-")
+            # Especialización = cualquier programa cuyo nombre empiece por
+            # "Specialization" (p.ej. "Specialization in ...").
+            return str(code).strip().upper().startswith("SPECIALIZATION")
 
         if program_col0:
             all_programs_period = sorted(
@@ -4978,7 +4977,8 @@ def page_qualifications():
                         margin=dict(l=10,r=10,t=40,b=60),
                         legend=dict(orientation="h", y=-0.2, yanchor="top", x=0.5, xanchor="center"),
                     )
-                    fig.update_xaxes(title=None, tickmode="array", tickvals=tickvals, ticktext=ticktext)
+                    fig.update_xaxes(title=None, tickmode="array", tickvals=tickvals, ticktext=ticktext,
+                                      range=[-0.5, len(x_labels_q) - 0.5] if x_labels_q else None)
                     fig.update_yaxes(title="Credits", rangemode="tozero")
                     st.plotly_chart(fig, use_container_width=True)
 
@@ -5015,7 +5015,8 @@ def page_qualifications():
                         margin=dict(l=10,r=10,t=40,b=60),
                         legend=dict(orientation="h", y=-0.2, yanchor="top", x=0.5, xanchor="center"),
                     )
-                    fig2.update_xaxes(title=None, tickmode="array", tickvals=tickvals2, ticktext=ticktext2)
+                    fig2.update_xaxes(title=None, tickmode="array", tickvals=tickvals2, ticktext=ticktext2,
+                                       range=[-0.5, len(x_labels_ps) - 0.5] if x_labels_ps else None)
                     fig2.update_yaxes(title="Credits", rangemode="tozero")
                     st.plotly_chart(fig2, use_container_width=True)
 
