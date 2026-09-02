@@ -6648,7 +6648,10 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
     borran las filas existentes que compartan esos periodos (reemplazo,
     igual que antes), se agregan las nuevas al final con un numero
     indicativo (Nro) consecutivo generado por la app, se aplica el
-    resaltado de Notes (IN IN -> azul negrilla, OUT IN -> rojo), y se sube
+    resaltado de Notes (IN IN -> azul negrilla, OUT IN -> rojo), se detectan
+    automaticamente los profesores que salieron (comparando cada periodo
+    nuevo contra el inmediatamente anterior presente en la hoja y marcando
+    "OUT IN <periodo anterior>" en rojo si un ID deja de aparecer), y se sube
     el archivo completo de vuelta a Drive.
 
     Nota: como BD_profesores.xlsx es un archivo .xlsx normal (no un Google
@@ -6750,6 +6753,49 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
                         if age is not None:
                             cell.value = age
                 cell.alignment = fv_align
+
+        # 2.7) Detecta profesores que SALIERON: para cada periodo recién
+        # cargado, se compara contra el periodo inmediatamente anterior que
+        # ya está presente en la hoja (puede ser un periodo histórico, o
+        # incluso otro periodo cargado en esta misma tanda). Si un ID que
+        # estaba en el periodo anterior ya NO aparece en el periodo nuevo,
+        # se marca esa fila del periodo anterior con Notes = "OUT IN
+        # <periodo anterior>" (su último semestre) y letra roja -- así se
+        # ven de un vistazo los nuevos (IN IN, ya venían marcados en la
+        # template) y los que salieron, y alimenta el staffing level. Si la
+        # fila ya tenía un "OUT IN" (de una carga anterior), no se toca, para
+        # no duplicar ni pisar una marca puesta a mano.
+        all_rows_now = [
+            (r, str(ws.cell(row=r, column=1).value or "").strip().replace(".0", ""),
+                _norm_id(ws.cell(row=r, column=3).value))
+            for r in range(2, ws.max_row + 1)
+            if str(ws.cell(row=r, column=1).value or "").strip() != ""
+        ]
+        ids_by_period: Dict[str, set] = {}
+        for _r, per, pid in all_rows_now:
+            if per and pid:
+                ids_by_period.setdefault(per, set()).add(pid)
+        all_periods_present = sorted(ids_by_period.keys(), key=_period_sort_key)
+
+        for p_new in periodos:
+            if p_new not in ids_by_period:
+                continue
+            earlier = [p for p in all_periods_present if _period_sort_key(p) < _period_sort_key(p_new)]
+            if not earlier:
+                continue
+            p_prev = earlier[-1]
+            left_ids = ids_by_period.get(p_prev, set()) - ids_by_period.get(p_new, set())
+            if not left_ids:
+                continue
+            for r, per, pid in all_rows_now:
+                if per != p_prev or pid not in left_ids:
+                    continue
+                notes_cell = ws.cell(row=r, column=27)  # AA -- Notes
+                if str(notes_cell.value or "").strip().upper().startswith("OUT IN"):
+                    continue
+                notes_cell.value = f"OUT IN {p_prev}"
+                for c in range(1, 29):
+                    ws.cell(row=r, column=c).font = red_font
 
         # 3.5) Extiende la Tabla de Excel "tabla_planta" para que incluya las
         # filas nuevas -- sin esto, aunque las celdas queden vacias, Excel no
