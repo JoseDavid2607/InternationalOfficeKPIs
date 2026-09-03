@@ -569,9 +569,11 @@ def page_composition():
     # Ranking order & color map -- primero el grupo "Faculty ranked"
     # (Emeritus, Full, Associate, Assistant), luego "Faculty not ranked"
     # (Distinguished, Adjunct, Instructor).
-    RANKED_GROUP = ["Emeritus Professor", "Full Professor", "Associate Professor", "Assistant Professor"]
+    RANKED_GROUP = ["Emeritus Professor", "Full Professor", "Associate Professor", "Associate",
+                     "Assistant Professor", "Assistant"]
     NOT_RANKED_GROUP = ["Distinguished Practitioner", "Adjunct Faculty", "Instructor"]
-    base_order = RANKED_GROUP + NOT_RANKED_GROUP
+    base_order = ["Emeritus Professor", "Full Professor", "Associate Professor", "Associate",
+                   "Assistant Professor", "Assistant"] + NOT_RANKED_GROUP
     uniq_ranks = df["Faculty Ranking"].dropna().astype(str).unique().tolist()
     ranking_order = [x for x in base_order if x in uniq_ranks] + \
                      [x for x in uniq_ranks if x not in base_order]
@@ -714,32 +716,32 @@ def page_composition():
         bar_counts.columns = ["Faculty Ranking", "Count"]
         st.metric("Total Faculty:", int(bar_counts["Count"].sum()))
 
-        fig_bar = px.bar(bar_counts, x="Count", y="Faculty Ranking", orientation="h",
+        # Las categorías con 0 profesores no se muestran en la gráfica.
+        bar_counts_vis = bar_counts[bar_counts["Count"] > 0].copy()
+        display_order = [r for r in ranking_order if r in set(bar_counts_vis["Faculty Ranking"])]
+
+        fig_bar = px.bar(bar_counts_vis, x="Count", y="Faculty Ranking", orientation="h",
                          text="Count", color="Faculty Ranking", color_discrete_map=color_map_rk,
-                         category_orders={"Faculty Ranking": ranking_order})
-        fig_bar.update_xaxes(range=[0, max(1, int(bar_counts["Count"].max() or 0)) + 5], title="Number of Faculty")
-        # Fuerza el orden top->abajo EXACTO de ranking_order (Emeritus,
-        # Full, Associate, Assistant, Distinguished, Adjunct, Instructor):
-        # categoryarray fija qué categoría va en cada posición, y
-        # autorange="reversed" hace que la posición 0 (primer elemento de
-        # ranking_order) quede arriba en vez de abajo (default de Plotly
-        # para ejes categóricos).
-        fig_bar.update_yaxes(categoryorder="array", categoryarray=ranking_order,
+                         category_orders={"Faculty Ranking": display_order})
+        fig_bar.update_xaxes(range=[0, max(1, int(bar_counts_vis["Count"].max() or 0)) + 5], title="Number of Faculty")
+        # Fuerza el orden top->abajo EXACTO de display_order: categoryarray
+        # fija qué categoría va en cada posición, y autorange="reversed"
+        # hace que la posición 0 (primer elemento) quede arriba en vez de
+        # abajo (default de Plotly para ejes categóricos).
+        fig_bar.update_yaxes(categoryorder="array", categoryarray=display_order,
                               autorange="reversed", title=None)
         fig_bar.update_traces(textposition="outside")
 
         # Línea separadora + etiquetas "Faculty ranked" (Emeritus, Full,
         # Associate, Assistant) / "Faculty not ranked" (Distinguished,
         # Adjunct, Instructor), en vertical, dentro del área de la gráfica.
-        # Con autorange="reversed" la posición 0 (índice del primer
-        # elemento de ranking_order) queda ARRIBA, así que "ranked" (los
-        # primeros n_ranked elementos de ranking_order) ocupa las
-        # posiciones 0..n_ranked-1.
-        n_total = len(ranking_order)
-        n_ranked = sum(1 for r in ranking_order if r in RANKED_GROUP)
+        # Calculadas sobre display_order (ya sin las categorías en 0), para
+        # que la línea siga cayendo justo entre los dos grupos.
+        n_total = len(display_order)
+        n_ranked = sum(1 for r in display_order if r in RANKED_GROUP)
         n_not_ranked = n_total - n_ranked
         if n_total > 0 and 0 < n_ranked < n_total:
-            x_max = max(1, int(bar_counts["Count"].max() or 0)) + 5
+            x_max = max(1, int(bar_counts_vis["Count"].max() or 0)) + 5
             boundary_y = n_ranked - 0.5
             y_center_ranked = (n_ranked - 1) / 2
             y_center_not_ranked = (n_ranked + n_total - 1) / 2
