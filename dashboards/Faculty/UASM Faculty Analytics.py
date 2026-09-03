@@ -546,7 +546,7 @@ def page_composition():
     # Sidebar específico de esta página
     with st.sidebar:
         st.markdown("#### Timeframe")
-        tmode = st.radio("", ["Semestral", "Anual", "Intersemestral"], key="ft_comp_timeframe")
+        tmode = st.radio("", ["Semestral", "Anual"], key="ft_comp_timeframe")
 
         sem_periods_desc = sorted(sem_periods, key=_period_sort_key, reverse=True)
         inter_periods_desc = sorted(inter_periods, key=_period_sort_key, reverse=True)
@@ -558,14 +558,9 @@ def page_composition():
                                     key="ft_comp_periodo_sem")
             sel_period_internal = sem_periods_desc[vis.index(sel_vis)] if vis else None
             sel_period_label = sel_vis
-        elif tmode == "Anual":
+        else:
             sel_period_internal = st.selectbox("Periodo", years_desc, index=0 if years_desc else 0,
                                                 key="ft_comp_periodo_anual")
-            sel_period_label = sel_period_internal
-        else:
-            sel_period_internal = st.selectbox("Periodo", inter_periods_desc,
-                                                index=0 if inter_periods_desc else 0,
-                                                key="ft_comp_periodo_inter")
             sel_period_label = sel_period_internal
 
     _render_header("Full-time Faculty Composition",
@@ -590,21 +585,19 @@ def page_composition():
     def periods_for_tables():
         if tmode == "Semestral":
             return sem_periods
-        if tmode == "Intersemestral":
-            return inter_periods
         return years
 
     def df_active():
         if sel_period_internal is None:
             return df.iloc[0:0].copy()
-        if tmode in ("Semestral", "Intersemestral"):
+        if tmode == "Semestral":
             return df[df["Periodo"].astype(str).eq(sel_period_internal)].copy()
         dfa = df[df["Periodo"].astype(str).str.startswith(str(sel_period_internal))].copy()
         return dfa.sort_values("Periodo").drop_duplicates(subset=["ID"], keep="last")
 
     def pivot_counts():
         cols = periods_for_tables()
-        if tmode in ("Semestral", "Intersemestral"):
+        if tmode == "Semestral":
             return pd.pivot_table(
                 df[df["Periodo"].isin(cols)],
                 index="Faculty Ranking", columns="Periodo",
@@ -622,7 +615,7 @@ def page_composition():
 
     def line_source_all():
         cols = periods_for_tables()
-        if tmode in ("Semestral", "Intersemestral"):
+        if tmode == "Semestral":
             dat = (df[df["Periodo"].isin(cols)]
                    .groupby(["Periodo", "Faculty Ranking"])["ID"]
                    .count().reset_index(name="Count"))
@@ -644,7 +637,7 @@ def page_composition():
 
     def line_source_single(rank):
         cols = periods_for_tables()
-        if tmode in ("Semestral", "Intersemestral"):
+        if tmode == "Semestral":
             dat = (df[df["Periodo"].isin(cols) & (df["Faculty Ranking"] == rank)]
                    .groupby("Periodo")["ID"].count()
                    .reindex(cols, fill_value=0).reset_index(name="Count"))
@@ -707,7 +700,7 @@ def page_composition():
         st.markdown(f"<div style='text-align:center;font-weight:800;font-size:2rem;"
                     f"padding-top:4px;'>{sel_period_label}</div>", unsafe_allow_html=True)
 
-        if tmode in ("Semestral", "Intersemestral"):
+        if tmode == "Semestral":
             dfbar = df[df["Periodo"].astype(str).eq(sel_period_internal)]
         else:
             dfa = df[df["Periodo"].astype(str).str.startswith(str(sel_period_internal))].copy()
@@ -721,7 +714,7 @@ def page_composition():
         fig_bar = px.bar(bar_counts, x="Count", y="Faculty Ranking", orientation="h",
                          text="Count", color="Faculty Ranking", color_discrete_map=color_map_rk,
                          category_orders={"Faculty Ranking": ranking_order[::-1]})
-        fig_bar.update_xaxes(range=[0, max(1, int(bar_counts["Count"].max() or 0)) + 5], title=None)
+        fig_bar.update_xaxes(range=[0, max(1, int(bar_counts["Count"].max() or 0)) + 5], title="Number of Faculty")
         fig_bar.update_yaxes(title=None)
         fig_bar.update_traces(textposition="outside")
         st.plotly_chart(fig_bar, use_container_width=True)
@@ -742,8 +735,8 @@ def page_composition():
                                markers=True, title="Evolution — all rankings",
                                color_discrete_map=color_map_rk,
                                category_orders={"Periodo": xcats, "Faculty Ranking": ranking_order})
-            fig_line.update_yaxes(range=[0, y_max + 1], title=None)
-            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title=None)
+            fig_line.update_yaxes(range=[0, y_max + 1], title="Number of Faculty")
+            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title="Period")
             fig_line.update_layout(height=550, showlegend=False)
         else:
             rk = st.session_state.single_ranking
@@ -754,8 +747,8 @@ def page_composition():
                                    title=f"Evolution — {rk}",
                                    color_discrete_sequence=[color_map_rk.get(rk, "#00A896")],
                                    category_orders={"Periodo": xcats})
-                fig_line.update_yaxes(range=[0, y_max + 1], title=None)
-                fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title=None)
+                fig_line.update_yaxes(range=[0, y_max + 1], title="Number of Faculty")
+                fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title="Period")
                 fig_line.update_layout(height=480)
             else:
                 st.info("Select a ranking to visualize its evolution.")
@@ -778,7 +771,7 @@ def page_composition():
         detail_df = active.copy()
         title_txt = f"### **{len(detail_df)}** Full-time Faculty"
 
-    col_title, col_gender = st.columns([3, 2])
+    col_gender, col_title = st.columns([2, 3])
     with col_title:
         st.markdown(title_txt)
     with col_gender:
@@ -1046,8 +1039,8 @@ def page_staffing():
                 showarrow=True, arrowhead=2, arrowsize=1.2, arrowwidth=2, arrowcolor=arrowcolor
             )
 
-        fig_line.update_xaxes(type="category", tickangle=45, showgrid=True, title=None)
-        fig_line.update_yaxes(showgrid=True, zeroline=False, title=None)
+        fig_line.update_xaxes(type="category", tickangle=45, showgrid=True, title="Semester")
+        fig_line.update_yaxes(showgrid=True, zeroline=False, title="Number of Faculty")
         fig_line.update_layout(
             height=380,
             margin=dict(l=10, r=10, t=10, b=80),
@@ -1296,7 +1289,7 @@ def page_area():
         df_base = df_full if st.session_state.modo_faculty == "Full-time" else df_part
 
         st.markdown("#### Timeframe")
-        tmode = st.radio("Timeframe", ["Semestral", "Anual", "Intersemestral"],
+        tmode = st.radio("Timeframe", ["Semestral", "Anual"],
                           key="time_mode_side", label_visibility="collapsed")
 
         all_periods = sorted(df_base["Periodo"].astype(str).dropna().unique().tolist())
@@ -1307,13 +1300,9 @@ def page_area():
             sel_visible = st.selectbox("Periodo", visible_opts, index=0 if period_opts else None)
             sel_value = period_opts[visible_opts.index(sel_visible)] if period_opts else None
             sel_label = sel_visible
-        elif tmode == "Anual":
+        else:
             years = sorted(pd.Series(all_periods).astype(str).str[:4].unique().tolist(), reverse=True)
             sel_value = st.selectbox("Periodo", years, index=0 if years else None)
-            sel_label = sel_value
-        else:
-            inters = sorted([p for p in all_periods if _is_inter_label(p)], key=_period_sort_key, reverse=True)
-            sel_value = st.selectbox("Periodo", inters, index=0 if inters else None)
             sel_label = sel_value
 
         st.session_state["sel_tf_mode"] = tmode
@@ -1454,8 +1443,8 @@ def page_area():
             )
             fig_line.update_traces(mode="lines+markers", line=dict(width=2),
                                     hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:.1%}<extra></extra>")
-            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title=None)
-            fig_line.update_yaxes(rangemode="tozero", tickformat=".0%", title=None)
+            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title="Period")
+            fig_line.update_yaxes(rangemode="tozero", tickformat=".0%", title="% of Faculty")
             fig_line.update_layout(showlegend=False)
             _highlight_band(fig_line, x_to_filter, x_labels, color=HIGHLIGHT)
             st.plotly_chart(fig_line, use_container_width=True)
@@ -1480,8 +1469,8 @@ def page_area():
             )
             fig_line.update_traces(mode="lines+markers", line=dict(width=2),
                                     hovertemplate="<b>%{x}</b><br>%{y:.1%}<extra></extra>")
-            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title=None)
-            fig_line.update_yaxes(rangemode="tozero", tickformat=".0%", title=None)
+            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title="Period")
+            fig_line.update_yaxes(rangemode="tozero", tickformat=".0%", title="% of Faculty")
             fig_line.update_layout(showlegend=False)
             _highlight_band(fig_line, x_to_filter, x_labels, color=HIGHLIGHT)
             st.plotly_chart(fig_line, use_container_width=True)
@@ -1714,7 +1703,7 @@ def page_demographics():
 
         st.markdown("#### Timeframe")
         time_mode_side = st.radio(
-            "Timeframe", ["Semestral", "Anual", "Intersemestral"],
+            "Timeframe", ["Semestral", "Anual"],
             key="time_mode_side", label_visibility="collapsed",
         )
 
@@ -2098,12 +2087,12 @@ def page_demographics():
         )
         fig_combo = go.Figure()
         fig_combo.add_trace(go.Scatter(
-            x=labels_ts, y=phd_ts, name="% PhD", mode="lines+markers+text",
+            x=labels_ts, y=phd_ts, name="% Faculty with PhD", mode="lines+markers+text",
             line=dict(color="#00A896", width=3), marker=dict(size=7, color="#00A896"),
             text=[f"{v:.1f}%" for v in phd_ts], textposition="top center",
         ))
         fig_combo.add_trace(go.Scatter(
-            x=labels_ts, y=intl_ts, name="% International", mode="lines+markers+text",
+            x=labels_ts, y=intl_ts, name="% International Faculty", mode="lines+markers+text",
             line=dict(color="#2E6FC4", width=3), marker=dict(size=7, color="#2E6FC4"),
             text=[f"{v:.1f}%" for v in intl_ts], textposition="top center",
         ))
