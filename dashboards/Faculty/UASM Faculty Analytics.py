@@ -716,38 +716,43 @@ def page_composition():
 
         fig_bar = px.bar(bar_counts, x="Count", y="Faculty Ranking", orientation="h",
                          text="Count", color="Faculty Ranking", color_discrete_map=color_map_rk,
-                         category_orders={"Faculty Ranking": ranking_order[::-1]})
+                         category_orders={"Faculty Ranking": ranking_order})
         fig_bar.update_xaxes(range=[0, max(1, int(bar_counts["Count"].max() or 0)) + 5], title="Number of Faculty")
-        fig_bar.update_yaxes(title=None)
+        # Fuerza el orden top->abajo EXACTO de ranking_order (Emeritus,
+        # Full, Associate, Assistant, Distinguished, Adjunct, Instructor):
+        # categoryarray fija qué categoría va en cada posición, y
+        # autorange="reversed" hace que la posición 0 (primer elemento de
+        # ranking_order) quede arriba en vez de abajo (default de Plotly
+        # para ejes categóricos).
+        fig_bar.update_yaxes(categoryorder="array", categoryarray=ranking_order,
+                              autorange="reversed", title=None)
         fig_bar.update_traces(textposition="outside")
 
         # Línea separadora + etiquetas "Faculty ranked" (Emeritus, Full,
         # Associate, Assistant) / "Faculty not ranked" (Distinguished,
-        # Adjunct, Instructor) -- en coordenadas de DATOS del eje
-        # categórico (no de "papel"), para que coincidan exactamente con
-        # las barras sin importar dónde caiga la leyenda. category_orders
-        # usa ranking_order invertido, así que la posición 0 del eje
-        # corresponde al ÚLTIMO elemento de ranking_order (abajo) y la
-        # posición n_total-1 al PRIMERO (arriba) -- por eso "not ranked"
-        # (el final de ranking_order) ocupa las posiciones 0..n_not_ranked-1.
+        # Adjunct, Instructor), en vertical, dentro del área de la gráfica.
+        # Con autorange="reversed" la posición 0 (índice del primer
+        # elemento de ranking_order) queda ARRIBA, así que "ranked" (los
+        # primeros n_ranked elementos de ranking_order) ocupa las
+        # posiciones 0..n_ranked-1.
         n_total = len(ranking_order)
         n_ranked = sum(1 for r in ranking_order if r in RANKED_GROUP)
         n_not_ranked = n_total - n_ranked
         if n_total > 0 and 0 < n_ranked < n_total:
             x_max = max(1, int(bar_counts["Count"].max() or 0)) + 5
-            boundary_y = n_not_ranked - 0.5
-            y_center_not_ranked = (n_not_ranked - 1) / 2
-            y_center_ranked = (n_not_ranked + n_total - 1) / 2
+            boundary_y = n_ranked - 0.5
+            y_center_ranked = (n_ranked - 1) / 2
+            y_center_not_ranked = (n_ranked + n_total - 1) / 2
             fig_bar.add_shape(type="line", xref="x", x0=0, x1=x_max, yref="y",
                                y0=boundary_y, y1=boundary_y,
                                line=dict(color="#9CA3AF", width=1, dash="dot"))
             fig_bar.add_annotation(xref="x", x=x_max * 0.98, xanchor="right", yref="y",
                                     y=y_center_ranked, text="Faculty ranked",
-                                    showarrow=False, font=dict(size=11, color="#374151"),
+                                    showarrow=False, textangle=-90, font=dict(size=11, color="#374151"),
                                     bgcolor="rgba(255,255,255,0.75)")
             fig_bar.add_annotation(xref="x", x=x_max * 0.98, xanchor="right", yref="y",
                                     y=y_center_not_ranked, text="Faculty not ranked",
-                                    showarrow=False, font=dict(size=11, color="#374151"),
+                                    showarrow=False, textangle=-90, font=dict(size=11, color="#374151"),
                                     bgcolor="rgba(255,255,255,0.75)")
 
         st.plotly_chart(fig_bar, use_container_width=True)
