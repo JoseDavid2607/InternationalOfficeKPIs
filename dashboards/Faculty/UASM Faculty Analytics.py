@@ -553,13 +553,13 @@ def page_composition():
         years_desc = sorted(years, reverse=True)
 
         if tmode == "Semestral":
-            vis = [p.replace("-", "") for p in sem_periods_desc]
-            sel_vis = st.selectbox("Periodo", vis, index=0 if vis else 0,
+            vis = list(sem_periods_desc)
+            sel_vis = st.selectbox("Semester", vis, index=0 if vis else 0,
                                     key="ft_comp_periodo_sem")
             sel_period_internal = sem_periods_desc[vis.index(sel_vis)] if vis else None
             sel_period_label = sel_vis
         else:
-            sel_period_internal = st.selectbox("Periodo", years_desc, index=0 if years_desc else 0,
+            sel_period_internal = st.selectbox("Year", years_desc, index=0 if years_desc else 0,
                                                 key="ft_comp_periodo_anual")
             sel_period_label = sel_period_internal
 
@@ -776,7 +776,9 @@ def page_composition():
                                color_discrete_map=color_map_rk,
                                category_orders={"Periodo": xcats, "Faculty Ranking": ranking_order})
             fig_line.update_yaxes(range=[0, y_max + 1], title="Number of Faculty")
-            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title="Semester" if tmode == "Semestral" else "Year")
+            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats,
+                                   tickangle=45, tickvals=xcats, ticktext=[_dash_label(x) for x in xcats],
+                                   title="Semester" if tmode == "Semestral" else "Year")
             fig_line.update_layout(height=550, showlegend=False)
         else:
             rk = st.session_state.single_ranking
@@ -788,7 +790,9 @@ def page_composition():
                                    color_discrete_sequence=[color_map_rk.get(rk, "#00A896")],
                                    category_orders={"Periodo": xcats})
                 fig_line.update_yaxes(range=[0, y_max + 1], title="Number of Faculty")
-                fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title="Semester" if tmode == "Semestral" else "Year")
+                fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats,
+                                       tickangle=45, tickvals=xcats, ticktext=[_dash_label(x) for x in xcats],
+                                       title="Semester" if tmode == "Semestral" else "Year")
                 fig_line.update_layout(height=480)
             else:
                 st.info("Select a ranking to visualize its evolution.")
@@ -865,7 +869,7 @@ def page_staffing():
         if staff_time_mode == "Semestral":
             st.markdown("#### Select Semester")
             sem_periods_desc = sorted(sem_periods, key=_period_sort_key, reverse=True)  # solo para el desplegable
-            vis_opts = [p.replace("-", "") for p in sem_periods_desc]
+            vis_opts = list(sem_periods_desc)
             sel_vis = st.selectbox("", vis_opts, index=0 if vis_opts else None, key="ft_staff_periodo")
             sel_period_internal = sem_periods_desc[vis_opts.index(sel_vis)] if vis_opts else None
             sel_period_label = sel_vis
@@ -1271,7 +1275,7 @@ def page_area():
         return bool(re.fullmatch(r"\d{4}-(10|20)", str(p)))
 
     def display_label_sem(p_internal: str) -> str:
-        return str(p_internal).replace("-", "")
+        return str(p_internal)
 
 
     def filter_for_timeframe(df_in: pd.DataFrame, time_mode: str, value) -> pd.DataFrame:
@@ -1337,12 +1341,12 @@ def page_area():
         if tmode == "Semestral":
             period_opts = sorted([p for p in all_periods if is_sem_label(p)], key=_period_sort_key, reverse=True)
             visible_opts = [display_label_sem(p) for p in period_opts]
-            sel_visible = st.selectbox("Periodo", visible_opts, index=0 if period_opts else None)
+            sel_visible = st.selectbox("Semester", visible_opts, index=0 if period_opts else None)
             sel_value = period_opts[visible_opts.index(sel_visible)] if period_opts else None
             sel_label = sel_visible
         else:
             years = sorted(pd.Series(all_periods).astype(str).str[:4].unique().tolist(), reverse=True)
-            sel_value = st.selectbox("Periodo", years, index=0 if years else None)
+            sel_value = st.selectbox("Year", years, index=0 if years else None)
             sel_label = sel_value
 
         st.session_state["sel_tf_mode"] = tmode
@@ -1483,7 +1487,7 @@ def page_area():
             )
             fig_line.update_traces(mode="lines+markers", line=dict(width=2),
                                     hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:.1%}<extra></extra>")
-            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title="Semester" if tmode_now == "Semestral" else "Year")
+            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, tickangle=45, tickvals=x_labels, ticktext=[_dash_label(x) for x in x_labels], title="Semester" if tmode_now == "Semestral" else "Year")
             fig_line.update_yaxes(rangemode="tozero", tickformat=".0%", title="% of Faculty")
             fig_line.update_layout(showlegend=False)
             _highlight_band(fig_line, x_to_filter, x_labels, color=HIGHLIGHT)
@@ -1509,7 +1513,7 @@ def page_area():
             )
             fig_line.update_traces(mode="lines+markers", line=dict(width=2),
                                     hovertemplate="<b>%{x}</b><br>%{y:.1%}<extra></extra>")
-            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title="Semester" if tmode_now == "Semestral" else "Year")
+            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, tickangle=45, tickvals=x_labels, ticktext=[_dash_label(x) for x in x_labels], title="Semester" if tmode_now == "Semestral" else "Year")
             fig_line.update_yaxes(rangemode="tozero", tickformat=".0%", title="% of Faculty")
             fig_line.update_layout(showlegend=False)
             _highlight_band(fig_line, x_to_filter, x_labels, color=HIGHLIGHT)
@@ -1751,7 +1755,7 @@ def page_demographics():
         options_tf = sorted(options_for_timeframe(df_base, time_mode_side), key=_period_sort_key, reverse=True)
 
         sel_label = st.selectbox(
-            "Periodo", options_tf,
+            "Semester" if time_mode_side == "Semestral" else "Year", options_tf,
             index=(options_tf.index(st.session_state.sel_tf_label)
                    if st.session_state.sel_tf_label in options_tf else 0),
         ) if options_tf else None
@@ -2139,7 +2143,8 @@ def page_demographics():
         fig_combo.update_layout(
             title=title_combo,
             xaxis=dict(type="category", categoryorder="array", categoryarray=labels_ts,
-                       range=[-0.5, max(len(labels_ts) - 0.5, 0.5)], tickangle=-45),
+                       range=[-0.5, max(len(labels_ts) - 0.5, 0.5)], tickangle=45,
+                       tickvals=labels_ts, ticktext=[_dash_label(x) for x in labels_ts]),
             yaxis=dict(range=[0, 100], title="%"),
         )
         _highlight_band(fig_combo, period_current, labels_ts, color=COLORS["highlight"])
@@ -2151,8 +2156,8 @@ def page_demographics():
                                       showarrow=False, xanchor="left", xshift=8, font=dict(color="#00A896", size=12))
             fig_combo.add_annotation(x=labels_ts[-1], y=last_int, yref="y", text=f"{last_int:.1f}% ... International Faculty",
                                       showarrow=False, xanchor="left", xshift=8, yshift=-14, font=dict(color="#2E6FC4", size=12))
-        fig_combo.update_layout(height=line_h + 80, margin=dict(l=10, r=90, t=40, b=60),
-                                 legend=dict(orientation="h", yanchor="top", y=-0.15, x=0.5, xanchor="center", title=None))
+        fig_combo.update_layout(height=line_h + 80, margin=dict(l=10, r=90, t=80, b=60),
+                                 legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0.5, xanchor="center", title=None))
         st.plotly_chart(fig_combo, use_container_width=True)
 
     with row1_right:
@@ -3465,12 +3470,12 @@ def page_qualifications():
             fig.add_vrect(x0=sel_x-0.5, x1=sel_x+0.5, fillcolor="#E8FAF7", opacity=0.5, layer="below", line_width=0)
 
         tickvals = list(range(len(x_labels)))
-        ticktext = [str(x) for x in x_labels]
+        ticktext = [_dash_label(x) for x in x_labels]
         x_range = [-0.5, len(x_labels) - 0.5] if x_labels else None
         if metric_choice == "%OTHER":
-            fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, range=x_range), yaxis=dict(range=[y_min, y_max]))
+            fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, tickangle=45, range=x_range), yaxis=dict(range=[y_min, y_max]))
         else:
-            fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, range=x_range), yaxis=dict(range=[y_min, 100]))
+            fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, tickangle=45, range=x_range), yaxis=dict(range=[y_min, 100]))
         fig.update_xaxes(title=None)
         fig.update_yaxes(title=None)
         st.plotly_chart(fig, use_container_width=True)
@@ -8706,6 +8711,17 @@ def _period_sort_key(p):
         return (int(s[:4]), 15 if "Intersemestral" in s else int(s[-2:].replace("-", "")))
     except (ValueError, IndexError):
         return (-1, -1)  # valores no reconocibles (vacíos, ruido de datos) quedan al final al ordenar
+
+
+def _dash_label(p) -> str:
+    """Formatea un periodo para mostrar como 'YYYY-NN' (con guión entre el
+    año y el semestre) en los ejes de las gráficas -- idempotente: si ya
+    tiene guión, es 'Intersemestral', o no tiene el formato de 6 dígitos
+    esperado (p.ej. un año solo), lo devuelve tal cual."""
+    s = str(p).strip()
+    if "-" in s or "Intersemestral" in s:
+        return s
+    return f"{s[:4]}-{s[4:]}" if len(s) == 6 and s.isdigit() else s
 
 
 if not IS_UPDATE_PAGE:
