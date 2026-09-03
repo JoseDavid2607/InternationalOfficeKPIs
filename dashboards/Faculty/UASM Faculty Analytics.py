@@ -736,7 +736,7 @@ def page_composition():
                                color_discrete_map=color_map_rk,
                                category_orders={"Periodo": xcats, "Faculty Ranking": ranking_order})
             fig_line.update_yaxes(range=[0, y_max + 1], title="Number of Faculty")
-            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title="Period")
+            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title="Semester" if tmode == "Semestral" else "Year")
             fig_line.update_layout(height=550, showlegend=False)
         else:
             rk = st.session_state.single_ranking
@@ -748,7 +748,7 @@ def page_composition():
                                    color_discrete_sequence=[color_map_rk.get(rk, "#00A896")],
                                    category_orders={"Periodo": xcats})
                 fig_line.update_yaxes(range=[0, y_max + 1], title="Number of Faculty")
-                fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title="Period")
+                fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=xcats, title="Semester" if tmode == "Semestral" else "Year")
                 fig_line.update_layout(height=480)
             else:
                 st.info("Select a ranking to visualize its evolution.")
@@ -771,7 +771,7 @@ def page_composition():
         detail_df = active.copy()
         title_txt = f"### **{len(detail_df)}** Full-time Faculty"
 
-    col_gender, col_title = st.columns([2, 3])
+    col_title, col_gender, col_spacer = st.columns([2, 1, 5])
     with col_title:
         st.markdown(title_txt)
     with col_gender:
@@ -1443,7 +1443,7 @@ def page_area():
             )
             fig_line.update_traces(mode="lines+markers", line=dict(width=2),
                                     hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:.1%}<extra></extra>")
-            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title="Period")
+            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title="Semester" if tmode_now == "Semestral" else "Year")
             fig_line.update_yaxes(rangemode="tozero", tickformat=".0%", title="% of Faculty")
             fig_line.update_layout(showlegend=False)
             _highlight_band(fig_line, x_to_filter, x_labels, color=HIGHLIGHT)
@@ -1469,7 +1469,7 @@ def page_area():
             )
             fig_line.update_traces(mode="lines+markers", line=dict(width=2),
                                     hovertemplate="<b>%{x}</b><br>%{y:.1%}<extra></extra>")
-            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title="Period")
+            fig_line.update_xaxes(type="category", categoryorder="array", categoryarray=x_labels, title="Semester" if tmode_now == "Semestral" else "Year")
             fig_line.update_yaxes(rangemode="tozero", tickformat=".0%", title="% of Faculty")
             fig_line.update_layout(showlegend=False)
             _highlight_band(fig_line, x_to_filter, x_labels, color=HIGHLIGHT)
