@@ -566,9 +566,12 @@ def page_composition():
     _render_header("Full-time Faculty Composition",
                    "Evolution and distribution of full-time faculty by ranking")
 
-    # Ranking order & color map
-    base_order = ["Full Professor", "Associate Professor", "Assistant Professor",
-                  "Instructor", "Adjunct Faculty", "Distinguished Practitioner", "Emeritus Professor"]
+    # Ranking order & color map -- primero el grupo "Faculty ranked"
+    # (Emeritus, Full, Associate, Assistant), luego "Faculty not ranked"
+    # (Distinguished, Adjunct, Instructor).
+    RANKED_GROUP = ["Emeritus Professor", "Full Professor", "Associate Professor", "Assistant Professor"]
+    NOT_RANKED_GROUP = ["Distinguished Practitioner", "Adjunct Faculty", "Instructor"]
+    base_order = RANKED_GROUP + NOT_RANKED_GROUP
     uniq_ranks = df["Faculty Ranking"].dropna().astype(str).unique().tolist()
     ranking_order = [x for x in base_order if x in uniq_ranks] + \
                      [x for x in uniq_ranks if x not in base_order]
@@ -696,7 +699,7 @@ def page_composition():
     col_left, col_right = st.columns(2)
 
     with col_right:
-        st.subheader("Composition by period")
+        st.subheader(f"Composition by {'Semester' if tmode == 'Semestral' else 'Year'}")
         st.markdown(f"<div style='text-align:center;font-weight:800;font-size:2rem;"
                     f"padding-top:4px;'>{sel_period_label}</div>", unsafe_allow_html=True)
 
@@ -717,6 +720,27 @@ def page_composition():
         fig_bar.update_xaxes(range=[0, max(1, int(bar_counts["Count"].max() or 0)) + 5], title="Number of Faculty")
         fig_bar.update_yaxes(title=None)
         fig_bar.update_traces(textposition="outside")
+
+        # Línea separadora + etiquetas "Faculty ranked" (Emeritus, Full,
+        # Associate, Assistant) / "Faculty not ranked" (Distinguished,
+        # Adjunct, Instructor) -- en posiciones relativas al papel (no a
+        # los datos), calculadas según cuántas categorías de cada grupo
+        # están realmente presentes.
+        n_total = len(ranking_order)
+        n_ranked = sum(1 for r in ranking_order if r in RANKED_GROUP)
+        n_not_ranked = n_total - n_ranked
+        if n_total > 0 and 0 < n_ranked < n_total:
+            boundary = n_not_ranked / n_total
+            fig_bar.update_layout(margin=dict(r=90))
+            fig_bar.add_shape(type="line", xref="paper", x0=0, x1=1, yref="paper", y0=boundary, y1=boundary,
+                               line=dict(color="#9CA3AF", width=1, dash="dot"))
+            fig_bar.add_annotation(xref="paper", x=1.04, xanchor="left", yref="paper",
+                                    y=boundary + (1 - boundary) / 2, text="<b>Faculty ranked</b>",
+                                    showarrow=False, textangle=-90, font=dict(size=11, color="#374151"))
+            fig_bar.add_annotation(xref="paper", x=1.04, xanchor="left", yref="paper",
+                                    y=boundary / 2, text="<b>Faculty not ranked</b>",
+                                    showarrow=False, textangle=-90, font=dict(size=11, color="#374151"))
+
         st.plotly_chart(fig_bar, use_container_width=True)
 
     with col_left:
@@ -771,7 +795,7 @@ def page_composition():
         detail_df = active.copy()
         title_txt = f"### **{len(detail_df)}** Full-time Faculty"
 
-    col_title, col_gender, col_spacer = st.columns([2, 1, 5])
+    col_title, col_gender, col_spacer = st.columns([3, 2, 5])
     with col_title:
         st.markdown(title_txt)
     with col_gender:
