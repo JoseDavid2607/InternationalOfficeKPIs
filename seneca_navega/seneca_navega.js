@@ -1,5 +1,5 @@
 /* =========================================================================
-   SENECA NAVEGA — keyword-based guide engine (no AI / no backend)  [engine v4]
+   SENECA NAVEGA — keyword-based guide engine (no AI / no backend)  [engine v5]
    =========================================================================
    Included the same way on all pages. Each page only needs to call
    SenecaNavega.init({...}) with its own configuration.
@@ -149,6 +149,47 @@
     }, 260);
   }
 
+  // Swaps the panel's inner content only (crossfade). The panel box itself
+  // (background / border / shadow) is never hidden or removed, so it never
+  // "appears from zero" — it's always the same box, only what's inside changes.
+  function swapPanelContent(panel, buildFn, afterInsert) {
+    var old = panel.firstElementChild;
+    function insertNew() {
+      panel.innerHTML = "";
+      var built = buildFn();
+      built.style.opacity = "0";
+      built.style.transition = "opacity .25s ease";
+      panel.appendChild(built);
+      void built.offsetWidth;
+      requestAnimationFrame(function () { built.style.opacity = "1"; });
+      if (afterInsert) afterInsert();
+    }
+    if (old) {
+      old.style.transition = "opacity .15s ease";
+      old.style.opacity = "0";
+      setTimeout(insertNew, 150);
+    } else {
+      insertNew();
+    }
+  }
+
+  // ---------- small talk (greetings / help / thanks — not a location search) ----------
+  var SMALL_TALK = [
+    { test: /\b(hi|hello|hey|hola|good morning|good afternoon|good evening)\b/,
+      reply: "Hello! 👋 Tell me what document, folder or dashboard you're looking for and I'll show you exactly where to click." },
+    { test: /\b(help|ayuda|how does this work|what can you do|how do you work)\b/,
+      reply: "I'm Séneca Navega 🧭. Ask me about any topic (e.g. \"annual reports\", \"faculty questionnaire\") and I'll point right at where to click to find it." },
+    { test: /\b(thanks|thank you|gracias|thx)\b/,
+      reply: "You're welcome! 😊 Let me know if you need anything else." }
+  ];
+  function matchSmallTalk(q) {
+    var norm = normalize(q);
+    for (var i = 0; i < SMALL_TALK.length; i++) {
+      if (SMALL_TALK[i].test.test(norm)) return SMALL_TALK[i].reply;
+    }
+    return null;
+  }
+
   // ---------- init ----------
   function init(config) {
     var page = config.page;                 // "index" | "baseroom" | "kpis"
@@ -220,6 +261,17 @@
       }, 380);
     }
 
+    // Moves Seneca back to its starting spot WITHOUT hiding it (still active),
+    // used for small talk so it never stays parked on top of a card/text.
+    function returnFloaterHome() {
+      if (!floaterEl || !imageEl) return;
+      hideBubble();
+      var homeRect = imageEl.getBoundingClientRect();
+      floaterEl.style.transition = "top .45s ease, left .45s ease";
+      floaterEl.style.top = homeRect.top + "px";
+      floaterEl.style.left = homeRect.left + "px";
+    }
+
     function showBubble(html) {
       if (!bubbleEl) return;
       bubbleEl.style.display = "block";
@@ -253,7 +305,8 @@
       }, 380);
     }
 
-    // ---- open / close (panel box size never changes, only its content) ----
+    // ---- open / close (the white box itself is always visible; only its
+    //      inner content crossfades — width is fixed by CSS, height follows content) ----
     function activate(silent) {
       if (active) return;
       active = true;
@@ -261,10 +314,7 @@
       if (floaterEl) growFloaterFromIdleLogo();
       else if (imageEl && activeImageSrc) crossfadeImage(imageEl, activeImageSrc);
 
-      panel.style.transition = "opacity .18s ease";
-      panel.style.opacity = "0";
-      setTimeout(function () {
-        panel.innerHTML = "";
+      swapPanelContent(panel, function () {
         chatRoot = el("div", "seneca-chat");
         chatRoot.innerHTML =
           '<div class="seneca-chat__header">' +
@@ -276,9 +326,8 @@
           '  <input type="text" id="senecaInput" placeholder="' + placeholder + '">' +
           '  <button type="submit" aria-label="Send">' + ICON_SEND + "</button>" +
           "</form>";
-        panel.appendChild(chatRoot);
-        panel.style.opacity = "1";
-
+        return chatRoot;
+      }, function () {
         logEl = chatRoot.querySelector("#senecaLog");
         chatRoot.querySelector("#senecaCloseBtn").addEventListener("click", deactivate);
 
@@ -295,7 +344,7 @@
 
         if (!silent) addTypedMsg(logEl, idleMessage, 16).then(function () { input.focus(); });
         else input.focus();
-      }, 180);
+      });
     }
 
     function deactivate() {
@@ -303,12 +352,13 @@
       if (floaterEl) shrinkFloaterToIdleLogo();
       else if (imageEl && idleImageSrc) crossfadeImage(imageEl, idleImageSrc);
 
-      panel.style.opacity = "0";
-      setTimeout(function () {
-        panel.innerHTML = originalPanelHTML;
-        panel.style.opacity = "1";
+      swapPanelContent(panel, function () {
+        var wrap = el("div");
+        wrap.innerHTML = originalPanelHTML;
+        return wrap;
+      }, function () {
         wireTrigger();
-      }, 180);
+      });
     }
 
     // ---- answering ----
@@ -346,6 +396,13 @@
     }
 
     function handleQuery(q) {
+      var smallTalk = matchSmallTalk(q);
+      if (smallTalk) {
+        addTypedMsg(logEl, smallTalk, 16);
+        if (floaterEl) returnFloaterHome();
+        return;
+      }
+
       var results = search(q, index, 5);
       if (!results.length) {
         addTypedMsg(
