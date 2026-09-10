@@ -1130,9 +1130,40 @@ def page_staffing():
             return ["color: #dc2626;"] * len(row)
         return [""] * len(row)
 
-    with st.expander("Show complete table"):
-        _download_link("Download table (Excel)", full, f"FT_Complete_Table_{sel_period_label}.xlsx")
-        st.dataframe(full.style.apply(_row_style_full, axis=1), use_container_width=False, hide_index=True)
+    col_table, col_change = st.columns([3, 2])
+
+    with col_table:
+        with st.expander("Show complete table"):
+            _download_link("Download table (Excel)", full, f"FT_Complete_Table_{sel_period_label}.xlsx")
+            st.dataframe(full.style.apply(_row_style_full, axis=1), use_container_width=False, hide_index=True)
+
+    with col_change:
+        current_key = sel_period_internal if staff_time_mode == "Semestral" else (sel_year_internal or "")
+        prev_word = "Semester" if staff_time_mode == "Semestral" else "Year"
+        if current_key in summary_df.columns:
+            start_val = int(summary_df.loc["Start", current_key])
+            final_val = int(summary_df.loc["Final", current_key])
+            new_hires = int(summary_df.loc["New", current_key])
+            leavers = int(summary_df.loc["Leavers", current_key])
+            pct_change = ((final_val - start_val) / start_val * 100) if start_val else 0.0
+            if pct_change > 0:
+                arrow, color = "▲", "#16A34A"
+            elif pct_change < 0:
+                arrow, color = "▼", "#DC2626"
+            else:
+                arrow, color = "▬", "#6B7280"
+            st.markdown(f"""
+<div style="border:1px solid #E5E7EB; border-radius:10px; padding:18px; text-align:center; height:100%;">
+    <div style="font-size:13px; color:#6B7280; margin-bottom:6px;">Change vs previous {prev_word}</div>
+    <div style="font-size:34px; font-weight:700; color:{color};">{arrow} {abs(pct_change):.1f}%</div>
+    <div style="margin-top:12px; font-size:15px;">
+        <span style="color:#16A34A; font-weight:700;">+{new_hires} new</span>
+        &nbsp;&nbsp;·&nbsp;&nbsp;
+        <span style="color:#DC2626; font-weight:700;">-{leavers} left</span>
+    </div>
+    <div style="margin-top:8px; font-size:12px; color:#9CA3AF;">{start_val} → {final_val} faculty</div>
+</div>
+""", unsafe_allow_html=True)
 
     # Professor trajectory (PLANTA only)
     def _c(df0, *names):
