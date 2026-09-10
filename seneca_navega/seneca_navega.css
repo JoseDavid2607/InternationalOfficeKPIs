@@ -200,7 +200,7 @@
   position: fixed;
   display: none;      /* toggled by JS */
   z-index: 9999;
-  width: 190px;
+  width: 260px;
   pointer-events: none;   /* lets clicks pass through to the card/button underneath */
 }
 .seneca-floater__img {

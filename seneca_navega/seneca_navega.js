@@ -1,5 +1,5 @@
 /* =========================================================================
-   SENECA NAVEGA — keyword-based guide engine (no AI / no backend)
+   SENECA NAVEGA — keyword-based guide engine (no AI / no backend)  [engine v4]
    =========================================================================
    Included the same way on all pages. Each page only needs to call
    SenecaNavega.init({...}) with its own configuration.
@@ -319,15 +319,15 @@
       return btn;
     }
 
-    function renderAlts(rest) {
-      var alts = el("div", "seneca-alts", "<span>Did you mean:</span>");
-      rest.forEach(function (r) {
+    function renderChoices(candidates) {
+      var opts = el("div", "seneca-alts");
+      candidates.forEach(function (r) {
         var b = el("button", "seneca-alt-btn", r.entry.label);
         b.type = "button";
         b.addEventListener("click", function () { answerWith(r.entry); });
-        alts.appendChild(b);
+        opts.appendChild(b);
       });
-      logEl.appendChild(alts);
+      logEl.appendChild(opts);
       logEl.scrollTop = logEl.scrollHeight;
     }
 
@@ -346,7 +346,7 @@
     }
 
     function handleQuery(q) {
-      var results = search(q, index, 3);
+      var results = search(q, index, 5);
       if (!results.length) {
         addTypedMsg(
           logEl,
@@ -355,22 +355,20 @@
         );
         return;
       }
-      var best = results[0].entry;
-      var targetEl = resolveElement ? resolveElement(best.target) : null;
 
-      if (floaterEl && targetEl) {
-        addTypedMsg(logEl, "Got it — check it out below! 👇", 16);
-        if (page === "index") {
-          try { sessionStorage.setItem("senecaPending", JSON.stringify(best.target)); } catch (e) {}
-        }
-        pointFloaterAt(targetEl, best.reply);
-        if (results.length > 1) renderAlts(results.slice(1));
-      } else {
-        addTypedMsg(logEl, best.reply, 16).then(function (msg) {
-          if (best.target) msg.appendChild(makeGotoBtn(best.target));
-          if (results.length > 1) renderAlts(results.slice(1));
-        });
+      var top = results[0].score;
+      // "ambiguous" = there is more than one candidate close to the top score
+      var candidates = results.filter(function (r) { return r.score >= top * 0.75; });
+
+      if (candidates.length > 1) {
+        // Only in this case does the chat keep talking: it asks which option the user meant.
+        addTypedMsg(logEl, "I found a few things that could match — which one did you mean?", 16)
+          .then(function () { renderChoices(candidates.slice(0, 4)); });
+        return;
       }
+
+      // Clear match: do NOT answer in the chat — just point at it.
+      answerWith(results[0].entry);
     }
 
     function go(target) {
