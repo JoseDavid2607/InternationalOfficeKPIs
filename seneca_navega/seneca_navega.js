@@ -350,9 +350,11 @@
       if (floaterEl) growFloaterFromIdleLogo();
       else if (imageEl && activeImageSrc) crossfadeImage(imageEl, activeImageSrc);
 
-      if (floaterEl) {
-        // FLOATER MODE: the white box is only the input field, kept small and subtle.
-        // Every word Seneca says comes out through her own speech bubble instead.
+      if (bubbleEl) {
+        // MINIMAL BOX: the white box is only the input field, kept small and subtle.
+        // Every word Seneca says comes out through her own speech bubble instead
+        // (floating next to a moving avatar on index, or static next to her fixed
+        // image on Baseroom/KPIs).
         swapPanelContent(panel, function () {
           chatRoot = el("div", "seneca-chat seneca-chat--minimal");
           chatRoot.innerHTML =
@@ -377,7 +379,7 @@
           input.focus();
         });
       } else {
-        // FALLBACK MODE (Baseroom/KPIs): classic chat log inside the box.
+        // LEGACY FALLBACK: classic chat log inside the box (used only if no bubble is configured).
         swapPanelContent(panel, function () {
           chatRoot = el("div", "seneca-chat");
           if (chatContentHeight) chatRoot.style.height = chatContentHeight + "px";
@@ -412,8 +414,11 @@
 
     function deactivate() {
       active = false;
-      if (floaterEl) shrinkFloaterToIdleLogo();
-      else if (imageEl && idleImageSrc) crossfadeImage(imageEl, idleImageSrc);
+      if (floaterEl) shrinkFloaterToIdleLogo(); // this also hides the bubble
+      else {
+        if (imageEl && idleImageSrc) crossfadeImage(imageEl, idleImageSrc);
+        hideBubble();
+      }
 
       swapPanelContent(panel, function () {
         var wrap = el("div");
@@ -444,26 +449,34 @@
     }
 
     function answerWith(entry) {
-      var targetEl = resolveElement ? resolveElement(entry.target) : null;
-      if (floaterEl && targetEl) {
-        if (page === "index") {
-          try { sessionStorage.setItem("senecaPending", JSON.stringify(entry.target)); } catch (e) {}
+      if (floaterEl) {
+        var targetEl = resolveElement ? resolveElement(entry.target) : null;
+        if (targetEl) {
+          if (page === "index") {
+            try { sessionStorage.setItem("senecaPending", JSON.stringify(entry.target)); } catch (e) {}
+          }
+          pointFloaterAt(targetEl, entry.reply);
+          return;
         }
-        pointFloaterAt(targetEl, entry.reply);
-      } else if (floaterEl) {
-        sayInBubble(entry.reply);
-      } else {
-        addTypedMsg(logEl, entry.reply, 16).then(function (msg) {
-          if (entry.target) msg.appendChild(makeGotoBtn(entry.target));
-        });
       }
+      if (bubbleEl) {
+        // Static mode (Baseroom/KPIs): Seneca doesn't move — she drives the real
+        // page navigation (opening/selecting the right chapter, folder, unit or
+        // dashboard) and talks from her fixed speech bubble.
+        if (adapter.goTo) adapter.goTo(entry.target);
+        sayInBubble(entry.reply);
+        return;
+      }
+      addTypedMsg(logEl, entry.reply, 16).then(function (msg) {
+        if (entry.target) msg.appendChild(makeGotoBtn(entry.target));
+      });
     }
 
     function handleQuery(q) {
       var smallTalk = matchSmallTalk(q);
       if (smallTalk) {
-        if (floaterEl) {
-          returnFloaterHome();
+        if (bubbleEl) {
+          if (floaterEl) returnFloaterHome();
           sayInBubble(smallTalk);
         } else {
           addTypedMsg(logEl, smallTalk, 16);
@@ -474,7 +487,7 @@
       var results = search(q, index, 5);
       if (!results.length) {
         var noMatch = "I couldn't find anything with those words. Try the name of the document, dashboard or topic (e.g. \"annual reports\", \"faculty questionnaire\").";
-        if (floaterEl) sayInBubble(noMatch);
+        if (bubbleEl) sayInBubble(noMatch);
         else addTypedMsg(logEl, noMatch, 16);
         return;
       }
@@ -486,7 +499,7 @@
       if (candidates.length > 1) {
         // Only in this case does Seneca keep talking: she asks which option the user meant.
         var question = "I found a few things that could match — which one did you mean?";
-        if (floaterEl) {
+        if (bubbleEl) {
           sayInBubble(question, function (bubble) { bubble.appendChild(makeChoiceButtons(candidates)); });
         } else {
           addTypedMsg(logEl, question, 16).then(function () {
@@ -497,7 +510,7 @@
         return;
       }
 
-      // Clear match: do NOT answer in the white box — just point at it.
+      // Clear match: do NOT answer in the white box — just point at it / open it.
       answerWith(results[0].entry);
     }
 
@@ -524,7 +537,7 @@
             activate(true);
             setTimeout(function () {
               var msg = "Here's what you were looking for, highlighted on the left.";
-              if (floaterEl) sayInBubble(msg); else addTypedMsg(logEl, msg, 16);
+              if (bubbleEl) sayInBubble(msg); else addTypedMsg(logEl, msg, 16);
               if (adapter.goTo) adapter.goTo(target);
             }, 220);
           }
@@ -537,7 +550,7 @@
 
   function highlightEl(elm) {
     if (!elm) return;
-    elm.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (elm.scrollIntoView) elm.scrollIntoView({ behavior: "smooth", block: "center" });
     elm.classList.add("seneca-highlight");
     setTimeout(function () { elm.classList.remove("seneca-highlight"); }, 2600);
   }
