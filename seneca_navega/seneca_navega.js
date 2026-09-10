@@ -72,41 +72,48 @@
   }
 
   // ---------- typewriter (letter-by-letter reveal, HTML-safe) ----------
-  function tokenizeHtml(html) {
-    var tokens = [];
-    var i = 0;
-    while (i < html.length) {
-      if (html[i] === "<") {
-        var end = html.indexOf(">", i);
-        if (end === -1) { tokens.push(html.slice(i)); break; }
-        tokens.push(html.slice(i, end + 1));
-        i = end + 1;
-      } else if (html[i] === "&") {
-        var end2 = html.indexOf(";", i);
-        if (end2 !== -1 && end2 - i < 10) { tokens.push(html.slice(i, end2 + 1)); i = end2 + 1; }
-        else { tokens.push(html[i]); i++; }
-      } else {
-        var code = html.codePointAt(i);
-        var ch = String.fromCodePoint(code);
-        tokens.push(ch);
-        i += ch.length;
+  // Builds the real DOM structure up front (so tags like <strong> are proper,
+  // stable elements) and then reveals text-node characters one at a time.
+  // This avoids the classic bug of repeatedly reassigning innerHTML, which
+  // makes the browser auto-close "unfinished" tags on every step.
+  function typewriter(targetEl, html, speed, onDone) {
+    var tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    targetEl.innerHTML = "";
+
+    var queue = [];
+    function cloneAndQueue(srcNode, destParent) {
+      for (var i = 0; i < srcNode.childNodes.length; i++) {
+        var child = srcNode.childNodes[i];
+        if (child.nodeType === 3) {
+          var newText = document.createTextNode("");
+          destParent.appendChild(newText);
+          queue.push({ node: newText, full: child.nodeValue });
+        } else if (child.nodeType === 1) {
+          var newEl = document.createElement(child.tagName);
+          for (var a = 0; a < child.attributes.length; a++) {
+            newEl.setAttribute(child.attributes[a].name, child.attributes[a].value);
+          }
+          destParent.appendChild(newEl);
+          cloneAndQueue(child, newEl);
+        }
       }
     }
-    return tokens;
-  }
+    cloneAndQueue(tmp, targetEl);
 
-  function typewriter(targetEl, html, speed, onDone) {
-    var tokens = tokenizeHtml(html);
-    var i = 0;
-    targetEl.innerHTML = "";
+    var qi = 0, ci = 0;
     function step() {
-      if (i >= tokens.length) { if (onDone) onDone(); return; }
-      var tok = tokens[i++];
-      targetEl.innerHTML += tok;
+      if (qi >= queue.length) { if (onDone) onDone(); return; }
+      var item = queue[qi];
+      var full = item.full;
+      if (ci >= full.length) { qi++; ci = 0; step(); return; }
+      var code = full.codePointAt(ci);
+      var ch = String.fromCodePoint(code);
+      item.node.data += ch;
+      ci += ch.length;
       var log = targetEl.closest ? targetEl.closest(".seneca-chat__log") : null;
       if (log) log.scrollTop = log.scrollHeight;
-      var isMarkup = tok.charAt(0) === "<" || (tok.charAt(0) === "&" && tok.charAt(tok.length - 1) === ";");
-      setTimeout(step, isMarkup ? 0 : (speed || 16));
+      setTimeout(step, speed || 16);
     }
     step();
   }
@@ -176,11 +183,11 @@
   // ---------- small talk (greetings / help / thanks — not a location search) ----------
   var SMALL_TALK = [
     { test: /\b(hi|hello|hey|hola|good morning|good afternoon|good evening)\b/,
-      reply: "Hello! 👋 Tell me what document, folder or dashboard you're looking for and I'll show you exactly where to click." },
+      reply: "Hello! Tell me what document, folder or dashboard you're looking for and I'll show you exactly where to click." },
     { test: /\b(help|ayuda|how does this work|what can you do|how do you work)\b/,
-      reply: "I'm Séneca Navega 🧭. Ask me about any topic (e.g. \"annual reports\", \"faculty questionnaire\") and I'll point right at where to click to find it." },
+      reply: "I'm <strong>Séneca Navega</strong>. Ask me about any topic (e.g. \"annual reports\", \"faculty questionnaire\") and I'll point right at where to click to find it." },
     { test: /\b(thanks|thank you|gracias|thx)\b/,
-      reply: "You're welcome! 😊 Let me know if you need anything else." }
+      reply: "You're welcome! Let me know if you need anything else." }
   ];
   function matchSmallTalk(q) {
     var norm = normalize(q);
@@ -197,7 +204,7 @@
     var panel = config.panelToReplace;       // container that becomes the chat (size never changes)
     var imageEl = config.imageEl;            // idle <img> shown before activation
     var activeImageSrc = config.activeImageSrc;
-    var idleMessage = config.idleMessage || "Hi, I'm Séneca Navega. Ask me where to find something.";
+    var idleMessage = config.idleMessage || "Hi, I'm <strong>Séneca Navega</strong>. Ask me where to find something.";
     var placeholder = config.placeholder || "Ex: where is the risk register...";
     var adapter = config.adapter || {};
     var index = buildIndex(config.index || []);
@@ -212,6 +219,12 @@
 
     var triggerBtnId = triggerBtn.id;
     var originalPanelHTML = panel.innerHTML;
+    // Capture the panel's original height (before activation) so the chat can
+    // reproduce that exact same outer size — never taller, never shorter.
+    var originalPanelHeight = panel.getBoundingClientRect().height;
+    var panelComputed = window.getComputedStyle ? window.getComputedStyle(panel) : null;
+    var panelPaddingV = panelComputed ? (parseFloat(panelComputed.paddingTop) || 0) + (parseFloat(panelComputed.paddingBottom) || 0) : 0;
+    var chatContentHeight = originalPanelHeight ? Math.max(originalPanelHeight - panelPaddingV, 0) : 0;
     var idleImageSrc = imageEl ? imageEl.src : null;
 
     var active = false;
@@ -328,9 +341,9 @@
 
       swapPanelContent(panel, function () {
         chatRoot = el("div", "seneca-chat");
+        if (chatContentHeight) chatRoot.style.height = chatContentHeight + "px";
         chatRoot.innerHTML =
           '<div class="seneca-chat__header">' +
-          '  <span class="seneca-chat__title">🧭 Séneca Navega</span>' +
           '  <button type="button" class="seneca-close-btn" id="senecaCloseBtn" aria-label="Close Séneca Navega">&times;</button>' +
           "</div>" +
           '<div class="seneca-chat__log" id="senecaLog"></div>' +
@@ -462,7 +475,7 @@
           if (target.page === page) {
             activate(true);
             setTimeout(function () {
-              addTypedMsg(logEl, "Here's what you were looking for — highlighted on the left. 👇", 16);
+              addTypedMsg(logEl, "Here's what you were looking for, highlighted on the left.", 16);
               if (adapter.goTo) adapter.goTo(target);
             }, 220);
           }

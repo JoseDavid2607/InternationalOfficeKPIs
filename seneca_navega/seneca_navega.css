@@ -49,9 +49,9 @@
 .seneca-chat__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-shrink: 0;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .seneca-chat__title { font-size: 13px; font-weight: 800; color: #1f2937; }
 .seneca-close-btn {
