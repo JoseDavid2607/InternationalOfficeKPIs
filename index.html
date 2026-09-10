@@ -60,7 +60,7 @@
             gap: 0; flex-wrap: wrap; margin-top: 0;
         }
         .hero__logo {
-            width: 120px; height: auto; position: relative; top: -25px;
+            width: 120px; height: 120px; object-fit: contain; position: relative; top: -25px;
             filter: drop-shadow(0 8px 14px rgba(0,0,0,0.18));
         }
         .hero__panel {
@@ -179,8 +179,8 @@
     panelToReplace: document.getElementById("senecaPanel"),
     imageEl: document.getElementById("senecaLogoImg"),
     activeImageSrc: "imagenes/seneca_bot.png",
-    idleMessage: "¡Hola! Soy Séneca Navega 🧭. Pregúntame qué información buscas y te digo si está en <strong>BaseRoom</strong> o en <strong>KPIs &amp; Dashboards</strong>, y te llevo directo ahí.",
-    placeholder: "Ej: reportes anuales, encuesta de facultad...",
+    idleMessage: "Hi! I'm Séneca Navega 🧭. Ask me what information you're looking for and I'll tell you whether it's in <strong>BaseRoom</strong> or <strong>KPIs &amp; Dashboards</strong>, and take you straight there.",
+    placeholder: "Ex: annual reports, faculty questionnaire...",
     index: window.SENECA_INDEX,
     baseroomUrl: "web/Baseroom/Web Baseroom - Pag. Principal.html",
     kpisUrl: "web/KPIs/Web KPIs - Pag. Principal.html"
