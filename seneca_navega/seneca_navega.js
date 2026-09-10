@@ -1,9 +1,21 @@
 /* =========================================================================
    SENECA NAVEGA — keyword-based guide engine (no AI / no backend)
    =========================================================================
-   Included the same way on all 3 pages (index, Baseroom, KPIs). Each page
-   only needs to call SenecaNavega.init({...}) with its own configuration.
-   See the "SENECA NAVEGA — integration" blocks inside each HTML file.
+   Included the same way on all pages. Each page only needs to call
+   SenecaNavega.init({...}) with its own configuration.
+
+   Two display modes, chosen automatically per page based on what you pass in:
+
+   1) FLOATER MODE (recommended — used on index.html):
+      Pass floaterEl / floaterImgEl / bubbleEl / resolveElement.
+      When Seneca finds an answer, it does NOT print it in the chat — instead
+      the Seneca image moves and hovers on top of the element the user should
+      click, with a speech bubble giving the exact direction.
+
+   2) FALLBACK CHAT MODE (used automatically if no floater config is given —
+      this is what Baseroom/KPIs currently use):
+      The answer is printed as a chat bubble with a "Take me there" button
+      that navigates/highlights the target using the page's `adapter`.
    ========================================================================= */
 (function () {
   "use strict";
@@ -59,6 +71,46 @@
     return scored.slice(0, limit || 3);
   }
 
+  // ---------- typewriter (letter-by-letter reveal, HTML-safe) ----------
+  function tokenizeHtml(html) {
+    var tokens = [];
+    var i = 0;
+    while (i < html.length) {
+      if (html[i] === "<") {
+        var end = html.indexOf(">", i);
+        if (end === -1) { tokens.push(html.slice(i)); break; }
+        tokens.push(html.slice(i, end + 1));
+        i = end + 1;
+      } else if (html[i] === "&") {
+        var end2 = html.indexOf(";", i);
+        if (end2 !== -1 && end2 - i < 10) { tokens.push(html.slice(i, end2 + 1)); i = end2 + 1; }
+        else { tokens.push(html[i]); i++; }
+      } else {
+        var code = html.codePointAt(i);
+        var ch = String.fromCodePoint(code);
+        tokens.push(ch);
+        i += ch.length;
+      }
+    }
+    return tokens;
+  }
+
+  function typewriter(targetEl, html, speed, onDone) {
+    var tokens = tokenizeHtml(html);
+    var i = 0;
+    targetEl.innerHTML = "";
+    function step() {
+      if (i >= tokens.length) { if (onDone) onDone(); return; }
+      var tok = tokens[i++];
+      targetEl.innerHTML += tok;
+      var log = targetEl.closest ? targetEl.closest(".seneca-chat__log") : null;
+      if (log) log.scrollTop = log.scrollHeight;
+      var isMarkup = tok.charAt(0) === "<" || (tok.charAt(0) === "&" && tok.charAt(tok.length - 1) === ";");
+      setTimeout(step, isMarkup ? 0 : (speed || 16));
+    }
+    step();
+  }
+
   // ---------- UI helpers ----------
   var ICON_SEND =
     '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" ' +
@@ -78,43 +130,46 @@
     return div;
   }
 
-  // shows 3 bouncing dots, then swaps them for the real message (typing effect)
-  function addTypedMsg(log, html, delay) {
-    var typing = el("div", "seneca-msg seneca-msg--bot seneca-typing", "<span></span><span></span><span></span>");
-    log.appendChild(typing);
+  function addTypedMsg(log, html, speed) {
+    var div = el("div", "seneca-msg seneca-msg--bot");
+    log.appendChild(div);
     log.scrollTop = log.scrollHeight;
     return new Promise(function (resolve) {
-      setTimeout(function () {
-        typing.remove();
-        resolve(addMsg(log, html, "bot"));
-      }, delay || 650);
+      typewriter(div, html, speed, function () { resolve(div); });
     });
   }
 
   function crossfadeImage(imgEl, newSrc) {
     if (!imgEl || !newSrc) return;
-    imgEl.classList.add("seneca-img-fade");
+    imgEl.style.transition = "opacity 0.3s ease";
     imgEl.style.opacity = "0";
     setTimeout(function () {
       imgEl.src = newSrc;
       imgEl.style.opacity = "1";
-    }, 220);
+    }, 260);
   }
 
   // ---------- init ----------
   function init(config) {
     var page = config.page;                 // "index" | "baseroom" | "kpis"
     var triggerBtn = config.triggerBtn;      // button that activates Seneca
-    var panel = config.panelToReplace;       // container that becomes the chat
-    var imageEl = config.imageEl;            // <img> of Seneca to swap
+    var panel = config.panelToReplace;       // container that becomes the chat (size never changes)
+    var imageEl = config.imageEl;            // idle <img> shown before activation
     var activeImageSrc = config.activeImageSrc;
     var idleMessage = config.idleMessage || "Hi, I'm Séneca Navega. Ask me where to find something.";
     var placeholder = config.placeholder || "Ex: where is the risk register...";
     var adapter = config.adapter || {};
     var index = buildIndex(config.index || []);
 
+    // floater mode (optional — index.html uses this)
+    var floaterEl = config.floaterEl || null;
+    var floaterImgEl = config.floaterImgEl || null;
+    var bubbleEl = config.bubbleEl || null;
+    var resolveElement = config.resolveElement || null;
+    var floaterSize = config.floaterSize || 190;
+
     var triggerBtnId = triggerBtn.id;
-    var originalPanelHTML = panel.innerHTML;      // snapshot so we can restore it on close
+    var originalPanelHTML = panel.innerHTML;
     var idleImageSrc = imageEl ? imageEl.src : null;
 
     var active = false;
@@ -126,12 +181,87 @@
       if (btn) btn.addEventListener("click", function () { activate(false); });
     }
 
+    // ---- floater animation helpers ----
+    function growFloaterFromIdleLogo() {
+      if (!floaterEl || !imageEl) return;
+      var homeRect = imageEl.getBoundingClientRect();
+      imageEl.style.transition = "opacity 0.35s ease";
+      imageEl.style.opacity = "0";
+      if (floaterImgEl && activeImageSrc) floaterImgEl.src = activeImageSrc;
+      floaterEl.style.transition = "none";
+      floaterEl.style.top = homeRect.top + "px";
+      floaterEl.style.left = homeRect.left + "px";
+      floaterEl.style.width = (homeRect.width || floaterSize) + "px";
+      floaterEl.style.opacity = "0";
+      floaterEl.style.transform = "scale(0.85)";
+      floaterEl.style.display = "block";
+      void floaterEl.offsetWidth; // force reflow before animating
+      requestAnimationFrame(function () {
+        floaterEl.style.transition = "opacity .5s ease, transform .5s ease, width .5s ease, top .5s ease, left .5s ease";
+        floaterEl.style.opacity = "1";
+        floaterEl.style.transform = "scale(1)";
+        floaterEl.style.width = floaterSize + "px";
+      });
+    }
+
+    function shrinkFloaterToIdleLogo() {
+      if (!floaterEl || !imageEl) return;
+      hideBubble();
+      var homeRect = imageEl.getBoundingClientRect();
+      floaterEl.style.transition = "opacity .35s ease, transform .35s ease, width .35s ease, top .45s ease, left .45s ease";
+      floaterEl.style.top = homeRect.top + "px";
+      floaterEl.style.left = homeRect.left + "px";
+      floaterEl.style.width = (homeRect.width || floaterSize) + "px";
+      floaterEl.style.opacity = "0";
+      floaterEl.style.transform = "scale(0.85)";
+      setTimeout(function () {
+        floaterEl.style.display = "none";
+        imageEl.style.opacity = "1";
+      }, 380);
+    }
+
+    function showBubble(html) {
+      if (!bubbleEl) return;
+      bubbleEl.style.display = "block";
+      bubbleEl.style.opacity = "0";
+      void bubbleEl.offsetWidth;
+      bubbleEl.style.transition = "opacity .3s ease";
+      bubbleEl.style.opacity = "1";
+      typewriter(bubbleEl, html, 14);
+    }
+
+    function hideBubble() {
+      if (!bubbleEl) return;
+      bubbleEl.style.opacity = "0";
+      setTimeout(function () { bubbleEl.style.display = "none"; bubbleEl.innerHTML = ""; }, 250);
+    }
+
+    function pointFloaterAt(targetEl, html) {
+      if (!floaterEl || !targetEl) return;
+      if (targetEl.scrollIntoView) targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(function () {
+        var rect = targetEl.getBoundingClientRect();
+        var fw = floaterEl.getBoundingClientRect().width || floaterSize;
+        var top = rect.top - fw * 0.55;
+        var left = rect.left + Math.min(24, rect.width * 0.1);
+        if (top < 8) top = rect.bottom + 10; // not enough room above -> place below instead
+        floaterEl.style.top = top + "px";
+        floaterEl.style.left = left + "px";
+        showBubble(html);
+        targetEl.classList.add("seneca-highlight");
+        setTimeout(function () { targetEl.classList.remove("seneca-highlight"); }, 2600);
+      }, 380);
+    }
+
+    // ---- open / close (panel box size never changes, only its content) ----
     function activate(silent) {
       if (active) return;
       active = true;
-      if (imageEl && activeImageSrc) crossfadeImage(imageEl, activeImageSrc);
 
-      panel.classList.add("seneca-panel-fade");
+      if (floaterEl) growFloaterFromIdleLogo();
+      else if (imageEl && activeImageSrc) crossfadeImage(imageEl, activeImageSrc);
+
+      panel.style.transition = "opacity .18s ease";
       panel.style.opacity = "0";
       setTimeout(function () {
         panel.innerHTML = "";
@@ -163,17 +293,16 @@
           handleQuery(q);
         });
 
-        if (!silent) {
-          addTypedMsg(logEl, idleMessage, 500).then(function () { input.focus(); });
-        } else {
-          input.focus();
-        }
+        if (!silent) addTypedMsg(logEl, idleMessage, 16).then(function () { input.focus(); });
+        else input.focus();
       }, 180);
     }
 
     function deactivate() {
       active = false;
-      if (imageEl && idleImageSrc) crossfadeImage(imageEl, idleImageSrc);
+      if (floaterEl) shrinkFloaterToIdleLogo();
+      else if (imageEl && idleImageSrc) crossfadeImage(imageEl, idleImageSrc);
+
       panel.style.opacity = "0";
       setTimeout(function () {
         panel.innerHTML = originalPanelHTML;
@@ -182,11 +311,38 @@
       }, 180);
     }
 
+    // ---- answering ----
     function makeGotoBtn(target, label) {
       var btn = el("button", "seneca-goto-btn", label || "Take me there →");
       btn.type = "button";
       btn.addEventListener("click", function () { go(target); });
       return btn;
+    }
+
+    function renderAlts(rest) {
+      var alts = el("div", "seneca-alts", "<span>Did you mean:</span>");
+      rest.forEach(function (r) {
+        var b = el("button", "seneca-alt-btn", r.entry.label);
+        b.type = "button";
+        b.addEventListener("click", function () { answerWith(r.entry); });
+        alts.appendChild(b);
+      });
+      logEl.appendChild(alts);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function answerWith(entry) {
+      var targetEl = resolveElement ? resolveElement(entry.target) : null;
+      if (floaterEl && targetEl) {
+        if (page === "index") {
+          try { sessionStorage.setItem("senecaPending", JSON.stringify(entry.target)); } catch (e) {}
+        }
+        pointFloaterAt(targetEl, entry.reply);
+      } else {
+        addTypedMsg(logEl, entry.reply, 16).then(function (msg) {
+          if (entry.target) msg.appendChild(makeGotoBtn(entry.target));
+        });
+      }
     }
 
     function handleQuery(q) {
@@ -195,29 +351,26 @@
         addTypedMsg(
           logEl,
           "I couldn't find anything with those words. Try the name of the document, dashboard or topic (e.g. \"annual reports\", \"faculty questionnaire\").",
-          650
+          16
         );
         return;
       }
       var best = results[0].entry;
-      addTypedMsg(logEl, best.reply, 650).then(function (msg) {
-        if (best.target) msg.appendChild(makeGotoBtn(best.target));
+      var targetEl = resolveElement ? resolveElement(best.target) : null;
 
-        if (results.length > 1) {
-          var alts = el("div", "seneca-alts", "<span>Did you mean:</span>");
-          results.slice(1).forEach(function (r) {
-            var b = el("button", "seneca-alt-btn", r.entry.label);
-            b.type = "button";
-            b.addEventListener("click", function () {
-              var m = addMsg(logEl, r.entry.reply, "bot");
-              if (r.entry.target) m.appendChild(makeGotoBtn(r.entry.target));
-            });
-            alts.appendChild(b);
-          });
-          logEl.appendChild(alts);
-          logEl.scrollTop = logEl.scrollHeight;
+      if (floaterEl && targetEl) {
+        addTypedMsg(logEl, "Got it — check it out below! 👇", 16);
+        if (page === "index") {
+          try { sessionStorage.setItem("senecaPending", JSON.stringify(best.target)); } catch (e) {}
         }
-      });
+        pointFloaterAt(targetEl, best.reply);
+        if (results.length > 1) renderAlts(results.slice(1));
+      } else {
+        addTypedMsg(logEl, best.reply, 16).then(function (msg) {
+          if (best.target) msg.appendChild(makeGotoBtn(best.target));
+          if (results.length > 1) renderAlts(results.slice(1));
+        });
+      }
     }
 
     function go(target) {
@@ -231,7 +384,7 @@
 
     wireTrigger();
 
-    // If the user already asked something on the index page, resume the conversation here
+    // If the user already asked something on the index page, resume here (fallback-mode pages)
     if (page !== "index") {
       var pendingRaw = null;
       try { pendingRaw = sessionStorage.getItem("senecaPending"); } catch (e) {}
@@ -242,7 +395,7 @@
           if (target.page === page) {
             activate(true);
             setTimeout(function () {
-              addTypedMsg(logEl, "Here's what you were looking for — highlighted on the left. 👇", 500);
+              addTypedMsg(logEl, "Here's what you were looking for — highlighted on the left. 👇", 16);
               if (adapter.goTo) adapter.goTo(target);
             }, 220);
           }
@@ -260,5 +413,5 @@
     setTimeout(function () { elm.classList.remove("seneca-highlight"); }, 2600);
   }
 
-  window.SenecaNavega = { init: init, search: search, buildIndex: buildIndex, highlightEl: highlightEl };
+  window.SenecaNavega = { init: init, search: search, buildIndex: buildIndex, highlightEl: highlightEl, typewriter: typewriter };
 })();
