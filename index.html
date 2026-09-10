@@ -65,9 +65,10 @@
         }
         .hero__panel {
             background: var(--bg-glass); color: var(--text-primary);
-            max-width: 850px; padding: 24px var(--space-lg);
+            width: 100%; max-width: 850px; padding: 24px var(--space-lg);
             border-radius: var(--radius-panel); box-shadow: var(--shadow-card); text-align: left;
-            height: 210px; overflow: hidden; display: flex; flex-direction: column; justify-content: center;
+            height: 195px; overflow: hidden; display: flex; flex-direction: column; justify-content: center;
+            box-sizing: border-box; flex-shrink: 0;
         }
         .hero__panel p { line-height: 1.7; font-size: 16px; }
 
@@ -170,13 +171,16 @@
     International Office · School of Management · Internal use only
 </footer>
 
-<!-- Seneca floating avatar: overlays on top of the section the user should click -->
-<div class="seneca-floater" id="senecaFloater" aria-hidden="true">
-  <div class="seneca-bubble" id="senecaBubble"></div>
+<!-- Seneca floating avatar: overlays on top of the section the user should click.
+     Inline style is a safety net so it stays hidden/positioned correctly even if
+     seneca_navega.css fails to load for any reason. -->
+<div class="seneca-floater" id="senecaFloater" aria-hidden="true"
+     style="display:none; position:fixed; z-index:9999; pointer-events:none; width:260px; top:0; left:0;">
+  <div class="seneca-bubble" id="senecaBubble" style="display:none;"></div>
   <img src="imagenes/seneca_bot.png" alt="Séneca Navega" id="senecaFloaterImg" class="seneca-floater__img">
 </div>
 
-<!-- ================= SENECA NAVEGA — integracion ================= -->
+<!-- ================= SENECA NAVEGA — integracion (engine v4) ================= -->
 <script src="seneca_navega/seneca_data.js"></script>
 <script src="seneca_navega/seneca_navega.js"></script>
 <script>
@@ -189,7 +193,7 @@
     floaterEl: document.getElementById("senecaFloater"),
     floaterImgEl: document.getElementById("senecaFloaterImg"),
     bubbleEl: document.getElementById("senecaBubble"),
-    floaterSize: 190,
+    floaterSize: 260,
     resolveElement: function (target) {
       return target.page === "baseroom"
         ? document.getElementById("cardBaseroom")
