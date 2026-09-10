@@ -44,8 +44,26 @@
 .seneca-chat {
   display: flex;
   flex-direction: column;
-  height: 175px;   /* the chat sets its own compact height — the panel wraps around it, width never moves */
+  height: 175px;   /* fallback mode only — floater mode uses the compact style below */
 }
+
+/* Floater-mode box: just the input field, small and subtle — Seneca's own
+   speech bubble carries all of her text, so this box never needs to grow. */
+.seneca-chat--minimal {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: auto;
+  min-height: 54px;
+  padding-right: 34px; /* room for the corner close button */
+}
+.seneca-close-btn--corner {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+}
+.seneca-chat--minimal .seneca-chat__form { flex: 1; width: 100%; }
 .seneca-chat__header {
   display: flex;
   align-items: center;
@@ -228,6 +246,7 @@
   width: max-content;
   text-align: left;
   opacity: 0;
+  pointer-events: auto;   /* re-enables clicks for choice buttons, even though the floater itself is click-through */
 }
 .seneca-bubble::after {
   content: "";

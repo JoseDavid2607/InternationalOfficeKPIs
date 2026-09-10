@@ -1,5 +1,5 @@
 /* =========================================================================
-   SENECA NAVEGA — keyword-based guide engine (no AI / no backend)  [engine v5]
+   SENECA NAVEGA — keyword-based guide engine (no AI / no backend)  [engine v6]
    =========================================================================
    Included the same way on all pages. Each page only needs to call
    SenecaNavega.init({...}) with its own configuration.
@@ -8,14 +8,16 @@
 
    1) FLOATER MODE (recommended — used on index.html):
       Pass floaterEl / floaterImgEl / bubbleEl / resolveElement.
-      When Seneca finds an answer, it does NOT print it in the chat — instead
-      the Seneca image moves and hovers on top of the element the user should
-      click, with a speech bubble giving the exact direction.
+      EVERYTHING Seneca says (greeting, clarifying questions, directions,
+      small talk) comes out of her own speech bubble, which follows her
+      floating avatar. The white box is just the user's input field — it
+      never shows Seneca's text.
 
    2) FALLBACK CHAT MODE (used automatically if no floater config is given —
       this is what Baseroom/KPIs currently use):
-      The answer is printed as a chat bubble with a "Take me there" button
-      that navigates/highlights the target using the page's `adapter`.
+      The answer is printed as a chat bubble inside the box, with a
+      "Take me there" button that navigates/highlights the target using
+      the page's `adapter`.
    ========================================================================= */
 (function () {
   "use strict";
@@ -201,7 +203,7 @@
   function init(config) {
     var page = config.page;                 // "index" | "baseroom" | "kpis"
     var triggerBtn = config.triggerBtn;      // button that activates Seneca
-    var panel = config.panelToReplace;       // container that becomes the chat (size never changes)
+    var panel = config.panelToReplace;       // container that becomes the input box
     var imageEl = config.imageEl;            // idle <img> shown before activation
     var activeImageSrc = config.activeImageSrc;
     var idleMessage = config.idleMessage || "Hi, I'm <strong>Séneca Navega</strong>. Ask me where to find something.";
@@ -219,8 +221,7 @@
 
     var triggerBtnId = triggerBtn.id;
     var originalPanelHTML = panel.innerHTML;
-    // Capture the panel's original height (before activation) so the chat can
-    // reproduce that exact same outer size — never taller, never shorter.
+    // Only used in FALLBACK mode (no floater) — floater mode keeps the box compact instead.
     var originalPanelHeight = panel.getBoundingClientRect().height;
     var panelComputed = window.getComputedStyle ? window.getComputedStyle(panel) : null;
     var panelPaddingV = panelComputed ? (parseFloat(panelComputed.paddingTop) || 0) + (parseFloat(panelComputed.paddingBottom) || 0) : 0;
@@ -281,28 +282,30 @@
     }
 
     // Moves Seneca back to its starting spot (small, to the left of the panel)
-    // WITHOUT hiding it (still active) — used for small talk so it never stays
-    // parked on top of a card/text.
+    // WITHOUT hiding it (still active) — used for small talk / after pointing,
+    // so it never stays parked on top of a card/text.
     function returnFloaterHome() {
       if (!floaterEl || !imageEl) return;
-      hideBubble();
       var homeRect = imageEl.getBoundingClientRect();
-      var currentW = floaterEl.getBoundingClientRect().width || floaterHomeSize;
       var deltaW = floaterHomeSize - (homeRect.width || floaterHomeSize);
-      floaterEl.style.transition = "top .45s ease, left .45s ease, width .45s ease";
+      floaterEl.style.transition = "opacity .3s ease, transform .3s ease, top .45s ease, left .45s ease, width .45s ease";
       floaterEl.style.top = homeRect.top + "px";
       floaterEl.style.left = (homeRect.left - deltaW) + "px";
       floaterEl.style.width = floaterHomeSize + "px";
     }
 
-    function showBubble(html) {
+    // ---- Seneca's speech bubble: EVERYTHING she says lives here ----
+    function sayInBubble(html, afterTyped) {
       if (!bubbleEl) return;
       bubbleEl.style.display = "block";
       bubbleEl.style.opacity = "0";
       void bubbleEl.offsetWidth;
       bubbleEl.style.transition = "opacity .3s ease";
       bubbleEl.style.opacity = "1";
-      typewriter(bubbleEl, html, 14);
+      var textWrap = document.createElement("div");
+      bubbleEl.innerHTML = "";
+      bubbleEl.appendChild(textWrap);
+      typewriter(textWrap, html, 14, function () { if (afterTyped) afterTyped(bubbleEl); });
     }
 
     function hideBubble() {
@@ -311,27 +314,35 @@
       setTimeout(function () { bubbleEl.style.display = "none"; bubbleEl.innerHTML = ""; }, 250);
     }
 
+    // Places the avatar well to the LEFT of the target element (falls back to
+    // hovering above it if there isn't enough horizontal room), highlights the
+    // target briefly, and has Seneca say the direction in her bubble.
     function pointFloaterAt(targetEl, html) {
       if (!floaterEl || !targetEl) return;
       if (targetEl.scrollIntoView) targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
       setTimeout(function () {
         var rect = targetEl.getBoundingClientRect();
         var fw = floaterSize;
-        var top = rect.top - fw * 0.55;
-        var left = rect.left + Math.min(24, rect.width * 0.1);
-        if (top < 8) top = rect.bottom + 10; // not enough room above -> place below instead
+        var gap = 16;
+        var left = rect.left - fw - gap;
+        var top = rect.top + rect.height / 2 - fw / 2;
+        if (left < 8) {
+          // not enough room to the left -> hover above instead
+          left = rect.left + Math.min(24, rect.width * 0.1);
+          top = rect.top - fw * 0.55;
+          if (top < 8) top = rect.bottom + 10;
+        }
         floaterEl.style.transition = "opacity .3s ease, transform .3s ease, width .5s ease, top .5s ease, left .5s ease";
         floaterEl.style.width = fw + "px";
         floaterEl.style.top = top + "px";
         floaterEl.style.left = left + "px";
-        showBubble(html);
+        sayInBubble(html);
         targetEl.classList.add("seneca-highlight");
         setTimeout(function () { targetEl.classList.remove("seneca-highlight"); }, 2600);
       }, 380);
     }
 
-    // ---- open / close (the white box itself is always visible; only its
-    //      inner content crossfades — width is fixed by CSS, height follows content) ----
+    // ---- open / close ----
     function activate(silent) {
       if (active) return;
       active = true;
@@ -339,37 +350,64 @@
       if (floaterEl) growFloaterFromIdleLogo();
       else if (imageEl && activeImageSrc) crossfadeImage(imageEl, activeImageSrc);
 
-      swapPanelContent(panel, function () {
-        chatRoot = el("div", "seneca-chat");
-        if (chatContentHeight) chatRoot.style.height = chatContentHeight + "px";
-        chatRoot.innerHTML =
-          '<div class="seneca-chat__header">' +
-          '  <button type="button" class="seneca-close-btn" id="senecaCloseBtn" aria-label="Close Séneca Navega">&times;</button>' +
-          "</div>" +
-          '<div class="seneca-chat__log" id="senecaLog"></div>' +
-          '<form class="seneca-chat__form" id="senecaForm" autocomplete="off">' +
-          '  <input type="text" id="senecaInput" placeholder="' + placeholder + '">' +
-          '  <button type="submit" aria-label="Send">' + ICON_SEND + "</button>" +
-          "</form>";
-        return chatRoot;
-      }, function () {
-        logEl = chatRoot.querySelector("#senecaLog");
-        chatRoot.querySelector("#senecaCloseBtn").addEventListener("click", deactivate);
-
-        var form = chatRoot.querySelector("#senecaForm");
-        var input = chatRoot.querySelector("#senecaInput");
-        form.addEventListener("submit", function (e) {
-          e.preventDefault();
-          var q = input.value.trim();
-          if (!q) return;
-          addMsg(logEl, q, "user");
-          input.value = "";
-          handleQuery(q);
+      if (floaterEl) {
+        // FLOATER MODE: the white box is only the input field, kept small and subtle.
+        // Every word Seneca says comes out through her own speech bubble instead.
+        swapPanelContent(panel, function () {
+          chatRoot = el("div", "seneca-chat seneca-chat--minimal");
+          chatRoot.innerHTML =
+            '<button type="button" class="seneca-close-btn seneca-close-btn--corner" id="senecaCloseBtn" aria-label="Close Séneca Navega">&times;</button>' +
+            '<form class="seneca-chat__form" id="senecaForm" autocomplete="off">' +
+            '  <input type="text" id="senecaInput" placeholder="' + placeholder + '">' +
+            '  <button type="submit" aria-label="Send">' + ICON_SEND + "</button>" +
+            "</form>";
+          return chatRoot;
+        }, function () {
+          chatRoot.querySelector("#senecaCloseBtn").addEventListener("click", deactivate);
+          var form = chatRoot.querySelector("#senecaForm");
+          var input = chatRoot.querySelector("#senecaInput");
+          form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            var q = input.value.trim();
+            if (!q) return;
+            input.value = "";
+            handleQuery(q);
+          });
+          if (!silent) sayInBubble(idleMessage);
+          input.focus();
         });
-
-        if (!silent) addTypedMsg(logEl, idleMessage, 16).then(function () { input.focus(); });
-        else input.focus();
-      });
+      } else {
+        // FALLBACK MODE (Baseroom/KPIs): classic chat log inside the box.
+        swapPanelContent(panel, function () {
+          chatRoot = el("div", "seneca-chat");
+          if (chatContentHeight) chatRoot.style.height = chatContentHeight + "px";
+          chatRoot.innerHTML =
+            '<div class="seneca-chat__header">' +
+            '  <button type="button" class="seneca-close-btn" id="senecaCloseBtn" aria-label="Close Séneca Navega">&times;</button>' +
+            "</div>" +
+            '<div class="seneca-chat__log" id="senecaLog"></div>' +
+            '<form class="seneca-chat__form" id="senecaForm" autocomplete="off">' +
+            '  <input type="text" id="senecaInput" placeholder="' + placeholder + '">' +
+            '  <button type="submit" aria-label="Send">' + ICON_SEND + "</button>" +
+            "</form>";
+          return chatRoot;
+        }, function () {
+          logEl = chatRoot.querySelector("#senecaLog");
+          chatRoot.querySelector("#senecaCloseBtn").addEventListener("click", deactivate);
+          var form = chatRoot.querySelector("#senecaForm");
+          var input = chatRoot.querySelector("#senecaInput");
+          form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            var q = input.value.trim();
+            if (!q) return;
+            addMsg(logEl, q, "user");
+            input.value = "";
+            handleQuery(q);
+          });
+          if (!silent) addTypedMsg(logEl, idleMessage, 16).then(function () { input.focus(); });
+          else input.focus();
+        });
+      }
     }
 
     function deactivate() {
@@ -394,7 +432,7 @@
       return btn;
     }
 
-    function renderChoices(candidates) {
+    function makeChoiceButtons(candidates) {
       var opts = el("div", "seneca-alts");
       candidates.forEach(function (r) {
         var b = el("button", "seneca-alt-btn", r.entry.label);
@@ -402,8 +440,7 @@
         b.addEventListener("click", function () { answerWith(r.entry); });
         opts.appendChild(b);
       });
-      logEl.appendChild(opts);
-      logEl.scrollTop = logEl.scrollHeight;
+      return opts;
     }
 
     function answerWith(entry) {
@@ -413,6 +450,8 @@
           try { sessionStorage.setItem("senecaPending", JSON.stringify(entry.target)); } catch (e) {}
         }
         pointFloaterAt(targetEl, entry.reply);
+      } else if (floaterEl) {
+        sayInBubble(entry.reply);
       } else {
         addTypedMsg(logEl, entry.reply, 16).then(function (msg) {
           if (entry.target) msg.appendChild(makeGotoBtn(entry.target));
@@ -423,33 +462,42 @@
     function handleQuery(q) {
       var smallTalk = matchSmallTalk(q);
       if (smallTalk) {
-        addTypedMsg(logEl, smallTalk, 16);
-        if (floaterEl) returnFloaterHome();
+        if (floaterEl) {
+          returnFloaterHome();
+          sayInBubble(smallTalk);
+        } else {
+          addTypedMsg(logEl, smallTalk, 16);
+        }
         return;
       }
 
       var results = search(q, index, 5);
       if (!results.length) {
-        addTypedMsg(
-          logEl,
-          "I couldn't find anything with those words. Try the name of the document, dashboard or topic (e.g. \"annual reports\", \"faculty questionnaire\").",
-          16
-        );
+        var noMatch = "I couldn't find anything with those words. Try the name of the document, dashboard or topic (e.g. \"annual reports\", \"faculty questionnaire\").";
+        if (floaterEl) sayInBubble(noMatch);
+        else addTypedMsg(logEl, noMatch, 16);
         return;
       }
 
       var top = results[0].score;
       // "ambiguous" = there is more than one candidate close to the top score
-      var candidates = results.filter(function (r) { return r.score >= top * 0.75; });
+      var candidates = results.filter(function (r) { return r.score >= top * 0.75; }).slice(0, 4);
 
       if (candidates.length > 1) {
-        // Only in this case does the chat keep talking: it asks which option the user meant.
-        addTypedMsg(logEl, "I found a few things that could match — which one did you mean?", 16)
-          .then(function () { renderChoices(candidates.slice(0, 4)); });
+        // Only in this case does Seneca keep talking: she asks which option the user meant.
+        var question = "I found a few things that could match — which one did you mean?";
+        if (floaterEl) {
+          sayInBubble(question, function (bubble) { bubble.appendChild(makeChoiceButtons(candidates)); });
+        } else {
+          addTypedMsg(logEl, question, 16).then(function () {
+            logEl.appendChild(makeChoiceButtons(candidates));
+            logEl.scrollTop = logEl.scrollHeight;
+          });
+        }
         return;
       }
 
-      // Clear match: do NOT answer in the chat — just point at it.
+      // Clear match: do NOT answer in the white box — just point at it.
       answerWith(results[0].entry);
     }
 
@@ -475,7 +523,8 @@
           if (target.page === page) {
             activate(true);
             setTimeout(function () {
-              addTypedMsg(logEl, "Here's what you were looking for, highlighted on the left.", 16);
+              var msg = "Here's what you were looking for, highlighted on the left.";
+              if (floaterEl) sayInBubble(msg); else addTypedMsg(logEl, msg, 16);
               if (adapter.goTo) adapter.goTo(target);
             }, 220);
           }
