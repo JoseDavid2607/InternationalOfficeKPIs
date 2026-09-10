@@ -182,6 +182,11 @@
     }
   }
 
+  // Fixed height for the minimal input-only box — identical on every page
+  // (index, Baseroom, KPIs) so activating Seneca never looks bigger on one
+  // page than another, no matter what that page's own CSS says.
+  var MINIMAL_BOX_HEIGHT = 52;
+
   // ---------- small talk (greetings / help / thanks — not a location search) ----------
   var SMALL_TALK = [
     { test: /\b(hi|hello|hey|hola|good morning|good afternoon|good evening)\b/,
@@ -357,6 +362,7 @@
         // image on Baseroom/KPIs).
         swapPanelContent(panel, function () {
           chatRoot = el("div", "seneca-chat seneca-chat--minimal");
+          chatRoot.style.height = MINIMAL_BOX_HEIGHT + "px"; // identical on every page, regardless of that page's own CSS
           chatRoot.innerHTML =
             '<button type="button" class="seneca-close-btn seneca-close-btn--corner" id="senecaCloseBtn" aria-label="Close Séneca Navega">&times;</button>' +
             '<form class="seneca-chat__form" id="senecaForm" autocomplete="off">' +

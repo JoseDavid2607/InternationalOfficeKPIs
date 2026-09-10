@@ -54,8 +54,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: auto;
-  min-height: 54px;
+  height: 52px;      /* JS also sets this explicitly per box — keep both in sync */
+  min-height: 0;
   padding-right: 34px; /* room for the corner close button */
 }
 .seneca-close-btn--corner {
