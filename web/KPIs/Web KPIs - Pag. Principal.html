@@ -511,6 +511,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 @media (max-width: 860px) { .workspace { grid-template-columns: 1fr 1fr; } .col-panel { height: 400px; } .preview-col { grid-column: span 2; height: 600px; } }
 @media (max-width: 580px) { .workspace { grid-template-columns: 1fr; } .col-panel { height: 380px; } .preview-col { grid-column: auto; height: 520px; } .intro-seneca { display: none; } header.hero { min-height: 260px; padding: 64px 18px 110px; } }
 </style>
+<link rel="stylesheet" href="../../seneca_navega/seneca_navega.css">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -531,11 +532,14 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 
 <div class="intro-wrap">
   <div class="intro-seneca" aria-hidden="true">
-    <img src="../../imagenes/seneca.png" alt="Seneca">
+    <div class="seneca-bubble" id="senecaBubble"></div>
+    <img src="../../imagenes/seneca.png" alt="Seneca" id="senecaLogoImg">
   </div>
-  <div class="intro-panel">
+  <div class="intro-panel" id="senecaPanel">
     Dynamic BaseRoom with key information from the different areas of the School of Management, to report in international rankings and accreditations.
     <strong> Select a unit, then a dashboard to preview it.</strong>
+    For help finding your way around, or to ask what a unit covers, you can activate
+    <button type="button" class="seneca-activate-link" id="senecaActivateBtn">Séneca Navega →</button>
   </div>
 </div>
 
@@ -713,6 +717,7 @@ function renderUnits() {
     const btn = document.createElement("button");
     const isActive = selectedUnit === unit.id;
     btn.className = "unit-item" + (isActive ? " active" : "") + (unit.locked ? " locked" : "");
+    btn.dataset.unitId = unit.id;
     btn.innerHTML = `
       <div class="unit-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${unit.icon}</svg></div>
       <div style="flex:1;min-width:0;">
@@ -755,6 +760,8 @@ function renderDashboards() {
     const btn = document.createElement("button");
     const isActive = selectedDash === i;
     btn.className = "dash-item" + (isActive ? " active" : "");
+    btn.dataset.unitId = unit.id;
+    btn.dataset.dashIndex = i;
 
     const label = d.soon ? "Not updated" : "Streamlit Dashboard";
     const titleRow = `<span class="dash-title">${d.title}</span>`;
@@ -882,5 +889,77 @@ resetPreview();
 
 
 </script>
+
+<!-- ================= SENECA NAVEGA — integracion (static bubble mode) ================= -->
+<script src="../../seneca_navega/seneca_navega.js"></script>
+<script>
+(function(){
+  // Index built live from UNITS — nothing to maintain by hand here. Includes
+  // BOTH specific entries (one per dashboard, for "where do I click") and
+  // general entries (one per unit, for "what's in this unit" questions —
+  // including units that aren't open yet, so Seneca can still explain them).
+  var senecaIndex = [];
+  UNITS.forEach(function(unit){
+    var unitReply = unit.locked
+      ? "The <strong>" + unit.name + "</strong> unit will cover: " + (unit.desc || "") + " It isn't available yet."
+      : "The <strong>" + unit.name + "</strong> unit covers: " + (unit.desc || "");
+    senecaIndex.push({
+      label: unit.name,
+      keywords: unit.name + " " + (unit.desc || "") + " overview general about what is in",
+      reply: unitReply,
+      target: { page: "kpis", unitId: unit.id }
+    });
+    (unit.dashboards || []).forEach(function(d, i){
+      if (d.soon) return;
+      senecaIndex.push({
+        label: d.title,
+        keywords: (d.desc || "") + " " + unit.name,
+        reply: "You'll find this in KPIs & Dashboards → \u201c" + unit.name + "\u201d → \u201c" + d.title + "\u201d.",
+        target: { page: "kpis", unitId: unit.id, dashIndex: i }
+      });
+    });
+  });
+
+  // Seneca doesn't move here — she selects/opens the real unit+dashboard and
+  // highlights it, while she talks from her fixed speech bubble. Locked units
+  // (not available yet) are only explained, never opened.
+  var SenecaAdapterKpis = {
+    goTo: function(target){
+      var unit = UNITS.find(function(u){ return u.id === target.unitId; });
+      if (!unit || unit.locked) return;
+      selectedUnit = target.unitId;
+      selectedDash = (target.dashIndex !== undefined) ? target.dashIndex : null;
+      renderUnits();
+      renderDashboards();
+      resetPreview();
+      setTimeout(function(){
+        var unitBtn = document.querySelector('.unit-item[data-unit-id="'+target.unitId+'"]');
+        SenecaNavega.highlightEl(unitBtn);
+        if(target.dashIndex !== undefined){
+          setTimeout(function(){
+            var dashBtn = document.querySelector('.dash-item[data-unit-id="'+target.unitId+'"][data-dash-index="'+target.dashIndex+'"]');
+            SenecaNavega.highlightEl(dashBtn);
+          }, 250);
+        }
+      }, 60);
+    }
+  };
+
+  SenecaNavega.init({
+    page: "kpis",
+    triggerBtn: document.getElementById("senecaActivateBtn"),
+    panelToReplace: document.getElementById("senecaPanel"),
+    imageEl: document.getElementById("senecaLogoImg"),
+    activeImageSrc: "../../imagenes/seneca_bot_2.png",
+    bubbleEl: document.getElementById("senecaBubble"),
+    idleMessage: "Hi! I'm <strong>Séneca Navega</strong>. Ask me what indicator or dashboard you're looking for, or what a unit covers, and I'll open and highlight it for you. You can close me anytime with the × button.",
+    placeholder: "Ex: faculty demographics, mobility...",
+    index: senecaIndex,
+    adapter: SenecaAdapterKpis
+  });
+})();
+</script>
+<!-- =============== fin integracion SENECA NAVEGA =================== -->
+
 </body>
 </html>
