@@ -193,14 +193,14 @@
     floaterEl: document.getElementById("senecaFloater"),
     floaterImgEl: document.getElementById("senecaFloaterImg"),
     bubbleEl: document.getElementById("senecaBubble"),
-    floaterSize: 260,
+    floaterSize: 200,
     floaterHomeSize: 130,
     resolveElement: function (target) {
       return target.page === "baseroom"
         ? document.getElementById("cardBaseroom")
         : document.getElementById("cardKpis");
     },
-    idleMessage: "Hi! I'm <strong>Séneca Navega</strong>. Ask me what information you're looking for and I'll show you exactly where to click.",
+    idleMessage: "Hi! I'm <strong>Séneca Navega</strong>. Ask me what information you're looking for and I'll show you exactly where to click. You can close me anytime with the × button.",
     placeholder: "Ex: annual reports, faculty questionnaire...",
     index: window.SENECA_INDEX,
     baseroomUrl: "web/Baseroom/Web Baseroom - Pag. Principal.html",
