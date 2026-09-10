@@ -44,7 +44,7 @@
 .seneca-chat {
   display: flex;
   flex-direction: column;
-  height: 100%;   /* fills the fixed-size panel — the panel itself never resizes */
+  height: 175px;   /* the chat sets its own compact height — the panel wraps around it, width never moves */
 }
 .seneca-chat__header {
   display: flex;
