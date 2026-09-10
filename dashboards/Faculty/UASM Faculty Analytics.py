@@ -680,7 +680,7 @@ def page_composition():
             pivot.style.apply(_bold_total, axis=None).apply(_highlight_last, axis=None).format(precision=0),
             use_container_width=True)
     _scroll_table_right_once("tct_comp_ranking")
-    _download_link("Descargar tabla (Excel)",
+    _download_link("Download table (Excel)",
                    pivot.reset_index().rename(columns={"index": "Faculty Ranking"}),
                    f"FT_Composition_{tmode}.xlsx")
 
@@ -845,7 +845,7 @@ def page_composition():
     detail_display = detail_df[show_cols].reset_index(drop=True)
     detail_display.index += 1
     st.dataframe(detail_display, use_container_width=True)
-    _download_link("Descargar detalle (Excel)", detail_df[show_cols],
+    _download_link("Download detail (Excel)", detail_df[show_cols],
                    f"FT_Composition_Detail_{sel_period_label}.xlsx")
 
 
@@ -985,7 +985,7 @@ def page_staffing():
     sum_left, sum_right = st.columns([1, 5])
     with sum_left:
         simple_tbl = summary_df.reset_index().rename(columns={"index": "Metric"})
-        _download_link("Descargar tabla (Excel)", simple_tbl, f"FT_New_Leavers_{staff_time_mode}.xlsx")
+        _download_link("Download table (Excel)", simple_tbl, f"FT_New_Leavers_{staff_time_mode}.xlsx")
 
     # Charts layout
     areas = sorted(df.get("Academic Area", pd.Series(dtype=object)).dropna().unique().tolist())
@@ -1112,30 +1112,18 @@ def page_staffing():
     # Full table
     st.markdown("### Complete Full-time table")
     cols_full = [
-        "ID Nr.", "ID", "First Name", "Last Name",
-        "Date of First Appointment to the School", "Academic Area",
-        "Highest Degree", "Year", "Region were degree was obtained",
-        "International Degree", "% devoted to Mission", "Faculty Ranking",
-        "Subcategorization",
-        "Country of Birth", "Double Nationality", "Date of Birth",
-        "Age", "Gender", "Faculty Qualific.", "P/S",
-        "Normal professional Resp.", "Notes"
+        "ID Nr.", "ID", "First Name", "Last Name", "Country of Birth",
+        "Academic Area", "Highest Degree", "Faculty Ranking",
+        "Faculty Qualific.", "P/S",
     ]
     full = active[[c for c in cols_full if c in active.columns]].copy().reset_index(drop=True)
-
-    if "Date of First Appointment to the School" in full.columns:
-        full["Date of First Appointment to the School"] = pd.to_datetime(
-            full["Date of First Appointment to the School"], errors="coerce"
-        ).dt.date
-    if "Date of Birth" in full.columns:
-        full["Date of Birth"] = pd.to_datetime(full["Date of Birth"], errors="coerce").dt.date
-    if "Year" in full.columns:
-        full["Year"] = full["Year"].astype(str).str.extract(r'(\d{4})')
+    notes_ref = active["Notes"].reset_index(drop=True) if "Notes" in active.columns else pd.Series([""] * len(full))
 
     full.insert(0, "N°", range(1, len(full) + 1))
 
     def _row_style_full(row):
-        style = _planta_note_style(row.get("Notes", ""))
+        note_val = notes_ref.iloc[row.name] if row.name < len(notes_ref) else ""
+        style = _planta_note_style(note_val)
         if style == "blue_bold":
             return ["color: #1d4ed8; font-weight: 700;"] * len(row)
         if style == "red":
@@ -1143,7 +1131,7 @@ def page_staffing():
         return [""] * len(row)
 
     with st.expander("Show complete table"):
-        _download_link("Descargar tabla completa (Excel)", full, f"FT_Complete_Table_{sel_period_label}.xlsx")
+        _download_link("Download table (Excel)", full, f"FT_Complete_Table_{sel_period_label}.xlsx")
         st.dataframe(full.style.apply(_row_style_full, axis=1), use_container_width=False, hide_index=True)
 
     # Professor trajectory (PLANTA only)
@@ -1258,7 +1246,7 @@ def page_staffing():
                 use_container_width=True
             )
 
-            _download_link("Descargar trayectoria (Excel)", out_df, f"Trajectory_{chosen_id}.xlsx")
+            _download_link("Download trajectory (Excel)", out_df, f"Trajectory_{chosen_id}.xlsx")
 
 
 # 7) PÁGINA 3 — Distribution by Academic Area
@@ -1424,7 +1412,7 @@ def page_area():
 
     pivot_download = pivot_area[col_order].reset_index()
     fname_pvt = f"Pivot_{'FT' if st.session_state.modo_faculty == 'Full-time' else 'PT'}_{tmode_now}.xlsx"
-    _download_link("Descargar tabla (Excel)", pivot_download, fname_pvt)
+    _download_link("Download table (Excel)", pivot_download, fname_pvt)
 
 
     # Charts: evolution line + donut
@@ -1529,13 +1517,11 @@ def page_area():
         else:
             dist = df_donut.groupby("AREA_PROFESOR")[IDCOL].nunique().sort_values(ascending=False)
             donut_df = pd.DataFrame({"Area": dist.index, "Value": dist.values})
+            # Mismos colores que la gráfica de líneas (color_map_area), para
+            # que ambas visualizaciones usen el mismo color por área.
+            soft_color_map = {a: color_map_area.get(a, PALETTE[i % len(PALETTE)]) for i, a in enumerate(donut_df["Area"])}
             donut_df["Area"] = donut_df["Area"].astype(str).str.replace(" & ", " &<br>", regex=False)
-
-            _SOFT_DONUT_PALETTE = [
-                "#8FBFB8", "#A7D8CF", "#F2B880", "#B7A3D1", "#F4C79A",
-                "#7FA8C9", "#9BCBB0", "#E8A18C", "#8FA3BF", "#C3CBD6",
-            ]
-            soft_color_map = {a: _SOFT_DONUT_PALETTE[i % len(_SOFT_DONUT_PALETTE)] for i, a in enumerate(donut_df["Area"])}
+            soft_color_map = {k.replace(" & ", " &<br>"): v for k, v in soft_color_map.items()}
 
             fig_donut = px.pie(
                 donut_df, names="Area", values="Value", hole=0.45, color="Area",
@@ -1551,7 +1537,7 @@ def page_area():
             st.plotly_chart(fig_donut, use_container_width=True)
 
             fname_donut = f"Donut_{'FT' if st.session_state.modo_faculty == 'Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ', '_')}.xlsx"
-            _download_link("Descargar tabla (Excel)", donut_df, fname_donut)
+            _download_link("Download table (Excel)", donut_df, fname_donut)
 
 
     # Detail table
@@ -1572,7 +1558,7 @@ def page_area():
     st.dataframe(detail_out, use_container_width=True)
 
     fname_det = f"Detail_{'FT' if st.session_state.modo_faculty == 'Full-time' else 'PT'}_{tmode_now}_{str(sel_label).replace(' ', '_')}.xlsx"
-    _download_link("Descargar tabla (Excel)", detail_out, fname_det)
+    _download_link("Download table (Excel)", detail_out, fname_det)
 
 
 # 8) PÁGINA 4 — Faculty Demographics
@@ -7589,12 +7575,12 @@ def _filter_ws_rows_by_period(ws, col_name: str, keep_periods, header_row: int =
     _delete_rows_batched(ws, to_delete)
 
 
-def _is_specialization_program(program: str, cod_program: str) -> bool:
+def _is_specialization_program(program, cod_program) -> bool:
     """Especialización = nombre de programa que empieza por 'Specialization'
     o código de programa que empieza por 'E-' (mismo criterio que se usa en
     Qualifications)."""
-    p = str(program or "").strip().upper()
-    c = str(cod_program or "").strip().upper()
+    p = "" if pd.isna(program) else str(program).strip().upper()
+    c = "" if pd.isna(cod_program) else str(cod_program).strip().upper()
     return p.startswith("SPECIALIZATION") or c.startswith("E-")
 
 
@@ -7655,7 +7641,8 @@ def _qualifications_group_labels(df_cart_period: pd.DataFrame, group_col: str) -
     if group_col not in df_cart_period.columns or df_cart_period.empty:
         return []
     vals = df_cart_period[group_col].astype(str).str.strip()
-    return sorted(v for v in vals.unique().tolist() if v and v.lower() != "nan")
+    bad = {"", "nan", "none", "<na>", "nat"}
+    return sorted({str(v) for v in vals.unique().tolist() if str(v).strip().lower() not in bad})
 
 
 def _write_qualifications_block(ws, start_row: int, labels: list, label_title: str, group_col_letter: str) -> int:
