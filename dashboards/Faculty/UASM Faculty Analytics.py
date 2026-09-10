@@ -1153,7 +1153,7 @@ def page_staffing():
                 else:
                     arrow, color = "▬", "#6B7280"
                 st.markdown(f"""
-<div style="border:1px solid #E5E7EB; border-radius:10px; padding:18px; text-align:center; height:100%;">
+<div style="display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; height:100%; min-height:260px;">
     <div style="font-size:13px; color:#6B7280; margin-bottom:6px;">Change vs previous {prev_word}</div>
     <div style="font-size:34px; font-weight:700; color:{color};">{arrow} {abs(pct_change):.1f}%</div>
     <div style="margin-top:12px; font-size:15px;">
