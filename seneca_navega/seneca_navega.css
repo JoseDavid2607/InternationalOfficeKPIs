@@ -1,0 +1,137 @@
+/* =========================================================================
+   SENECA NAVEGA — estilos compartidos del widget de chat
+   Se incluye igual en index.html, Baseroom y KPIs.
+   ========================================================================= */
+
+.seneca-activate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 999px;
+  background: #2f8b85;
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(47, 139, 133, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.seneca-activate-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(47, 139, 133, 0.45); }
+.seneca-activate-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+.seneca-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 170px;
+}
+.seneca-chat__log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 2px;
+  margin-bottom: 10px;
+}
+.seneca-chat__log::-webkit-scrollbar { width: 4px; }
+.seneca-chat__log::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+.seneca-msg {
+  max-width: 88%;
+  padding: 8px 13px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.seneca-msg--bot {
+  align-self: flex-start;
+  background: #eef2f7;
+  color: #1f2937;
+  border-bottom-left-radius: 4px;
+}
+.seneca-msg--user {
+  align-self: flex-end;
+  background: #1f2937;
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.seneca-goto-btn {
+  display: block;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 999px;
+  background: #2f8b85;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.seneca-goto-btn:hover { background: #256e69; }
+
+.seneca-alts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+.seneca-alt-btn {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.seneca-alt-btn:hover { border-color: #9ca3af; }
+
+.seneca-chat__form {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.seneca-chat__form input {
+  flex: 1;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1.5px solid #e5e7eb;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.seneca-chat__form input:focus { border-color: #2f8b85; }
+.seneca-chat__form button {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  background: #1f2937;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.seneca-chat__form button:hover { background: #111827; }
+
+/* resalte temporal del capitulo/carpeta/dashboard al que Seneca te lleva */
+.seneca-highlight {
+  outline: 3px solid #2f8b85 !important;
+  outline-offset: -3px;
+  animation: senecaPulse 1.3s ease-in-out 2;
+}
+@keyframes senecaPulse {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(47, 139, 133, 0.15); }
+}
