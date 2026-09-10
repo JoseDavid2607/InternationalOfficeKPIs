@@ -208,6 +208,7 @@
     var bubbleEl = config.bubbleEl || null;
     var resolveElement = config.resolveElement || null;
     var floaterSize = config.floaterSize || 190;
+    var floaterHomeSize = config.floaterHomeSize || Math.round(floaterSize * 0.6);
 
     var triggerBtnId = triggerBtn.id;
     var originalPanelHTML = panel.innerHTML;
@@ -223,16 +224,19 @@
     }
 
     // ---- floater animation helpers ----
+    // Grows Seneca from the idle logo's spot, anchored so it expands to the
+    // LEFT (away from the panel) instead of over it — it never covers the text.
     function growFloaterFromIdleLogo() {
       if (!floaterEl || !imageEl) return;
       var homeRect = imageEl.getBoundingClientRect();
+      var startW = homeRect.width || floaterHomeSize;
       imageEl.style.transition = "opacity 0.35s ease";
       imageEl.style.opacity = "0";
       if (floaterImgEl && activeImageSrc) floaterImgEl.src = activeImageSrc;
       floaterEl.style.transition = "none";
       floaterEl.style.top = homeRect.top + "px";
       floaterEl.style.left = homeRect.left + "px";
-      floaterEl.style.width = (homeRect.width || floaterSize) + "px";
+      floaterEl.style.width = startW + "px";
       floaterEl.style.opacity = "0";
       floaterEl.style.transform = "scale(0.85)";
       floaterEl.style.display = "block";
@@ -241,7 +245,9 @@
         floaterEl.style.transition = "opacity .5s ease, transform .5s ease, width .5s ease, top .5s ease, left .5s ease";
         floaterEl.style.opacity = "1";
         floaterEl.style.transform = "scale(1)";
-        floaterEl.style.width = floaterSize + "px";
+        var deltaW = floaterHomeSize - startW;
+        floaterEl.style.width = floaterHomeSize + "px";
+        floaterEl.style.left = (homeRect.left - deltaW) + "px"; // grow leftwards, away from the panel
       });
     }
 
@@ -252,7 +258,7 @@
       floaterEl.style.transition = "opacity .35s ease, transform .35s ease, width .35s ease, top .45s ease, left .45s ease";
       floaterEl.style.top = homeRect.top + "px";
       floaterEl.style.left = homeRect.left + "px";
-      floaterEl.style.width = (homeRect.width || floaterSize) + "px";
+      floaterEl.style.width = (homeRect.width || floaterHomeSize) + "px";
       floaterEl.style.opacity = "0";
       floaterEl.style.transform = "scale(0.85)";
       setTimeout(function () {
@@ -261,15 +267,19 @@
       }, 380);
     }
 
-    // Moves Seneca back to its starting spot WITHOUT hiding it (still active),
-    // used for small talk so it never stays parked on top of a card/text.
+    // Moves Seneca back to its starting spot (small, to the left of the panel)
+    // WITHOUT hiding it (still active) — used for small talk so it never stays
+    // parked on top of a card/text.
     function returnFloaterHome() {
       if (!floaterEl || !imageEl) return;
       hideBubble();
       var homeRect = imageEl.getBoundingClientRect();
-      floaterEl.style.transition = "top .45s ease, left .45s ease";
+      var currentW = floaterEl.getBoundingClientRect().width || floaterHomeSize;
+      var deltaW = floaterHomeSize - (homeRect.width || floaterHomeSize);
+      floaterEl.style.transition = "top .45s ease, left .45s ease, width .45s ease";
       floaterEl.style.top = homeRect.top + "px";
-      floaterEl.style.left = homeRect.left + "px";
+      floaterEl.style.left = (homeRect.left - deltaW) + "px";
+      floaterEl.style.width = floaterHomeSize + "px";
     }
 
     function showBubble(html) {
@@ -293,10 +303,12 @@
       if (targetEl.scrollIntoView) targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
       setTimeout(function () {
         var rect = targetEl.getBoundingClientRect();
-        var fw = floaterEl.getBoundingClientRect().width || floaterSize;
+        var fw = floaterSize;
         var top = rect.top - fw * 0.55;
         var left = rect.left + Math.min(24, rect.width * 0.1);
         if (top < 8) top = rect.bottom + 10; // not enough room above -> place below instead
+        floaterEl.style.transition = "opacity .3s ease, transform .3s ease, width .5s ease, top .5s ease, left .5s ease";
+        floaterEl.style.width = fw + "px";
         floaterEl.style.top = top + "px";
         floaterEl.style.left = left + "px";
         showBubble(html);
