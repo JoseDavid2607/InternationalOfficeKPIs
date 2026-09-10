@@ -104,6 +104,7 @@
             .cards { grid-template-columns: 1fr; }
         }
     </style>
+    <link rel="stylesheet" href="imagenes/seneca-navega.css">
 </head>
 <body>
 
@@ -118,14 +119,18 @@
             rankings support, and document management across the School of Management.
         </p>
         <div class="hero__box-row">
-            <img src="imagenes/seneca_principal.png" alt="Seneca logo" class="hero__logo">
-            <div class="hero__panel">
+            <img src="imagenes/seneca_principal.png" alt="Seneca logo" class="hero__logo" id="senecaLogoImg">
+            <div class="hero__panel" id="senecaPanel">
                 <p>
                     Use this platform to access two core environments:
                     <strong>Performance &amp; KPI Analytics</strong> for dynamic data monitoring,
                     and <strong>BaseRoom &amp; Accreditation Center</strong> for official evidence,
                     strategic documents, policies, reports, and key materials requested by accreditors.
                 </p>
+                <button type="button" class="seneca-activate-btn" id="senecaActivateBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M9.5 15a3.5 3.5 0 0 0 5 0"/></svg>
+                    ¿No sabes por dónde empezar? Activa a Séneca Navega
+                </button>
             </div>
         </div>
     </div>
@@ -165,6 +170,25 @@
 <footer class="footer">
     International Office · School of Management · Internal use only
 </footer>
+
+<!-- ================= SENECA NAVEGA — integracion ================= -->
+<script src="imagenes/seneca-data.js"></script>
+<script src="imagenes/seneca-navega.js"></script>
+<script>
+  SenecaNavega.init({
+    page: "index",
+    triggerBtn: document.getElementById("senecaActivateBtn"),
+    panelToReplace: document.getElementById("senecaPanel"),
+    imageEl: document.getElementById("senecaLogoImg"),
+    activeImageSrc: "imagenes/seneca_bot.png",
+    idleMessage: "¡Hola! Soy Séneca Navega 🧭. Pregúntame qué información buscas y te digo si está en <strong>BaseRoom</strong> o en <strong>KPIs &amp; Dashboards</strong>, y te llevo directo ahí.",
+    placeholder: "Ej: reportes anuales, encuesta de facultad...",
+    index: window.SENECA_INDEX,
+    baseroomUrl: "web/Baseroom/Web Baseroom - Pag. Principal.html",
+    kpisUrl: "web/KPIs/Web KPIs - Pag. Principal.html"
+  });
+</script>
+<!-- =============== fin integracion SENECA NAVEGA =================== -->
 
 </body>
 </html>
