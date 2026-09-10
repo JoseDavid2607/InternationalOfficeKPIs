@@ -67,6 +67,7 @@
             background: var(--bg-glass); color: var(--text-primary);
             max-width: 850px; padding: 24px var(--space-lg);
             border-radius: var(--radius-panel); box-shadow: var(--shadow-card); text-align: left;
+            height: 210px; overflow: hidden; display: flex; flex-direction: column; justify-content: center;
         }
         .hero__panel p { line-height: 1.7; font-size: 16px; }
 
@@ -137,7 +138,7 @@
 <main class="main">
     <div class="cards">
 
-        <a href="web/Baseroom/Web Baseroom - Pag. Principal.html" class="card card--baseroom">
+        <a href="web/Baseroom/Web Baseroom - Pag. Principal.html" class="card card--baseroom" id="cardBaseroom">
             <div>
                 <div class="card__badge">DOCUMENTATION PORTAL</div>
                 <h2 class="card__title">BaseRoom &amp; Accreditations</h2>
@@ -150,7 +151,7 @@
             <div class="card__link">Open BaseRoom →</div>
         </a>
 
-        <a href="web/KPIs/Web KPIs - Pag. Principal.html" class="card card--analytics">
+        <a href="web/KPIs/Web KPIs - Pag. Principal.html" class="card card--analytics" id="cardKpis">
             <div>
                 <div class="card__badge">ANALYTICS PORTAL</div>
                 <h2 class="card__title">KPIs &amp; Dashboards</h2>
@@ -169,6 +170,12 @@
     International Office · School of Management · Internal use only
 </footer>
 
+<!-- Seneca floating avatar: overlays on top of the section the user should click -->
+<div class="seneca-floater" id="senecaFloater" aria-hidden="true">
+  <div class="seneca-bubble" id="senecaBubble"></div>
+  <img src="imagenes/seneca_bot.png" alt="Séneca Navega" id="senecaFloaterImg" class="seneca-floater__img">
+</div>
+
 <!-- ================= SENECA NAVEGA — integracion ================= -->
 <script src="seneca_navega/seneca_data.js"></script>
 <script src="seneca_navega/seneca_navega.js"></script>
@@ -179,7 +186,16 @@
     panelToReplace: document.getElementById("senecaPanel"),
     imageEl: document.getElementById("senecaLogoImg"),
     activeImageSrc: "imagenes/seneca_bot.png",
-    idleMessage: "Hi! I'm Séneca Navega 🧭. Ask me what information you're looking for and I'll tell you whether it's in <strong>BaseRoom</strong> or <strong>KPIs &amp; Dashboards</strong>, and take you straight there.",
+    floaterEl: document.getElementById("senecaFloater"),
+    floaterImgEl: document.getElementById("senecaFloaterImg"),
+    bubbleEl: document.getElementById("senecaBubble"),
+    floaterSize: 190,
+    resolveElement: function (target) {
+      return target.page === "baseroom"
+        ? document.getElementById("cardBaseroom")
+        : document.getElementById("cardKpis");
+    },
+    idleMessage: "Hi! I'm Séneca Navega 🧭. Ask me what information you're looking for and I'll show you exactly where to click.",
     placeholder: "Ex: annual reports, faculty questionnaire...",
     index: window.SENECA_INDEX,
     baseroomUrl: "web/Baseroom/Web Baseroom - Pag. Principal.html",
