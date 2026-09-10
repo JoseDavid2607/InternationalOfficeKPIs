@@ -104,7 +104,7 @@
             .cards { grid-template-columns: 1fr; }
         }
     </style>
-    <link rel="stylesheet" href="imagenes/seneca-navega.css">
+    <link rel="stylesheet" href="seneca_navega/seneca_navega.css">
 </head>
 <body>
 
@@ -126,11 +126,9 @@
                     <strong>Performance &amp; KPI Analytics</strong> for dynamic data monitoring,
                     and <strong>BaseRoom &amp; Accreditation Center</strong> for official evidence,
                     strategic documents, policies, reports, and key materials requested by accreditors.
+                    For help finding your way around, you can activate
+                    <button type="button" class="seneca-activate-link" id="senecaActivateBtn">Séneca Navega →</button>
                 </p>
-                <button type="button" class="seneca-activate-btn" id="senecaActivateBtn">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M9.5 15a3.5 3.5 0 0 0 5 0"/></svg>
-                    ¿No sabes por dónde empezar? Activa a Séneca Navega
-                </button>
             </div>
         </div>
     </div>
@@ -172,8 +170,8 @@
 </footer>
 
 <!-- ================= SENECA NAVEGA — integracion ================= -->
-<script src="imagenes/seneca-data.js"></script>
-<script src="imagenes/seneca-navega.js"></script>
+<script src="seneca_navega/seneca_data.js"></script>
+<script src="seneca_navega/seneca_navega.js"></script>
 <script>
   SenecaNavega.init({
     page: "index",
