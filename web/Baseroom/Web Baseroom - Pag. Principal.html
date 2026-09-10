@@ -363,6 +363,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
   header.hero { min-height: 260px; padding: 64px 18px 110px; }
 }
 </style>
+<link rel="stylesheet" href="../../seneca_navega/seneca_navega.css">
 </head>
 <body>
 
@@ -385,11 +386,14 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 
 <div class="intro-wrap">
   <div class="intro-seneca" aria-hidden="true">
-    <img src="../../imagenes/seneca.png" alt="Seneca">
+    <div class="seneca-bubble" id="senecaBubble"></div>
+    <img src="../../imagenes/seneca.png" alt="Seneca" id="senecaLogoImg">
   </div>
-  <div class="intro-panel">
+  <div class="intro-panel" id="senecaPanel">
     <p>This BaseRoom centralizes the main documentation chapters required for accreditation review and institutional evidence management. Each folder contains the files, supporting materials, reports, and references corresponding to its section.</p>
-    <p><strong>Select a chapter, then a folder, then a document to preview it. Sign in with your Uniandes account to interact with documents.</strong></p>
+    <p><strong>Select a chapter, then a folder, then a document to preview it. Sign in with your Uniandes account to interact with documents.</strong>
+    For help finding your way around, or to ask what a chapter covers, you can activate
+    <button type="button" class="seneca-activate-link" id="senecaActivateBtn">Séneca Navega →</button></p>
   </div>
 </div>
 
@@ -1300,6 +1304,7 @@ function renderChapters(){
   DATA.chapters.forEach(ch=>{
     const btn=document.createElement("button");
     btn.className="chapter-item"+(state.selectedChapter===ch.id?" active":"");
+    btn.dataset.chapterId=ch.id;
     btn.innerHTML=`<div class="ch-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></div><div class="ch-body"><span class="ch-badge">${ch.badge}</span><div class="ch-title">${ch.title}</div><div class="ch-desc">${ch.desc}</div></div>`;
     btn.addEventListener("click",()=>{state.selectedChapter=ch.id;state.selectedFolder=null;state.selectedDoc=null;render();});
     el.appendChild(btn);
@@ -1318,6 +1323,7 @@ function renderFolders(){
   folders.forEach(f=>{
     const btn=document.createElement("button");
     btn.className="folder-item"+(state.selectedFolder===f.id?" active":"");
+    btn.dataset.folderId=f.id;
     const tags=f.accreditations.map(a=>`<span class="f-tag">${a}</span>`).join("");
     btn.innerHTML=`<span class="f-badge">${f.badge}</span><span class="f-title">${f.title}</span><div class="f-tags">${tags}</div>`;
     btn.addEventListener("click",()=>{state.selectedFolder=f.id;state.selectedDoc=null;render();});
@@ -1680,5 +1686,69 @@ if(googleUserEmail){
   window.addEventListener("load",()=>{setTimeout(silentTokenRefresh,1000);});
 }
 </script>
+
+<!-- ================= SENECA NAVEGA — integracion (static bubble mode) ================= -->
+<script src="../../seneca_navega/seneca_navega.js"></script>
+<script>
+(function(){
+  // Index built live from DATA — nothing to maintain by hand here. Includes
+  // BOTH specific entries (one per folder, for "where do I click") and
+  // general entries (one per chapter, for "what's in this chapter" questions).
+  var senecaIndex = [];
+  DATA.chapters.forEach(function(ch){
+    senecaIndex.push({
+      label: ch.title,
+      keywords: ch.title + " " + ch.desc + " overview general about what is in",
+      reply: "The <strong>" + ch.title + "</strong> chapter covers: " + ch.desc,
+      target: { page: "baseroom", chapterId: ch.id }
+    });
+    ch.folders.forEach(function(fo){
+      senecaIndex.push({
+        label: fo.title,
+        keywords: fo.desc + " " + fo.accreditations.join(" ") + " " + ch.title,
+        reply: "You'll find this in BaseRoom → \u201c" + ch.title + "\u201d → \u201c" + fo.title + "\u201d.",
+        target: { page: "baseroom", chapterId: ch.id, folderId: fo.id }
+      });
+    });
+  });
+
+  // Seneca doesn't move here — she opens/selects the real chapter+folder and
+  // highlights it, while she talks from her fixed speech bubble.
+  var SenecaAdapterBaseroom = {
+    goTo: function(target){
+      state.activeFilter = "ALL";
+      state.selectedChapter = target.chapterId;
+      state.selectedFolder = target.folderId || null;
+      state.selectedDoc = null;
+      render();
+      setTimeout(function(){
+        var chBtn = document.querySelector('.chapter-item[data-chapter-id="'+target.chapterId+'"]');
+        SenecaNavega.highlightEl(chBtn);
+        if(target.folderId){
+          setTimeout(function(){
+            var foBtn = document.querySelector('.folder-item[data-folder-id="'+target.folderId+'"]');
+            SenecaNavega.highlightEl(foBtn);
+          }, 250);
+        }
+      }, 60);
+    }
+  };
+
+  SenecaNavega.init({
+    page: "baseroom",
+    triggerBtn: document.getElementById("senecaActivateBtn"),
+    panelToReplace: document.getElementById("senecaPanel"),
+    imageEl: document.getElementById("senecaLogoImg"),
+    activeImageSrc: "../../imagenes/seneca_bot_2.png",
+    bubbleEl: document.getElementById("senecaBubble"),
+    idleMessage: "Hi! I'm <strong>Séneca Navega</strong>. Ask me what document you're looking for, or what a chapter covers, and I'll open and highlight it for you. You can close me anytime with the × button.",
+    placeholder: "Ex: risk register, governance...",
+    index: senecaIndex,
+    adapter: SenecaAdapterBaseroom
+  });
+})();
+</script>
+<!-- =============== fin integracion SENECA NAVEGA =================== -->
+
 </body>
 </html>
