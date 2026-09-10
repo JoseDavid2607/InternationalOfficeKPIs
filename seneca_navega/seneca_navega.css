@@ -22,6 +22,22 @@
 .seneca-activate-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(47, 139, 133, 0.45); }
 .seneca-activate-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
 
+/* Version sutil: link de texto en linea, sin caja ni fondo */
+.seneca-activate-link {
+  display: inline;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 700;
+  color: #2f8b85;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.seneca-activate-link:hover { color: #256e69; }
+
 .seneca-chat {
   display: flex;
   flex-direction: column;
