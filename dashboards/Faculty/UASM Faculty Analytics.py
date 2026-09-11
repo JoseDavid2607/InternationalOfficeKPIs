@@ -3203,13 +3203,12 @@ def page_qualifications():
                 key=lambda x: int(str(x).split()[0])
             )
             x_labels = inter
-        # Ventana de 5 periodos que SIEMPRE incluye el periodo seleccionado
-        # en el Timeframe del sidebar -- no siempre los 5 más recientes de
-        # TODO el histórico. Si no se ancla al periodo seleccionado, elegir
-        # un periodo antiguo para analizar (p.ej. 2022) igual mostraba solo
-        # los últimos periodos cargados (2025+), como si lo viejo no se
-        # hubiera leído -- cuando en realidad sí estaba, solo fuera de la
-        # ventana visible.
+        # Ventana de 5 periodos "pegajosa": NO se mueve mientras el periodo
+        # seleccionado siga estando visible en la ventana actual -- solo se
+        # highlightea en su lugar. Recién se corre cuando eligen un periodo
+        # más viejo que ya no entra en la ventana actual, y en ese caso el
+        # periodo elegido queda en la SEGUNDA posición (no al final), para
+        # seguir viendo 5 periodos con un poco de contexto hacia atrás.
         anchor = None
         if time_mode == "Semestral":
             anchor = st.session_state.get("sel_sem")
@@ -3218,9 +3217,23 @@ def page_qualifications():
         else:
             _y = st.session_state.get("sel_year")
             anchor = f"{_y} Intersemestral" if _y else None
-        if anchor is not None and anchor in x_labels:
-            idx = x_labels.index(anchor)
-            x_labels = x_labels[max(0, idx - 4): idx + 1]
+
+        n_total = len(x_labels)
+        window_key = f"_qual_hist_window_start_{time_mode}"
+        if anchor is not None and anchor in x_labels and n_total > 0:
+            sel_idx = x_labels.index(anchor)
+            default_start = max(0, n_total - 5)
+            stored_start = st.session_state.get(window_key)
+            if stored_start is not None and stored_start <= sel_idx <= stored_start + 4:
+                start = stored_start  # sigue visible en la ventana actual -> no se mueve
+            elif default_start <= sel_idx <= n_total - 1:
+                start = default_start  # entra en los últimos 5 "de reposo"
+            else:
+                start = max(0, sel_idx - 1)  # más viejo que la ventana -> queda en 2da posición
+            end = min(n_total - 1, start + 4)
+            start = max(0, end - 4)  # completa 5 si el final tocó el borde
+            st.session_state[window_key] = start
+            x_labels = x_labels[start:end + 1]
         else:
             x_labels = x_labels[-5:]
         x_map = {lab: i for i, lab in enumerate(x_labels)}
@@ -5091,10 +5104,11 @@ def page_qualifications():
                             df_x["_X"].dropna().astype(str).unique().tolist(),
                             key=lambda s: int(str(s).split()[0]) if str(s).split() else 0
                         )
-                    # Ventana de 5 periodos anclada al periodo seleccionado
-                    # en el sidebar (no siempre los 5 más recientes del
-                    # dataset completo) -- mismo criterio que
-                    # build_time_axis_for_history.
+                    # Ventana de 5 periodos "pegajosa": no se mueve mientras
+                    # el periodo seleccionado siga visible; solo se corre
+                    # cuando eligen uno más viejo que ya no entra, y ahí
+                    # queda en la 2da posición (mismo criterio que
+                    # build_time_axis_for_history).
                     if tm == "Semestral":
                         anchor = st.session_state.get("sel_sem")
                     elif tm == "Anual":
@@ -5102,9 +5116,22 @@ def page_qualifications():
                     else:
                         _y = st.session_state.get("sel_year")
                         anchor = f"{_y} Intersemestral" if _y else None
-                    if anchor is not None and anchor in x_labels:
-                        idx = x_labels.index(anchor)
-                        x_labels = x_labels[max(0, idx - 4): idx + 1]
+                    n_total = len(x_labels)
+                    window_key = f"_qual_credit_window_start_{tm}"
+                    if anchor is not None and anchor in x_labels and n_total > 0:
+                        sel_idx = x_labels.index(anchor)
+                        default_start = max(0, n_total - 5)
+                        stored_start = st.session_state.get(window_key)
+                        if stored_start is not None and stored_start <= sel_idx <= stored_start + 4:
+                            start = stored_start
+                        elif default_start <= sel_idx <= n_total - 1:
+                            start = default_start
+                        else:
+                            start = max(0, sel_idx - 1)
+                        end = min(n_total - 1, start + 4)
+                        start = max(0, end - 4)
+                        st.session_state[window_key] = start
+                        x_labels = x_labels[start:end + 1]
                     else:
                         x_labels = x_labels[-5:]
                     x_map = {lab: i for i, lab in enumerate(x_labels)}
