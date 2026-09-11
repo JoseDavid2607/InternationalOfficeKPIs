@@ -3542,7 +3542,7 @@ def page_qualifications():
 
         export_df = pd.DataFrame({"Period": x_labels, **base_cols})
         fname = f"chart_{_slugify(fig_title)}_{_slugify(metric_choice)}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx"
-        _download_xlsx_button(export_df, fname, key=f"dl_hist_{_slugify(fig_title)}_{metric_choice}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}", label="⬇️ Datos de la gráfica (Excel)")
+        _download_xlsx_button(export_df, fname, key=f"dl_hist_{_slugify(fig_title)}_{metric_choice}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}", label="⬇️ Download chart data (Excel)")
 
     # ============== NORMALIZACIÓN BÁSICA EN CARTELERA ==============
     col_sem = _get_any(df_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
@@ -4150,12 +4150,18 @@ def page_qualifications():
 
         # Compatibilidad con el resto de la página: 'df_car_global' se usa
         # más abajo en varias vistas históricas multi-periodo (todas las
-        # épocas, no solo la seleccionada), así que mantiene la exclusión
-        # FIJA de siempre ahí -- el filtro interactivo de arriba solo
-        # aplica al periodo seleccionado. 'fil' es el mismo alias de
-        # siempre para el bloque actual (ahora ya con el filtro aplicado).
+        # épocas, no solo la seleccionada). Antes solo excluía
+        # DEFAULT_EXCLUDE_PROGRAMS (la lista fija) y NO las especializaciones
+        # -- por eso un programa de especialización con créditos en un
+        # periodo puntual (p.ej. el más reciente) hacía que la gráfica de
+        # Evolution no coincidiera con la tabla del periodo seleccionado
+        # (que sí las excluye por defecto vía el checkbox). Ahora excluye
+        # especializaciones también, para que ambas vistas sean consistentes.
         if program_col0:
-            mask_global = ~df_car_n[program_col0].astype(str).str.strip().str.upper().isin(DEFAULT_EXCLUDE_PROGRAMS)
+            mask_global = (
+                ~df_car_n[program_col0].astype(str).str.strip().str.upper().isin(DEFAULT_EXCLUDE_PROGRAMS)
+                & ~df_car_n[program_col0].astype(str).str.strip().map(_is_specialization_program)
+            )
             df_car_global = df_car_n[mask_global].copy()
         else:
             df_car_global = df_car_n.copy()
