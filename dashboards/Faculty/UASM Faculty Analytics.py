@@ -3879,38 +3879,29 @@ def page_qualifications():
 
     def _local_need_weights(objective: str, idx_all: list, p, s, sa, pa, sp, ip, oth,
                              totals: dict[str,float], credits_each: float = 3.0):
-        """Pesos para repartir el total Overall entre áreas: el peso de
-        cada área es cuánto le hace falta a ELLA MISMA para llegar a SU
-        propia meta ('By area', 60/40/10) -- así el área que más lejos
-        está de su meta se lleva más parte del ajuste general, y las que
-        ya la cumplen (necesitan 0) quedan en 0 también en el reparto del
-        overall. Devuelve dos listas (weights1, weights2), una para cada
-        columna de 'Needed'. Si TODAS las áreas ya cumplen su meta local
-        (los dos pesos dan 0 en todas), usa el tamaño de cada área
-        (créditos) como respaldo, para no perder el total real del
-        overall (que sí puede seguir siendo mayor a 0 aunque nadie esté
-        individualmente por debajo del 60%)."""
-        w1, w2 = [], []
+        """Pesos para repartir el total Overall entre áreas: base equitativa
+        (todas parten de lo mismo) + una parte proporcional a cuánto le
+        hace falta a CADA área para llegar a SU propia meta ('By area',
+        60/40/10). Así ninguna área queda en cero -- todas reciben algo del
+        reparto -- pero la que está más lejos de su meta local se lleva una
+        porción notablemente mayor, y la que ya la cumple (necesita 0) se
+        lleva la porción mínima (el piso equitativo), no cero.
+        Devuelve dos listas (weights1, weights2), una para cada columna de
+        'Needed'."""
+        n1_list, n2_list = [], []
         for lbl in idx_all:
             Pv, Sv = float(p.get(lbl,0.0)), float(s.get(lbl,0.0))
             SAv, PAv = float(sa.get(lbl,0.0)), float(pa.get(lbl,0.0))
             SPv, IPv = float(sp.get(lbl,0.0)), float(ip.get(lbl,0.0))
             OTv = float(oth.get(lbl,0.0))
             n1, n2 = _needed_pairs_for_obj(objective, "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
-            w1.append(n1)
-            w2.append(n2)
-        if sum(w1) <= 0 or sum(w2) <= 0:
-            size_w = []
-            for lbl in idx_all:
-                if objective == "%P":
-                    size_w.append(float(p.get(lbl,0.0)) + float(s.get(lbl,0.0)))
-                else:
-                    size_w.append(float(sa.get(lbl,0.0)) + float(pa.get(lbl,0.0)) + float(sp.get(lbl,0.0))
-                                  + float(ip.get(lbl,0.0)) + float(oth.get(lbl,0.0)))
-            if sum(w1) <= 0:
-                w1 = size_w
-            if sum(w2) <= 0:
-                w2 = size_w
+            n1_list.append(n1)
+            n2_list.append(n2)
+        # Piso equitativo: +1 a cada peso, para que toda área/field/program
+        # reciba al menos una porción base del reparto (no cero), y las que
+        # necesitan más localmente sigan llevándose proporcionalmente más.
+        w1 = [n + 1 for n in n1_list]
+        w2 = [n + 1 for n in n2_list]
         return w1, w2
 
     def _render_overall_needed_summary(objective: str, scope_label: str, totals: dict[str,float],
