@@ -3014,7 +3014,7 @@ def page_qualifications():
         return mod_ps, mod_tipo
 
     # ===== Cálculo de “profesores necesarios” (3 créditos) por fila =====
-    def _needed_for_pctP(p: float, s: float, target_pct: float, credits_each: float = 3.0) -> int:
+    def _needed_for_pctP(p: float, s: float, target_pct: float, credits_each: float = 4.0) -> int:
         # (p + c*n)/(p + s + c*n) >= t  ->  n >= (t*s - (1-t)*p) / (c*(1-t))
         t = target_pct / 100.0
         denom = credits_each * (1 - t)
@@ -3023,7 +3023,7 @@ def page_qualifications():
         rhs = (t * s - (1 - t) * p) / denom
         return max(0, math.ceil(rhs))
 
-    def _needed_for_pctSA(sa: float, rest: float, target_pct: float, credits_each: float = 3.0) -> int:
+    def _needed_for_pctSA(sa: float, rest: float, target_pct: float, credits_each: float = 4.0) -> int:
         # (sa + c*n)/(sa + rest + c*n) >= t -> n >= (t*rest - (1-t)*sa) / (c*(1-t))
         t = target_pct / 100.0
         denom = credits_each * (1 - t)
@@ -3032,7 +3032,7 @@ def page_qualifications():
         rhs = (t * rest - (1 - t) * sa) / denom
         return max(0, math.ceil(rhs))
 
-    def _needed_for_other_leq10(other: float, rest: float, credits_each: float = 3.0) -> int:
+    def _needed_for_other_leq10(other: float, rest: float, credits_each: float = 4.0) -> int:
         # other/(other + rest + c*n) <= 0.10  ->  n >= (0.9*other - 0.1*rest) / (0.3*c) = (9*other - rest)/(3*c)
         num = 9*other - rest
         denom = 3 * credits_each
@@ -3048,7 +3048,7 @@ def page_qualifications():
         return ("%OTHER", 10.0, 10.0)
 
     # ====== NUEVOS helpers para Overall/Impacto y secundarios ======
-    def _needed_for_overall_if_only_this_area_changes(obj: str, totals: dict[str, float], area_vals: dict[str, float], target_overall: float, credits_each: float = 3.0) -> int | None:
+    def _needed_for_overall_if_only_this_area_changes(obj: str, totals: dict[str, float], area_vals: dict[str, float], target_overall: float, credits_each: float = 4.0) -> int | None:
         eps = 1e-9
         t = target_overall / 100.0
         Ptot = totals.get("P",0.0);  Stot = totals.get("S",0.0)
@@ -3072,7 +3072,7 @@ def page_qualifications():
         max_remove_n = math.floor(OT_a / credits_each)
         return max(0, need_n) if need_n <= max_remove_n else None
 
-    def _impact_pp_area(obj: str, area_vals: dict[str,float], credits_each: float = 3.0) -> tuple[float,float]:
+    def _impact_pp_area(obj: str, area_vals: dict[str,float], credits_each: float = 4.0) -> tuple[float,float]:
         """Impacto en puntos porcentuales de las DOS acciones que también
         mide 'Needed' -- para %P: subir 1 curso de P (up) / bajar 1 curso
         de S (down); para %SA: subir 1 curso de SA (up) / bajar 1 curso de
@@ -3104,7 +3104,7 @@ def page_qualifications():
         down = ((OT - credits_each) / (denQ - credits_each) - (OT / denQ)) * 100.0 if OT >= credits_each and denQ > credits_each else 0.0
         return (round(up,2), round(down,2))
 
-    def _impact_pp_overall_if_area_changes(obj: str, totals: dict[str,float], credits_each: float = 3.0) -> tuple[float,float]:
+    def _impact_pp_overall_if_area_changes(obj: str, totals: dict[str,float], credits_each: float = 4.0) -> tuple[float,float]:
         """Misma corrección que _impact_pp_area, pero con los TOTALES
         globales del colegio -- por eso el resultado es el mismo sin
         importar en qué área se agregue/quite el curso (matemáticamente
@@ -3134,7 +3134,7 @@ def page_qualifications():
         return (round(up,2), round(down,2))
 
     # Secundarios para tablas "Needed"
-    def _needed_S_less_for_pctP_area(p: float, s: float, target_pct: float, credits_each=3.0) -> int:
+    def _needed_S_less_for_pctP_area(p: float, s: float, target_pct: float, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int:
         # P/(P + S - c*n) >= t  ->  n >= (t*(P+S) - P)/(t*c)
         t = target_pct/100.0
         if t <= 0: return 0
@@ -3142,7 +3142,7 @@ def page_qualifications():
         rhs = (t*(p+s) - p)/den
         return max(0, math.ceil(rhs))
 
-    def _needed_S_less_for_pctP_overall(totals, area_vals, target_overall: float, credits_each=3.0) -> int | None:
+    def _needed_S_less_for_pctP_overall(totals, area_vals, target_overall: float, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int | None:
         t = target_overall/100.0
         Ptot = totals.get("P",0.0); Stot = totals.get("S",0.0)
         if t <= 0: return 0
@@ -3152,14 +3152,14 @@ def page_qualifications():
         max_remove = math.floor(S_a/credits_each)
         return need_n if need_n <= max_remove else None
 
-    def _needed_OTHERS_less_for_SA_area(sa, rest, target_pct, credits_each=3.0) -> int:
+    def _needed_OTHERS_less_for_SA_area(sa, rest, target_pct, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int:
         # SA/(SA + rest - c*n) >= t -> n >= (t*(SA+rest) - SA)/(t*c)
         t = target_pct/100.0
         if t <= 0: return 0
         rhs = (t*(sa+rest) - sa)/(t*credits_each)
         return max(0, math.ceil(rhs))
 
-    def _needed_OTHERS_less_for_SA_overall(totals, area_vals, target_overall, credits_each=3.0) -> int | None:
+    def _needed_OTHERS_less_for_SA_overall(totals, area_vals, target_overall, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int | None:
         SA = totals.get("SA",0.0); PA=totals.get("PA",0.0); SP=totals.get("SP",0.0); IP=totals.get("IP",0.0); OT=totals.get("OTHER",0.0)
         TQ = SA+PA+SP+IP+OT; rest = TQ - SA
         t = target_overall/100.0
@@ -3170,7 +3170,7 @@ def page_qualifications():
         max_remove = math.floor(rest_a/credits_each)
         return need_n if need_n <= max_remove else None
 
-    def _needed_OTHERS_more_for_OTHER_area(other, rest, target_pct, credits_each=3.0) -> int:
+    def _needed_OTHERS_more_for_OTHER_area(other, rest, target_pct, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int:
         # OTHER/(OTHER + rest + c*n) <= t -> c*n >= (OTHER - t*(OTHER+rest))/t
         t = target_pct/100.0
         if t <= 0: return 0
@@ -3178,7 +3178,7 @@ def page_qualifications():
         need = 0 if need_credits <= 0 else math.ceil(need_credits/credits_each)
         return max(0, need)
 
-    def _needed_OTHERS_more_for_OTHER_overall(totals, target_overall, credits_each=3.0) -> int:
+    def _needed_OTHERS_more_for_OTHER_overall(totals, target_overall, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int:
         OT = totals.get("OTHER",0.0); SA=totals.get("SA",0.0); PA=totals.get("PA",0.0); SP=totals.get("SP",0.0); IP=totals.get("IP",0.0)
         TQ = SA+PA+SP+IP+OT
         t = target_overall/100.0
@@ -3654,7 +3654,7 @@ def page_qualifications():
                 st.selectbox("P/S Faculty category", ["None", "P", "S"], key="sens_cat_ps")
                 st.selectbox("Faculty Qualification", ["None", "SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
                 st.number_input("# N° of courses", min_value=1, step=1, value=1, key="sens_count")
-                st.number_input("Course credits", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
+                st.number_input("Course credits", min_value=0.0, step=0.5, value=4.0, key="sens_credits")
 
                 col_add, col_remove = st.columns(2)
                 with col_add:
@@ -3804,7 +3804,7 @@ def page_qualifications():
         scope_label: str,
         P: float, S: float, SA_: float, PA_: float, SP_: float, IP_: float, OT_: float,
         totals: dict[str,float],
-        credits_each: float = 3.0
+        credits_each: float = 4.0
     ) -> tuple[int, int]:
         """
         Devuelve dos números (enteros >= 0) según el objetivo:
@@ -3889,7 +3889,7 @@ def page_qualifications():
         scope_label: str,
         P: float, S: float, SA_: float, PA_: float, SP_: float, IP_: float, OT_: float,
         totals: dict[str,float],
-        credits_each: float = 3.0
+        credits_each: float = 4.0
     ) -> int:
         """En la práctica, un cambio real casi siempre es un CAMBIO PAREJO:
         se agrega 1 curso de un tipo y se quita 1 del otro AL MISMO TIEMPO
@@ -3940,8 +3940,44 @@ def page_qualifications():
         nmax = math.floor(OTv / credits_each) if credits_each > 0 else 0
         return min(n, max(0, nmax))
 
+    def _local_pct_gap_weights(objective: str, idx_all: list, p, s, sa, pa, sp, ip, oth) -> list:
+        """Peso de cada área para el reparto proporcional del Overall: qué
+        tan lejos está el %P/%SA/%OTHER PROPIO de cada área de su meta de
+        área (60/40/10) -- un número CONTINUO (puntos porcentuales), no un
+        conteo de cursos redondeado. Esto evita que, con cursos de
+        referencia más grandes (p.ej. 4cr), casi todas las áreas queden en
+        0 cursos localmente y el reparto se vuelva parejo/inútil: la
+        brecha de % casi nunca es exactamente 0, así que el área más
+        rezagada (menor %P) siempre se lleva proporcionalmente más del
+        total. Además, como se recalcula con los valores YA ajustados por
+        la simulación, un área que ya alcanzó su meta local (brecha = 0)
+        cae directo a 0 en el reparto -- sin necesidad de congelar nada."""
+        t_area = {"%P": 60.0, "%SA": 40.0, "%OTHER": 10.0}[objective]
+        weights = []
+        for lbl in idx_all:
+            Pv, Sv = float(p.get(lbl,0.0)), float(s.get(lbl,0.0))
+            SAv, PAv = float(sa.get(lbl,0.0)), float(pa.get(lbl,0.0))
+            SPv, IPv = float(sp.get(lbl,0.0)), float(ip.get(lbl,0.0))
+            OTv = float(oth.get(lbl,0.0))
+            if objective == "%P":
+                denom = Pv + Sv
+                pct = (Pv/denom*100.0) if denom > 0 else 0.0
+                gap = max(0.0, t_area - pct)
+            elif objective == "%SA":
+                denom = SAv + PAv + SPv + IPv + OTv
+                pct = (SAv/denom*100.0) if denom > 0 else 0.0
+                gap = max(0.0, t_area - pct)
+            else:  # %OTHER -- más alto es peor, la brecha es cuánto se pasa de la meta
+                denom = SAv + PAv + SPv + IPv + OTv
+                pct = (OTv/denom*100.0) if denom > 0 else 0.0
+                gap = max(0.0, pct - t_area)
+            weights.append(gap)
+        if sum(weights) <= 0:
+            return [1.0] * len(idx_all)  # respaldo: reparto equitativo si NINGUNA área tiene brecha local
+        return weights
+
     def _local_need_weights(objective: str, idx_all: list, p, s, sa, pa, sp, ip, oth,
-                             totals: dict[str,float], credits_each: float = 3.0):
+                             totals: dict[str,float], credits_each: float = 4.0):
         """Pesos para repartir el total Overall entre áreas: base equitativa
         (todas parten de lo mismo) + una parte proporcional a cuántos swaps
         le hacen falta a CADA área para llegar a SU propia meta ('By area',
@@ -3964,7 +4000,7 @@ def page_qualifications():
         return [n + 1 for n in n_list]
 
     def _render_overall_needed_summary(objective: str, scope_label: str, totals: dict[str,float],
-                                        credits_each: float = 3.0):
+                                        credits_each: float = 4.0):
         """Cuando el scope es 'Overall', 'Needed' es un requisito del
         colegio completo, no de cada área. Muestra el total UNA sola vez,
         corto y con el número primero. Devuelve need_swap para que el
@@ -3979,7 +4015,7 @@ def page_qualifications():
         return need_swap
 
     # ---------- impacto (siempre visible) ----------
-    def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], scope_label: str, credits_each: float = 3.0):
+    def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], scope_label: str, credits_each: float = 4.0):
         # "By area": impacto sobre el % de ESA área, con sus propios
         # números. "Overall": impacto sobre el % de TODO el colegio, con
         # los totales globales -- por eso da el mismo número en todas las
@@ -4410,16 +4446,18 @@ def page_qualifications():
                         }
 
                         # nombres de columnas según objetivo
+                        _cr = float(st.session_state.get("sens_credits", 4.0))
+                        _cr_txt = f"{_cr:g}cr"
                         swap_col_labels = {
-                            "%P": "Needed P \u2194 S swaps (3cr)",
-                            "%SA": "Needed SA \u2194 non-SA swaps (3cr)",
-                            "%OTHER": "Needed OTHER \u2194 non-OTHER swaps (3cr)",
+                            "%P": f"Needed P \u2194 S swaps ({_cr_txt})",
+                            "%SA": f"Needed SA \u2194 non-SA swaps ({_cr_txt})",
+                            "%OTHER": f"Needed OTHER \u2194 non-OTHER swaps ({_cr_txt})",
                         }
                         swap_col = swap_col_labels[objective]
 
-                        _overall_swap = _render_overall_needed_summary(objective, scope_label, totals, credits_each=3.0)
+                        _overall_swap = _render_overall_needed_summary(objective, scope_label, totals, credits_each=float(st.session_state.get("sens_credits", 4.0)))
                         if _overall_swap is not None:
-                            _w = _local_need_weights(objective, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
+                            _w = _local_pct_gap_weights(objective, idx_all, p, s, sa, pa, sp, ip, oth)
                             _swap_alloc = _apportion(_overall_swap, _w)
 
                         rows = []
@@ -4437,11 +4475,11 @@ def page_qualifications():
                                 need_swap = _needed_swap_for_obj(
                                     objective, scope_label,
                                     Pv, Sv, SAv, PAv, SPv, IPv, OTv,
-                                    totals, credits_each=3.0
+                                    totals, credits_each=float(st.session_state.get("sens_credits", 4.0))
                                 )
 
                             area_vals = {"P":Pv,"S":Sv,"SA":SAv,"PA":PAv,"SP":SPv,"IP":IPv,"OTHER":OTv}
-                            up_pp, down_pp = _impact_pair(objective, area_vals, totals, scope_label, credits_each=3.0)
+                            up_pp, down_pp = _impact_pair(objective, area_vals, totals, scope_label, credits_each=float(st.session_state.get("sens_credits", 4.0)))
 
                             rows.append({
                                 "Academic Area": label,
@@ -4627,16 +4665,18 @@ def page_qualifications():
                             "OTHER": float(oth.sum())
                         }
 
+                        _cr = float(st.session_state.get("sens_credits", 4.0))
+                        _cr_txt = f"{_cr:g}cr"
                         swap_col_labels = {
-                            "%P": "Needed P \u2194 S swaps (3cr)",
-                            "%SA": "Needed SA \u2194 non-SA swaps (3cr)",
-                            "%OTHER": "Needed OTHER \u2194 non-OTHER swaps (3cr)",
+                            "%P": f"Needed P \u2194 S swaps ({_cr_txt})",
+                            "%SA": f"Needed SA \u2194 non-SA swaps ({_cr_txt})",
+                            "%OTHER": f"Needed OTHER \u2194 non-OTHER swaps ({_cr_txt})",
                         }
                         swap_col = swap_col_labels[objective_f]
 
-                        _overall_swap = _render_overall_needed_summary(objective_f, scope_label_f, totals, credits_each=3.0)
+                        _overall_swap = _render_overall_needed_summary(objective_f, scope_label_f, totals, credits_each=float(st.session_state.get("sens_credits", 4.0)))
                         if _overall_swap is not None:
-                            _w = _local_need_weights(objective_f, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
+                            _w = _local_pct_gap_weights(objective_f, idx_all, p, s, sa, pa, sp, ip, oth)
                             _swap_alloc = _apportion(_overall_swap, _w)
 
                         rows = []
@@ -4651,10 +4691,10 @@ def page_qualifications():
                             else:
                                 need_swap = _needed_swap_for_obj(
                                     objective_f, scope_label_f,
-                                    Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=3.0
+                                    Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=float(st.session_state.get("sens_credits", 4.0))
                                 )
                             area_vals = {"P":Pv,"S":Sv,"SA":SAv,"PA":PAv,"SP":SPv,"IP":IPv,"OTHER":OTv}
-                            up_pp, down_pp = _impact_pair(objective_f, area_vals, totals, scope_label_f, credits_each=3.0)
+                            up_pp, down_pp = _impact_pair(objective_f, area_vals, totals, scope_label_f, credits_each=float(st.session_state.get("sens_credits", 4.0)))
 
                             rows.append({
                                 "Field": label,
@@ -4866,16 +4906,18 @@ def page_qualifications():
                             "OTHER": float(oth.sum())
                         }
 
+                        _cr = float(st.session_state.get("sens_credits", 4.0))
+                        _cr_txt = f"{_cr:g}cr"
                         swap_col_labels = {
-                            "%P": "Needed P \u2194 S swaps (3cr)",
-                            "%SA": "Needed SA \u2194 non-SA swaps (3cr)",
-                            "%OTHER": "Needed OTHER \u2194 non-OTHER swaps (3cr)",
+                            "%P": f"Needed P \u2194 S swaps ({_cr_txt})",
+                            "%SA": f"Needed SA \u2194 non-SA swaps ({_cr_txt})",
+                            "%OTHER": f"Needed OTHER \u2194 non-OTHER swaps ({_cr_txt})",
                         }
                         swap_col = swap_col_labels[objective_p]
 
-                        _overall_swap = _render_overall_needed_summary(objective_p, scope_label_p, totals, credits_each=3.0)
+                        _overall_swap = _render_overall_needed_summary(objective_p, scope_label_p, totals, credits_each=float(st.session_state.get("sens_credits", 4.0)))
                         if _overall_swap is not None:
-                            _w = _local_need_weights(objective_p, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
+                            _w = _local_pct_gap_weights(objective_p, idx_all, p, s, sa, pa, sp, ip, oth)
                             _swap_alloc = _apportion(_overall_swap, _w)
 
                         rows = []
@@ -4890,10 +4932,10 @@ def page_qualifications():
                             else:
                                 need_swap = _needed_swap_for_obj(
                                     objective_p, scope_label_p,
-                                    Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=3.0
+                                    Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=float(st.session_state.get("sens_credits", 4.0))
                                 )
                             area_vals = {"P":Pv,"S":Sv,"SA":SAv,"PA":PAv,"SP":SPv,"IP":IPv,"OTHER":OTv}
-                            up_pp, down_pp = _impact_pair(objective_p, area_vals, totals, scope_label_p, credits_each=3.0)
+                            up_pp, down_pp = _impact_pair(objective_p, area_vals, totals, scope_label_p, credits_each=float(st.session_state.get("sens_credits", 4.0)))
 
                             rows.append({
                                 "Program": label,
