@@ -3773,110 +3773,67 @@ def page_qualifications():
           - %SA  -> (Need_SA_more, Need_NonSA_less)
           - %OTHER -> (Need_OTHER_less, Need_NonOTHER_more)
 
-        Si scope="Overall", calcula con TOT (global) y limita por factibilidad del renglón cuando es "quitar".
+        Siempre se calcula con los valores PROPIOS de esta área/fila -- lo
+        único que cambia entre "By area" y "Overall" es la meta objetivo
+        (60/40/10 vs 75/40/10, más exigente). Así cada fila muestra cuánto
+        LE toca aportar a esa área en particular, en vez de repetir un
+        número global igual en todas las filas.
         Nunca devuelve None; si no alcanza, devuelve el máximo posible (capped).
         """
         t_map = {"%P": (60.0, 75.0), "%SA": (40.0, 40.0), "%OTHER": (10.0, 10.0)}
         tgt_area, tgt_overall = t_map[objective]
-        t = (tgt_area if scope_label == "By area" else tgt_overall) / 100.0
+        tgt = tgt_area if scope_label == "By area" else tgt_overall
+        t = tgt / 100.0
 
         # valores por fila
         TQ = SA_ + PA_ + SP_ + IP_ + OT_
         nonSA = PA_ + SP_ + IP_ + OT_
         nonOTHER = SA_ + PA_ + SP_ + IP_
 
-        # totales
-        Ptot = totals.get("P",0.0); Stot = totals.get("S",0.0)
-        SAt  = totals.get("SA",0.0); PAt = totals.get("PA",0.0)
-        SPt  = totals.get("SP",0.0); IPt = totals.get("IP",0.0)
-        OTt  = totals.get("OTHER",0.0)
-        TQt  = SAt + PAt + SPt + IPt + OTt
-        nonSAt = PAt + SPt + IPt + OTt
-        nonOTHERt = SAt + PAt + SPt + IPt
-
         # --- %P ---
+        # En ambos scopes ("By area" y "Overall") se calcula con los
+        # números PROPIOS de esta área -- lo único que cambia es la meta a
+        # alcanzar (60% "By area", 75% "Overall"). Así cada área muestra
+        # cuántos cursos LE toca agregar (o de S, quitar) a ELLA MISMA para
+        # llegar a la meta correspondiente, en vez de repetir un número
+        # global igual en todas las filas.
         if objective == "%P":
-            # Aumentar P (+3cr cada profesor)
-            if scope_label == "By area":
-                nP = _needed_for_pctP(P, S, tgt_area, credits_each)
-            else:
-                # (Ptot + c*n)/(Ptot + Stot + c*n) >= t  ->  n >= (t*(P+S) - P)/( (1-t)*c )
-                den = credits_each * (1 - t)
-                rhs = 0 if den <= 0 else (t*(Ptot+Stot) - Ptot) / den
-                nP  = max(0, math.ceil(rhs))
+            # Aumentar P (+3cr)
+            nP = _needed_for_pctP(P, S, tgt, credits_each)
 
-            # Quitar S (-3cr)
-            if scope_label == "By area":
-                #  P/(P + S - c*n) >= t  ->  n >= (t*(P+S) - P)/(t*c)
-                den = credits_each * t if t > 0 else float('inf')
-                rhs = 0 if den == float('inf') else (t*(P+S) - P) / den
-                nS_less = max(0, math.ceil(rhs))
-                # factibilidad
-                nmax = math.floor(S / credits_each) if credits_each > 0 else 0
-                nS_less = min(nS_less, max(0, nmax))
-            else:
-                # overall: Ptot/(Ptot + Stot - c*n) >= t
-                den = credits_each * t if t > 0 else float('inf')
-                rhs = 0 if den == float('inf') else (t*(Ptot+Stot) - Ptot) / den
-                nS_less = max(0, math.ceil(rhs))
-                # factibilidad: solo puedo quitar del renglón actual
-                nmax = math.floor(S / credits_each) if credits_each > 0 else 0
-                nS_less = min(nS_less, max(0, nmax))
+            # Quitar S (-3cr):  P/(P + S - c*n) >= t  ->  n >= (t*(P+S) - P)/(t*c)
+            den = credits_each * t if t > 0 else float('inf')
+            rhs = 0 if den == float('inf') else (t*(P+S) - P) / den
+            nS_less = max(0, math.ceil(rhs))
+            nmax = math.floor(S / credits_each) if credits_each > 0 else 0
+            nS_less = min(nS_less, max(0, nmax))
 
             return (nP, nS_less)
 
         # --- %SA ---
         if objective == "%SA":
             # Aumentar SA (+3cr)
-            if scope_label == "By area":
-                nSA = _needed_for_pctSA(SA_, nonSA, tgt_area, credits_each)
-            else:
-                den = credits_each * (1 - t)
-                rhs = 0 if den <= 0 else (t*TQt - SAt) / den
-                nSA = max(0, math.ceil(rhs))
+            nSA = _needed_for_pctSA(SA_, nonSA, tgt, credits_each)
 
             # Quitar No-SA (PA+SP+IP+OTHER) (-3cr)
-            if scope_label == "By area":
-                # SA/(SA + nonSA - c*n) >= t -> n >= (t*(SA+nonSA) - SA)/(t*c)
-                den = credits_each * t if t > 0 else float('inf')
-                rhs = 0 if den == float('inf') else (t*(SA_+nonSA) - SA_) / den
-                nNonSA_less = max(0, math.ceil(rhs))
-                nmax = math.floor(nonSA / credits_each) if credits_each > 0 else 0
-                nNonSA_less = min(nNonSA_less, max(0, nmax))
-            else:
-                den = credits_each * t if t > 0 else float('inf')
-                rhs = 0 if den == float('inf') else (t*TQt - SAt) / den
-                nNonSA_less = max(0, math.ceil(rhs))
-                nmax = math.floor(nonSA / credits_each) if credits_each > 0 else 0
-                nNonSA_less = min(nNonSA_less, max(0, nmax))
+            den = credits_each * t if t > 0 else float('inf')
+            rhs = 0 if den == float('inf') else (t*(SA_+nonSA) - SA_) / den
+            nNonSA_less = max(0, math.ceil(rhs))
+            nmax = math.floor(nonSA / credits_each) if credits_each > 0 else 0
+            nNonSA_less = min(nNonSA_less, max(0, nmax))
 
             return (nSA, nNonSA_less)
 
         # --- %OTHER ---
-        # Quitar OTHER (-3cr)
-        if scope_label == "By area":
-            # (OT - c*n)/(TQ - c*n) <= 0.10  ->  c*n >= (OT - 0.10*TQ)/0.90
-            need_credits = (OT_ - 0.10*TQ) / 0.90
-            nOT_less = 0 if need_credits <= 0 else math.ceil(need_credits / credits_each)
-            nmax = math.floor(OT_ / credits_each) if credits_each > 0 else 0
-            nOT_less = min(nOT_less, max(0, nmax))
-        else:
-            # overall
-            need_credits = (OTt - 0.10*TQt) / 0.90
-            nOT_less = 0 if need_credits <= 0 else math.ceil(need_credits / credits_each)
-            nmax = math.floor(OT_ / credits_each) if credits_each > 0 else 0
-            nOT_less = min(nOT_less, max(0, nmax))
+        # Quitar OTHER (-3cr): (OT - c*n)/(TQ - c*n) <= 0.10 -> c*n >= (OT - 0.10*TQ)/0.90
+        need_credits = (OT_ - 0.10*TQ) / 0.90
+        nOT_less = 0 if need_credits <= 0 else math.ceil(need_credits / credits_each)
+        nmax = math.floor(OT_ / credits_each) if credits_each > 0 else 0
+        nOT_less = min(nOT_less, max(0, nmax))
 
-        # Aumentar No-OTHER (+3cr) -> OT/(OT + nonOTHER + c*n) <= 0.10
-        if scope_label == "By area":
-            # n >= (0.90*OT - 0.10*nonOTHER)/(0.10*c) = (9*OT - nonOTHER)/c
-            num = (9*OT_ - nonOTHER)
-            den = credits_each
-            nNonOT_more = 0 if num <= 0 else math.ceil(num / den)
-        else:
-            num = (9*OTt - nonOTHERt)
-            den = credits_each
-            nNonOT_more = 0 if num <= 0 else math.ceil(num / den)
+        # Aumentar No-OTHER (+3cr): OT/(OT + nonOTHER + c*n) <= 0.10
+        num = (9*OT_ - nonOTHER)
+        nNonOT_more = 0 if num <= 0 else math.ceil(num / credits_each)
 
         return (nOT_less, nNonOT_more)
 
