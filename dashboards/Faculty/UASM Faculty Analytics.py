@@ -3775,6 +3775,23 @@ def page_qualifications():
         return sty
 
     # ---------- helpers de necesidades por objetivo (dos columnas) ----------
+    def _apportion(total: int, weights: list) -> list:
+        """Reparte 'total' (entero) proporcionalmente entre 'weights' con el
+        método de restos mayores (Hamilton) -- la suma de lo repartido da
+        EXACTO el total (a diferencia de redondear cada parte por separado,
+        que puede perder o sobrar unidades)."""
+        n = len(weights)
+        if total <= 0 or n == 0 or sum(weights) <= 0:
+            return [0] * n
+        w_sum = sum(weights)
+        raw = [total * w / w_sum for w in weights]
+        floors = [int(math.floor(x)) for x in raw]
+        remainder = total - sum(floors)
+        order = sorted(range(n), key=lambda i: raw[i] - floors[i], reverse=True)
+        for i in order[:remainder]:
+            floors[i] += 1
+        return floors
+
     def _needed_pairs_for_obj(
         objective: str,
         scope_label: str,
@@ -3861,29 +3878,22 @@ def page_qualifications():
         return (nOT_less, nNonOT_more)
 
     def _render_overall_needed_summary(objective: str, scope_label: str, totals: dict[str,float],
-                                        main_col: str, aux_col: str, credits_each: float = 3.0):
-        """Cuando el scope es 'Overall', 'Needed' da el MISMO número en
-        todas las filas de la tabla a propósito (es un requisito del
-        colegio, no de cada área) -- pero repetido 7 veces dentro de una
-        tabla por área puede leerse como '¿cada área necesita esto?'.
-        Este resumen lo muestra UNA sola vez, aclarando que es el total
-        combinado entre todas las áreas, no un cupo por área."""
+                                        credits_each: float = 3.0):
+        """Cuando el scope es 'Overall', 'Needed' es un requisito del
+        colegio completo, no de cada área. Muestra el total UNA sola vez,
+        corto y con los números primero. Devuelve (need1, need2) para que
+        el llamador reparta esos totales proporcionalmente entre áreas en
+        la tabla."""
         if scope_label == "By area":
-            return
+            return None
         need1, need2 = _needed_pairs_for_obj(objective, scope_label, 0, 0, 0, 0, 0, 0, 0, totals, credits_each)
         c = int(credits_each)
-        phrasing = {
-            "%P": (f"add **{need1} P courses** ({c}cr each)", f"remove **{need2} S courses** ({c}cr each)"),
-            "%SA": (f"add **{need1} SA courses** ({c}cr each)", f"remove **{need2} non-SA courses** ({c}cr each)"),
-            "%OTHER": (f"remove **{need1} OTHER courses** ({c}cr each)", f"add **{need2} non-OTHER courses** ({c}cr each)"),
-        }
-        main_phrase, aux_phrase = phrasing[objective]
-        st.info(
-            f"**To reach the Overall target:** the school needs to {main_phrase} — or, alternatively, "
-            f"{aux_phrase} — combined across **all areas together**, not per area. The same total is "
-            f"repeated in every row of the table below; in practice, these credits can come from any "
-            f"combination of areas."
-        )
+        labels = {"%P": ("P", "S"), "%SA": ("SA", "non-SA"), "%OTHER": ("OTHER", "non-OTHER")}
+        signs = {"%P": ("+", "\u2212"), "%SA": ("+", "\u2212"), "%OTHER": ("\u2212", "+")}
+        lab1, lab2 = labels[objective]
+        s1, s2 = signs[objective]
+        st.info(f"**Overall (school-wide):** {s1}{need1} {lab1} courses  ·  {s2}{need2} {lab2} courses  ({c}cr each)")
+        return need1, need2
 
     # ---------- impacto (siempre visible) ----------
     def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], scope_label: str, credits_each: float = 3.0):
@@ -4324,20 +4334,34 @@ def page_qualifications():
                         else:
                             main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
 
-                        _render_overall_needed_summary(objective, scope_label, totals, main_col, aux_col, credits_each=3.0)
+                        _overall_pair = _render_overall_needed_summary(objective, scope_label, totals, credits_each=3.0)
+                        if _overall_pair is not None:
+                            _need1_ov, _need2_ov = _overall_pair
+                            if objective == "%P":
+                                _weights = [float(p.get(lbl,0.0)) + float(s.get(lbl,0.0)) for lbl in idx_all]
+                            else:
+                                _weights = [float(sa.get(lbl,0.0)) + float(pa.get(lbl,0.0)) + float(sp.get(lbl,0.0))
+                                            + float(ip.get(lbl,0.0)) + float(oth.get(lbl,0.0)) for lbl in idx_all]
+                            _need1_alloc = _apportion(_need1_ov, _weights)
+                            _need2_alloc = _apportion(_need2_ov, _weights)
 
                         rows = []
-                        for label in idx_all:
+                        for _i, label in enumerate(idx_all):
                             Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
                             SAv, PAv = float(sa.get(label,0.0)), float(pa.get(label,0.0))
                             SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
                             OTv      = float(oth.get(label,0.0))
 
-                            need1, need2 = _needed_pairs_for_obj(
-                                objective, scope_label,
-                                Pv, Sv, SAv, PAv, SPv, IPv, OTv,
-                                totals, credits_each=3.0
-                            )
+                            if _overall_pair is not None:
+                                # reparto proporcional del total Overall, según el
+                                # tamaño (créditos) de esta área respecto al colegio.
+                                need1, need2 = _need1_alloc[_i], _need2_alloc[_i]
+                            else:
+                                need1, need2 = _needed_pairs_for_obj(
+                                    objective, scope_label,
+                                    Pv, Sv, SAv, PAv, SPv, IPv, OTv,
+                                    totals, credits_each=3.0
+                                )
 
                             area_vals = {"P":Pv,"S":Sv,"SA":SAv,"PA":PAv,"SP":SPv,"IP":IPv,"OTHER":OTv}
                             up_pp, down_pp = _impact_pair(objective, area_vals, totals, scope_label, credits_each=3.0)
@@ -4534,19 +4558,31 @@ def page_qualifications():
                         else:
                             main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
 
-                        _render_overall_needed_summary(objective_f, scope_label_f, totals, main_col, aux_col, credits_each=3.0)
+                        _overall_pair = _render_overall_needed_summary(objective_f, scope_label_f, totals, credits_each=3.0)
+                        if _overall_pair is not None:
+                            _need1_ov, _need2_ov = _overall_pair
+                            if objective_f == "%P":
+                                _weights = [float(p.get(lbl,0.0)) + float(s.get(lbl,0.0)) for lbl in idx_all]
+                            else:
+                                _weights = [float(sa.get(lbl,0.0)) + float(pa.get(lbl,0.0)) + float(sp.get(lbl,0.0))
+                                            + float(ip.get(lbl,0.0)) + float(oth.get(lbl,0.0)) for lbl in idx_all]
+                            _need1_alloc = _apportion(_need1_ov, _weights)
+                            _need2_alloc = _apportion(_need2_ov, _weights)
 
                         rows = []
-                        for label in idx_all:
+                        for _i, label in enumerate(idx_all):
                             Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
                             SAv, PAv = float(sa.get(label,0.0)), float(pa.get(label,0.0))
                             SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
                             OTv      = float(oth.get(label,0.0))
 
-                            need1, need2 = _needed_pairs_for_obj(
-                                objective_f, scope_label_f,
-                                Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=3.0
-                            )
+                            if _overall_pair is not None:
+                                need1, need2 = _need1_alloc[_i], _need2_alloc[_i]
+                            else:
+                                need1, need2 = _needed_pairs_for_obj(
+                                    objective_f, scope_label_f,
+                                    Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=3.0
+                                )
                             area_vals = {"P":Pv,"S":Sv,"SA":SAv,"PA":PAv,"SP":SPv,"IP":IPv,"OTHER":OTv}
                             up_pp, down_pp = _impact_pair(objective_f, area_vals, totals, scope_label_f, credits_each=3.0)
 
@@ -4768,19 +4804,31 @@ def page_qualifications():
                         else:
                             main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
 
-                        _render_overall_needed_summary(objective_p, scope_label_p, totals, main_col, aux_col, credits_each=3.0)
+                        _overall_pair = _render_overall_needed_summary(objective_p, scope_label_p, totals, credits_each=3.0)
+                        if _overall_pair is not None:
+                            _need1_ov, _need2_ov = _overall_pair
+                            if objective_p == "%P":
+                                _weights = [float(p.get(lbl,0.0)) + float(s.get(lbl,0.0)) for lbl in idx_all]
+                            else:
+                                _weights = [float(sa.get(lbl,0.0)) + float(pa.get(lbl,0.0)) + float(sp.get(lbl,0.0))
+                                            + float(ip.get(lbl,0.0)) + float(oth.get(lbl,0.0)) for lbl in idx_all]
+                            _need1_alloc = _apportion(_need1_ov, _weights)
+                            _need2_alloc = _apportion(_need2_ov, _weights)
 
                         rows = []
-                        for label in idx_all:
+                        for _i, label in enumerate(idx_all):
                             Pv, Sv   = float(p.get(label,0.0)),  float(s.get(label,0.0))
                             SAv, PAv = float(sa.get(label,0.0)), float(pa.get(label,0.0))
                             SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
                             OTv      = float(oth.get(label,0.0))
 
-                            need1, need2 = _needed_pairs_for_obj(
-                                objective_p, scope_label_p,
-                                Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=3.0
-                            )
+                            if _overall_pair is not None:
+                                need1, need2 = _need1_alloc[_i], _need2_alloc[_i]
+                            else:
+                                need1, need2 = _needed_pairs_for_obj(
+                                    objective_p, scope_label_p,
+                                    Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=3.0
+                                )
                             area_vals = {"P":Pv,"S":Sv,"SA":SAv,"PA":PAv,"SP":SPv,"IP":IPv,"OTHER":OTv}
                             up_pp, down_pp = _impact_pair(objective_p, area_vals, totals, scope_label_p, credits_each=3.0)
 
