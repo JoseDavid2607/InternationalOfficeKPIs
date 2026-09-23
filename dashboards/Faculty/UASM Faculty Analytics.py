@@ -3073,6 +3073,14 @@ def page_qualifications():
         return max(0, need_n) if need_n <= max_remove_n else None
 
     def _impact_pp_area(obj: str, area_vals: dict[str,float], credits_each: float = 3.0) -> tuple[float,float]:
+        """Impacto en puntos porcentuales de las DOS acciones que también
+        mide 'Needed' -- para %P: subir 1 curso de P (up) / bajar 1 curso
+        de S (down); para %SA: subir 1 curso de SA (up) / bajar 1 curso de
+        no-SA (down); para %OTHER: subir 1 curso de no-OTHER (up) / bajar 1
+        curso de OTHER (down). Antes 'down' restaba del MISMO indicador
+        principal (p.ej. quitar un P, en vez de quitar un S) -- por eso el
+        peso salía distinto al de 'Needed', que sí mide la acción correcta
+        (quitar S)."""
         eps = 1e-9
         P = area_vals.get("P",0.0); S = area_vals.get("S",0.0)
         SA = area_vals.get("SA",0.0); PA = area_vals.get("PA",0.0)
@@ -3080,22 +3088,28 @@ def page_qualifications():
         OT = area_vals.get("OTHER",0.0)
         denPS = P + S
         denQ  = SA + PA + SP + IP + OT
+        nonSA = PA + SP + IP + OT
         if obj == "%P":
             if denPS <= eps: return (0.0, 0.0)
             up   = ((P + credits_each) / (denPS + credits_each) - (P / denPS)) * 100.0
-            down = ((max(0.0, P - credits_each)) / max(eps, denPS - credits_each) - (P / denPS)) * 100.0 if denPS > credits_each else 0.0
+            down = (P / (denPS - credits_each) - (P / denPS)) * 100.0 if S >= credits_each and denPS > credits_each else 0.0
             return (round(up,2), round(down,2))
         if obj == "%SA":
             if denQ <= eps: return (0.0, 0.0)
             up   = ((SA + credits_each) / (denQ + credits_each) - (SA / denQ)) * 100.0
-            down = ((max(0.0, SA - credits_each)) / max(eps, denQ - credits_each) - (SA / denQ)) * 100.0 if denQ > credits_each else 0.0
+            down = (SA / (denQ - credits_each) - (SA / denQ)) * 100.0 if nonSA >= credits_each and denQ > credits_each else 0.0
             return (round(up,2), round(down,2))
         if denQ <= eps: return (0.0, 0.0)
-        up   = ((OT + credits_each) / (denQ + credits_each) - (OT / denQ)) * 100.0
-        down = ((max(0.0, OT - credits_each)) / max(eps, denQ - credits_each) - (OT / denQ)) * 100.0 if denQ > credits_each else 0.0
+        up   = (OT / (denQ + credits_each) - (OT / denQ)) * 100.0
+        down = ((OT - credits_each) / (denQ - credits_each) - (OT / denQ)) * 100.0 if OT >= credits_each and denQ > credits_each else 0.0
         return (round(up,2), round(down,2))
 
     def _impact_pp_overall_if_area_changes(obj: str, totals: dict[str,float], credits_each: float = 3.0) -> tuple[float,float]:
+        """Misma corrección que _impact_pp_area, pero con los TOTALES
+        globales del colegio -- por eso el resultado es el mismo sin
+        importar en qué área se agregue/quite el curso (matemáticamente
+        correcto: mover 3 créditos del total global pesa igual venga de
+        donde venga)."""
         eps = 1e-9
         P = totals.get("P",0.0); S = totals.get("S",0.0)
         SA = totals.get("SA",0.0); PA = totals.get("PA",0.0)
@@ -3103,19 +3117,20 @@ def page_qualifications():
         OT = totals.get("OTHER",0.0)
         denPS = P + S
         denQ  = SA + PA + SP + IP + OT
+        nonSA = PA + SP + IP + OT
         if obj == "%P":
             if denPS <= eps: return (0.0, 0.0)
             up   = ((P + credits_each) / (denPS + credits_each) - (P / denPS)) * 100.0
-            down = ((max(0.0, P - credits_each)) / max(eps, denPS - credits_each) - (P / denPS)) * 100.0 if denPS > credits_each else 0.0
+            down = (P / (denPS - credits_each) - (P / denPS)) * 100.0 if S >= credits_each and denPS > credits_each else 0.0
             return (round(up,2), round(down,2))
         if obj == "%SA":
             if denQ <= eps: return (0.0, 0.0)
             up   = ((SA + credits_each) / (denQ + credits_each) - (SA / denQ)) * 100.0
-            down = ((max(0.0, SA - credits_each)) / max(eps, denQ - credits_each) - (SA / denQ)) * 100.0 if denQ > credits_each else 0.0
+            down = (SA / (denQ - credits_each) - (SA / denQ)) * 100.0 if nonSA >= credits_each and denQ > credits_each else 0.0
             return (round(up,2), round(down,2))
         if denQ <= eps: return (0.0, 0.0)
-        up   = ((OT + credits_each) / (denQ + credits_each) - (OT / denQ)) * 100.0
-        down = ((max(0.0, OT - credits_each)) / max(eps, denQ - credits_each) - (OT / denQ)) * 100.0 if denQ > credits_each else 0.0
+        up   = (OT / (denQ + credits_each) - (OT / denQ)) * 100.0
+        down = ((OT - credits_each) / (denQ - credits_each) - (OT / denQ)) * 100.0 if OT >= credits_each and denQ > credits_each else 0.0
         return (round(up,2), round(down,2))
 
     # Secundarios para tablas "Needed"
@@ -3839,16 +3854,17 @@ def page_qualifications():
 
     # ---------- impacto (siempre visible) ----------
     def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], scope_label: str, credits_each: float = 3.0):
-        # Siempre se calcula con los valores PROPIOS de esta área -- igual
-        # que "Needed" (ver _needed_pairs_for_obj). Antes, en "Overall" se
-        # usaba el total global del colegio, lo que daba un impacto
-        # casi nulo (1 curso mueve poquísimo un total tan grande) mientras
-        # "Needed" ya mostraba decenas de cursos por área -- las dos
-        # columnas no coincidían entre sí. Ahora ambas responden la misma
-        # pregunta ("¿cuánto le mueve a ESTA área agregar/quitar 1 curso?"),
-        # solo que "Needed" evalúa contra la meta de Overall (75/40/10) y
-        # "Impact" simplemente muestra el movimiento marginal de esa área.
-        up_pp, down_pp = _impact_pp_area(obj, area_vals, credits_each)
+        # "By area": impacto sobre el % de ESA área, con sus propios
+        # números. "Overall": impacto sobre el % de TODO el colegio, con
+        # los totales globales -- por eso da el mismo número en todas las
+        # filas (matemáticamente correcto: 3 créditos pesan igual sobre el
+        # total global venga de donde venga). Ambas rutas ya usan la
+        # fórmula corregida (down = quitar el indicador complementario, no
+        # el mismo indicador principal).
+        if scope_label == "By area":
+            up_pp, down_pp = _impact_pp_area(obj, area_vals, credits_each)
+        else:
+            up_pp, down_pp = _impact_pp_overall_if_area_changes(obj, totals, credits_each)
         # devolver números (no strings)
         return round(up_pp, 2), round(down_pp, 2)
 
