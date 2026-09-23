@@ -3788,39 +3788,47 @@ def page_qualifications():
           - %SA  -> (Need_SA_more, Need_NonSA_less)
           - %OTHER -> (Need_OTHER_less, Need_NonOTHER_more)
 
-        Siempre se calcula con los valores PROPIOS de esta área/fila -- lo
-        único que cambia entre "By area" y "Overall" es la meta objetivo
-        (60/40/10 vs 75/40/10, más exigente). Así cada fila muestra cuánto
-        LE toca aportar a esa área en particular, en vez de repetir un
-        número global igual en todas las filas.
+        "By area": se calcula con los números PROPIOS de esta área contra
+        la meta de esa área (60/40/10) -- cada fila muestra cuánto LE toca
+        aportar a ELLA MISMA.
+        "Overall": se calcula con los TOTALES GLOBALES del colegio contra
+        la meta del overall (75/40/10) -- da el MISMO número en todas las
+        filas a propósito, porque es una universidad: la pregunta es
+        "¿cuántos cursos hacen falta en cualquier área para llegar a la
+        meta del overall?", no cuánto le toca a cada área en particular.
         Nunca devuelve None; si no alcanza, devuelve el máximo posible (capped).
         """
         t_map = {"%P": (60.0, 75.0), "%SA": (40.0, 40.0), "%OTHER": (10.0, 10.0)}
         tgt_area, tgt_overall = t_map[objective]
-        tgt = tgt_area if scope_label == "By area" else tgt_overall
+        by_area = scope_label == "By area"
+        tgt = tgt_area if by_area else tgt_overall
         t = tgt / 100.0
 
-        # valores por fila
-        TQ = SA_ + PA_ + SP_ + IP_ + OT_
-        nonSA = PA_ + SP_ + IP_ + OT_
-        nonOTHER = SA_ + PA_ + SP_ + IP_
+        # "By area" usa los valores de esta fila; "Overall" usa los
+        # totales globales del colegio (mismo número en toda la tabla).
+        if by_area:
+            Pv, Sv = P, S
+            SAv, PAv, SPv, IPv, OTv = SA_, PA_, SP_, IP_, OT_
+        else:
+            Pv, Sv = totals.get("P", 0.0), totals.get("S", 0.0)
+            SAv = totals.get("SA", 0.0); PAv = totals.get("PA", 0.0)
+            SPv = totals.get("SP", 0.0); IPv = totals.get("IP", 0.0)
+            OTv = totals.get("OTHER", 0.0)
+
+        TQ = SAv + PAv + SPv + IPv + OTv
+        nonSA = PAv + SPv + IPv + OTv
+        nonOTHER = SAv + PAv + SPv + IPv
 
         # --- %P ---
-        # En ambos scopes ("By area" y "Overall") se calcula con los
-        # números PROPIOS de esta área -- lo único que cambia es la meta a
-        # alcanzar (60% "By area", 75% "Overall"). Así cada área muestra
-        # cuántos cursos LE toca agregar (o de S, quitar) a ELLA MISMA para
-        # llegar a la meta correspondiente, en vez de repetir un número
-        # global igual en todas las filas.
         if objective == "%P":
             # Aumentar P (+3cr)
-            nP = _needed_for_pctP(P, S, tgt, credits_each)
+            nP = _needed_for_pctP(Pv, Sv, tgt, credits_each)
 
             # Quitar S (-3cr):  P/(P + S - c*n) >= t  ->  n >= (t*(P+S) - P)/(t*c)
             den = credits_each * t if t > 0 else float('inf')
-            rhs = 0 if den == float('inf') else (t*(P+S) - P) / den
+            rhs = 0 if den == float('inf') else (t*(Pv+Sv) - Pv) / den
             nS_less = max(0, math.ceil(rhs))
-            nmax = math.floor(S / credits_each) if credits_each > 0 else 0
+            nmax = math.floor(Sv / credits_each) if credits_each > 0 else 0
             nS_less = min(nS_less, max(0, nmax))
 
             return (nP, nS_less)
@@ -3828,11 +3836,11 @@ def page_qualifications():
         # --- %SA ---
         if objective == "%SA":
             # Aumentar SA (+3cr)
-            nSA = _needed_for_pctSA(SA_, nonSA, tgt, credits_each)
+            nSA = _needed_for_pctSA(SAv, nonSA, tgt, credits_each)
 
             # Quitar No-SA (PA+SP+IP+OTHER) (-3cr)
             den = credits_each * t if t > 0 else float('inf')
-            rhs = 0 if den == float('inf') else (t*(SA_+nonSA) - SA_) / den
+            rhs = 0 if den == float('inf') else (t*(SAv+nonSA) - SAv) / den
             nNonSA_less = max(0, math.ceil(rhs))
             nmax = math.floor(nonSA / credits_each) if credits_each > 0 else 0
             nNonSA_less = min(nNonSA_less, max(0, nmax))
@@ -3841,13 +3849,13 @@ def page_qualifications():
 
         # --- %OTHER ---
         # Quitar OTHER (-3cr): (OT - c*n)/(TQ - c*n) <= 0.10 -> c*n >= (OT - 0.10*TQ)/0.90
-        need_credits = (OT_ - 0.10*TQ) / 0.90
+        need_credits = (OTv - 0.10*TQ) / 0.90
         nOT_less = 0 if need_credits <= 0 else math.ceil(need_credits / credits_each)
-        nmax = math.floor(OT_ / credits_each) if credits_each > 0 else 0
+        nmax = math.floor(OTv / credits_each) if credits_each > 0 else 0
         nOT_less = min(nOT_less, max(0, nmax))
 
         # Aumentar No-OTHER (+3cr): OT/(OT + nonOTHER + c*n) <= 0.10
-        num = (9*OT_ - nonOTHER)
+        num = (9*OTv - nonOTHER)
         nNonOT_more = 0 if num <= 0 else math.ceil(num / credits_each)
 
         return (nOT_less, nNonOT_more)
