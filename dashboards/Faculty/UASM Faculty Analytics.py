@@ -3877,6 +3877,42 @@ def page_qualifications():
 
         return (nOT_less, nNonOT_more)
 
+    def _local_need_weights(objective: str, idx_all: list, p, s, sa, pa, sp, ip, oth,
+                             totals: dict[str,float], credits_each: float = 3.0):
+        """Pesos para repartir el total Overall entre áreas: el peso de
+        cada área es cuánto le hace falta a ELLA MISMA para llegar a SU
+        propia meta ('By area', 60/40/10) -- así el área que más lejos
+        está de su meta se lleva más parte del ajuste general, y las que
+        ya la cumplen (necesitan 0) quedan en 0 también en el reparto del
+        overall. Devuelve dos listas (weights1, weights2), una para cada
+        columna de 'Needed'. Si TODAS las áreas ya cumplen su meta local
+        (los dos pesos dan 0 en todas), usa el tamaño de cada área
+        (créditos) como respaldo, para no perder el total real del
+        overall (que sí puede seguir siendo mayor a 0 aunque nadie esté
+        individualmente por debajo del 60%)."""
+        w1, w2 = [], []
+        for lbl in idx_all:
+            Pv, Sv = float(p.get(lbl,0.0)), float(s.get(lbl,0.0))
+            SAv, PAv = float(sa.get(lbl,0.0)), float(pa.get(lbl,0.0))
+            SPv, IPv = float(sp.get(lbl,0.0)), float(ip.get(lbl,0.0))
+            OTv = float(oth.get(lbl,0.0))
+            n1, n2 = _needed_pairs_for_obj(objective, "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
+            w1.append(n1)
+            w2.append(n2)
+        if sum(w1) <= 0 or sum(w2) <= 0:
+            size_w = []
+            for lbl in idx_all:
+                if objective == "%P":
+                    size_w.append(float(p.get(lbl,0.0)) + float(s.get(lbl,0.0)))
+                else:
+                    size_w.append(float(sa.get(lbl,0.0)) + float(pa.get(lbl,0.0)) + float(sp.get(lbl,0.0))
+                                  + float(ip.get(lbl,0.0)) + float(oth.get(lbl,0.0)))
+            if sum(w1) <= 0:
+                w1 = size_w
+            if sum(w2) <= 0:
+                w2 = size_w
+        return w1, w2
+
     def _render_overall_needed_summary(objective: str, scope_label: str, totals: dict[str,float],
                                         credits_each: float = 3.0):
         """Cuando el scope es 'Overall', 'Needed' es un requisito del
@@ -4337,13 +4373,9 @@ def page_qualifications():
                         _overall_pair = _render_overall_needed_summary(objective, scope_label, totals, credits_each=3.0)
                         if _overall_pair is not None:
                             _need1_ov, _need2_ov = _overall_pair
-                            if objective == "%P":
-                                _weights = [float(p.get(lbl,0.0)) + float(s.get(lbl,0.0)) for lbl in idx_all]
-                            else:
-                                _weights = [float(sa.get(lbl,0.0)) + float(pa.get(lbl,0.0)) + float(sp.get(lbl,0.0))
-                                            + float(ip.get(lbl,0.0)) + float(oth.get(lbl,0.0)) for lbl in idx_all]
-                            _need1_alloc = _apportion(_need1_ov, _weights)
-                            _need2_alloc = _apportion(_need2_ov, _weights)
+                            _w1, _w2 = _local_need_weights(objective, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
+                            _need1_alloc = _apportion(_need1_ov, _w1)
+                            _need2_alloc = _apportion(_need2_ov, _w2)
 
                         rows = []
                         for _i, label in enumerate(idx_all):
@@ -4561,13 +4593,9 @@ def page_qualifications():
                         _overall_pair = _render_overall_needed_summary(objective_f, scope_label_f, totals, credits_each=3.0)
                         if _overall_pair is not None:
                             _need1_ov, _need2_ov = _overall_pair
-                            if objective_f == "%P":
-                                _weights = [float(p.get(lbl,0.0)) + float(s.get(lbl,0.0)) for lbl in idx_all]
-                            else:
-                                _weights = [float(sa.get(lbl,0.0)) + float(pa.get(lbl,0.0)) + float(sp.get(lbl,0.0))
-                                            + float(ip.get(lbl,0.0)) + float(oth.get(lbl,0.0)) for lbl in idx_all]
-                            _need1_alloc = _apportion(_need1_ov, _weights)
-                            _need2_alloc = _apportion(_need2_ov, _weights)
+                            _w1, _w2 = _local_need_weights(objective_f, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
+                            _need1_alloc = _apportion(_need1_ov, _w1)
+                            _need2_alloc = _apportion(_need2_ov, _w2)
 
                         rows = []
                         for _i, label in enumerate(idx_all):
@@ -4807,13 +4835,9 @@ def page_qualifications():
                         _overall_pair = _render_overall_needed_summary(objective_p, scope_label_p, totals, credits_each=3.0)
                         if _overall_pair is not None:
                             _need1_ov, _need2_ov = _overall_pair
-                            if objective_p == "%P":
-                                _weights = [float(p.get(lbl,0.0)) + float(s.get(lbl,0.0)) for lbl in idx_all]
-                            else:
-                                _weights = [float(sa.get(lbl,0.0)) + float(pa.get(lbl,0.0)) + float(sp.get(lbl,0.0))
-                                            + float(ip.get(lbl,0.0)) + float(oth.get(lbl,0.0)) for lbl in idx_all]
-                            _need1_alloc = _apportion(_need1_ov, _weights)
-                            _need2_alloc = _apportion(_need2_ov, _weights)
+                            _w1, _w2 = _local_need_weights(objective_p, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
+                            _need1_alloc = _apportion(_need1_ov, _w1)
+                            _need2_alloc = _apportion(_need2_ov, _w2)
 
                         rows = []
                         for _i, label in enumerate(idx_all):
