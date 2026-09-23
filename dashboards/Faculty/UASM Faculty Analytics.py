@@ -3860,6 +3860,31 @@ def page_qualifications():
 
         return (nOT_less, nNonOT_more)
 
+    def _render_overall_needed_summary(objective: str, scope_label: str, totals: dict[str,float],
+                                        main_col: str, aux_col: str, credits_each: float = 3.0):
+        """Cuando el scope es 'Overall', 'Needed' da el MISMO número en
+        todas las filas de la tabla a propósito (es un requisito del
+        colegio, no de cada área) -- pero repetido 7 veces dentro de una
+        tabla por área puede leerse como '¿cada área necesita esto?'.
+        Este resumen lo muestra UNA sola vez, aclarando que es el total
+        combinado entre todas las áreas, no un cupo por área."""
+        if scope_label == "By area":
+            return
+        need1, need2 = _needed_pairs_for_obj(objective, scope_label, 0, 0, 0, 0, 0, 0, 0, totals, credits_each)
+        c = int(credits_each)
+        phrasing = {
+            "%P": (f"add **{need1} P courses** ({c}cr each)", f"remove **{need2} S courses** ({c}cr each)"),
+            "%SA": (f"add **{need1} SA courses** ({c}cr each)", f"remove **{need2} non-SA courses** ({c}cr each)"),
+            "%OTHER": (f"remove **{need1} OTHER courses** ({c}cr each)", f"add **{need2} non-OTHER courses** ({c}cr each)"),
+        }
+        main_phrase, aux_phrase = phrasing[objective]
+        st.info(
+            f"**To reach the Overall target:** the school needs to {main_phrase} — or, alternatively, "
+            f"{aux_phrase} — combined across **all areas together**, not per area. The same total is "
+            f"repeated in every row of the table below; in practice, these credits can come from any "
+            f"combination of areas."
+        )
+
     # ---------- impacto (siempre visible) ----------
     def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], scope_label: str, credits_each: float = 3.0):
         # "By area": impacto sobre el % de ESA área, con sus propios
@@ -4299,6 +4324,8 @@ def page_qualifications():
                         else:
                             main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
 
+                        _render_overall_needed_summary(objective, scope_label, totals, main_col, aux_col, credits_each=3.0)
+
                         rows = []
                         for label in idx_all:
                             Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
@@ -4506,6 +4533,8 @@ def page_qualifications():
                             main_col, aux_col = "SA courses needed (3cr)", "Less other Qualific. courses needed (3cr)"
                         else:
                             main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
+
+                        _render_overall_needed_summary(objective_f, scope_label_f, totals, main_col, aux_col, credits_each=3.0)
 
                         rows = []
                         for label in idx_all:
@@ -4738,6 +4767,8 @@ def page_qualifications():
                             main_col, aux_col = "SA courses needed (3cr)", "Less other Qualific. courses needed (3cr)"
                         else:
                             main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
+
+                        _render_overall_needed_summary(objective_p, scope_label_p, totals, main_col, aux_col, credits_each=3.0)
 
                         rows = []
                         for label in idx_all:
