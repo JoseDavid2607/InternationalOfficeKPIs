@@ -3877,50 +3877,99 @@ def page_qualifications():
 
         return (nOT_less, nNonOT_more)
 
+    def _needed_swap_for_obj(
+        objective: str,
+        scope_label: str,
+        P: float, S: float, SA_: float, PA_: float, SP_: float, IP_: float, OT_: float,
+        totals: dict[str,float],
+        credits_each: float = 3.0
+    ) -> int:
+        """En la práctica, un cambio real casi siempre es un CAMBIO PAREJO:
+        se agrega 1 curso de un tipo y se quita 1 del otro AL MISMO TIEMPO
+        (p.ej. un profesor pasa de dictar un curso 'S' a uno 'P'), no solo
+        se agrega de un lado o se quita del otro por separado. Como el
+        total de créditos (P+S, o TQ para SA/OTHER) NO cambia con un swap,
+        cada swap mueve el % más que una sola acción, y hace falta MENOS
+        cantidad de cursos para llegar a la meta.
+        Devuelve un solo entero >= 0: cuántos swaps (3cr cada lado) hacen
+        falta. "By area" usa los valores propios de esta fila contra la
+        meta de área (60/40/10); "Overall" usa los totales del colegio
+        contra la meta general (75/40/10)."""
+        t_map = {"%P": (60.0, 75.0), "%SA": (40.0, 40.0), "%OTHER": (10.0, 10.0)}
+        tgt_area, tgt_overall = t_map[objective]
+        by_area = scope_label == "By area"
+        tgt = tgt_area if by_area else tgt_overall
+        t = tgt / 100.0
+
+        if by_area:
+            Pv, Sv = P, S
+            SAv, PAv, SPv, IPv, OTv = SA_, PA_, SP_, IP_, OT_
+        else:
+            Pv, Sv = totals.get("P", 0.0), totals.get("S", 0.0)
+            SAv = totals.get("SA", 0.0); PAv = totals.get("PA", 0.0)
+            SPv = totals.get("SP", 0.0); IPv = totals.get("IP", 0.0)
+            OTv = totals.get("OTHER", 0.0)
+
+        TQ = SAv + PAv + SPv + IPv + OTv
+        nonSA = PAv + SPv + IPv + OTv
+
+        if objective == "%P":
+            # swap: P += c*n, S -= c*n (P+S constante) -> (P+c*n)/(P+S) >= t
+            rhs = t*(Pv+Sv) - Pv
+            n = 0 if rhs <= 0 else math.ceil(rhs / credits_each)
+            nmax = math.floor(Sv / credits_each) if credits_each > 0 else 0
+            return min(n, max(0, nmax))
+
+        if objective == "%SA":
+            # swap: SA += c*n, no-SA -= c*n (TQ constante) -> (SA+c*n)/TQ >= t
+            rhs = t*TQ - SAv
+            n = 0 if rhs <= 0 else math.ceil(rhs / credits_each)
+            nmax = math.floor(nonSA / credits_each) if credits_each > 0 else 0
+            return min(n, max(0, nmax))
+
+        # %OTHER: swap: OTHER -= c*n, no-OTHER += c*n (TQ constante) -> (OT-c*n)/TQ <= 0.10
+        rhs = OTv - t*TQ
+        n = 0 if rhs <= 0 else math.ceil(rhs / credits_each)
+        nmax = math.floor(OTv / credits_each) if credits_each > 0 else 0
+        return min(n, max(0, nmax))
+
     def _local_need_weights(objective: str, idx_all: list, p, s, sa, pa, sp, ip, oth,
                              totals: dict[str,float], credits_each: float = 3.0):
         """Pesos para repartir el total Overall entre áreas: base equitativa
-        (todas parten de lo mismo) + una parte proporcional a cuánto le
-        hace falta a CADA área para llegar a SU propia meta ('By area',
+        (todas parten de lo mismo) + una parte proporcional a cuántos swaps
+        le hacen falta a CADA área para llegar a SU propia meta ('By area',
         60/40/10). Así ninguna área queda en cero -- todas reciben algo del
         reparto -- pero la que está más lejos de su meta local se lleva una
-        porción notablemente mayor, y la que ya la cumple (necesita 0) se
-        lleva la porción mínima (el piso equitativo), no cero.
-        Devuelve dos listas (weights1, weights2), una para cada columna de
-        'Needed'."""
-        n1_list, n2_list = [], []
+        porción notablemente mayor, y la que ya la cumple (necesita 0 swaps)
+        se lleva la porción mínima (el piso equitativo), no cero.
+        Devuelve una sola lista de pesos (uno por área)."""
+        n_list = []
         for lbl in idx_all:
             Pv, Sv = float(p.get(lbl,0.0)), float(s.get(lbl,0.0))
             SAv, PAv = float(sa.get(lbl,0.0)), float(pa.get(lbl,0.0))
             SPv, IPv = float(sp.get(lbl,0.0)), float(ip.get(lbl,0.0))
             OTv = float(oth.get(lbl,0.0))
-            n1, n2 = _needed_pairs_for_obj(objective, "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
-            n1_list.append(n1)
-            n2_list.append(n2)
+            n = _needed_swap_for_obj(objective, "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
+            n_list.append(n)
         # Piso equitativo: +1 a cada peso, para que toda área/field/program
         # reciba al menos una porción base del reparto (no cero), y las que
         # necesitan más localmente sigan llevándose proporcionalmente más.
-        w1 = [n + 1 for n in n1_list]
-        w2 = [n + 1 for n in n2_list]
-        return w1, w2
+        return [n + 1 for n in n_list]
 
     def _render_overall_needed_summary(objective: str, scope_label: str, totals: dict[str,float],
                                         credits_each: float = 3.0):
         """Cuando el scope es 'Overall', 'Needed' es un requisito del
         colegio completo, no de cada área. Muestra el total UNA sola vez,
-        corto y con los números primero. Devuelve (need1, need2) para que
-        el llamador reparta esos totales proporcionalmente entre áreas en
-        la tabla."""
+        corto y con el número primero. Devuelve need_swap para que el
+        llamador lo reparta proporcionalmente entre áreas en la tabla."""
         if scope_label == "By area":
             return None
-        need1, need2 = _needed_pairs_for_obj(objective, scope_label, 0, 0, 0, 0, 0, 0, 0, totals, credits_each)
+        need_swap = _needed_swap_for_obj(objective, scope_label, 0, 0, 0, 0, 0, 0, 0, totals, credits_each)
         c = int(credits_each)
-        labels = {"%P": ("P", "S"), "%SA": ("SA", "non-SA"), "%OTHER": ("OTHER", "non-OTHER")}
-        signs = {"%P": ("+", "\u2212"), "%SA": ("+", "\u2212"), "%OTHER": ("\u2212", "+")}
-        lab1, lab2 = labels[objective]
-        s1, s2 = signs[objective]
-        st.info(f"**Overall (school-wide):** {s1}{need1} {lab1} courses  ·  {s2}{need2} {lab2} courses  ({c}cr each)")
-        return need1, need2
+        labels = {"%P": ("P", "S"), "%SA": ("SA", "non-SA"), "%OTHER": ("non-OTHER", "OTHER")}
+        lab_add, lab_remove = labels[objective]
+        st.info(f"**Overall (school-wide):** {need_swap} swaps — +1 {lab_add} / \u22121 {lab_remove} each ({c}cr)")
+        return need_swap
 
     # ---------- impacto (siempre visible) ----------
     def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], scope_label: str, credits_each: float = 3.0):
@@ -4354,19 +4403,17 @@ def page_qualifications():
                         }
 
                         # nombres de columnas según objetivo
-                        if objective == "%P":
-                            main_col, aux_col = "P courses needed (3cr)", "Less S courses needed (3cr)"
-                        elif objective == "%SA":
-                            main_col, aux_col = "SA courses needed (3cr)", "Less other Qualific. courses needed (3cr)"
-                        else:
-                            main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
+                        swap_col_labels = {
+                            "%P": "Needed P \u2194 S swaps (3cr)",
+                            "%SA": "Needed SA \u2194 non-SA swaps (3cr)",
+                            "%OTHER": "Needed OTHER \u2194 non-OTHER swaps (3cr)",
+                        }
+                        swap_col = swap_col_labels[objective]
 
-                        _overall_pair = _render_overall_needed_summary(objective, scope_label, totals, credits_each=3.0)
-                        if _overall_pair is not None:
-                            _need1_ov, _need2_ov = _overall_pair
-                            _w1, _w2 = _local_need_weights(objective, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
-                            _need1_alloc = _apportion(_need1_ov, _w1)
-                            _need2_alloc = _apportion(_need2_ov, _w2)
+                        _overall_swap = _render_overall_needed_summary(objective, scope_label, totals, credits_each=3.0)
+                        if _overall_swap is not None:
+                            _w = _local_need_weights(objective, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
+                            _swap_alloc = _apportion(_overall_swap, _w)
 
                         rows = []
                         for _i, label in enumerate(idx_all):
@@ -4375,12 +4422,12 @@ def page_qualifications():
                             SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
                             OTv      = float(oth.get(label,0.0))
 
-                            if _overall_pair is not None:
-                                # reparto proporcional del total Overall, según el
-                                # tamaño (créditos) de esta área respecto al colegio.
-                                need1, need2 = _need1_alloc[_i], _need2_alloc[_i]
+                            if _overall_swap is not None:
+                                # reparto proporcional del total Overall, según cuánto
+                                # le hace falta a esta área para su propia meta.
+                                need_swap = _swap_alloc[_i]
                             else:
-                                need1, need2 = _needed_pairs_for_obj(
+                                need_swap = _needed_swap_for_obj(
                                     objective, scope_label,
                                     Pv, Sv, SAv, PAv, SPv, IPv, OTv,
                                     totals, credits_each=3.0
@@ -4391,8 +4438,7 @@ def page_qualifications():
 
                             rows.append({
                                 "Academic Area": label,
-                                main_col: int(need1),
-                                aux_col:  int(need2),
+                                swap_col: int(need_swap),
                                 "Impact increasing 1 course in %p.p.": up_pp,
                                 "Impact decreasing 1 course %p.p.": down_pp
                             })
@@ -4574,19 +4620,17 @@ def page_qualifications():
                             "OTHER": float(oth.sum())
                         }
 
-                        if objective_f == "%P":
-                            main_col, aux_col = "P courses needed (3cr)", "Less S courses needed (3cr)"
-                        elif objective_f == "%SA":
-                            main_col, aux_col = "SA courses needed (3cr)", "Less other Qualific. courses needed (3cr)"
-                        else:
-                            main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
+                        swap_col_labels = {
+                            "%P": "Needed P \u2194 S swaps (3cr)",
+                            "%SA": "Needed SA \u2194 non-SA swaps (3cr)",
+                            "%OTHER": "Needed OTHER \u2194 non-OTHER swaps (3cr)",
+                        }
+                        swap_col = swap_col_labels[objective_f]
 
-                        _overall_pair = _render_overall_needed_summary(objective_f, scope_label_f, totals, credits_each=3.0)
-                        if _overall_pair is not None:
-                            _need1_ov, _need2_ov = _overall_pair
-                            _w1, _w2 = _local_need_weights(objective_f, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
-                            _need1_alloc = _apportion(_need1_ov, _w1)
-                            _need2_alloc = _apportion(_need2_ov, _w2)
+                        _overall_swap = _render_overall_needed_summary(objective_f, scope_label_f, totals, credits_each=3.0)
+                        if _overall_swap is not None:
+                            _w = _local_need_weights(objective_f, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
+                            _swap_alloc = _apportion(_overall_swap, _w)
 
                         rows = []
                         for _i, label in enumerate(idx_all):
@@ -4595,10 +4639,10 @@ def page_qualifications():
                             SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
                             OTv      = float(oth.get(label,0.0))
 
-                            if _overall_pair is not None:
-                                need1, need2 = _need1_alloc[_i], _need2_alloc[_i]
+                            if _overall_swap is not None:
+                                need_swap = _swap_alloc[_i]
                             else:
-                                need1, need2 = _needed_pairs_for_obj(
+                                need_swap = _needed_swap_for_obj(
                                     objective_f, scope_label_f,
                                     Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=3.0
                                 )
@@ -4607,8 +4651,7 @@ def page_qualifications():
 
                             rows.append({
                                 "Field": label,
-                                main_col: int(need1),
-                                aux_col:  int(need2),
+                                swap_col: int(need_swap),
                                 "Impact increasing 1 course %p.p.": up_pp,
                                 "Impact decreasing 1 course %p.p.": down_pp
                             })
@@ -4816,19 +4859,17 @@ def page_qualifications():
                             "OTHER": float(oth.sum())
                         }
 
-                        if objective_p == "%P":
-                            main_col, aux_col = "P courses needed (3cr)", "Less S courses needed (3cr)"
-                        elif objective_p == "%SA":
-                            main_col, aux_col = "SA courses needed (3cr)", "Less other Qualific. courses needed (3cr)"
-                        else:
-                            main_col, aux_col = "Less OTHER Courses needed (3cr)", "More other Qualific. courses needed (3cr)"
+                        swap_col_labels = {
+                            "%P": "Needed P \u2194 S swaps (3cr)",
+                            "%SA": "Needed SA \u2194 non-SA swaps (3cr)",
+                            "%OTHER": "Needed OTHER \u2194 non-OTHER swaps (3cr)",
+                        }
+                        swap_col = swap_col_labels[objective_p]
 
-                        _overall_pair = _render_overall_needed_summary(objective_p, scope_label_p, totals, credits_each=3.0)
-                        if _overall_pair is not None:
-                            _need1_ov, _need2_ov = _overall_pair
-                            _w1, _w2 = _local_need_weights(objective_p, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
-                            _need1_alloc = _apportion(_need1_ov, _w1)
-                            _need2_alloc = _apportion(_need2_ov, _w2)
+                        _overall_swap = _render_overall_needed_summary(objective_p, scope_label_p, totals, credits_each=3.0)
+                        if _overall_swap is not None:
+                            _w = _local_need_weights(objective_p, idx_all, p, s, sa, pa, sp, ip, oth, totals, credits_each=3.0)
+                            _swap_alloc = _apportion(_overall_swap, _w)
 
                         rows = []
                         for _i, label in enumerate(idx_all):
@@ -4837,10 +4878,10 @@ def page_qualifications():
                             SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
                             OTv      = float(oth.get(label,0.0))
 
-                            if _overall_pair is not None:
-                                need1, need2 = _need1_alloc[_i], _need2_alloc[_i]
+                            if _overall_swap is not None:
+                                need_swap = _swap_alloc[_i]
                             else:
-                                need1, need2 = _needed_pairs_for_obj(
+                                need_swap = _needed_swap_for_obj(
                                     objective_p, scope_label_p,
                                     Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each=3.0
                                 )
@@ -4849,8 +4890,7 @@ def page_qualifications():
 
                             rows.append({
                                 "Program": label,
-                                main_col: int(need1),
-                                aux_col:  int(need2),
+                                swap_col: int(need_swap),
                                 "Impact increasing 1 course %p.p.": up_pp,
                                 "Impact decreasing 1 course %p.p.": down_pp
                             })
