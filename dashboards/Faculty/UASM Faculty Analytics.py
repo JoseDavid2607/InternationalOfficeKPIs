@@ -3648,15 +3648,22 @@ def page_qualifications():
             st.session_state.sens_ops = []
 
         if sens_mode:
-            st.session_state.setdefault("sens_cat_ps", "None")
-            st.session_state.setdefault("sens_cat_qual", "None")
-            st.selectbox("P/S Faculty category", ["None", "P", "S"], key="sens_cat_ps")
-            st.selectbox("Faculty Qualification", ["None", "SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
-            st.number_input("# N° of courses", min_value=1, step=1, value=1, key="sens_count")
-            st.number_input("Course credits", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
+            with st.form("sens_form", border=False):
+                st.session_state.setdefault("sens_cat_ps", "None")
+                st.session_state.setdefault("sens_cat_qual", "None")
+                st.selectbox("P/S Faculty category", ["None", "P", "S"], key="sens_cat_ps")
+                st.selectbox("Faculty Qualification", ["None", "SA", "PA", "SP", "IP", "OTHER"], key="sens_cat_qual")
+                st.number_input("# N° of courses", min_value=1, step=1, value=1, key="sens_count")
+                st.number_input("Course credits", min_value=0.0, step=0.5, value=3.0, key="sens_credits")
+
+                col_add, col_remove = st.columns(2)
+                with col_add:
+                    add_clicked = st.form_submit_button("Add", use_container_width=True)
+                with col_remove:
+                    remove_clicked = st.form_submit_button("Remove", use_container_width=True)
 
             # ADD (suma)
-            if st.button("Add", use_container_width=True, key="sens_add"):
+            if add_clicked:
                 ops_to_add = []
                 member_val = st.session_state.get("sens_member", "All")
                 cnt  = int(st.session_state.get("sens_count", 1))
@@ -3670,7 +3677,7 @@ def page_qualifications():
                     st.success("Added.")
 
             # REMOVE (resta)
-            if st.button("Remove", use_container_width=True, key="sens_remove_btn"):
+            if remove_clicked:
                 ops_to_add = []
                 member_val = st.session_state.get("sens_member", "All")
                 cnt  = -abs(int(st.session_state.get("sens_count", 1)))
