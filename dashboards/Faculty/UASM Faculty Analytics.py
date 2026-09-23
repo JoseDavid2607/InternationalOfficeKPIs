@@ -3839,10 +3839,16 @@ def page_qualifications():
 
     # ---------- impacto (siempre visible) ----------
     def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], scope_label: str, credits_each: float = 3.0):
-        if scope_label == "By area":
-            up_pp, down_pp = _impact_pp_area(obj, area_vals, credits_each)
-        else:
-            up_pp, down_pp = _impact_pp_overall_if_area_changes(obj, totals, credits_each)
+        # Siempre se calcula con los valores PROPIOS de esta área -- igual
+        # que "Needed" (ver _needed_pairs_for_obj). Antes, en "Overall" se
+        # usaba el total global del colegio, lo que daba un impacto
+        # casi nulo (1 curso mueve poquísimo un total tan grande) mientras
+        # "Needed" ya mostraba decenas de cursos por área -- las dos
+        # columnas no coincidían entre sí. Ahora ambas responden la misma
+        # pregunta ("¿cuánto le mueve a ESTA área agregar/quitar 1 curso?"),
+        # solo que "Needed" evalúa contra la meta de Overall (75/40/10) y
+        # "Impact" simplemente muestra el movimiento marginal de esa área.
+        up_pp, down_pp = _impact_pp_area(obj, area_vals, credits_each)
         # devolver números (no strings)
         return round(up_pp, 2), round(down_pp, 2)
 
