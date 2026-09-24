@@ -4030,22 +4030,30 @@ def page_qualifications():
         return int(min(added, removed) / credits_each)
 
     def _build_needed_table_single_scope(idx_all: list, p, s, sa, pa, sp, ip, oth,
-                                          totals: dict[str,float], scope_label: str,
-                                          id_col_name: str, credits_each: float = 4.0) -> pd.DataFrame:
-        """Arma la tabla de 'Needed' para UN SOLO scope a la vez (By area u
-        Overall, elegido por el usuario). 'Overall' reparte cada total
-        (P, SA, OTHER) EQUITATIVAMENTE entre todas las áreas usando un solo
-        peso COMBINADO por área -- cuánto necesita esa área sumando P + SA
-        + OTHER (no tres repartos independientes, uno por indicador). Así,
-        el área que más necesita en total (en cualquier combinación de los
-        tres) se lleva más de CADA uno de los tres totales, y la que no
-        necesita nada en ninguno de los tres se lleva la porción más chica
-        en los tres. Se recalcula EN VIVO en cada render, así que cada vez
-        que se agrega o quita un curso en la simulación, la tabla se
-        actualiza sola. No se oculta ninguna área, aunque le toquen 0
-        cursos."""
+                                          base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
+                                          totals: dict[str,float], base_totals: dict[str,float],
+                                          sens_ops: list, scope_label: str, id_col_name: str,
+                                          snapshot_prefix: str, credits_each: float = 4.0) -> pd.DataFrame:
+        """Arma la tabla de 'Needed' para UN SOLO scope a la vez (Area u
+        Overall, elegido por el usuario).
+
+        'Overall' reparte cada total (P, SA, OTHER) entre todas las áreas
+        con un peso combinado: PRINCIPALMENTE el tamaño (créditos) de cada
+        área -- entre más créditos, más swaps puede hacer -- y SECUNDARIAMENTE
+        cuánto necesitaba esa área al inicio (P+SA+OTHER, meta de área)
+        como multiplicador. Ese peso se calcula UNA SOLA VEZ con los datos
+        de ANTES de simular nada (snapshot en session_state) -- no se
+        recalcula la proporción en cada rerun. Lo que sí se actualiza en
+        vivo es cuánto de eso ya se hizo: cada swap simulado en un área
+        específica se resta de SU propio número, dejando el de las demás
+        áreas tal cual estaba, hasta que le den Reset."""
         objectives = ["%P", "%SA", "%OTHER"]
         obj_label = {"%P": "Swap P \u2194 S", "%SA": "Swap SA \u2194 other", "%OTHER": "Swap OTHER \u2194 other"}
+        add_remove_cats = {
+            "%P": (["P"], ["S"]),
+            "%SA": (["SA"], ["PA", "SP", "IP", "OTHER"]),
+            "%OTHER": (["PA", "SP", "IP", "SA"], ["OTHER"]),
+        }
         cr_txt = f"{credits_each:g}cr"
         need_col = {o: f"{obj_label[o]}\n({cr_txt})" for o in objectives}
 
@@ -4062,34 +4070,40 @@ def page_qualifications():
                 rows.append(row)
             return pd.DataFrame(rows)
 
-        # Overall: un solo peso combinado por área (P + SA + OTHER juntos),
-        # usado para repartir los 3 totales -- no tres repartos independientes.
-        combined_w = []
-        for label in idx_all:
-            Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
-            SAv, PAv = float(sa.get(label,0.0)), float(pa.get(label,0.0))
-            SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
-            OTv      = float(oth.get(label,0.0))
-            n_p     = _needed_swap_for_obj("%P", "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
-            n_sa    = _needed_swap_for_obj("%SA", "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
-            n_other = _needed_swap_for_obj("%OTHER", "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
-            # +1 de piso: el área que no necesita nada en ninguno de los 3
-            # igual recibe una porción mínima (no cero), proporcionalmente
-            # menor que la de las áreas que sí necesitan.
-            combined_w.append(n_p + n_sa + n_other + 1)
-        if sum(combined_w) <= 0:
-            combined_w = [1.0] * len(idx_all)  # nadie necesita nada -> reparto equitativo parejo
+        # Overall: peso congelado (créditos x (1 + necesidad inicial)), calculado
+        # UNA sola vez con los datos base, guardado en session_state.
+        weight_key = f"{snapshot_prefix}_weight"
+        if weight_key not in st.session_state:
+            combined_w = []
+            for label in idx_all:
+                bPv, bSv = float(base_p.get(label,0.0)), float(base_s.get(label,0.0))
+                bSAv, bPAv = float(base_sa.get(label,0.0)), float(base_pa.get(label,0.0))
+                bSPv, bIPv = float(base_sp.get(label,0.0)), float(base_ip.get(label,0.0))
+                bOTv      = float(base_oth.get(label,0.0))
+                size_i = bPv + bSv  # = bSAv+bPAv+bSPv+bIPv+bOTv (mismo total, dos clasificaciones)
+                n_p     = _needed_swap_for_obj("%P", "By area", bPv, bSv, bSAv, bPAv, bSPv, bIPv, bOTv, base_totals, credits_each)
+                n_sa    = _needed_swap_for_obj("%SA", "By area", bPv, bSv, bSAv, bPAv, bSPv, bIPv, bOTv, base_totals, credits_each)
+                n_other = _needed_swap_for_obj("%OTHER", "By area", bPv, bSv, bSAv, bPAv, bSPv, bIPv, bOTv, base_totals, credits_each)
+                combined_w.append(size_i * (1 + n_p + n_sa + n_other))
+            if sum(combined_w) <= 0:
+                combined_w = [1.0] * len(idx_all)
+            st.session_state[weight_key] = dict(zip(idx_all, combined_w))
+        combined_w = [st.session_state[weight_key].get(lbl, 1.0) for lbl in idx_all]
 
+        # Total a repartir por objetivo: también congelado (con datos base),
+        # y se le resta en vivo lo que ya se simuló por área.
         swap_alloc = {}
         for obj in objectives:
-            ov_total = _needed_swap_for_obj(obj, "Overall", 0, 0, 0, 0, 0, 0, 0, totals, credits_each)
+            ov_total = _needed_swap_for_obj(obj, "Overall", 0, 0, 0, 0, 0, 0, 0, base_totals, credits_each)
             swap_alloc[obj] = dict(zip(idx_all, _apportion_min1(ov_total, combined_w)))
 
         rows = []
         for label in idx_all:
             row = {id_col_name: label}
             for obj in objectives:
-                row[need_col[obj]] = int(swap_alloc[obj].get(label, 0))
+                add_cats, remove_cats = add_remove_cats[obj]
+                done = _swap_units_done_for_member(sens_ops, label, add_cats, remove_cats, credits_each)
+                row[need_col[obj]] = int(max(0, swap_alloc[obj].get(label, 0) - done))
             rows.append(row)
         return pd.DataFrame(rows)
 
@@ -4561,7 +4575,7 @@ def page_qualifications():
                         _download_xlsx_button(metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
                                               key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
                     else:
-                        # ===== Tabla: %P, %SA, %OTHER juntos, para UN solo scope (By area u Overall) =====
+                        # ===== Tabla: %P, %SA, %OTHER juntos, para UN solo scope (Area u Overall) =====
                         idx_all = sorted(set(mod_agg_ps.index.tolist()) | set(mod_agg_tipo.index.tolist()))
                         p   = mod_agg_ps["P"].reindex(idx_all, fill_value=0.0)
                         s   = mod_agg_ps["S"].reindex(idx_all, fill_value=0.0)
@@ -4570,6 +4584,13 @@ def page_qualifications():
                         sp  = mod_agg_tipo["SP"].reindex(idx_all, fill_value=0.0)
                         ip  = mod_agg_tipo["IP"].reindex(idx_all, fill_value=0.0)
                         oth = mod_agg_tipo["OTHER"].reindex(idx_all, fill_value=0.0)
+                        base_p   = base_agg_ps["P"].reindex(idx_all, fill_value=0.0)
+                        base_s   = base_agg_ps["S"].reindex(idx_all, fill_value=0.0)
+                        base_sa  = base_agg_tipo["SA"].reindex(idx_all, fill_value=0.0)
+                        base_pa  = base_agg_tipo["PA"].reindex(idx_all, fill_value=0.0)
+                        base_sp  = base_agg_tipo["SP"].reindex(idx_all, fill_value=0.0)
+                        base_ip  = base_agg_tipo["IP"].reindex(idx_all, fill_value=0.0)
+                        base_oth = base_agg_tipo["OTHER"].reindex(idx_all, fill_value=0.0)
 
                         totals = {
                             "P": float(p.sum()), "S": float(s.sum()),
@@ -4577,11 +4598,20 @@ def page_qualifications():
                             "SP": float(sp.sum()), "IP": float(ip.sum()),
                             "OTHER": float(oth.sum())
                         }
+                        base_totals = {
+                            "P": float(base_p.sum()), "S": float(base_s.sum()),
+                            "SA": float(base_sa.sum()), "PA": float(base_pa.sum()),
+                            "SP": float(base_sp.sum()), "IP": float(base_ip.sum()),
+                            "OTHER": float(base_oth.sum())
+                        }
                         _cr = float(st.session_state.get("sens_credits", 4.0))
+                        snap_prefix = f"_ov_snap_area_{_slugify(sel_label)}_{_cr:g}"
 
                         need_tbl = _build_needed_table_single_scope(
                             idx_all, p, s, sa, pa, sp, ip, oth,
-                            totals, needed_scope, "Academic Area", credits_each=_cr
+                            base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
+                            totals, base_totals, SENS["ops"], needed_scope,
+                            "Academic Area", snap_prefix, credits_each=_cr
                         )
                         fmt_map = {}
                         if 'Academic Area' in need_tbl.columns:
@@ -4746,6 +4776,13 @@ def page_qualifications():
                         sp  = mod_agg_tipo["SP"].reindex(idx_all, fill_value=0.0)
                         ip  = mod_agg_tipo["IP"].reindex(idx_all, fill_value=0.0)
                         oth = mod_agg_tipo["OTHER"].reindex(idx_all, fill_value=0.0)
+                        base_p   = base_agg_ps["P"].reindex(idx_all, fill_value=0.0)
+                        base_s   = base_agg_ps["S"].reindex(idx_all, fill_value=0.0)
+                        base_sa  = base_agg_tipo["SA"].reindex(idx_all, fill_value=0.0)
+                        base_pa  = base_agg_tipo["PA"].reindex(idx_all, fill_value=0.0)
+                        base_sp  = base_agg_tipo["SP"].reindex(idx_all, fill_value=0.0)
+                        base_ip  = base_agg_tipo["IP"].reindex(idx_all, fill_value=0.0)
+                        base_oth = base_agg_tipo["OTHER"].reindex(idx_all, fill_value=0.0)
 
                         totals = {
                             "P": float(p.sum()), "S": float(s.sum()),
@@ -4753,11 +4790,20 @@ def page_qualifications():
                             "SP": float(sp.sum()), "IP": float(ip.sum()),
                             "OTHER": float(oth.sum())
                         }
+                        base_totals = {
+                            "P": float(base_p.sum()), "S": float(base_s.sum()),
+                            "SA": float(base_sa.sum()), "PA": float(base_pa.sum()),
+                            "SP": float(base_sp.sum()), "IP": float(base_ip.sum()),
+                            "OTHER": float(base_oth.sum())
+                        }
                         _cr = float(st.session_state.get("sens_credits", 4.0))
+                        snap_prefix = f"_ov_snap_field_{_slugify(sel_label)}_{_cr:g}"
 
                         need_tbl_f = _build_needed_table_single_scope(
                             idx_all, p, s, sa, pa, sp, ip, oth,
-                            totals, needed_scope_f, "Field", credits_each=_cr
+                            base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
+                            totals, base_totals, SENS["ops"], needed_scope_f,
+                            "Field", snap_prefix, credits_each=_cr
                         )
 
                         fmt_map_f = {}
@@ -4939,7 +4985,7 @@ def page_qualifications():
                         _download_xlsx_button(metrics_tbl_p, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
                                               key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
                     else:
-                        # Tabla "needed" para UN solo scope (By area u Overall)
+                        # Tabla "needed" para UN solo scope (Area u Overall)
                         idx_all = sorted(set(mod_agg_ps_p.index.tolist()) | set(mod_agg_tipo_p.index.tolist()))
                         p   = mod_agg_ps_p["P"].reindex(idx_all, fill_value=0.0)
                         s   = mod_agg_ps_p["S"].reindex(idx_all, fill_value=0.0)
@@ -4948,6 +4994,13 @@ def page_qualifications():
                         sp  = mod_agg_tipo_p["SP"].reindex(idx_all, fill_value=0.0)
                         ip  = mod_agg_tipo_p["IP"].reindex(idx_all, fill_value=0.0)
                         oth = mod_agg_tipo_p["OTHER"].reindex(idx_all, fill_value=0.0)
+                        base_p   = base_agg_ps_p["P"].reindex(idx_all, fill_value=0.0)
+                        base_s   = base_agg_ps_p["S"].reindex(idx_all, fill_value=0.0)
+                        base_sa  = base_agg_tipo_p["SA"].reindex(idx_all, fill_value=0.0)
+                        base_pa  = base_agg_tipo_p["PA"].reindex(idx_all, fill_value=0.0)
+                        base_sp  = base_agg_tipo_p["SP"].reindex(idx_all, fill_value=0.0)
+                        base_ip  = base_agg_tipo_p["IP"].reindex(idx_all, fill_value=0.0)
+                        base_oth = base_agg_tipo_p["OTHER"].reindex(idx_all, fill_value=0.0)
 
                         totals = {
                             "P": float(p.sum()), "S": float(s.sum()),
@@ -4955,11 +5008,20 @@ def page_qualifications():
                             "SP": float(sp.sum()), "IP": float(ip.sum()),
                             "OTHER": float(oth.sum())
                         }
+                        base_totals = {
+                            "P": float(base_p.sum()), "S": float(base_s.sum()),
+                            "SA": float(base_sa.sum()), "PA": float(base_pa.sum()),
+                            "SP": float(base_sp.sum()), "IP": float(base_ip.sum()),
+                            "OTHER": float(base_oth.sum())
+                        }
                         _cr = float(st.session_state.get("sens_credits", 4.0))
+                        snap_prefix = f"_ov_snap_prog_{_slugify(sel_label)}_{_cr:g}"
 
                         need_tbl_p = _build_needed_table_single_scope(
                             idx_all, p, s, sa, pa, sp, ip, oth,
-                            totals, needed_scope_p, "Program", credits_each=_cr
+                            base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
+                            totals, base_totals, SENS["ops"], needed_scope_p,
+                            "Program", snap_prefix, credits_each=_cr
                         )
 
                         fmt_map_p = {}
