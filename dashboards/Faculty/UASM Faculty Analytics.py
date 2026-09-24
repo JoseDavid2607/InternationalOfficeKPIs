@@ -503,15 +503,19 @@ def qual_load_faculty_distribution() -> pd.DataFrame:
     df_ = pd.read_excel(raw, sheet_name="Faculty Distribution")
     df_.columns = df_.columns.str.strip()
 
-    # 'Faculty Distribution' solo trae 8 columnas base — Qualifications necesita
-    # 'Highest Degree' (y otros campos), que solo viven en 'Info. Profesores'.
-    # Mismo merge por ID normalizado que en demo_load_parttime().
+    # 'Info. Profesores' puede traer campos que 'Faculty Distribution' no
+    # tiene (se agregan con este merge) -- pero si ALGUNA columna ya existe
+    # en ambas hojas con el MISMO nombre (p.ej. 'Highest Degree', que vive
+    # en las dos), un merge normal la duplica con sufijos '_x'/'_y' y deja
+    # de existir la columna literal que el resto del código busca por
+    # nombre exacto. Por eso se excluyen del merge TODAS las columnas que
+    # ya están en 'Faculty Distribution' (no solo una lista fija) -- así
+    # nunca se generan esos sufijos, sea cual sea el nombre que se repita.
     raw2 = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
     df_info = pd.read_excel(raw2, sheet_name="Info. Profesores")
     df_info.columns = df_info.columns.str.strip()
     if "ID" in df_.columns and "ID" in df_info.columns:
-        extra_cols = [c for c in df_info.columns
-                      if c not in ("Profesor", "ID", "AREA_PROFESOR", "GÉNERO", "TIPO", "P/S")]
+        extra_cols = [c for c in df_info.columns if c not in df_.columns and c != "ID"]
         df_info_extra = df_info[["ID"] + extra_cols].copy()
         df_info_extra["_id_key"] = df_info_extra["ID"].map(_norm_id)
         df_info_extra = df_info_extra.dropna(subset=["_id_key"]).drop_duplicates(subset=["_id_key"])
