@@ -3392,14 +3392,12 @@ def page_qualifications():
         palette = px.colors.qualitative.Safe + px.colors.qualitative.Bold + px.colors.qualitative.Pastel
         color_map = {a: palette[i % len(palette)] for i, a in enumerate(level_values)}
         st.markdown(f"<h4 style='margin:0 0 6px 0; font-weight:500;'>{fig_title}</h4>", unsafe_allow_html=True)
-        metric_choice = st.radio("", ["%P", "%SA", "%OTHER"], index={"%P":0, "%SA":1, "%OTHER":2}[metric_kind], horizontal=True, key=f"metric_{level_name}", label_visibility="collapsed")
+        radio_col, toggle_col = st.columns([6, 4])
+        with radio_col:
+            metric_choice = st.radio("", ["%P", "%SA", "%OTHER"], index={"%P":0, "%SA":1, "%OTHER":2}[metric_kind], horizontal=True, key=f"metric_{level_name}", label_visibility="collapsed")
+        with toggle_col:
+            total_view = st.toggle("Total view", value=False, key=f"total_view_{level_name}")
 
-        fig = go.Figure()
-
-        # Las líneas de ÁREA se muestran por defecto; TOTAL arranca oculta
-        # (visible='legendonly') -- clic en su nombre en la leyenda la
-        # agrega, clic de nuevo la oculta. Clic en un área la oculta a
-        # ELLA sola (no afecta a las demás).
         if metric_choice == "%P":
             share_col, agg_src = "P_share", agg_ps_all
         elif metric_choice == "%SA":
@@ -3408,47 +3406,52 @@ def page_qualifications():
             share_col, agg_src = "OTHER_share", agg_tipo_all
         total_key = {"%P": "P", "%SA": "SA", "%OTHER": "OTHER"}[metric_choice]
 
-        for a in level_values:
-            sub = agg_src[(agg_src[level_name] == a)].copy()
-            sub["x"] = sub["_SEM"].map(x_map)
-            sub = sub.sort_values("x")
-            if sub.empty:
-                continue
-            fig.add_trace(go.Scatter(
-                x=sub["x"], y=sub[share_col], mode="lines+markers", name=a,
-                marker=dict(size=6, color=color_map[a]), line=dict(width=2, color=color_map[a]),
-                hovertemplate=a + "<br>%{y:.1f}%<extra></extra>", visible=True
-            ))
-
         sub_total = total_series_builders[total_key].copy()
         sub_total["x"] = sub_total["_SEM"].map(x_map)
         sub_total = sub_total.sort_values("x")
-        fig.add_trace(go.Scatter(
-            x=sub_total["x"], y=sub_total[share_col], mode="lines+markers", name="TOTAL",
-            marker=dict(size=6, color=TOTAL_SERIES_COLOR), line=dict(width=2, color=TOTAL_SERIES_COLOR),
-            hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>", visible="legendonly"
-        ))
 
-        # Zonas/líneas de referencia. Para %P la meta es distinta según sea
-        # un área puntual (60%) o el overall/TOTAL (75%). Plotly no permite
-        # que un clic en la leyenda cambie el sombreado de fondo por su
-        # cuenta (eso requeriría JavaScript personalizado, que Streamlit no
-        # soporta para st.plotly_chart) -- así que se sombrea en rojo por
-        # debajo de la meta de ÁREA (60%, la que aplica por defecto ya que
-        # las áreas empiezan visibles), y la meta Overall (75%) queda
-        # como una segunda línea de referencia sin sombrear, para cuando
-        # actives TOTAL.
+        fig = go.Figure()
+
+        if total_view:
+            # Vista TOTAL: una sola línea, con la meta Overall (75% para %P).
+            fig.add_trace(go.Scatter(
+                x=sub_total["x"], y=sub_total[share_col], mode="lines+markers", name="TOTAL",
+                marker=dict(size=6, color=TOTAL_SERIES_COLOR), line=dict(width=2, color=TOTAL_SERIES_COLOR),
+                hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>"
+            ))
+        else:
+            # Vista por área: todas visibles por defecto. Clic simple en la
+            # leyenda aísla esa línea (oculta las demás); doble clic la
+            # agrega/quita sin afectar a las otras -- así se arman
+            # selecciones de varias áreas a la vez.
+            for a in level_values:
+                sub = agg_src[(agg_src[level_name] == a)].copy()
+                sub["x"] = sub["_SEM"].map(x_map)
+                sub = sub.sort_values("x")
+                if sub.empty:
+                    continue
+                fig.add_trace(go.Scatter(
+                    x=sub["x"], y=sub[share_col], mode="lines+markers", name=a,
+                    marker=dict(size=6, color=color_map[a]), line=dict(width=2, color=color_map[a]),
+                    hovertemplate=a + "<br>%{y:.1f}%<extra></extra>", visible=True
+                ))
+            fig.update_layout(legend=dict(itemclick="toggleothers", itemdoubleclick="toggle"))
+
+        # Zonas/líneas de referencia -- dependen de si es vista TOTAL
+        # (meta Overall) o vista por área (meta de área). Para %P: 75% en
+        # TOTAL, 60% por área. %SA y %OTHER no cambian entre vistas.
         if metric_choice == "%P":
-            y_min, y_max, bad_high = 40, 100, False
-            fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=60, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
-            fig.add_hline(y=60, line_color="red", line_dash="dash", annotation_text="Area target 60%", annotation_position="bottom right")
-            fig.add_hline(y=75, line_color="#B03A2E", line_dash="dot", annotation_text="Overall target 75%", annotation_position="top right")
+            thr = 75 if total_view else 60
+            y_min, y_max = 40, 100
+            fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=thr, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
+            label = "Overall target 75%" if total_view else "Area target 60%"
+            fig.add_hline(y=thr, line_color="red", line_dash="dash", annotation_text=label, annotation_position="bottom right")
         elif metric_choice == "%SA":
-            thr, y_min, y_max, bad_high = 40, 20, 100, False
+            thr, y_min, y_max = 40, 20, 100
             fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=thr, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
             fig.add_hline(y=thr, line_color="red", line_dash="dash")
         else:  # %OTHER
-            thr, y_min, y_max, bad_high = 10, 0, 40, True
+            thr, y_min, y_max = 10, 0, 40
             fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=thr, y1=100, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
             fig.add_hline(y=thr, line_color="#F5A3A3", line_dash="dash")
 
@@ -3461,15 +3464,9 @@ def page_qualifications():
         fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, tickangle=45, range=x_range), yaxis=dict(range=[y_min, y_max]))
         fig.update_xaxes(title=None)
         fig.update_yaxes(title=None)
-        # Clic simple en la leyenda: aísla esa línea (oculta todas las
-        # demás, incluido TOTAL) -- esto incluye a TOTAL: si se hace clic
-        # ahí, se ocultan todas las áreas y solo queda TOTAL. Doble clic:
-        # agrega o quita esa línea puntual sin afectar a las demás (así se
-        # arman selecciones de varias áreas a la vez).
-        fig.update_layout(legend=dict(itemclick="toggleothers", itemdoubleclick="toggle"))
         st.plotly_chart(fig, use_container_width=True)
 
-        # ===== Datos para descargar (todas las series, sea cual sea lo que esté visible) =====
+        # ===== Datos para descargar (todas las series) =====
         def _series_for(level_val: str, ycol: str):
             if ycol == "P_share":
                 sub = agg_ps_all[(agg_ps_all[level_name] == level_val)]
