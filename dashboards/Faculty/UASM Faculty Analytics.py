@@ -3692,6 +3692,8 @@ def page_qualifications():
 
             if st.button("Reset to original", use_container_width=True, key="sens_reset"):
                 st.session_state.sens_ops = []
+                for _k in [k for k in st.session_state.keys() if k.startswith("_ov_snap_")]:
+                    del st.session_state[_k]
                 st.success("Reset.")
 
         if not sens_mode:
@@ -3990,54 +3992,83 @@ def page_qualifications():
         pp = credits_each / denom * 100.0
         return round(pp if objective == "%SA" else -pp, 2)
 
-    def _build_needed_table_all_objectives(idx_all: list, p, s, sa, pa, sp, ip, oth,
-                                            totals: dict[str,float], scope_label: str,
-                                            id_col_name: str, credits_each: float = 4.0) -> pd.DataFrame:
-        """Arma la tabla de 'Needed' con los 3 objetivos (%P, %SA, %OTHER)
-        juntos, cada uno con su columna de cursos necesarios (swap) y UNA
-        sola columna de impacto (el impacto de hacer ese swap completo, no
-        uno para subir y otro para bajar por separado) -- para que la
-        tabla no se extienda tanto hacia los lados."""
-        cr_txt = f"{credits_each:g}cr"
-        objectives = ["%P", "%SA", "%OTHER"]
-        need_col = {
-            "%P": f"Needed P \u2194 S swaps ({cr_txt})",
-            "%SA": f"Needed SA \u2194 non-SA swaps ({cr_txt})",
-            "%OTHER": f"Needed OTHER \u2194 non-OTHER swaps ({cr_txt})",
-        }
-        impact_col = {
-            "%P": "Impact of P\u2194S swap (%p.p.)",
-            "%SA": "Impact of SA\u2194non-SA swap (%p.p.)",
-            "%OTHER": "Impact of OTHER\u2194non-OTHER swap (%p.p.)",
-        }
+    def _swap_units_done_for_member(sens_ops: list, member: str, add_cats: list, remove_cats: list, credits_each: float) -> int:
+        """Cuenta cuántos swaps COMPLETOS (agregar credits_each en alguna
+        categoría de add_cats Y quitar credits_each en alguna de
+        remove_cats) se simularon para 'member' -- toma el mínimo de lo
+        agregado y lo quitado, porque un swap solo cuenta si se hicieron
+        LAS DOS partes. Las operaciones con member='All' también cuentan
+        (afectan a todas las áreas por igual)."""
+        added = 0.0
+        removed = 0.0
+        for op in sens_ops or []:
+            if op.get("member") not in (member, "All"):
+                continue
+            delta = float(op.get("credits", 0.0)) * int(op.get("count", 0))
+            cat = op.get("cat")
+            if cat in add_cats and delta > 0:
+                added += delta
+            elif cat in remove_cats and delta < 0:
+                removed += -delta
+        if credits_each <= 0:
+            return 0
+        return int(min(added, removed) / credits_each)
 
-        # Reparto proporcional (solo aplica en Overall) para cada objetivo por separado.
-        # _render_overall_needed_summary ya muestra el resumen corto (una
-        # vez por objetivo) y devuelve el total a repartir.
-        swap_alloc = {}
-        overall_totals = {}
+    def _build_needed_table_all_objectives(idx_all: list, p, s, sa, pa, sp, ip, oth,
+                                            base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
+                                            totals: dict[str,float], base_totals: dict[str,float],
+                                            sens_ops: list, id_col_name: str, snapshot_prefix: str,
+                                            credits_each: float = 4.0) -> pd.DataFrame:
+        """Arma la tabla de 'Needed' con los 3 objetivos (%P, %SA, %OTHER)
+        juntos, cada uno con DOS columnas: cuántos swaps hacen falta para
+        la meta DE ESA ÁREA (60/40/10, recalculado en vivo con los valores
+        ya ajustados por la simulación -- cada área es independiente, no
+        se reparte) y cuántos para la meta OVERALL (75/40/10).
+
+        La columna Overall usa un reparto proporcional que se calcula UNA
+        SOLA VEZ (con los datos de ANTES de simular nada) y se guarda en
+        session_state -- no se vuelve a repartir en cada rerun. Lo que sí
+        se actualiza en vivo es cuánto de eso ya se hizo: cada swap
+        simulado en una área específica se resta de SU propio número,
+        dejando el de las demás áreas tal cual estaba."""
+        objectives = ["%P", "%SA", "%OTHER"]
+        obj_label = {"%P": "P\u2194S", "%SA": "SA\u2194non-SA", "%OTHER": "OTHER\u2194non-OTHER"}
+        add_remove_cats = {
+            "%P": (["P"], ["S"]),
+            "%SA": (["SA"], ["PA", "SP", "IP", "OTHER"]),
+            "%OTHER": (["PA", "SP", "IP", "SA"], ["OTHER"]),
+        }
+        cr_txt = f"{credits_each:g}cr"
+        need_area_col = {o: f"Needed {obj_label[o]} \u2013 Area target ({cr_txt})" for o in objectives}
+        need_overall_col = {o: f"Needed {obj_label[o]} \u2013 Overall target ({cr_txt})" for o in objectives}
+
+        # Reparto Overall: se calcula UNA sola vez por objetivo (con los
+        # datos base, antes de simular nada) y se guarda -- no se vuelve a
+        # calcular en reruns posteriores mientras exista en session_state.
+        snapshot = {}
         for obj in objectives:
-            ov = _render_overall_needed_summary(obj, scope_label, totals, credits_each) \
-                if scope_label != "By area" else None
-            overall_totals[obj] = ov
-            if ov is not None:
-                w = _local_gap_size_weights(obj, idx_all, p, s, sa, pa, sp, ip, oth)
-                swap_alloc[obj] = _apportion(ov, w)
+            key = f"{snapshot_prefix}_{obj}"
+            if key not in st.session_state:
+                ov_total = _needed_swap_for_obj(obj, "Overall", 0, 0, 0, 0, 0, 0, 0, base_totals, credits_each)
+                w = _local_pct_gap_weights(obj, idx_all, base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth)
+                alloc = _apportion(ov_total, w)
+                st.session_state[key] = dict(zip(idx_all, alloc))
+            snapshot[obj] = st.session_state[key]
 
         rows = []
-        for i, label in enumerate(idx_all):
+        for label in idx_all:
             Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
             SAv, PAv = float(sa.get(label,0.0)), float(pa.get(label,0.0))
             SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
             OTv      = float(oth.get(label,0.0))
             row = {id_col_name: label}
             for obj in objectives:
-                if overall_totals[obj] is not None:
-                    need_swap = swap_alloc[obj][i]
-                else:
-                    need_swap = _needed_swap_for_obj(obj, scope_label, Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
-                row[need_col[obj]] = int(need_swap)
-                row[impact_col[obj]] = _swap_impact_pp(obj, Pv, Sv, SAv, PAv, SPv, IPv, OTv, credits_each)
+                need_area = _needed_swap_for_obj(obj, "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
+                add_cats, remove_cats = add_remove_cats[obj]
+                done = _swap_units_done_for_member(sens_ops, label, add_cats, remove_cats, credits_each)
+                need_overall = max(0, snapshot[obj].get(label, 0) - done)
+                row[need_area_col[obj]] = int(need_area)
+                row[need_overall_col[obj]] = int(need_overall)
             rows.append(row)
         return pd.DataFrame(rows)
 
@@ -4099,21 +4130,6 @@ def page_qualifications():
         # reciba al menos una porción base del reparto (no cero), y las que
         # necesitan más localmente sigan llevándose proporcionalmente más.
         return [n + 1 for n in n_list]
-
-    def _render_overall_needed_summary(objective: str, scope_label: str, totals: dict[str,float],
-                                        credits_each: float = 4.0):
-        """Cuando el scope es 'Overall', 'Needed' es un requisito del
-        colegio completo, no de cada área. Muestra el total UNA sola vez,
-        corto y con el número primero. Devuelve need_swap para que el
-        llamador lo reparta proporcionalmente entre áreas en la tabla."""
-        if scope_label == "By area":
-            return None
-        need_swap = _needed_swap_for_obj(objective, scope_label, 0, 0, 0, 0, 0, 0, 0, totals, credits_each)
-        c = int(credits_each)
-        labels = {"%P": ("P", "S"), "%SA": ("SA", "non-SA"), "%OTHER": ("non-OTHER", "OTHER")}
-        lab_add, lab_remove = labels[objective]
-        st.info(f"**Overall (school-wide):** {need_swap} swaps — +1 {lab_add} / \u22121 {lab_remove} each ({c}cr)")
-        return need_swap
 
     # ---------- impacto (siempre visible) ----------
     def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], scope_label: str, credits_each: float = 4.0):
@@ -4482,34 +4498,10 @@ def page_qualifications():
                     mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
 
                 with colT:
-                    # Controles: solo si Sensitivity ON y toggle ON se muestra el selector; el IMPACTO ya es siempre visible
+                    # Controles: solo si Sensitivity ON se muestra el toggle
                     needed_mode = False
                     if SENS["on"]:
-                        r1c1, r1c2 = st.columns([1.8, 1.6])
-                        with r1c1:
-                            needed_mode = st.toggle("# N° of courses needed for…", value=False, key="area_needed_mode", help="La tabla muestra, para %P, %SA y %OTHER a la vez, cuántos swaps de cursos (agregar 1 de un lado y quitar 1 del otro) hacen falta para llegar al objetivo, y el impacto en puntos porcentuales de hacer ese swap.")
-                        if needed_mode:
-                            with r1c2:
-                                scope_label = st.radio(
-                                    "Target scope",
-                                    ["By area", "Overall"],
-                                    horizontal=True,
-                                    key="area_scope",
-                                    help=(
-                                        "**Objective by Area**\n"
-                                        "- %P > 60%\n"
-                                        "- %SA > 40%\n"
-                                        "- %OTHER < 10%\n\n"
-                                        "**Overall Objective**\n"
-                                        "- %P > 75%\n"
-                                        "- %SA > 40%\n"
-                                        "- %OTHER < 10%"
-                                    )
-                                )
-                        else:
-                            scope_label = st.session_state.get("area_scope", "By area")
-                    else:
-                        scope_label = st.session_state.get("area_scope", "By area")
+                        needed_mode = st.toggle("# N° of courses needed for…", value=False, key="area_needed_mode", help="La tabla muestra, para %P, %SA y %OTHER a la vez, cuántos swaps de cursos (agregar 1 de un lado y quitar 1 del otro) hacen falta para llegar a la meta de esa área (60/40/10) y a la meta Overall (75/40/10).")
 
                     if not needed_mode:
                         metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
@@ -4523,7 +4515,7 @@ def page_qualifications():
                         _download_xlsx_button(metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
                                               key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
                     else:
-                        # ===== Tabla: %P, %SA, %OTHER juntos (Needed swap + Impact del swap) =====
+                        # ===== Tabla: %P, %SA, %OTHER juntos (Needed por área y Needed Overall) =====
                         idx_all = sorted(set(mod_agg_ps.index.tolist()) | set(mod_agg_tipo.index.tolist()))
                         p   = mod_agg_ps["P"].reindex(idx_all, fill_value=0.0)
                         s   = mod_agg_ps["S"].reindex(idx_all, fill_value=0.0)
@@ -4532,6 +4524,13 @@ def page_qualifications():
                         sp  = mod_agg_tipo["SP"].reindex(idx_all, fill_value=0.0)
                         ip  = mod_agg_tipo["IP"].reindex(idx_all, fill_value=0.0)
                         oth = mod_agg_tipo["OTHER"].reindex(idx_all, fill_value=0.0)
+                        base_p   = base_agg_ps["P"].reindex(idx_all, fill_value=0.0)
+                        base_s   = base_agg_ps["S"].reindex(idx_all, fill_value=0.0)
+                        base_sa  = base_agg_tipo["SA"].reindex(idx_all, fill_value=0.0)
+                        base_pa  = base_agg_tipo["PA"].reindex(idx_all, fill_value=0.0)
+                        base_sp  = base_agg_tipo["SP"].reindex(idx_all, fill_value=0.0)
+                        base_ip  = base_agg_tipo["IP"].reindex(idx_all, fill_value=0.0)
+                        base_oth = base_agg_tipo["OTHER"].reindex(idx_all, fill_value=0.0)
 
                         totals = {
                             "P": float(p.sum()), "S": float(s.sum()),
@@ -4539,32 +4538,38 @@ def page_qualifications():
                             "SP": float(sp.sum()), "IP": float(ip.sum()),
                             "OTHER": float(oth.sum())
                         }
+                        base_totals = {
+                            "P": float(base_p.sum()), "S": float(base_s.sum()),
+                            "SA": float(base_sa.sum()), "PA": float(base_pa.sum()),
+                            "SP": float(base_sp.sum()), "IP": float(base_ip.sum()),
+                            "OTHER": float(base_oth.sum())
+                        }
+                        _cr = float(st.session_state.get("sens_credits", 4.0))
+                        snap_prefix = f"_ov_snap_area_{_slugify(sel_label)}_{_cr:g}"
 
                         need_tbl = _build_needed_table_all_objectives(
-                            idx_all, p, s, sa, pa, sp, ip, oth, totals, scope_label,
-                            "Academic Area", credits_each=float(st.session_state.get("sens_credits", 4.0))
+                            idx_all, p, s, sa, pa, sp, ip, oth,
+                            base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
+                            totals, base_totals, SENS["ops"],
+                            "Academic Area", snap_prefix, credits_each=_cr
                         )
-                        # formateo + heatmap (verde→amarillo→naranja→rojo) SOLO en columnas "Impact ..."
                         fmt_map = {}
                         if 'Academic Area' in need_tbl.columns:
                             fmt_map['Academic Area'] = '{}'
                         for col in need_tbl.columns:
                             if col.startswith("Needed "):
                                 fmt_map[col] = '{:.0f}'
-                            elif col.startswith("Impact "):
-                                fmt_map[col] = '{:+.2f}'
 
                         styled = (
                             need_tbl.style
                             .format(fmt_map)
-                            .apply(_style_impact_heatmap, id_col="Academic Area", axis=None)  # HEATMAP aplicado aquí
                             .hide(axis="index")
                         )
                         st.markdown(styled.to_html(escape=False), unsafe_allow_html=True)
                         _download_xlsx_button(
                             need_tbl,
-                            f"needed_ByArea_{_slugify(sel_label)}_{_slugify(scope_label)}.xlsx",
-                            key=f"dl_need_area_{_slugify(sel_label)}_{_slugify(scope_label)}",
+                            f"needed_ByArea_{_slugify(sel_label)}.xlsx",
+                            key=f"dl_need_area_{_slugify(sel_label)}",
                             label="⬇️ Download (Excel)"
                         )
 
@@ -4676,16 +4681,7 @@ def page_qualifications():
                 with colF_L:
                     needed_mode_f = False
                     if SENS["on"]:
-                        r1c1, r1c2 = st.columns([1.8, 1.6])
-                        with r1c1:
-                            needed_mode_f = st.toggle("Show necessary # of Faculty for…", value=False, key="field_needed_mode")
-                        if needed_mode_f:
-                            with r1c2:
-                                scope_label_f = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="field_scope")
-                        else:
-                            scope_label_f = st.session_state.get("field_scope", "By area")
-                    else:
-                        scope_label_f = st.session_state.get("field_scope", "By area")
+                        needed_mode_f = st.toggle("Show necessary # of Faculty for…", value=False, key="field_needed_mode")
 
                     if not needed_mode_f:
                         metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
@@ -4707,6 +4703,13 @@ def page_qualifications():
                         sp  = mod_agg_tipo["SP"].reindex(idx_all, fill_value=0.0)
                         ip  = mod_agg_tipo["IP"].reindex(idx_all, fill_value=0.0)
                         oth = mod_agg_tipo["OTHER"].reindex(idx_all, fill_value=0.0)
+                        base_p   = base_agg_ps["P"].reindex(idx_all, fill_value=0.0)
+                        base_s   = base_agg_ps["S"].reindex(idx_all, fill_value=0.0)
+                        base_sa  = base_agg_tipo["SA"].reindex(idx_all, fill_value=0.0)
+                        base_pa  = base_agg_tipo["PA"].reindex(idx_all, fill_value=0.0)
+                        base_sp  = base_agg_tipo["SP"].reindex(idx_all, fill_value=0.0)
+                        base_ip  = base_agg_tipo["IP"].reindex(idx_all, fill_value=0.0)
+                        base_oth = base_agg_tipo["OTHER"].reindex(idx_all, fill_value=0.0)
 
                         totals = {
                             "P": float(p.sum()), "S": float(s.sum()),
@@ -4714,10 +4717,20 @@ def page_qualifications():
                             "SP": float(sp.sum()), "IP": float(ip.sum()),
                             "OTHER": float(oth.sum())
                         }
+                        base_totals = {
+                            "P": float(base_p.sum()), "S": float(base_s.sum()),
+                            "SA": float(base_sa.sum()), "PA": float(base_pa.sum()),
+                            "SP": float(base_sp.sum()), "IP": float(base_ip.sum()),
+                            "OTHER": float(base_oth.sum())
+                        }
+                        _cr = float(st.session_state.get("sens_credits", 4.0))
+                        snap_prefix = f"_ov_snap_field_{_slugify(sel_label)}_{_cr:g}"
 
                         need_tbl_f = _build_needed_table_all_objectives(
-                            idx_all, p, s, sa, pa, sp, ip, oth, totals, scope_label_f,
-                            "Field", credits_each=float(st.session_state.get("sens_credits", 4.0))
+                            idx_all, p, s, sa, pa, sp, ip, oth,
+                            base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
+                            totals, base_totals, SENS["ops"],
+                            "Field", snap_prefix, credits_each=_cr
                         )
 
                         fmt_map_f = {}
@@ -4726,21 +4739,18 @@ def page_qualifications():
                         for col in need_tbl_f.columns:
                             if col.startswith("Needed "):
                                 fmt_map_f[col] = '{:.0f}'
-                            elif col.startswith("Impact "):
-                                fmt_map_f[col] = '{:+.2f}'
 
                         styled_f = (
                             need_tbl_f.style
                             .format(fmt_map_f)
-                            .apply(_style_impact_heatmap, id_col="Field", axis=None)  # HEATMAP aplicado aquí
                             .hide(axis="index")
                         )
 
                         st.markdown(styled_f.to_html(escape=False), unsafe_allow_html=True)
                         _download_xlsx_button(
                             need_tbl_f,
-                            f"needed_ByField_{_slugify(sel_label)}_{_slugify(scope_label_f)}.xlsx",
-                            key=f"dl_need_field_{_slugify(sel_label)}_{_slugify(scope_label_f)}",
+                            f"needed_ByField_{_slugify(sel_label)}.xlsx",
+                            key=f"dl_need_field_{_slugify(sel_label)}",
                             label="⬇️ Download (Excel)"
                         )
 
@@ -4874,16 +4884,7 @@ def page_qualifications():
                 with colP_L:
                     needed_mode_p = False
                     if SENS.get("on"):
-                        r1c1, r1c2 = st.columns([1.8, 1.6])
-                        with r1c1:
-                            needed_mode_p = st.toggle("Show necessary # of Faculty for…", value=False, key="prog_needed_mode")
-                        if needed_mode_p:
-                            with r1c2:
-                                scope_label_p = st.radio("Target scope", ["By area", "Overall"], horizontal=True, key="prog_scope")
-                        else:
-                            scope_label_p = st.session_state.get("prog_scope", "By area")
-                    else:
-                        scope_label_p = st.session_state.get("prog_scope", "By area")
+                        needed_mode_p = st.toggle("Show necessary # of Faculty for…", value=False, key="prog_needed_mode")
 
                     if not needed_mode_p:
                         # Tabla de % por Programa (sin botón de impacto y sin total)
@@ -4898,7 +4899,7 @@ def page_qualifications():
                         _download_xlsx_button(metrics_tbl_p, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
                                               key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
                     else:
-                        # Tabla "needed" + impacto (heatmap)
+                        # Tabla "needed" (Area target + Overall target)
                         idx_all = sorted(set(mod_agg_ps_p.index.tolist()) | set(mod_agg_tipo_p.index.tolist()))
                         p   = mod_agg_ps_p["P"].reindex(idx_all, fill_value=0.0)
                         s   = mod_agg_ps_p["S"].reindex(idx_all, fill_value=0.0)
@@ -4907,6 +4908,13 @@ def page_qualifications():
                         sp  = mod_agg_tipo_p["SP"].reindex(idx_all, fill_value=0.0)
                         ip  = mod_agg_tipo_p["IP"].reindex(idx_all, fill_value=0.0)
                         oth = mod_agg_tipo_p["OTHER"].reindex(idx_all, fill_value=0.0)
+                        base_p   = base_agg_ps_p["P"].reindex(idx_all, fill_value=0.0)
+                        base_s   = base_agg_ps_p["S"].reindex(idx_all, fill_value=0.0)
+                        base_sa  = base_agg_tipo_p["SA"].reindex(idx_all, fill_value=0.0)
+                        base_pa  = base_agg_tipo_p["PA"].reindex(idx_all, fill_value=0.0)
+                        base_sp  = base_agg_tipo_p["SP"].reindex(idx_all, fill_value=0.0)
+                        base_ip  = base_agg_tipo_p["IP"].reindex(idx_all, fill_value=0.0)
+                        base_oth = base_agg_tipo_p["OTHER"].reindex(idx_all, fill_value=0.0)
 
                         totals = {
                             "P": float(p.sum()), "S": float(s.sum()),
@@ -4914,10 +4922,20 @@ def page_qualifications():
                             "SP": float(sp.sum()), "IP": float(ip.sum()),
                             "OTHER": float(oth.sum())
                         }
+                        base_totals = {
+                            "P": float(base_p.sum()), "S": float(base_s.sum()),
+                            "SA": float(base_sa.sum()), "PA": float(base_pa.sum()),
+                            "SP": float(base_sp.sum()), "IP": float(base_ip.sum()),
+                            "OTHER": float(base_oth.sum())
+                        }
+                        _cr = float(st.session_state.get("sens_credits", 4.0))
+                        snap_prefix = f"_ov_snap_prog_{_slugify(sel_label)}_{_cr:g}"
 
                         need_tbl_p = _build_needed_table_all_objectives(
-                            idx_all, p, s, sa, pa, sp, ip, oth, totals, scope_label_p,
-                            "Program", credits_each=float(st.session_state.get("sens_credits", 4.0))
+                            idx_all, p, s, sa, pa, sp, ip, oth,
+                            base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
+                            totals, base_totals, SENS["ops"],
+                            "Program", snap_prefix, credits_each=_cr
                         )
 
                         fmt_map_p = {}
@@ -4926,20 +4944,17 @@ def page_qualifications():
                         for col in need_tbl_p.columns:
                             if col.startswith("Needed "):
                                 fmt_map_p[col] = '{:.0f}'
-                            elif col.startswith("Impact "):
-                                fmt_map_p[col] = '{:+.2f}'
 
                         styled_p = (
                             need_tbl_p.style
                             .format(fmt_map_p)
-                            .apply(_style_impact_heatmap, id_col="Program", axis=None)
                             .hide(axis="index")
                         )
                         st.markdown(styled_p.to_html(escape=False), unsafe_allow_html=True)
                         _download_xlsx_button(
                             need_tbl_p,
-                            f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(scope_label_p)}.xlsx",
-                            key=f"dl_need_prog_{_slugify(sel_label)}_{_slugify(scope_label_p)}",
+                            f"needed_ByProgram_{_slugify(sel_label)}.xlsx",
+                            key=f"dl_need_prog_{_slugify(sel_label)}",
                             label="⬇️ Download (Excel)"
                         )
 
