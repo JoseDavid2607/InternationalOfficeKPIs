@@ -4014,23 +4014,18 @@ def page_qualifications():
             return 0
         return int(min(added, removed) / credits_each)
 
-    def _build_needed_table_all_objectives(idx_all: list, p, s, sa, pa, sp, ip, oth,
-                                            base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
-                                            totals: dict[str,float], base_totals: dict[str,float],
-                                            sens_ops: list, id_col_name: str, snapshot_prefix: str,
-                                            credits_each: float = 4.0) -> pd.DataFrame:
-        """Arma la tabla de 'Needed' con los 3 objetivos (%P, %SA, %OTHER)
-        juntos, cada uno con DOS columnas: cuántos swaps hacen falta para
-        la meta DE ESA ÁREA (60/40/10, recalculado en vivo con los valores
-        ya ajustados por la simulación -- cada área es independiente, no
-        se reparte) y cuántos para la meta OVERALL (75/40/10).
-
-        La columna Overall usa un reparto proporcional que se calcula UNA
-        SOLA VEZ (con los datos de ANTES de simular nada) y se guarda en
-        session_state -- no se vuelve a repartir en cada rerun. Lo que sí
-        se actualiza en vivo es cuánto de eso ya se hizo: cada swap
-        simulado en una área específica se resta de SU propio número,
-        dejando el de las demás áreas tal cual estaba."""
+    def _build_needed_table_single_scope(idx_all: list, p, s, sa, pa, sp, ip, oth,
+                                          base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
+                                          totals: dict[str,float], base_totals: dict[str,float],
+                                          sens_ops: list, scope_label: str, id_col_name: str,
+                                          snapshot_prefix: str, credits_each: float = 4.0) -> pd.DataFrame:
+        """Arma la tabla de 'Needed' para UN SOLO scope a la vez (By area u
+        Overall, elegido por el usuario) -- ya no muestra las dos metas
+        juntas. Para 'Overall' usa el mismo snapshot 'congelado' de
+        siempre (calculado una sola vez con los datos base, y solo se le
+        resta el progreso simulado en cada área específica) y OCULTA las
+        filas que ya no necesitan ningún curso (las 3 columnas en 0), para
+        que la tabla se concentre en lo que falta por hacer."""
         objectives = ["%P", "%SA", "%OTHER"]
         obj_label = {"%P": "P\u2194S", "%SA": "SA\u2194non-SA", "%OTHER": "OTHER\u2194non-OTHER"}
         add_remove_cats = {
@@ -4039,12 +4034,22 @@ def page_qualifications():
             "%OTHER": (["PA", "SP", "IP", "SA"], ["OTHER"]),
         }
         cr_txt = f"{credits_each:g}cr"
-        need_area_col = {o: f"Needed {obj_label[o]} \u2013 Area target ({cr_txt})" for o in objectives}
-        need_overall_col = {o: f"Needed {obj_label[o]} \u2013 Overall target ({cr_txt})" for o in objectives}
+        need_col = {o: f"Needed {obj_label[o]} swaps ({cr_txt})" for o in objectives}
 
-        # Reparto Overall: se calcula UNA sola vez por objetivo (con los
-        # datos base, antes de simular nada) y se guarda -- no se vuelve a
-        # calcular en reruns posteriores mientras exista en session_state.
+        if scope_label == "By area":
+            rows = []
+            for label in idx_all:
+                Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
+                SAv, PAv = float(sa.get(label,0.0)), float(pa.get(label,0.0))
+                SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
+                OTv      = float(oth.get(label,0.0))
+                row = {id_col_name: label}
+                for obj in objectives:
+                    row[need_col[obj]] = int(_needed_swap_for_obj(obj, "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each))
+                rows.append(row)
+            return pd.DataFrame(rows)
+
+        # Overall: snapshot congelado (una sola vez con datos base) + progreso restado por área
         snapshot = {}
         for obj in objectives:
             key = f"{snapshot_prefix}_{obj}"
@@ -4057,20 +4062,31 @@ def page_qualifications():
 
         rows = []
         for label in idx_all:
-            Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
-            SAv, PAv = float(sa.get(label,0.0)), float(pa.get(label,0.0))
-            SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
-            OTv      = float(oth.get(label,0.0))
             row = {id_col_name: label}
+            any_need = False
             for obj in objectives:
-                need_area = _needed_swap_for_obj(obj, "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
                 add_cats, remove_cats = add_remove_cats[obj]
                 done = _swap_units_done_for_member(sens_ops, label, add_cats, remove_cats, credits_each)
                 need_overall = max(0, snapshot[obj].get(label, 0) - done)
-                row[need_area_col[obj]] = int(need_area)
-                row[need_overall_col[obj]] = int(need_overall)
-            rows.append(row)
+                row[need_col[obj]] = int(need_overall)
+                if need_overall > 0:
+                    any_need = True
+            if any_need:  # oculta las filas que ya no necesitan nada
+                rows.append(row)
         return pd.DataFrame(rows)
+
+    def _style_needed_red(df: pd.DataFrame, id_col: str):
+        """Resalta en rojo cualquier celda numérica (de las columnas
+        'Needed ...') cuyo valor sea mayor a 0 -- 'todavía hace falta
+        hacer este swap'. Las celdas en 0 quedan sin resaltar."""
+        styles = pd.DataFrame('', index=df.index, columns=df.columns)
+        for col in df.columns:
+            if col == id_col:
+                continue
+            styles[col] = df[col].apply(
+                lambda v: 'background-color:#FFC7CE; color:#9C0006; font-weight:600;' if (isinstance(v, (int, float)) and v > 0) else ''
+            )
+        return styles
 
     def _local_pct_gap_weights(objective: str, idx_all: list, p, s, sa, pa, sp, ip, oth) -> list:
         """Peso de cada área para el reparto proporcional del Overall: qué
@@ -4500,8 +4516,14 @@ def page_qualifications():
                 with colT:
                     # Controles: solo si Sensitivity ON se muestra el toggle
                     needed_mode = False
+                    needed_scope = "By area"
                     if SENS["on"]:
-                        needed_mode = st.toggle("# N° of courses needed for…", value=False, key="area_needed_mode", help="La tabla muestra, para %P, %SA y %OTHER a la vez, cuántos swaps de cursos (agregar 1 de un lado y quitar 1 del otro) hacen falta para llegar a la meta de esa área (60/40/10) y a la meta Overall (75/40/10).")
+                        r1c1, r1c2 = st.columns([1.8, 1.6])
+                        with r1c1:
+                            needed_mode = st.toggle("# N° of courses needed for…", value=False, key="area_needed_mode", help="La tabla muestra, para %P, %SA y %OTHER a la vez, cuántos swaps de cursos (agregar 1 de un lado y quitar 1 del otro) hacen falta para llegar a la meta.")
+                        if needed_mode:
+                            with r1c2:
+                                needed_scope = st.radio("View", ["By area", "Overall"], horizontal=True, key="area_needed_scope")
 
                     if not needed_mode:
                         metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
@@ -4515,7 +4537,7 @@ def page_qualifications():
                         _download_xlsx_button(metrics_tbl, f"table_ByArea_{_slugify(sel_label)}.xlsx",
                                               key=f"dl_tbl_area_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
                     else:
-                        # ===== Tabla: %P, %SA, %OTHER juntos (Needed por área y Needed Overall) =====
+                        # ===== Tabla: %P, %SA, %OTHER juntos, para UN solo scope (By area u Overall) =====
                         idx_all = sorted(set(mod_agg_ps.index.tolist()) | set(mod_agg_tipo.index.tolist()))
                         p   = mod_agg_ps["P"].reindex(idx_all, fill_value=0.0)
                         s   = mod_agg_ps["S"].reindex(idx_all, fill_value=0.0)
@@ -4547,31 +4569,35 @@ def page_qualifications():
                         _cr = float(st.session_state.get("sens_credits", 4.0))
                         snap_prefix = f"_ov_snap_area_{_slugify(sel_label)}_{_cr:g}"
 
-                        need_tbl = _build_needed_table_all_objectives(
+                        need_tbl = _build_needed_table_single_scope(
                             idx_all, p, s, sa, pa, sp, ip, oth,
                             base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
-                            totals, base_totals, SENS["ops"],
+                            totals, base_totals, SENS["ops"], needed_scope,
                             "Academic Area", snap_prefix, credits_each=_cr
                         )
-                        fmt_map = {}
-                        if 'Academic Area' in need_tbl.columns:
-                            fmt_map['Academic Area'] = '{}'
-                        for col in need_tbl.columns:
-                            if col.startswith("Needed "):
-                                fmt_map[col] = '{:.0f}'
+                        if need_tbl.empty:
+                            st.success("No courses needed \u2014 every area already meets the target.")
+                        else:
+                            fmt_map = {}
+                            if 'Academic Area' in need_tbl.columns:
+                                fmt_map['Academic Area'] = '{}'
+                            for col in need_tbl.columns:
+                                if col.startswith("Needed "):
+                                    fmt_map[col] = '{:.0f}'
 
-                        styled = (
-                            need_tbl.style
-                            .format(fmt_map)
-                            .hide(axis="index")
-                        )
-                        st.markdown(styled.to_html(escape=False), unsafe_allow_html=True)
-                        _download_xlsx_button(
-                            need_tbl,
-                            f"needed_ByArea_{_slugify(sel_label)}.xlsx",
-                            key=f"dl_need_area_{_slugify(sel_label)}",
-                            label="⬇️ Download (Excel)"
-                        )
+                            styled = (
+                                need_tbl.style
+                                .format(fmt_map)
+                                .apply(_style_needed_red, id_col="Academic Area", axis=None)
+                                .hide(axis="index")
+                            )
+                            st.markdown(styled.to_html(escape=False), unsafe_allow_html=True)
+                            _download_xlsx_button(
+                                need_tbl,
+                                f"needed_ByArea_{_slugify(sel_label)}_{_slugify(needed_scope)}.xlsx",
+                                key=f"dl_need_area_{_slugify(sel_label)}_{_slugify(needed_scope)}",
+                                label="⬇️ Download (Excel)"
+                            )
 
                 # ========== Series históricas ==========
                 df_hist = df_car_global.copy()
@@ -4680,8 +4706,14 @@ def page_qualifications():
 
                 with colF_L:
                     needed_mode_f = False
+                    needed_scope_f = "By area"
                     if SENS["on"]:
-                        needed_mode_f = st.toggle("Show necessary # of Faculty for…", value=False, key="field_needed_mode")
+                        r1c1, r1c2 = st.columns([1.8, 1.6])
+                        with r1c1:
+                            needed_mode_f = st.toggle("Show necessary # of Faculty for…", value=False, key="field_needed_mode")
+                        if needed_mode_f:
+                            with r1c2:
+                                needed_scope_f = st.radio("View", ["By area", "Overall"], horizontal=True, key="field_needed_scope")
 
                     if not needed_mode_f:
                         metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
@@ -4726,33 +4758,37 @@ def page_qualifications():
                         _cr = float(st.session_state.get("sens_credits", 4.0))
                         snap_prefix = f"_ov_snap_field_{_slugify(sel_label)}_{_cr:g}"
 
-                        need_tbl_f = _build_needed_table_all_objectives(
+                        need_tbl_f = _build_needed_table_single_scope(
                             idx_all, p, s, sa, pa, sp, ip, oth,
                             base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
-                            totals, base_totals, SENS["ops"],
+                            totals, base_totals, SENS["ops"], needed_scope_f,
                             "Field", snap_prefix, credits_each=_cr
                         )
 
-                        fmt_map_f = {}
-                        if 'Field' in need_tbl_f.columns:
-                            fmt_map_f['Field'] = '{}'
-                        for col in need_tbl_f.columns:
-                            if col.startswith("Needed "):
-                                fmt_map_f[col] = '{:.0f}'
+                        if need_tbl_f.empty:
+                            st.success("No courses needed \u2014 every field already meets the target.")
+                        else:
+                            fmt_map_f = {}
+                            if 'Field' in need_tbl_f.columns:
+                                fmt_map_f['Field'] = '{}'
+                            for col in need_tbl_f.columns:
+                                if col.startswith("Needed "):
+                                    fmt_map_f[col] = '{:.0f}'
 
-                        styled_f = (
-                            need_tbl_f.style
-                            .format(fmt_map_f)
-                            .hide(axis="index")
-                        )
+                            styled_f = (
+                                need_tbl_f.style
+                                .format(fmt_map_f)
+                                .apply(_style_needed_red, id_col="Field", axis=None)
+                                .hide(axis="index")
+                            )
 
-                        st.markdown(styled_f.to_html(escape=False), unsafe_allow_html=True)
-                        _download_xlsx_button(
-                            need_tbl_f,
-                            f"needed_ByField_{_slugify(sel_label)}.xlsx",
-                            key=f"dl_need_field_{_slugify(sel_label)}",
-                            label="⬇️ Download (Excel)"
-                        )
+                            st.markdown(styled_f.to_html(escape=False), unsafe_allow_html=True)
+                            _download_xlsx_button(
+                                need_tbl_f,
+                                f"needed_ByField_{_slugify(sel_label)}_{_slugify(needed_scope_f)}.xlsx",
+                                key=f"dl_need_field_{_slugify(sel_label)}_{_slugify(needed_scope_f)}",
+                                label="⬇️ Download (Excel)"
+                            )
 
                 # Históricos Field
                 df_hist_f = df_car_global.copy()
@@ -4883,8 +4919,14 @@ def page_qualifications():
 
                 with colP_L:
                     needed_mode_p = False
+                    needed_scope_p = "By area"
                     if SENS.get("on"):
-                        needed_mode_p = st.toggle("Show necessary # of Faculty for…", value=False, key="prog_needed_mode")
+                        r1c1, r1c2 = st.columns([1.8, 1.6])
+                        with r1c1:
+                            needed_mode_p = st.toggle("Show necessary # of Faculty for…", value=False, key="prog_needed_mode")
+                        if needed_mode_p:
+                            with r1c2:
+                                needed_scope_p = st.radio("View", ["By area", "Overall"], horizontal=True, key="prog_needed_scope")
 
                     if not needed_mode_p:
                         # Tabla de % por Programa (sin botón de impacto y sin total)
@@ -4899,7 +4941,7 @@ def page_qualifications():
                         _download_xlsx_button(metrics_tbl_p, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
                                               key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
                     else:
-                        # Tabla "needed" (Area target + Overall target)
+                        # Tabla "needed" para UN solo scope (By area u Overall)
                         idx_all = sorted(set(mod_agg_ps_p.index.tolist()) | set(mod_agg_tipo_p.index.tolist()))
                         p   = mod_agg_ps_p["P"].reindex(idx_all, fill_value=0.0)
                         s   = mod_agg_ps_p["S"].reindex(idx_all, fill_value=0.0)
@@ -4931,32 +4973,36 @@ def page_qualifications():
                         _cr = float(st.session_state.get("sens_credits", 4.0))
                         snap_prefix = f"_ov_snap_prog_{_slugify(sel_label)}_{_cr:g}"
 
-                        need_tbl_p = _build_needed_table_all_objectives(
+                        need_tbl_p = _build_needed_table_single_scope(
                             idx_all, p, s, sa, pa, sp, ip, oth,
                             base_p, base_s, base_sa, base_pa, base_sp, base_ip, base_oth,
-                            totals, base_totals, SENS["ops"],
+                            totals, base_totals, SENS["ops"], needed_scope_p,
                             "Program", snap_prefix, credits_each=_cr
                         )
 
-                        fmt_map_p = {}
-                        if 'Program' in need_tbl_p.columns:
-                            fmt_map_p['Program'] = '{}'
-                        for col in need_tbl_p.columns:
-                            if col.startswith("Needed "):
-                                fmt_map_p[col] = '{:.0f}'
+                        if need_tbl_p.empty:
+                            st.success("No courses needed \u2014 every program already meets the target.")
+                        else:
+                            fmt_map_p = {}
+                            if 'Program' in need_tbl_p.columns:
+                                fmt_map_p['Program'] = '{}'
+                            for col in need_tbl_p.columns:
+                                if col.startswith("Needed "):
+                                    fmt_map_p[col] = '{:.0f}'
 
-                        styled_p = (
-                            need_tbl_p.style
-                            .format(fmt_map_p)
-                            .hide(axis="index")
-                        )
-                        st.markdown(styled_p.to_html(escape=False), unsafe_allow_html=True)
-                        _download_xlsx_button(
-                            need_tbl_p,
-                            f"needed_ByProgram_{_slugify(sel_label)}.xlsx",
-                            key=f"dl_need_prog_{_slugify(sel_label)}",
-                            label="⬇️ Download (Excel)"
-                        )
+                            styled_p = (
+                                need_tbl_p.style
+                                .format(fmt_map_p)
+                                .apply(_style_needed_red, id_col="Program", axis=None)
+                                .hide(axis="index")
+                            )
+                            st.markdown(styled_p.to_html(escape=False), unsafe_allow_html=True)
+                            _download_xlsx_button(
+                                need_tbl_p,
+                                f"needed_ByProgram_{_slugify(sel_label)}_{_slugify(needed_scope_p)}.xlsx",
+                                key=f"dl_need_prog_{_slugify(sel_label)}_{_slugify(needed_scope_p)}",
+                                label="⬇️ Download (Excel)"
+                            )
 
                 # ====== Series históricas por Program ======
                 # Normalización previa (por si df_car_global no trae las columnas _SEM/_PROG/_PS/_TIPO/_CRED)
