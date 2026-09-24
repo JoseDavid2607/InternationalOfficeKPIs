@@ -3392,124 +3392,61 @@ def page_qualifications():
         palette = px.colors.qualitative.Safe + px.colors.qualitative.Bold + px.colors.qualitative.Pastel
         color_map = {a: palette[i % len(palette)] for i, a in enumerate(level_values)}
         st.markdown(f"<h4 style='margin:0 0 6px 0; font-weight:500;'>{fig_title}</h4>", unsafe_allow_html=True)
-        sel_col, radio_col = st.columns([6,4])
-        options = ["(All)", "(TOTAL)"] + level_values
-        with sel_col:
-            opt = st.selectbox("", options, index=0, key=f"{level_name}_filter", label_visibility="collapsed")
-        with radio_col:
-            metric_choice = st.radio("", ["%P", "%SA", "%OTHER"], index={"%P":0, "%SA":1, "%OTHER":2}[metric_kind], horizontal=True, key=f"metric_{level_name}", label_visibility="collapsed")
+        metric_choice = st.radio("", ["%P", "%SA", "%OTHER"], index={"%P":0, "%SA":1, "%OTHER":2}[metric_kind], horizontal=True, key=f"metric_{level_name}", label_visibility="collapsed")
 
         fig = go.Figure()
 
+        # Todas las líneas (cada área/field/program + TOTAL) se agregan
+        # SIEMPRE, pero arrancan ocultas (visible='legendonly') -- no hay
+        # selectbox: al hacer clic en un nombre de la leyenda, esa línea se
+        # muestra; al hacer clic en otro, se va agregando (clic de nuevo la
+        # vuelve a ocultar). TOTAL también arranca oculto por defecto.
         if metric_choice == "%P":
-            thr = 75 if opt == "(TOTAL)" else 60
-            if opt == "(All)":
-                for a in level_values:
-                    sub = agg_ps_all[(agg_ps_all[level_name] == a)].copy()
-                    sub["x"] = sub["_SEM"].map(x_map)
-                    sub = sub.sort_values("x")
-                    if sub.empty: continue
-                    fig.add_trace(go.Scatter(
-                        x=sub["x"], y=sub["P_share"], mode="lines+markers", name=a,
-                        marker=dict(size=6, color=color_map[a]), line=dict(width=2, color=color_map[a]),
-                        hovertemplate=a + "<br>%{y:.1f}%<extra></extra>"
-                    ))
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["P"].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub["P_share"], mode="lines+markers", name="TOTAL",
-                    marker=dict(size=6, color=TOTAL_SERIES_COLOR), line=dict(width=2, color=TOTAL_SERIES_COLOR),
-                    hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>"
-                ))
-            else:
-                sub = agg_ps_all[(agg_ps_all[level_name] == opt)].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub["P_share"], mode="lines+markers", name=opt,
-                    marker=dict(size=6, color=MINT), line=dict(width=2, color=MINT),
-                    hovertemplate=opt + "<br>%{y:.1f}%<extra></extra>"
-                ))
-            y_min, bad_high = 40, False
-
+            share_col, agg_src = "P_share", agg_ps_all
         elif metric_choice == "%SA":
-            thr = 40
-            share_col = "SA_share"
-            if opt == "(All)":
-                for a in level_values:
-                    sub = agg_tipo_all[(agg_tipo_all[level_name] == a)].copy()
-                    sub["x"] = sub["_SEM"].map(x_map)
-                    sub = sub.sort_values("x")
-                    if sub.empty: continue
-                    fig.add_trace(go.Scatter(
-                        x=sub["x"], y=sub[share_col], mode="lines+markers", name=a,
-                        marker=dict(size=6, color=color_map[a]), line=dict(width=2, color=color_map[a]),
-                        hovertemplate=a + "<br>%{y:.1f}%<extra></extra>"
-                    ))
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["SA"].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub[share_col], mode="lines+markers", name="TOTAL",
-                    marker=dict(size=6, color=TOTAL_SERIES_COLOR), line=dict(width=2, color=TOTAL_SERIES_COLOR),
-                    hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>"
-                ))
-            else:
-                sub = agg_tipo_all[(agg_tipo_all[level_name] == opt)].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub[share_col], mode="lines+markers", name=opt,
-                    marker=dict(size=6, color=MINT), line=dict(width=2, color=MINT),
-                    hovertemplate=opt + "<br>%{y:.1f}%<extra></extra>"
-                ))
-            y_min, bad_high = 20, False
-
-        else:  # "%OTHER"
-            thr = 10
-            share_col = "OTHER_share"
-            if opt == "(All)":
-                for a in level_values:
-                    sub = agg_tipo_all[(agg_tipo_all[level_name] == a)].copy()
-                    sub["x"] = sub["_SEM"].map(x_map)
-                    sub = sub.sort_values("x")
-                    if sub.empty: continue
-                    fig.add_trace(go.Scatter(
-                        x=sub["x"], y=sub[share_col], mode="lines+markers", name=a,
-                        marker=dict(size=6, color=color_map[a]), line=dict(width=2, color=color_map[a]),
-                        hovertemplate=a + "<br>%{y:.1f}%<extra></extra>"
-                    ))
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["OTHER"].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub[share_col], mode="lines+markers", name="TOTAL",
-                    marker=dict(size=6, color=TOTAL_SERIES_COLOR), line=dict(width=2, color=TOTAL_SERIES_COLOR),
-                    hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>"
-                ))
-            else:
-                sub = agg_tipo_all[(agg_tipo_all[level_name] == opt)].copy()
-                sub["x"] = sub["_SEM"].map(x_map)
-                sub = sub.sort_values("x")
-                fig.add_trace(go.Scatter(
-                    x=sub["x"], y=sub[share_col], mode="lines+markers", name=opt,
-                    marker=dict(size=6, color=MINT), line=dict(width=2, color=MINT),
-                    hovertemplate=opt + "<br>%{y:.1f}%<extra></extra>"
-                ))
-            y_min, bad_high = 0, True
-            y_max = 40
-
-        # Zonas de referencia
-        if bad_high:
-            fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=thr, y1=100, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
-            fig.add_hline(y=thr, line_color="#F5A3A3", line_dash="dash")
+            share_col, agg_src = "SA_share", agg_tipo_all
         else:
+            share_col, agg_src = "OTHER_share", agg_tipo_all
+        total_key = {"%P": "P", "%SA": "SA", "%OTHER": "OTHER"}[metric_choice]
+
+        for a in level_values:
+            sub = agg_src[(agg_src[level_name] == a)].copy()
+            sub["x"] = sub["_SEM"].map(x_map)
+            sub = sub.sort_values("x")
+            if sub.empty:
+                continue
+            fig.add_trace(go.Scatter(
+                x=sub["x"], y=sub[share_col], mode="lines+markers", name=a,
+                marker=dict(size=6, color=color_map[a]), line=dict(width=2, color=color_map[a]),
+                hovertemplate=a + "<br>%{y:.1f}%<extra></extra>", visible="legendonly"
+            ))
+
+        sub_total = total_series_builders[total_key].copy()
+        sub_total["x"] = sub_total["_SEM"].map(x_map)
+        sub_total = sub_total.sort_values("x")
+        fig.add_trace(go.Scatter(
+            x=sub_total["x"], y=sub_total[share_col], mode="lines+markers", name="TOTAL",
+            marker=dict(size=6, color=TOTAL_SERIES_COLOR), line=dict(width=2, color=TOTAL_SERIES_COLOR),
+            hovertemplate="TOTAL<br>%{y:.1f}%<extra></extra>", visible="legendonly"
+        ))
+
+        # Zonas/líneas de referencia. Para %P la meta es distinta según sea
+        # un área puntual (60%) o el overall/TOTAL (75%) -- como ahora
+        # pueden convivir varias líneas a la vez, se muestran las DOS
+        # referencias juntas (etiquetadas), en vez de una sola que dependía
+        # de qué estuviera seleccionado.
+        if metric_choice == "%P":
+            y_min, y_max, bad_high = 40, 100, False
+            fig.add_hline(y=60, line_color="red", line_dash="dash", annotation_text="Area target 60%", annotation_position="bottom right")
+            fig.add_hline(y=75, line_color="#B03A2E", line_dash="dot", annotation_text="Overall target 75%", annotation_position="top right")
+        elif metric_choice == "%SA":
+            thr, y_min, y_max, bad_high = 40, 20, 100, False
             fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=thr, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
             fig.add_hline(y=thr, line_color="red", line_dash="dash")
+        else:  # %OTHER
+            thr, y_min, y_max, bad_high = 10, 0, 40, True
+            fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=thr, y1=100, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
+            fig.add_hline(y=thr, line_color="#F5A3A3", line_dash="dash")
 
         if sel_x is not None:
             fig.add_vrect(x0=sel_x-0.5, x1=sel_x+0.5, fillcolor="#E8FAF7", opacity=0.5, layer="below", line_width=0)
@@ -3517,15 +3454,12 @@ def page_qualifications():
         tickvals = list(range(len(x_labels)))
         ticktext = [_dash_label(x) for x in x_labels]
         x_range = [-0.5, len(x_labels) - 0.5] if x_labels else None
-        if metric_choice == "%OTHER":
-            fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, tickangle=45, range=x_range), yaxis=dict(range=[y_min, y_max]))
-        else:
-            fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, tickangle=45, range=x_range), yaxis=dict(range=[y_min, 100]))
+        fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, tickangle=45, range=x_range), yaxis=dict(range=[y_min, y_max]))
         fig.update_xaxes(title=None)
         fig.update_yaxes(title=None)
         st.plotly_chart(fig, use_container_width=True)
 
-        # ===== Datos para descargar (lo visible) =====
+        # ===== Datos para descargar (todas las series, sea cual sea lo que esté visible) =====
         def _series_for(level_val: str, ycol: str):
             if ycol == "P_share":
                 sub = agg_ps_all[(agg_ps_all[level_name] == level_val)]
@@ -3534,43 +3468,12 @@ def page_qualifications():
             m = sub.set_index("_SEM")[ycol].to_dict()
             return [m.get(x, None) for x in x_labels]
 
-        if metric_choice == "%P":
-            ycol = "P_share"
-            base_cols = {}
-            if opt == "(All)":
-                for a in level_values:
-                    base_cols[a] = _series_for(a, ycol)
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["P"].set_index("_SEM")["P_share"].to_dict()
-                base_cols["TOTAL"] = [sub.get(x, None) for x in x_labels]
-            else:
-                base_cols[opt] = _series_for(opt, ycol)
-        elif metric_choice == "%SA":
-            ycol = "SA_share"
-            base_cols = {}
-            if opt == "(All)":
-                for a in level_values:
-                    base_cols[a] = _series_for(a, ycol)
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["SA"].set_index("_SEM")[ycol].to_dict()
-                base_cols["TOTAL"] = [sub.get(x, None) for x in x_labels]
-            else:
-                base_cols[opt] = _series_for(opt, ycol)
-        else:
-            ycol = "OTHER_share"
-            base_cols = {}
-            if opt == "(All)":
-                for a in level_values:
-                    base_cols[a] = _series_for(a, ycol)
-            elif opt == "(TOTAL)":
-                sub = total_series_builders["OTHER"].set_index("_SEM")[ycol].to_dict()
-                base_cols["TOTAL"] = [sub.get(x, None) for x in x_labels]
-            else:
-                base_cols[opt] = _series_for(opt, ycol)
+        base_cols = {a: _series_for(a, share_col) for a in level_values}
+        base_cols["TOTAL"] = [sub_total.set_index("_SEM")[share_col].to_dict().get(x, None) for x in x_labels]
 
         export_df = pd.DataFrame({"Period": x_labels, **base_cols})
-        fname = f"chart_{_slugify(fig_title)}_{_slugify(metric_choice)}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx"
-        _download_xlsx_button(export_df, fname, key=f"dl_hist_{_slugify(fig_title)}_{metric_choice}_{_slugify(opt)}_{_slugify(st.session_state.get('sel_label','sel'))}", label="⬇️ Download chart data (Excel)")
+        fname = f"chart_{_slugify(fig_title)}_{_slugify(metric_choice)}_{_slugify(st.session_state.get('sel_label','sel'))}.xlsx"
+        _download_xlsx_button(export_df, fname, key=f"dl_hist_{_slugify(fig_title)}_{metric_choice}_{_slugify(st.session_state.get('sel_label','sel'))}", label="⬇️ Download chart data (Excel)")
 
     # ============== NORMALIZACIÓN BÁSICA EN CARTELERA ==============
     col_sem = _get_any(df_car, "Semestre","Periodo","Periodo Académico","Periodo academico")
@@ -4279,7 +4182,6 @@ def page_qualifications():
         return sty
 
     # ================== PRINCIPAL ==================
-    st.markdown("---")
 
     # --- helpers específicos para el cabezote ---
     def _guess_prof_cols(df: pd.DataFrame) -> list[str]:
