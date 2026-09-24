@@ -3391,7 +3391,13 @@ def page_qualifications():
     def draw_history(fig_title, level_name, level_values, metric_kind, total_series_builders, agg_ps_all, agg_tipo_all, x_labels, x_map, sel_x):
         palette = px.colors.qualitative.Safe + px.colors.qualitative.Bold + px.colors.qualitative.Pastel
         color_map = {a: palette[i % len(palette)] for i, a in enumerate(level_values)}
-        st.markdown(f"<h4 style='margin:0 0 6px 0; font-weight:500;'>{fig_title}</h4>", unsafe_allow_html=True)
+        st.markdown(
+            f"<h4 style='margin:0; font-weight:500;'>{fig_title}</h4>"
+            "<div style='font-size:0.8em;color:#6B7280;margin:0 0 4px 0;'>"
+            "Click a legend item to view it alone · double-click another to add and compare."
+            "</div>",
+            unsafe_allow_html=True
+        )
         radio_col, toggle_col = st.columns([6, 4])
         with radio_col:
             metric_choice = st.radio("", ["%P", "%SA", "%OTHER"], index={"%P":0, "%SA":1, "%OTHER":2}[metric_kind], horizontal=True, key=f"metric_{level_name}", label_visibility="collapsed")
@@ -3437,7 +3443,7 @@ def page_qualifications():
                 ))
             fig.update_layout(legend=dict(
                 itemclick="toggleothers", itemdoubleclick="toggle",
-                orientation="h", yanchor="top", y=-0.25, x=0, xanchor="left"
+                orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"
             ))
 
         # Zonas/líneas de referencia -- dependen de si es vista TOTAL
@@ -3467,7 +3473,7 @@ def page_qualifications():
         fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, tickangle=45, range=x_range), yaxis=dict(range=[y_min, y_max]))
         fig.update_xaxes(title=None)
         fig.update_yaxes(title=None)
-        fig.update_layout(margin=dict(t=20, b=90))
+        fig.update_layout(margin=dict(t=60, b=40))
         st.plotly_chart(fig, use_container_width=True)
 
         # ===== Datos para descargar (todas las series) =====
