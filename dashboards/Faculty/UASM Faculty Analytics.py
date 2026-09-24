@@ -4466,6 +4466,12 @@ def page_qualifications():
             # ========== BY ACADEMIC AREA ==========
             if view_mode == "By Academic Area":
                 colT, colG = st.columns([6,6], gap="large")
+                st.markdown(
+                    "<style>.st-key-qual_needed_center{"
+                    "display:flex; flex-direction:column; justify-content:center; min-height:520px;"
+                    "}</style>",
+                    unsafe_allow_html=True
+                )
 
                 # Agregaciones
                 agg_tipo = (fil.groupby(["_AREA","_TIPO"], dropna=False)["_CRED"].sum().unstack(fill_value=0.0))
@@ -4486,7 +4492,7 @@ def page_qualifications():
                 else:
                     mod_agg_ps, mod_agg_tipo = base_agg_ps, base_agg_tipo
 
-                with colT:
+                with colT.container(key="qual_needed_center"):
                     # Controles: solo si Sensitivity ON se muestra el toggle
                     needed_mode = False
                     needed_scope = "Area"
