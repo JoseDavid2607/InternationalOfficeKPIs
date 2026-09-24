@@ -4018,16 +4018,21 @@ def page_qualifications():
                                           totals: dict[str,float], scope_label: str,
                                           id_col_name: str, credits_each: float = 4.0) -> pd.DataFrame:
         """Arma la tabla de 'Needed' para UN SOLO scope a la vez (By area u
-        Overall, elegido por el usuario). 'Overall' reparte el total
-        proporcionalmente entre TODAS las áreas según su brecha de %P/%SA/
-        %OTHER (más bajo el %, más cursos le tocan) -- se recalcula EN VIVO
-        en cada render, así que cada vez que se agrega o quita un curso en
-        la simulación, la tabla se actualiza sola. No se oculta ninguna
-        área, aunque le toquen 0 cursos."""
+        Overall, elegido por el usuario). 'Overall' reparte cada total
+        (P, SA, OTHER) EQUITATIVAMENTE entre todas las áreas usando un solo
+        peso COMBINADO por área -- cuánto necesita esa área sumando P + SA
+        + OTHER (no tres repartos independientes, uno por indicador). Así,
+        el área que más necesita en total (en cualquier combinación de los
+        tres) se lleva más de CADA uno de los tres totales, y la que no
+        necesita nada en ninguno de los tres se lleva la porción más chica
+        en los tres. Se recalcula EN VIVO en cada render, así que cada vez
+        que se agrega o quita un curso en la simulación, la tabla se
+        actualiza sola. No se oculta ninguna área, aunque le toquen 0
+        cursos."""
         objectives = ["%P", "%SA", "%OTHER"]
-        obj_label = {"%P": "P\u2194S", "%SA": "SA\u2194non-SA", "%OTHER": "OTHER\u2194non-OTHER"}
+        obj_label = {"%P": "Swap P - S", "%SA": "Swap SA - other", "%OTHER": "Swap OTHER - other"}
         cr_txt = f"{credits_each:g}cr"
-        need_col = {o: f"Needed {obj_label[o]} swaps ({cr_txt})" for o in objectives}
+        need_col = {o: f"{obj_label[o]}\n({cr_txt}) needed" for o in objectives}
 
         if scope_label == "By area":
             rows = []
@@ -4042,12 +4047,25 @@ def page_qualifications():
                 rows.append(row)
             return pd.DataFrame(rows)
 
-        # Overall: reparto proporcional recalculado en vivo (sin congelar nada)
+        # Overall: un solo peso combinado por área (P + SA + OTHER juntos),
+        # usado para repartir los 3 totales -- no tres repartos independientes.
+        combined_w = []
+        for label in idx_all:
+            Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
+            SAv, PAv = float(sa.get(label,0.0)), float(pa.get(label,0.0))
+            SPv, IPv = float(sp.get(label,0.0)), float(ip.get(label,0.0))
+            OTv      = float(oth.get(label,0.0))
+            n_p     = _needed_swap_for_obj("%P", "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
+            n_sa    = _needed_swap_for_obj("%SA", "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
+            n_other = _needed_swap_for_obj("%OTHER", "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
+            combined_w.append(n_p + n_sa + n_other)
+        if sum(combined_w) <= 0:
+            combined_w = [1.0] * len(idx_all)  # nadie necesita nada -> reparto equitativo parejo
+
         swap_alloc = {}
         for obj in objectives:
             ov_total = _needed_swap_for_obj(obj, "Overall", 0, 0, 0, 0, 0, 0, 0, totals, credits_each)
-            w = _local_pct_gap_weights(obj, idx_all, p, s, sa, pa, sp, ip, oth)
-            swap_alloc[obj] = dict(zip(idx_all, _apportion(ov_total, w)))
+            swap_alloc[obj] = dict(zip(idx_all, _apportion(ov_total, combined_w)))
 
         rows = []
         for label in idx_all:
@@ -4545,7 +4563,7 @@ def page_qualifications():
                         if 'Academic Area' in need_tbl.columns:
                             fmt_map['Academic Area'] = '{}'
                         for col in need_tbl.columns:
-                            if col.startswith("Needed "):
+                            if col.startswith("Swap "):
                                 fmt_map[col] = '{:.0f}'
 
                         styled = (
@@ -4716,7 +4734,7 @@ def page_qualifications():
                         if 'Field' in need_tbl_f.columns:
                             fmt_map_f['Field'] = '{}'
                         for col in need_tbl_f.columns:
-                            if col.startswith("Needed "):
+                            if col.startswith("Swap "):
                                 fmt_map_f[col] = '{:.0f}'
 
                         styled_f = (
@@ -4912,7 +4930,7 @@ def page_qualifications():
                         if 'Program' in need_tbl_p.columns:
                             fmt_map_p['Program'] = '{}'
                         for col in need_tbl_p.columns:
-                            if col.startswith("Needed "):
+                            if col.startswith("Swap "):
                                 fmt_map_p[col] = '{:.0f}'
 
                         styled_p = (
