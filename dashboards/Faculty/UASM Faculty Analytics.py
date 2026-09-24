@@ -4046,7 +4046,10 @@ def page_qualifications():
         recalcula la proporción en cada rerun. Lo que sí se actualiza en
         vivo es cuánto de eso ya se hizo: cada swap simulado en un área
         específica se resta de SU propio número, dejando el de las demás
-        áreas tal cual estaba, hasta que le den Reset."""
+        áreas tal cual estaba, hasta que le den Reset -- EXCEPTO si un área
+        ya llegó a 0 y se le siguen simulando swaps de más: ese excedente
+        se resta del total disponible para las demás (recién ahí las demás
+        se actualizan, no antes)."""
         objectives = ["%P", "%SA", "%OTHER"]
         obj_label = {"%P": "Swap P \u2194 S", "%SA": "Swap SA \u2194 other", "%OTHER": "Swap OTHER \u2194 other"}
         add_remove_cats = {
@@ -4097,15 +4100,34 @@ def page_qualifications():
             ov_total = _needed_swap_for_obj(obj, "Overall", 0, 0, 0, 0, 0, 0, 0, base_totals, credits_each)
             swap_alloc[obj] = dict(zip(idx_all, _apportion_min1(ov_total, combined_w)))
 
-        rows = []
-        for label in idx_all:
-            row = {id_col_name: label}
-            for obj in objectives:
-                add_cats, remove_cats = add_remove_cats[obj]
-                done = _swap_units_done_for_member(sens_ops, label, add_cats, remove_cats, credits_each)
-                row[need_col[obj]] = int(max(0, swap_alloc[obj].get(label, 0) - done))
-            rows.append(row)
-        return pd.DataFrame(rows)
+        combined_w_dict = dict(zip(idx_all, combined_w))
+
+        rows_data = {label: {id_col_name: label} for label in idx_all}
+        for obj in objectives:
+            add_cats, remove_cats = add_remove_cats[obj]
+            done = {label: _swap_units_done_for_member(sens_ops, label, add_cats, remove_cats, credits_each) for label in idx_all}
+            remaining = {label: max(0, swap_alloc[obj].get(label, 0) - done[label]) for label in idx_all}
+            excess = {label: max(0, done[label] - swap_alloc[obj].get(label, 0)) for label in idx_all}
+            total_excess = sum(excess.values())
+
+            # Si un área ya usó MÁS de lo que se le había asignado (llegó a
+            # 0 y le siguieron haciendo swaps), ese excedente se resta del
+            # total disponible para las DEMÁS áreas -- recién ahí se
+            # actualizan las otras. Un área que todavía no llegó a 0 no
+            # dispara ningún recálculo en las demás.
+            if total_excess > 0:
+                eligible = [lbl for lbl in idx_all if remaining[lbl] > 0]
+                if eligible:
+                    pool = max(0, sum(remaining[lbl] for lbl in eligible) - total_excess)
+                    elig_weights = [combined_w_dict[lbl] for lbl in eligible]
+                    new_vals = _apportion_min1(pool, elig_weights)
+                    for lbl, v in zip(eligible, new_vals):
+                        remaining[lbl] = v
+
+            for label in idx_all:
+                rows_data[label][need_col[obj]] = int(remaining[label])
+
+        return pd.DataFrame(list(rows_data.values()))
 
     def _style_needed_red(df: pd.DataFrame, id_col: str):
         """Resalta en rojo cualquier celda numérica (de las columnas
@@ -4981,7 +5003,7 @@ def page_qualifications():
                             .apply(style_percent_tables, id_col="Program", axis=None)
                             .hide(axis="index")
                         )
-                        st.markdown(f"<div class='scroll-wrap-400'>{styled_tbl_p.to_html(escape=False)}</div>", unsafe_allow_html=True)
+                        st.dataframe(styled_tbl_p, use_container_width=True, hide_index=True)
                         _download_xlsx_button(metrics_tbl_p, f"table_ByProgram_{_slugify(sel_label)}.xlsx",
                                               key=f"dl_tbl_prog_{_slugify(sel_label)}", label="⬇️ Download table (Excel)")
                     else:
