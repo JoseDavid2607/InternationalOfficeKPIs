@@ -3801,6 +3801,21 @@ def page_qualifications():
             floors[i] += 1
         return floors
 
+    def _apportion_min1(total: int, weights: list) -> list:
+        """Igual que _apportion, pero GARANTIZA al menos 1 unidad para cada
+        peso (aunque su peso sea chico) siempre que el total alcance -- le
+        reserva 1 a cada uno primero, y reparte el resto proporcionalmente.
+        _apportion solo no puede garantizar esto: con un total chico frente
+        a muchos pesos, el redondeo por restos mayores puede dejar en 0 a
+        quien tiene el peso más chico aunque no sea cero."""
+        n = len(weights)
+        if total <= 0 or n == 0:
+            return [0] * n
+        if total < n:
+            return _apportion(total, weights)  # no alcanza para 1 en cada uno -> reparto normal
+        extra = _apportion(total - n, weights)
+        return [1 + e for e in extra]
+
     def _needed_pairs_for_obj(
         objective: str,
         scope_label: str,
@@ -4030,7 +4045,7 @@ def page_qualifications():
         actualiza sola. No se oculta ninguna área, aunque le toquen 0
         cursos."""
         objectives = ["%P", "%SA", "%OTHER"]
-        obj_label = {"%P": "Swap P - S", "%SA": "Swap SA - other", "%OTHER": "Swap OTHER - other"}
+        obj_label = {"%P": "Swap P \u2194 S", "%SA": "Swap SA \u2194 other", "%OTHER": "Swap OTHER \u2194 other"}
         cr_txt = f"{credits_each:g}cr"
         need_col = {o: f"{obj_label[o]}\n({cr_txt}) needed" for o in objectives}
 
@@ -4058,14 +4073,17 @@ def page_qualifications():
             n_p     = _needed_swap_for_obj("%P", "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
             n_sa    = _needed_swap_for_obj("%SA", "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
             n_other = _needed_swap_for_obj("%OTHER", "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
-            combined_w.append(n_p + n_sa + n_other)
+            # +1 de piso: el área que no necesita nada en ninguno de los 3
+            # igual recibe una porción mínima (no cero), proporcionalmente
+            # menor que la de las áreas que sí necesitan.
+            combined_w.append(n_p + n_sa + n_other + 1)
         if sum(combined_w) <= 0:
             combined_w = [1.0] * len(idx_all)  # nadie necesita nada -> reparto equitativo parejo
 
         swap_alloc = {}
         for obj in objectives:
             ov_total = _needed_swap_for_obj(obj, "Overall", 0, 0, 0, 0, 0, 0, 0, totals, credits_each)
-            swap_alloc[obj] = dict(zip(idx_all, _apportion(ov_total, combined_w)))
+            swap_alloc[obj] = dict(zip(idx_all, _apportion_min1(ov_total, combined_w)))
 
         rows = []
         for label in idx_all:
