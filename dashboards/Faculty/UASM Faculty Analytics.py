@@ -3461,6 +3461,12 @@ def page_qualifications():
         fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, tickangle=45, range=x_range), yaxis=dict(range=[y_min, y_max]))
         fig.update_xaxes(title=None)
         fig.update_yaxes(title=None)
+        # Clic simple en la leyenda: aísla esa línea (oculta todas las
+        # demás, incluido TOTAL) -- esto incluye a TOTAL: si se hace clic
+        # ahí, se ocultan todas las áreas y solo queda TOTAL. Doble clic:
+        # agrega o quita esa línea puntual sin afectar a las demás (así se
+        # arman selecciones de varias áreas a la vez).
+        fig.update_layout(legend=dict(itemclick="toggleothers", itemdoubleclick="toggle"))
         st.plotly_chart(fig, use_container_width=True)
 
         # ===== Datos para descargar (todas las series, sea cual sea lo que esté visible) =====
