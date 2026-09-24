@@ -3396,11 +3396,10 @@ def page_qualifications():
 
         fig = go.Figure()
 
-        # Todas las líneas (cada área/field/program + TOTAL) se agregan
-        # SIEMPRE, pero arrancan ocultas (visible='legendonly') -- no hay
-        # selectbox: al hacer clic en un nombre de la leyenda, esa línea se
-        # muestra; al hacer clic en otro, se va agregando (clic de nuevo la
-        # vuelve a ocultar). TOTAL también arranca oculto por defecto.
+        # Las líneas de ÁREA se muestran por defecto; TOTAL arranca oculta
+        # (visible='legendonly') -- clic en su nombre en la leyenda la
+        # agrega, clic de nuevo la oculta. Clic en un área la oculta a
+        # ELLA sola (no afecta a las demás).
         if metric_choice == "%P":
             share_col, agg_src = "P_share", agg_ps_all
         elif metric_choice == "%SA":
@@ -3418,7 +3417,7 @@ def page_qualifications():
             fig.add_trace(go.Scatter(
                 x=sub["x"], y=sub[share_col], mode="lines+markers", name=a,
                 marker=dict(size=6, color=color_map[a]), line=dict(width=2, color=color_map[a]),
-                hovertemplate=a + "<br>%{y:.1f}%<extra></extra>", visible="legendonly"
+                hovertemplate=a + "<br>%{y:.1f}%<extra></extra>", visible=True
             ))
 
         sub_total = total_series_builders[total_key].copy()
@@ -3431,12 +3430,17 @@ def page_qualifications():
         ))
 
         # Zonas/líneas de referencia. Para %P la meta es distinta según sea
-        # un área puntual (60%) o el overall/TOTAL (75%) -- como ahora
-        # pueden convivir varias líneas a la vez, se muestran las DOS
-        # referencias juntas (etiquetadas), en vez de una sola que dependía
-        # de qué estuviera seleccionado.
+        # un área puntual (60%) o el overall/TOTAL (75%). Plotly no permite
+        # que un clic en la leyenda cambie el sombreado de fondo por su
+        # cuenta (eso requeriría JavaScript personalizado, que Streamlit no
+        # soporta para st.plotly_chart) -- así que se sombrea en rojo por
+        # debajo de la meta de ÁREA (60%, la que aplica por defecto ya que
+        # las áreas empiezan visibles), y la meta Overall (75%) queda
+        # como una segunda línea de referencia sin sombrear, para cuando
+        # actives TOTAL.
         if metric_choice == "%P":
             y_min, y_max, bad_high = 40, 100, False
+            fig.update_layout(shapes=[dict(type="rect", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=60, fillcolor="#FDE2E2", opacity=0.35, layer="below", line_width=0)])
             fig.add_hline(y=60, line_color="red", line_dash="dash", annotation_text="Area target 60%", annotation_position="bottom right")
             fig.add_hline(y=75, line_color="#B03A2E", line_dash="dot", annotation_text="Overall target 75%", annotation_position="top right")
         elif metric_choice == "%SA":
