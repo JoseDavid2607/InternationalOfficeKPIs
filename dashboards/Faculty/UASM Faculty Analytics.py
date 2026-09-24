@@ -4047,9 +4047,9 @@ def page_qualifications():
         objectives = ["%P", "%SA", "%OTHER"]
         obj_label = {"%P": "Swap P \u2194 S", "%SA": "Swap SA \u2194 other", "%OTHER": "Swap OTHER \u2194 other"}
         cr_txt = f"{credits_each:g}cr"
-        need_col = {o: f"{obj_label[o]}\n({cr_txt}) needed" for o in objectives}
+        need_col = {o: f"{obj_label[o]}\n({cr_txt})" for o in objectives}
 
-        if scope_label == "By area":
+        if scope_label == "Area":
             rows = []
             for label in idx_all:
                 Pv, Sv = float(p.get(label,0.0)), float(s.get(label,0.0))
@@ -4534,14 +4534,20 @@ def page_qualifications():
                 with colT:
                     # Controles: solo si Sensitivity ON se muestra el toggle
                     needed_mode = False
-                    needed_scope = "By area"
+                    needed_scope = "Area"
                     if SENS["on"]:
                         r1c1, r1c2 = st.columns([1.8, 1.6])
                         with r1c1:
-                            needed_mode = st.toggle("# N° of courses needed for…", value=False, key="area_needed_mode", help="La tabla muestra, para %P, %SA y %OTHER a la vez, cuántos swaps de cursos (agregar 1 de un lado y quitar 1 del otro) hacen falta para llegar a la meta.")
+                            needed_mode = st.toggle("# N° of swaps needed for…", value=False, key="area_needed_mode", help="La tabla muestra, para %P, %SA y %OTHER a la vez, cuántos swaps de cursos (agregar 1 de un lado y quitar 1 del otro) hacen falta para llegar a la meta.")
                         if needed_mode:
                             with r1c2:
-                                needed_scope = st.radio("View", ["By area", "Overall"], horizontal=True, key="area_needed_scope")
+                                needed_scope = st.radio(
+                                    "View", ["Area", "Overall"], horizontal=True, key="area_needed_scope",
+                                    help=(
+                                        "**Area target**\n- %P > 60%\n- %SA > 40%\n- %OTHER < 10%\n\n"
+                                        "**Overall target**\n- %P > 75%\n- %SA > 40%\n- %OTHER < 10%"
+                                    )
+                                )
 
                     if not needed_mode:
                         metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
@@ -4705,14 +4711,20 @@ def page_qualifications():
 
                 with colF_L:
                     needed_mode_f = False
-                    needed_scope_f = "By area"
+                    needed_scope_f = "Area"
                     if SENS["on"]:
                         r1c1, r1c2 = st.columns([1.8, 1.6])
                         with r1c1:
-                            needed_mode_f = st.toggle("Show necessary # of Faculty for…", value=False, key="field_needed_mode")
+                            needed_mode_f = st.toggle("# N° of swaps needed for…", value=False, key="field_needed_mode")
                         if needed_mode_f:
                             with r1c2:
-                                needed_scope_f = st.radio("View", ["By area", "Overall"], horizontal=True, key="field_needed_scope")
+                                needed_scope_f = st.radio(
+                                    "View", ["Area", "Overall"], horizontal=True, key="field_needed_scope",
+                                    help=(
+                                        "**Area target**\n- %P > 60%\n- %SA > 40%\n- %OTHER < 10%\n\n"
+                                        "**Overall target**\n- %P > 75%\n- %SA > 40%\n- %OTHER < 10%"
+                                    )
+                                )
 
                     if not needed_mode_f:
                         metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
@@ -4899,14 +4911,20 @@ def page_qualifications():
 
                 with colP_L:
                     needed_mode_p = False
-                    needed_scope_p = "By area"
+                    needed_scope_p = "Area"
                     if SENS.get("on"):
                         r1c1, r1c2 = st.columns([1.8, 1.6])
                         with r1c1:
-                            needed_mode_p = st.toggle("Show necessary # of Faculty for…", value=False, key="prog_needed_mode")
+                            needed_mode_p = st.toggle("# N° of swaps needed for…", value=False, key="prog_needed_mode")
                         if needed_mode_p:
                             with r1c2:
-                                needed_scope_p = st.radio("View", ["By area", "Overall"], horizontal=True, key="prog_needed_scope")
+                                needed_scope_p = st.radio(
+                                    "View", ["Area", "Overall"], horizontal=True, key="prog_needed_scope",
+                                    help=(
+                                        "**Area target**\n- %P > 60%\n- %SA > 40%\n- %OTHER < 10%\n\n"
+                                        "**Overall target**\n- %P > 75%\n- %SA > 40%\n- %OTHER < 10%"
+                                    )
+                                )
 
                     if not needed_mode_p:
                         # Tabla de % por Programa (sin botón de impacto y sin total)
