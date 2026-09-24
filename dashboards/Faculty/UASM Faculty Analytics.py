@@ -3435,7 +3435,10 @@ def page_qualifications():
                     marker=dict(size=6, color=color_map[a]), line=dict(width=2, color=color_map[a]),
                     hovertemplate=a + "<br>%{y:.1f}%<extra></extra>", visible=True
                 ))
-            fig.update_layout(legend=dict(itemclick="toggleothers", itemdoubleclick="toggle"))
+            fig.update_layout(legend=dict(
+                itemclick="toggleothers", itemdoubleclick="toggle",
+                orientation="h", yanchor="top", y=-0.25, x=0, xanchor="left"
+            ))
 
         # Zonas/líneas de referencia -- dependen de si es vista TOTAL
         # (meta Overall) o vista por área (meta de área). Para %P: 75% en
@@ -3464,6 +3467,7 @@ def page_qualifications():
         fig.update_layout(xaxis=dict(tickmode="array", tickvals=tickvals, ticktext=ticktext, tickangle=45, range=x_range), yaxis=dict(range=[y_min, y_max]))
         fig.update_xaxes(title=None)
         fig.update_yaxes(title=None)
+        fig.update_layout(margin=dict(t=20, b=90))
         st.plotly_chart(fig, use_container_width=True)
 
         # ===== Datos para descargar (todas las series) =====
