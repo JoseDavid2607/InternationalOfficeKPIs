@@ -533,6 +533,98 @@ def qual_load_cartelera() -> pd.DataFrame:
     return df_
 
 
+@st.cache_data(ttl=0)
+def _prof_program_map() -> dict:
+    """Para cada (periodo, ID de profesor) de cartelera, qué programas
+    dictó ese profesor ese periodo -- {(periodo_norm, id_norm): {programas}}.
+    Se usa en el 'Program filter' de Composition/Staffing: un profesor que
+    SÍ dictó cursos ese periodo, pero solo en programas que el usuario
+    desmarcó, queda afuera del conteo. Uno que no aparece en cartelera ese
+    periodo (no dictó nada) no tiene entrada acá -- se interpreta como
+    'siempre incluido', sin importar el filtro."""
+    cart = qual_load_cartelera()
+    id_col = _get_any(cart, "ID", "Id", "id")
+    per_col = _get_any(cart, "Semestre", "Periodo")
+    prog_col = _get_any(cart, "Program", "PROGRAM", "program")
+    d: dict = {}
+    if not (id_col and per_col and prog_col):
+        return d
+    per_norm = cart[per_col].astype(str).str.strip().str.replace("-", "", regex=False).str.replace(".0", "", regex=False)
+    id_norm = cart[id_col].map(_norm_id)
+    prog_vals = cart[prog_col].astype(str).str.strip()
+    for per_n, id_n, prog in zip(per_norm, id_norm, prog_vals):
+        if not prog or prog.lower() == "nan" or not id_n:
+            continue
+        d.setdefault((per_n, id_n), set()).add(prog)
+    return d
+
+
+def _all_programs_seen() -> list:
+    """Todos los programas que aparecen en cartelera (cualquier periodo),
+    para armar la lista de checkboxes del Program filter."""
+    d = _prof_program_map()
+    progs = set()
+    for s in d.values():
+        progs |= s
+    return sorted(progs)
+
+
+def _apply_program_filter(df_in: pd.DataFrame, selected_programs: set, period_col: str = "Periodo", id_col: str = "ID") -> pd.DataFrame:
+    """Filtra df_in (una fila por profesor-periodo) según el Program
+    filter: mantiene la fila si el profesor NO tiene curso registrado en
+    cartelera ese periodo (siempre se cuenta, no cambia el total de
+    planta), o si dictó al menos un curso en alguno de selected_programs
+    ese periodo."""
+    if period_col not in df_in.columns or id_col not in df_in.columns:
+        return df_in
+    prof_map = _prof_program_map()
+    if not prof_map:
+        return df_in
+    per_norm = df_in[period_col].astype(str).str.strip().str.replace("-", "", regex=False).str.replace(".0", "", regex=False)
+    id_norm = df_in[id_col].map(_norm_id)
+
+    def _keep(per_n, id_n):
+        progs = prof_map.get((per_n, id_n))
+        if progs is None:
+            return True  # no dictó nada ese periodo -> siempre se cuenta
+        return bool(progs & selected_programs)
+
+    mask = pd.Series([_keep(p, i) for p, i in zip(per_norm, id_norm)], index=df_in.index)
+    return df_in[mask].copy()
+
+
+def _render_program_filter_ui(page_key: str):
+    """Expander 'Program filter' reusable (Composition/Staffing): todos los
+    programas marcados por defecto, excepto especializaciones ('Specialization...')
+    y CONT/E-IMER/E-ENEG/E-AFIN. Devuelve el set de programas seleccionados,
+    o None si no hay datos de programa disponibles (cartelera no cargó) --
+    en ese caso el llamador no debe filtrar nada."""
+    DEFAULT_EXCLUDE = {"CONT", "E-IMER", "E-ENEG", "E-AFIN"}
+    all_programs = _all_programs_seen()
+    if not all_programs:
+        return None
+    with st.expander("Program filter", expanded=False, icon=":material/filter_alt:"):
+        btn_c1, btn_c2, _btn_sp = st.columns([1.2, 1.2, 3.6])
+        with btn_c1:
+            if st.button("Check all", key=f"{page_key}_prog_check_all", use_container_width=True, type="secondary"):
+                for p in all_programs:
+                    st.session_state[f"{page_key}_prog_chk_{_slugify(p)}"] = True
+        with btn_c2:
+            if st.button("Uncheck all", key=f"{page_key}_prog_uncheck_all", use_container_width=True, type="secondary"):
+                for p in all_programs:
+                    st.session_state[f"{page_key}_prog_chk_{_slugify(p)}"] = False
+        n_cols = 4
+        prog_cols = st.columns(n_cols)
+        selected = set()
+        for idx, p in enumerate(all_programs):
+            default_checked = p.strip().upper() not in DEFAULT_EXCLUDE and not p.strip().upper().startswith("SPECIALIZATION")
+            with prog_cols[idx % n_cols]:
+                checked = st.checkbox(p, value=default_checked, key=f"{page_key}_prog_chk_{_slugify(p)}")
+            if checked:
+                selected.add(p)
+    return selected
+
+
 
 # 5) PÁGINA 1 — Full-time Faculty Composition
 def page_composition():
@@ -589,6 +681,19 @@ def page_composition():
                "#F4A261", "#E76F51", "#9D4EDD", "#6D597A",
                "#118AB2", "#073B4C", "#8AC926", "#FF70A6"]
     color_map_rk = {rk: palette[i % len(palette)] for i, rk in enumerate(ranking_order)}
+
+    # ---------- Program filter (opcional) ----------
+    # Un profesor que dictó cursos ese periodo, pero solo en programas
+    # desmarcados, queda afuera de los conteos de esta página. Un profesor
+    # que NO dictó nada ese periodo (no aparece en cartelera) siempre se
+    # cuenta igual, para que el total no se mueva respecto al total real
+    # de planta. Al reasignar 'df' acá (variable local, misma técnica que
+    # ya usa el resto de la página), TODAS las funciones de abajo
+    # (df_active, pivot_counts, line_source_all/single) automáticamente
+    # usan la versión ya filtrada, sin tener que tocarlas una por una.
+    _selected_programs = _render_program_filter_ui("comp")
+    if _selected_programs is not None:
+        df = _apply_program_filter(df, _selected_programs)
 
     # Helpers de filtrado por periodo
     def periods_for_tables():
@@ -887,6 +992,17 @@ def page_staffing():
             sel_period_label = sel_year_internal or ""
 
     _render_header("Full-time Faculty Staffing Levels", "New entrants, leavers, and headcount evolution")
+
+    # ---------- Program filter (opcional) ----------
+    # Mismo criterio que en Composition: un profesor que dictó cursos ese
+    # periodo pero solo en programas desmarcados queda afuera; uno que no
+    # dictó nada ese periodo (no aparece en cartelera) siempre se cuenta,
+    # para no mover el total real de planta. Al reasignar 'df' acá, todas
+    # las funciones de abajo que reciben 'df' como argumento (o lo leen
+    # directo, como 'active') usan automáticamente la versión filtrada.
+    _selected_programs = _render_program_filter_ui("staff")
+    if _selected_programs is not None:
+        df = _apply_program_filter(df, _selected_programs)
 
     # Helpers
     def perlist_sem():
@@ -4388,9 +4504,15 @@ def page_qualifications():
                 fil_period_only[program_col0].dropna().astype(str).str.strip().unique().tolist()
             )
             with st.expander("Program filter", expanded=False, icon=":material/filter_alt:"):
-                if st.button("Uncheck everything", key=f"qual_prog_uncheck_all_{_slugify(sel_label)}"):
-                    for p in all_programs_period:
-                        st.session_state[f"qual_prog_chk_{_slugify(sel_label)}_{_slugify(p)}"] = False
+                btn_c1, btn_c2, _btn_sp = st.columns([1.2, 1.2, 3.6])
+                with btn_c1:
+                    if st.button("Check all", key=f"qual_prog_check_all_{_slugify(sel_label)}", use_container_width=True, type="secondary"):
+                        for p in all_programs_period:
+                            st.session_state[f"qual_prog_chk_{_slugify(sel_label)}_{_slugify(p)}"] = True
+                with btn_c2:
+                    if st.button("Uncheck all", key=f"qual_prog_uncheck_all_{_slugify(sel_label)}", use_container_width=True, type="secondary"):
+                        for p in all_programs_period:
+                            st.session_state[f"qual_prog_chk_{_slugify(sel_label)}_{_slugify(p)}"] = False
                 n_cols = 4
                 prog_cols = st.columns(n_cols)
                 selected_programs = []
