@@ -1496,6 +1496,16 @@ def page_area():
     # Active dataset
     df = df_full.copy() if st.session_state.modo_faculty == "Full-time" else df_part.copy()
 
+    # Filtro de programa -- APAGADO por defecto; solo se activa (y solo ahí
+    # aparece el "Program filter") si se prende este toggle. Misma regla de
+    # siempre: un profesor que no dictó nada ese periodo se cuenta igual,
+    # sin importar el filtro (no cambia el total real de planta).
+    area_prog_filter_on = st.toggle("Enable program filter", value=False, key="area_prog_filter_on")
+    if area_prog_filter_on:
+        _selected_programs_area = _render_program_filter_ui("area")
+        if _selected_programs_area is not None:
+            df = _apply_program_filter(df, _selected_programs_area)
+
     tmode_now = st.session_state.get("sel_tf_mode", "Semestral")
     sel_value = st.session_state.get("sel_tf_value")
     sel_label = st.session_state.get("sel_tf_label")
@@ -1906,6 +1916,18 @@ def page_demographics():
     df = (df_full if mode_now == "Full-time" else df_part).copy()
     if "ID Nr." not in df.columns and "ID" in df.columns:
         df["ID Nr."] = df["ID"]
+
+    # Filtro de programa -- APAGADO por defecto; solo se activa (y solo ahí
+    # aparece el "Program filter") si se prende este toggle. Misma regla de
+    # siempre: un profesor que no dictó nada ese periodo se cuenta igual,
+    # sin importar el filtro (no cambia el total real de planta).
+    demo_prog_filter_on = st.toggle("Enable program filter", value=False, key="demo_prog_filter_on")
+    if demo_prog_filter_on:
+        _selected_programs_demo = _render_program_filter_ui("demo")
+        if _selected_programs_demo is not None:
+            df = _apply_program_filter(df, _selected_programs_demo)
+            if "ID Nr." not in df.columns and "ID" in df.columns:
+                df["ID Nr."] = df["ID"]
 
     sel_period_text = st.session_state.get("sel_tf_label") or ""
     st.subheader("Full-time demographics by Faculty ranking" if mode_now == "Full-time" else "Part-time demographic table")
