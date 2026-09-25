@@ -472,12 +472,18 @@ def demo_load_parttime() -> pd.DataFrame:
     # desde 'Info. Profesores', unida por ID (normalizado como texto — NO con
     # pd.to_numeric, que convierte las cédulas/pasaportes no numéricos en NaN
     # y como pandas trata NaN==NaN en un merge, eso multiplicaba filas).
+    # 'Info. Profesores' puede repetir alguna columna que 'Faculty
+    # Distribution' ya trae (p.ej. 'Highest Degree' vive en las dos) -- si
+    # no se excluye del merge, pandas la duplica con sufijos '_x'/'_y' y
+    # deja de existir la columna literal que el resto del código busca por
+    # nombre exacto (mismo bug que se arregló en qual_load_faculty_distribution).
+    # Por eso se excluyen del merge TODAS las columnas que ya están en
+    # 'Faculty Distribution', no solo una lista fija.
     raw2 = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
     df_info = pd.read_excel(raw2, sheet_name="Info. Profesores")
     df_info.columns = df_info.columns.str.strip()
     if "ID" in df_.columns and "ID" in df_info.columns:
-        extra_cols = [c for c in df_info.columns
-                      if c not in ("Profesor", "ID", "AREA_PROFESOR", "GÉNERO", "TIPO", "P/S")]
+        extra_cols = [c for c in df_info.columns if c not in df_.columns and c != "ID"]
         df_info_extra = df_info[["ID"] + extra_cols].copy()
         df_info_extra["_id_key"] = df_info_extra["ID"].map(_norm_id)
         df_info_extra = df_info_extra.dropna(subset=["_id_key"]).drop_duplicates(subset=["_id_key"])
