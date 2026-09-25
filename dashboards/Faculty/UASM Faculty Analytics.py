@@ -315,10 +315,71 @@ def _download_drive_file_bytes(file_id: str) -> bytes:
     st.stop()
 
 
+# ---------------------------------------------------------------------------
+# Lectura "cruda" de cada hoja, compartida entre todas las páginas.
+# Antes, cada página (Composition/Staffing/Area/Demographics/Qualifications)
+# volvía a leer con pandas la MISMA hoja del MISMO archivo por su cuenta, así
+# que abrir/cambiar de página repetía ese trabajo una y otra vez aunque el
+# archivo no hubiera cambiado. Ahora cada hoja se lee UNA sola vez acá
+# (cacheada) y cada página arma su propia tabla final a partir de esto --
+# el resultado final que ve cada página queda exactamente igual que antes,
+# solo cambia de dónde saca los datos crudos.
+# ---------------------------------------------------------------------------
+@st.cache_data
+def _load_planta_sheet_raw() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    return pd.read_excel(raw, sheet_name="planta")
+
+
+@st.cache_data
+def _load_faculty_distribution_sheet_raw() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    return pd.read_excel(raw, sheet_name="Faculty Distribution")
+
+
+@st.cache_data
+def _load_info_profesores_sheet_raw() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
+    return pd.read_excel(raw, sheet_name="Info. Profesores")
+
+
+@st.cache_data
+def _load_cartelera_sheet_raw() -> pd.DataFrame:
+    raw = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
+    return pd.read_excel(raw, sheet_name="cartelera")
+
+
+def _clear_profesores_cache():
+    """Limpia todo el caché derivado de BD_profesores.xlsx -- se llama justo
+    después de cualquier guardado exitoso a ese archivo (planta, Faculty
+    Distribution o Info. Profesores), para que el resto de la app vea los
+    datos nuevos en el próximo render, sin tener que esperar a que venza
+    ningún TTL."""
+    _download_drive_file_bytes.clear()
+    _load_planta_sheet_raw.clear()
+    _load_faculty_distribution_sheet_raw.clear()
+    _load_info_profesores_sheet_raw.clear()
+    load_data.clear()
+    area_load_fulltime.clear()
+    area_load_parttime.clear()
+    demo_load_fulltime.clear()
+    demo_load_parttime.clear()
+    qual_load_planta.clear()
+    qual_load_faculty_distribution.clear()
+    _load_profesores_lookup.clear()
+
+
+def _clear_cartelera_cache():
+    """Limpia todo el caché derivado de BD_cartelera.xlsx -- se llama justo
+    después de cualquier guardado exitoso a ese archivo."""
+    _download_drive_file_bytes.clear()
+    _load_cartelera_sheet_raw.clear()
+    qual_load_cartelera.clear()
+
+
 @st.cache_data(ttl=300)
 def load_data():
-    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_ = pd.read_excel(raw, sheet_name="planta")
+    df_ = _load_planta_sheet_raw()
 
     def _norm_per(val):
         if pd.isna(val):
@@ -358,10 +419,9 @@ df = load_data()
 
 # Loaders específicos: página "Distribution by Area"
 # (mismo archivo BD_profesores.xlsx, pero conservan exactamente la lógica original de esa página)
-@st.cache_data(ttl=0)
+@st.cache_data
 def area_load_fulltime() -> pd.DataFrame:
-    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_ = pd.read_excel(raw, sheet_name="planta")
+    df_ = _load_planta_sheet_raw()
 
     sem = df_["Semestre"].astype(str).str.strip() if "Semestre" in df_.columns else df_.iloc[:, 0].astype(str).str.strip()
     is_inter = sem.str.contains("inter", case=False, na=False)
@@ -378,10 +438,9 @@ def area_load_fulltime() -> pd.DataFrame:
     return df_
 
 
-@st.cache_data(ttl=0)
+@st.cache_data
 def area_load_parttime() -> pd.DataFrame:
-    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_ = pd.read_excel(raw, sheet_name="Faculty Distribution")
+    df_ = _load_faculty_distribution_sheet_raw()
 
     if "PLANTA_CATEDRA" in df_.columns:
         col = df_["PLANTA_CATEDRA"].astype(str).str.strip()
@@ -403,10 +462,9 @@ def area_load_parttime() -> pd.DataFrame:
 # Loaders específicos: página "Demographics"
 # Nota: esta página usa un formato de Periodo sin guion ("YYYY10"/"YYYY Intersemestral"),
 # distinto al de las demás páginas — se conserva igual que en el script original.
-@st.cache_data(ttl=0)
+@st.cache_data
 def demo_load_fulltime() -> pd.DataFrame:
-    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_ = pd.read_excel(raw, sheet_name="planta")
+    df_ = _load_planta_sheet_raw()
 
     if "Semestre" in df_.columns:
         sem = df_["Semestre"].astype(str).str.strip()
@@ -434,10 +492,9 @@ def _slugify(s: str) -> str:
     return re.sub(r'[^A-Za-z0-9]+', '_', str(s)).strip('_')
 
 
-@st.cache_data(ttl=0)
+@st.cache_data
 def demo_load_parttime() -> pd.DataFrame:
-    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_ = pd.read_excel(raw, sheet_name="Faculty Distribution")
+    df_ = _load_faculty_distribution_sheet_raw()
 
     if "PLANTA_CATEDRA" in df_.columns:
         col = df_["PLANTA_CATEDRA"].astype(str).str.strip()
@@ -463,8 +520,7 @@ def demo_load_parttime() -> pd.DataFrame:
     # nombre exacto (mismo bug que se arregló en qual_load_faculty_distribution).
     # Por eso se excluyen del merge TODAS las columnas que ya están en
     # 'Faculty Distribution', no solo una lista fija.
-    raw2 = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_info = pd.read_excel(raw2, sheet_name="Info. Profesores")
+    df_info = _load_info_profesores_sheet_raw().copy()
     df_info.columns = df_info.columns.str.strip()
     if "ID" in df_.columns and "ID" in df_info.columns:
         extra_cols = [c for c in df_info.columns if c not in df_.columns and c != "ID"]
@@ -484,21 +540,19 @@ def demo_load_parttime() -> pd.DataFrame:
 
 
 # Loaders específicos: página "Qualifications"
-@st.cache_data(ttl=0)
+@st.cache_data
 def qual_load_planta() -> pd.DataFrame:
     try:
-        raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-        dfp = pd.read_excel(raw, sheet_name="planta")
+        dfp = _load_planta_sheet_raw().copy()
         dfp.columns = dfp.columns.str.strip()
         return dfp
     except Exception:
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=0)
+@st.cache_data
 def qual_load_faculty_distribution() -> pd.DataFrame:
-    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_ = pd.read_excel(raw, sheet_name="Faculty Distribution")
+    df_ = _load_faculty_distribution_sheet_raw().copy()
     df_.columns = df_.columns.str.strip()
 
     # 'Info. Profesores' puede traer campos que 'Faculty Distribution' no
@@ -509,8 +563,7 @@ def qual_load_faculty_distribution() -> pd.DataFrame:
     # nombre exacto. Por eso se excluyen del merge TODAS las columnas que
     # ya están en 'Faculty Distribution' (no solo una lista fija) -- así
     # nunca se generan esos sufijos, sea cual sea el nombre que se repita.
-    raw2 = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    df_info = pd.read_excel(raw2, sheet_name="Info. Profesores")
+    df_info = _load_info_profesores_sheet_raw().copy()
     df_info.columns = df_info.columns.str.strip()
     if "ID" in df_.columns and "ID" in df_info.columns:
         extra_cols = [c for c in df_info.columns if c not in df_.columns and c != "ID"]
@@ -523,7 +576,7 @@ def qual_load_faculty_distribution() -> pd.DataFrame:
     return df_
 
 
-@st.cache_data(ttl=0)
+@st.cache_data
 def qual_load_cartelera() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
     df_ = pd.read_excel(raw, sheet_name="cartelera")
@@ -531,7 +584,6 @@ def qual_load_cartelera() -> pd.DataFrame:
     return df_
 
 
-@st.cache_data(ttl=0)
 def _resolve_col_any(df: pd.DataFrame, *cands):
     """Como _get_any/_resolve (que solo existen anidadas dentro de algunas
     páginas), pero a nivel de módulo -- para poder usarse desde funciones
@@ -2509,7 +2561,7 @@ def page_activities():
                 return c
         return None
 
-    @st.cache_data(ttl=0)
+    @st.cache_data
     def load_fulltime():
         df = pd.read_excel(io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID)), sheet_name="planta")
         raw = df.iloc[:, 0].astype(str)
@@ -2519,7 +2571,7 @@ def page_activities():
         df.columns = df.columns.str.strip()
         return df
 
-    @st.cache_data(ttl=0)
+    @st.cache_data
     def load_questionnaire():
         df = pd.read_excel(io.BytesIO(_download_drive_file_bytes(QUESTIONNAIRE_FILE_ID)), sheet_name="Faculty_questionnaire")
         df.columns = df.columns.str.strip()
@@ -2530,7 +2582,7 @@ def page_activities():
             df = df.rename(columns={"ID Nr.": "ID"})
         return df
 
-    @st.cache_data(ttl=0)
+    @st.cache_data
     def load_courses_sheets():
         """Load sheets for: Credit granted courses / Non-credit granted courses (name tolerant).
         Estas hojas no existen en el reparto actual de archivos (BD_cartelera.xlsx
@@ -8611,6 +8663,7 @@ def page_update_data():
                     with st.spinner("Escribiendo en Drive…"):
                         ok, msg = push_planta_updates(tpl_df)
                     if ok:
+                        st.cache_data.clear()  # datos nuevos en Drive: el resto de la app no debe seguir viendo la versión cacheada vieja
                         st.success(msg)
                         st.balloons()
                     else:
@@ -8903,6 +8956,7 @@ def page_update_data():
                                 combined_lookup[name_key] = (r[1], r[2], r[4], r[5])  # ID, AREA_PROFESOR, TIPO, P/S
                         ok, msg = push_cartelera_updates(save_df, new_courses_df, combined_lookup, area_map)
                     if ok:
+                        st.cache_data.clear()  # datos nuevos en Drive: limpia acá para que Faculty Distribution y el reporte de más abajo (en este mismo guardado) ya lean la versión recién escrita, no la vieja en caché
                         st.success(msg)
                         # Faculty Distribution: un ID único por periodo, tomado de la cartelera recién guardada.
                         # Usa el Semestre LIMPIO (regla YYYYNN -> YYYY10/YYYY20/YYYY Intersemestral), no el
