@@ -442,6 +442,14 @@ def _norm_id(v):
         return s if s else None
 
 
+def _slugify(s: str) -> str:
+    """Igual que la _slugify anidada dentro de Qualifications, pero a nivel
+    de módulo -- para poder usarse desde funciones compartidas como
+    _render_program_filter_ui, que no viven dentro de ninguna página en
+    particular (arma keys de widgets seguras a partir de texto libre)."""
+    return re.sub(r'[^A-Za-z0-9]+', '_', str(s)).strip('_')
+
+
 @st.cache_data(ttl=0)
 def demo_load_parttime() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
@@ -534,6 +542,20 @@ def qual_load_cartelera() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=0)
+def _resolve_col_any(df: pd.DataFrame, *cands):
+    """Como _get_any/_resolve (que solo existen anidadas dentro de algunas
+    páginas), pero a nivel de módulo -- para poder usarse desde funciones
+    compartidas como _prof_program_map, que no viven dentro de ninguna
+    página en particular. Compara nombres de columna sin importar
+    mayúsculas/espacios."""
+    cols_map = {str(c).strip().casefold(): c for c in df.columns}
+    for cand in cands:
+        got = cols_map.get(str(cand).strip().casefold())
+        if got:
+            return got
+    return None
+
+
 def _prof_program_map() -> dict:
     """Para cada (periodo, ID de profesor) de cartelera, qué programas
     dictó ese profesor ese periodo -- {(periodo_norm, id_norm): {programas}}.
@@ -543,9 +565,9 @@ def _prof_program_map() -> dict:
     periodo (no dictó nada) no tiene entrada acá -- se interpreta como
     'siempre incluido', sin importar el filtro."""
     cart = qual_load_cartelera()
-    id_col = _get_any(cart, "ID", "Id", "id")
-    per_col = _get_any(cart, "Semestre", "Periodo")
-    prog_col = _get_any(cart, "Program", "PROGRAM", "program")
+    id_col = _resolve_col_any(cart, "ID", "Id", "id")
+    per_col = _resolve_col_any(cart, "Semestre", "Periodo")
+    prog_col = _resolve_col_any(cart, "Program", "PROGRAM", "program")
     d: dict = {}
     if not (id_col and per_col and prog_col):
         return d
