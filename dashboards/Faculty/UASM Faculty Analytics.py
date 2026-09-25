@@ -4388,7 +4388,9 @@ def page_qualifications():
                 fil_period_only[program_col0].dropna().astype(str).str.strip().unique().tolist()
             )
             with st.expander("Program filter", expanded=False, icon=":material/filter_alt:"):
-                st.caption("Toggle individual programs. Specializations (E-*) start unchecked.")
+                if st.button("Uncheck everything", key=f"qual_prog_uncheck_all_{_slugify(sel_label)}"):
+                    for p in all_programs_period:
+                        st.session_state[f"qual_prog_chk_{_slugify(sel_label)}_{_slugify(p)}"] = False
                 n_cols = 4
                 prog_cols = st.columns(n_cols)
                 selected_programs = []
