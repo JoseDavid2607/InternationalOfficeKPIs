@@ -656,6 +656,16 @@ def _render_program_filter_ui(page_key: str):
 
 # 5) PÁGINA 1 — Full-time Faculty Composition
 def page_composition():
+    # 'df' se reasigna más abajo (tras el Program filter), lo que hace que
+    # Python trate 'df' como variable LOCAL en toda la función. Esta línea
+    # solo existe para que ese 'df' local quede definido desde el arranque
+    # (evita UnboundLocalError en los usos de más abajo, antes de llegar al
+    # filtro) -- sin usar 'global df', que mutaría el 'df' del módulo
+    # compartido con otras páginas. globals()['df'] es una llamada a
+    # función, no una referencia directa al nombre 'df', así que no
+    # dispara esa regla de Python.
+    df = globals()['df']
+
     all_periods = df["Periodo"].astype(str).unique().tolist()
     sem_periods = sorted(
         [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)],
@@ -690,6 +700,21 @@ def page_composition():
     _render_header("Full-time Faculty Composition",
                    "Evolution and distribution of full-time faculty by ranking")
 
+    # ---------- Program filter (siempre visible, opcional de marcar) ----------
+    # Un profesor que dictó cursos ese periodo, pero solo en programas
+    # desmarcados, queda afuera de los conteos de esta página. Un profesor
+    # que NO dictó nada ese periodo (no aparece en cartelera) siempre se
+    # cuenta igual, para que el total no se mueva respecto al total real
+    # de planta. Al reasignar 'df' acá, TODAS las funciones de abajo
+    # (df_active, pivot_counts, line_source_all/single) automáticamente
+    # usan la versión ya filtrada. Nota: 'all_periods'/'sem_periods' (el
+    # listado de periodos, calculado arriba antes del filtro) no cambia
+    # con este filtro -- filtrar por programa saca profesores puntuales
+    # dentro de un periodo, no periodos completos.
+    _selected_programs = _render_program_filter_ui("comp")
+    if _selected_programs is not None:
+        df = _apply_program_filter(df, _selected_programs)
+
     # Ranking order & color map -- primero el grupo "Faculty ranked"
     # (Emeritus, Full, Associate, Assistant), luego "Faculty not ranked"
     # (Distinguished, Adjunct, Instructor).
@@ -709,19 +734,6 @@ def page_composition():
                "#F4A261", "#E76F51", "#9D4EDD", "#6D597A",
                "#118AB2", "#073B4C", "#8AC926", "#FF70A6"]
     color_map_rk = {rk: palette[i % len(palette)] for i, rk in enumerate(ranking_order)}
-
-    # ---------- Program filter (opcional) ----------
-    # Un profesor que dictó cursos ese periodo, pero solo en programas
-    # desmarcados, queda afuera de los conteos de esta página. Un profesor
-    # que NO dictó nada ese periodo (no aparece en cartelera) siempre se
-    # cuenta igual, para que el total no se mueva respecto al total real
-    # de planta. Al reasignar 'df' acá (variable local, misma técnica que
-    # ya usa el resto de la página), TODAS las funciones de abajo
-    # (df_active, pivot_counts, line_source_all/single) automáticamente
-    # usan la versión ya filtrada, sin tener que tocarlas una por una.
-    _selected_programs = _render_program_filter_ui("comp")
-    if _selected_programs is not None:
-        df = _apply_program_filter(df, _selected_programs)
 
     # Helpers de filtrado por periodo
     def periods_for_tables():
@@ -988,6 +1000,13 @@ def page_composition():
 
 # 6) PÁGINA 2 — Full-time Faculty Staffing Levels
 def page_staffing():
+    # 'df' se reasigna más abajo (tras el Program filter), lo que hace que
+    # Python trate 'df' como variable LOCAL en toda la función. Esta línea
+    # solo existe para que ese 'df' local quede definido desde el arranque
+    # (evita UnboundLocalError) -- ver la nota larga en page_composition
+    # sobre por qué no se usa 'global df' acá.
+    df = globals()['df']
+
     all_periods = sorted(df["Periodo"].astype(str).unique().tolist())
     sem_periods = sorted(
         [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)],
@@ -1021,7 +1040,7 @@ def page_staffing():
 
     _render_header("Full-time Faculty Staffing Levels", "New entrants, leavers, and headcount evolution")
 
-    # ---------- Program filter (opcional) ----------
+    # ---------- Program filter (siempre visible, opcional de marcar) ----------
     # Mismo criterio que en Composition: un profesor que dictó cursos ese
     # periodo pero solo en programas desmarcados queda afuera; uno que no
     # dictó nada ese periodo (no aparece en cartelera) siempre se cuenta,
