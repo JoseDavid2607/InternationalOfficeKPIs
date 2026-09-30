@@ -345,7 +345,7 @@ def _drive_modified_times() -> dict:
 def _refresh_cache_if_drive_changed() -> None:
     current = _drive_modified_times()
     changed = any(
-        v and fid in _DRIVE_SEEN_VERSIONS and _DRIVE_SEEN_VERSIONS[fid] != v
+        v and _DRIVE_SEEN_VERSIONS.get(fid) != v  # incluye la 1.ª vez: el caché pudo quedar de antes
         for fid, v in current.items()
     )
     for fid, v in current.items():
