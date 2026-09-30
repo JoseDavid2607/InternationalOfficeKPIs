@@ -7621,9 +7621,15 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
                 ids_by_period.setdefault(per, set()).add(pid)
         all_periods_present = sorted(ids_by_period.keys(), key=_period_sort_key)
 
-        n_new_total = 0
-        n_left_total = 0
-        for p_new in periodos:
+        # Si la template ya trae marcas 'IN IN' / 'OUT IN' escritas por quien la
+        # diligenció, ESAS mandan: no se detecta nada automático encima (la
+        # comparación por IDs marcaba de más, p.ej. 5 salidas cuando la
+        # template solo tenía 1). La detección automática queda solo como
+        # respaldo para templates sin ninguna marca.
+        _template_has_marks = any(
+            str(rv[26] or "").strip().upper().startswith(("IN IN", "OUT IN")) for rv in rows
+        )
+        for p_new in ([] if _template_has_marks else periodos):
             if p_new not in ids_by_period:
                 continue
             earlier = [p for p in all_periods_present if _period_sort_key(p) < _period_sort_key(p_new)]
@@ -7634,11 +7640,6 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
             ids_new = ids_by_period.get(p_new, set())
             left_ids = ids_prev - ids_new
             new_ids = ids_new - ids_prev
-            # El conteo es por diferencia de IDs entre periodos, no por filas
-            # marcadas ahora: si la template ya traia 'IN IN'/'OUT IN' escritos
-            # (se saltan abajo para no pisarlos), igual cuentan.
-            n_left_total += len(left_ids)
-            n_new_total += len(new_ids)
 
             if left_ids:
                 for r, per, pid in all_rows_now:
@@ -7661,6 +7662,22 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
                     notes_cell.value = f"IN IN {p_new}"
                     for c in range(1, 29):
                         ws.cell(row=r, column=c).font = blue_bold_font
+
+        # Conteo final = lo que REALMENTE quedó marcado en la hoja para los
+        # periodos cargados (es lo mismo que cuenta Staffing Levels): filas
+        # con Notes 'IN IN <periodo>' / 'OUT IN <periodo>', vengan de la
+        # template o de la detección automática.
+        n_new_total = 0
+        n_left_total = 0
+        for r in range(2, ws.max_row + 1):
+            note = str(ws.cell(row=r, column=27).value or "").strip().upper()
+            m_note = re.match(r"^(IN|OUT)\s+IN\s+\(?(\d{6})\)?", note)
+            if not m_note or m_note.group(2) not in periodos:
+                continue
+            if m_note.group(1) == "IN":
+                n_new_total += 1
+            else:
+                n_left_total += 1
 
         # 3.5) Extiende la Tabla de Excel "tabla_planta" para que incluya las
         # filas nuevas -- sin esto, aunque las celdas queden vacias, Excel no
@@ -8368,8 +8385,9 @@ def push_profesores_updates(new_profs_df: pd.DataFrame, periodo: str,
         # si no se paso esa lista, al menos los de la template.
         objetivo = [_norm_id(x) for x in (catedra_ids or [])]
         objetivo = [x for x in objetivo if x]
-        if not objetivo:
-            objetivo = list(nuevos.keys())
+        # Los profesores de la template de nuevos SIEMPRE quedan en el periodo,
+        # aunque no vengan en catedra_ids.
+        objetivo += [k for k in nuevos.keys() if k not in set(objetivo)]
 
         filas_out: List[list] = []
         sin_datos: List[str] = []
@@ -8425,9 +8443,11 @@ def push_profesores_updates(new_profs_df: pd.DataFrame, periodo: str,
         _clear_profesores_cache()
 
         n_nuevos = sum(1 for k in vistos if k in nuevos)
+        n_decl = len(new_profs_df) if new_profs_df is not None else 0
+        extra = f" de {n_decl} en la template (hay IDs repetidos)" if n_decl and n_nuevos != n_decl else ""
         return True, (
             f"\u2713 catedra actualizada - {n_written} profesor(es) de catedra en {sem_val}"
-            f" ({n_nuevos} nuevo(s))."
+            f" ({n_nuevos} profesor(es) nuevo(s){extra})."
         )
     except Exception as e:
         return False, f"Error al escribir en la hoja 'catedra': {e}"
@@ -8565,6 +8585,38 @@ def _write_simple_table(ws, dfx: pd.DataFrame):
             cell.border = border
 
 
+def _qual_norm_tipo(val) -> str:
+    """Misma normalización de TIPO que usa la página Qualifications del
+    dashboard (normalize_tipo): cualquier valor desconocido o vacío cuenta
+    como OTHER."""
+    v = str(val).strip().lower()
+    if v in {"sa", "scholarly academics", "scholarly academic"}:
+        return "SA"
+    if v in {"pa", "practice academics", "practice academic"}:
+        return "PA"
+    if v in {"sp", "scholarly practitioners", "scholarly practitioner"}:
+        return "SP"
+    if v in {"ip", "instructional practitioners", "instructional practitioner"}:
+        return "IP"
+    if v in {"o", "other", "others", "otro", "otros"}:
+        return "OTHER"
+    m = re.search(r"\b(sa|pa|sp|ip|o|other)\b", v)
+    if m:
+        code = m.group(1).upper()
+        return "OTHER" if code in {"O", "OTHER"} else code
+    return "OTHER"
+
+
+def _qual_norm_ps(val) -> str:
+    """Misma normalización de P/S que usa la página Qualifications (normalize_ps)."""
+    v = str(val).strip().lower()
+    if v in {"p", "participating", "participante", "participating faculty"}:
+        return "P"
+    if v in {"s", "supporting", "soporte", "supporting faculty"}:
+        return "S"
+    return ""
+
+
 def _qualifications_group_labels(df_cart_period: pd.DataFrame, group_col: str) -> list:
     """Lista ordenada de valores únicos de group_col presentes en
     df_cart_period (p.ej. las áreas de curso que aparecen). Ya no se
@@ -8578,7 +8630,7 @@ def _qualifications_group_labels(df_cart_period: pd.DataFrame, group_col: str) -
     return sorted({str(v) for v in vals.unique().tolist() if str(v).strip().lower() not in bad})
 
 
-def _write_qualifications_block(ws, start_row: int, labels: list, label_title: str, group_col_letter: str) -> int:
+def _write_qualifications_block(ws, start_row: int, labels: list, label_title: str, group_col_letter: str, sem_col_letter: str = "B") -> int:
     """Escribe un bloque de qualifications (encabezado + una fila por valor
     de labels + Total general) empezando en start_row. Ya NO son valores
     fijos ni una Tabla de Excel con columna Semestre: cada celda es una
@@ -8606,7 +8658,7 @@ def _write_qualifications_block(ws, start_row: int, labels: list, label_title: s
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
     # Columnas de la hoja 'cartelera' que alimentan las fórmulas
-    CART_SEM, CART_CRED = "B", "F"
+    CART_SEM, CART_CRED = sem_col_letter, "F"
     CART_P, CART_S, CART_OTHER, CART_SA, CART_PA, CART_IP, CART_SP = "Q", "R", "S", "T", "U", "V", "W"
     metric_cols = [CART_CRED, CART_P, CART_S, CART_SA, CART_PA, CART_SP, CART_IP, CART_OTHER]
 
@@ -8788,9 +8840,50 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     # --- 3) cartelera (filtrada por periodo, y sin especializaciones --
     # las mismas fórmulas SUMIFS de la hoja 5 leen de aquí, así que
     # excluirlas acá alcanza para que tampoco aparezcan en Qualifications) ---
+    SEM_HELPER_LETTER = "B"
     if "cartelera" in wb_out.sheetnames:
         _filter_ws_rows_by_period(wb_out["cartelera"], "Semestre", target_periods)
         _filter_ws_rows_exclude_specializations(wb_out["cartelera"])
+
+        # Para que la hoja 'qualifications' dé EXACTAMENTE los mismos números
+        # que la tabla de la página Qualifications del dashboard, se aplica
+        # acá la misma lógica del dashboard sobre esta copia del reporte
+        # (BD_cartelera no se toca):
+        #  - Área/Field/Program se limpian de espacios (el dashboard hace strip).
+        #  - El desglose de créditos Q..W se recalcula con la misma
+        #    normalización de TIPO y P/S del dashboard (valores como 'SA ' o
+        #    'p', o un TIPO vacío -> OTHER, antes quedaban mal contados).
+        #  - El Intersemestral se suma dentro del periodo YYYY20 del mismo
+        #    año (así lo hace el dashboard con 'Include intersemestral'
+        #    marcado, que es su valor por defecto): se agrega una columna
+        #    auxiliar con ese Semestre y es la que leen las fórmulas.
+        ws_c = wb_out["cartelera"]
+        sem_helper_col = max(ws_c.max_column, 31) + 1
+        SEM_HELPER_LETTER = get_column_letter(sem_helper_col)
+        ws_c.cell(row=1, column=sem_helper_col, value="Semestre (qualifications)").font = Font(name="Arial", size=10, bold=True)
+        for r in range(2, ws_c.max_row + 1):
+            sem_raw = ws_c.cell(row=r, column=2).value
+            if sem_raw is None or str(sem_raw).strip() == "":
+                continue
+            for col in (8, 9, 10, 11):  # H Area del curso, I Field, J Cod program, K Program
+                v = ws_c.cell(row=r, column=col).value
+                if isinstance(v, str):
+                    ws_c.cell(row=r, column=col, value=v.strip())
+            sem_txt = str(sem_raw).strip().replace(".0", "")
+            if "inter" in sem_txt.lower():
+                sem_txt = f"{sem_txt[:4]}20"
+            ws_c.cell(row=r, column=sem_helper_col, value=sem_txt)
+            cred = pd.to_numeric(pd.Series([ws_c.cell(row=r, column=6).value]), errors="coerce").iloc[0]
+            cred = 0.0 if pd.isna(cred) else float(cred)
+            tipo_n = _qual_norm_tipo(ws_c.cell(row=r, column=15).value)
+            ps_n = _qual_norm_ps(ws_c.cell(row=r, column=16).value)
+            for col, val in (
+                (17, cred if ps_n == "P" else 0), (18, cred if ps_n == "S" else 0),
+                (19, cred if tipo_n == "OTHER" else 0), (20, cred if tipo_n == "SA" else 0),
+                (21, cred if tipo_n == "PA" else 0), (22, cred if tipo_n == "IP" else 0),
+                (23, cred if tipo_n == "SP" else 0),
+            ):
+                ws_c.cell(row=r, column=col, value=val)
 
     # --- 4) Cursos Nuevos ---
     ws_cn = wb_out.create_sheet("Cursos Nuevos")
@@ -8801,7 +8894,10 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
         del wb_out["qualifications"]
     ws_qual = wb_out.create_sheet("qualifications")
     ws_qual.cell(row=1, column=1, value="Semestre").font = Font(name="Arial", size=11, bold=True)
-    period_options = sorted({str(p).strip() for p in target_periods}, key=_period_sort_key)
+    def _qual_period_label(p) -> str:
+        t = str(p).strip().replace(".0", "")
+        return f"{t[:4]}20" if "inter" in t.lower() else t
+    period_options = sorted({_qual_period_label(p) for p in target_periods}, key=_period_sort_key)
     sel_cell = ws_qual.cell(row=1, column=2, value="(Todos)")
     sel_cell.font = Font(name="Arial", size=11, bold=True, color="1F6F54")
     sel_cell.fill = PatternFill(fill_type="solid", fgColor="D9EDE7")
@@ -8833,10 +8929,10 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     for group_col, label, col_letter in [
         ("Area del curso", "Area del curso", "H"),
         ("Field", "Field", "I"),
-        ("Cod program", "Cod program", "J"),
+        ("Program", "Program", "K"),
     ]:
         labels = _qualifications_group_labels(df_cart_period, group_col)
-        row_cursor = _write_qualifications_block(ws_qual, row_cursor, labels, label, col_letter)
+        row_cursor = _write_qualifications_block(ws_qual, row_cursor, labels, label, col_letter, SEM_HELPER_LETTER)
 
     wb_out.calculation.fullCalcOnLoad = True
 
@@ -9541,54 +9637,69 @@ def page_update_data():
                     save_df = cart_df.drop(columns=["Area del curso"])
                     with st.spinner("Escribiendo en Drive…"):
                         combined_lookup = prof_lookup.copy()
-                        # Periodo al que pertenece esta carga: la hoja 'catedra' es
-                        # por periodo, así que los profesores nuevos se agregan con
-                        # el semestre de la cartelera que se está subiendo. Si la
-                        # carga trajera varios, se toma el más reciente.
+                        # Los profesores nuevos (recién completados en la template o en
+                        # pantalla) se registran YA en el lookup: si no, abajo no se
+                        # los reconoce como profesores de cátedra del periodo y se
+                        # quedaban fuera de la hoja 'catedra' (sin área ni datos).
+                        if new_profs_df is not None and not new_profs_df.empty:
+                            for _r in new_profs_df.itertuples(index=False, name=None):
+                                combined_lookup[str(_r[0]).strip().upper()] = (_r[1], _r[2], _r[4], _r[5])  # ID, AREA_PROFESOR, TIPO, P/S
+                        # La hoja 'catedra' es por periodo: si la carga trae varios
+                        # (p.ej. 202610 y 202620), se sincroniza CADA uno, del más
+                        # antiguo al más reciente (así un periodo hereda del anterior).
                         _sems_carga = sorted(
                             {_semestre_from_periodo(p) for p in save_df["Periodo"]} - {""},
                             key=_period_sort_key,
                         )
-                        _periodo_carga = _sems_carga[-1] if _sems_carga else ""
-                        # Profesores de CÁTEDRA que dictan en ese periodo: los que
-                        # aparecen en la cartelera y NO están en la hoja 'planta'
-                        # para ese semestre (esa es la regla: si no está en planta,
-                        # es de cátedra). Se sincroniza la hoja 'catedra' completa
-                        # para el periodo, no solo los nuevos.
-                        _catedra_ids = []
-                        _vistos_cat = set()
-                        # Nombre completo en MAYÚSCULAS tal como viene en la
-                        # cartelera: es la fuente canónica del nombre, tanto
-                        # para planta como para cátedra.
-                        _name_by_id: Dict[str, str] = {}
-                        for _pv, _pn in zip(save_df["Periodo"], save_df["Profesor"]):
-                            if _semestre_from_periodo(_pv) != _periodo_carga:
-                                continue
-                            _m = combined_lookup.get(str(_pn).strip().upper())
-                            if not _m:
-                                continue
-                            _pid = _m[0]
-                            _k = _norm_id(_pid)
-                            if _k and _k not in _name_by_id:
-                                _name_by_id[_k] = str(_pn).strip().upper()
-                            if _is_planta_in_period(_periodo_carga, _pid):
-                                continue
-                            if _k and _k not in _vistos_cat:
-                                _vistos_cat.add(_k)
-                                _catedra_ids.append(_pid)
-                        if _catedra_ids or (new_profs_df is not None and not new_profs_df.empty):
-                            ok_p, msg_p = push_profesores_updates(
-                                new_profs_df, _periodo_carga,
-                                catedra_ids=_catedra_ids, name_by_id=_name_by_id,
-                            )
-                            if not ok_p:
-                                st.error(msg_p)
-                                st.stop()
-                            st.success(msg_p)
+                        for _periodo_carga in _sems_carga:
+                            # Profesores de CÁTEDRA que dictan en ese periodo: los que
+                            # aparecen en la cartelera y NO están en la hoja 'planta'
+                            # para ese semestre (esa es la regla: si no está en planta,
+                            # es de cátedra). Se sincroniza la hoja 'catedra' completa
+                            # para el periodo, no solo los nuevos.
+                            _catedra_ids = []
+                            _vistos_cat = set()
+                            # Nombre completo en MAYÚSCULAS tal como viene en la
+                            # cartelera: es la fuente canónica del nombre, tanto
+                            # para planta como para cátedra.
+                            _name_by_id: Dict[str, str] = {}
+                            _names_periodo = set()
+                            for _pv, _pn in zip(save_df["Periodo"], save_df["Profesor"]):
+                                if _semestre_from_periodo(_pv) != _periodo_carga:
+                                    continue
+                                _names_periodo.add(str(_pn).strip().upper())
+                                _m = combined_lookup.get(str(_pn).strip().upper())
+                                if not _m:
+                                    continue
+                                _pid = _m[0]
+                                _k = _norm_id(_pid)
+                                if _k and _k not in _name_by_id:
+                                    _name_by_id[_k] = str(_pn).strip().upper()
+                                if _is_planta_in_period(_periodo_carga, _pid):
+                                    continue
+                                if _k and _k not in _vistos_cat:
+                                    _vistos_cat.add(_k)
+                                    _catedra_ids.append(_pid)
+                            # Solo los profesores nuevos que dictan en ESTE periodo.
+                            _new_profs_periodo = None
                             if new_profs_df is not None and not new_profs_df.empty:
-                                for r in new_profs_df.itertuples(index=False, name=None):
-                                    name_key = str(r[0]).strip().upper()
-                                    combined_lookup[name_key] = (r[1], r[2], r[4], r[5])  # ID, AREA_PROFESOR, TIPO, P/S
+                                _new_profs_periodo = new_profs_df[
+                                    new_profs_df.iloc[:, 0].astype(str).str.strip().str.upper().isin(_names_periodo)
+                                ]
+                            _has_new = _new_profs_periodo is not None and not _new_profs_periodo.empty
+                            if _catedra_ids or _has_new:
+                                ok_p, msg_p = push_profesores_updates(
+                                    _new_profs_periodo if _has_new else None, _periodo_carga,
+                                    catedra_ids=_catedra_ids, name_by_id=_name_by_id,
+                                )
+                                if not ok_p:
+                                    st.error(msg_p)
+                                    st.stop()
+                                st.success(msg_p)
+                        if new_profs_df is not None and not new_profs_df.empty:
+                            # Mismo número que el aviso de antes de guardar ("N profesor(es)
+                            # no están registrados") y que la hoja 'Profesores Nuevos' del reporte.
+                            st.success(f"✓ {len(new_profs_df)} profesor(es) nuevo(s) registrado(s) en total.")
                         ok, msg = push_cartelera_updates(save_df, new_courses_df, combined_lookup, area_map)
                     if ok:
                         st.cache_data.clear()  # datos nuevos en Drive: limpia acá para que Faculty Distribution y el reporte de más abajo (en este mismo guardado) ya lean la versión recién escrita, no la vieja en caché
