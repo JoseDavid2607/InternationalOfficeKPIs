@@ -872,6 +872,34 @@ def _apply_program_filter(df_in: pd.DataFrame, selected_programs: set, period_co
     return df_in[mask].copy()
 
 
+def _apply_program_filter_by_year(df_in: pd.DataFrame, selected_programs: set, year_col: str, id_col: str = "ID") -> pd.DataFrame:
+    """Como _apply_program_filter, pero para tablas con un AÑO (no periodo),
+    p.ej. el cuestionario de Activities: mantiene la fila si el profesor no
+    dictó nada en cartelera ese año, o si dictó algo en alguno de
+    selected_programs en cualquiera de los periodos de ese año."""
+    if year_col not in df_in.columns or id_col not in df_in.columns:
+        return df_in
+    prof_map = _prof_program_map()
+    if not prof_map:
+        return df_in
+    progs_by_year: dict = {}
+    for (per_n, id_n), progs in prof_map.items():
+        progs_by_year.setdefault((str(per_n)[:4], id_n), set()).update(progs)
+    years = pd.to_numeric(df_in[year_col], errors="coerce")
+    id_norm = df_in[id_col].map(_norm_id)
+
+    def _keep(y, id_n):
+        if pd.isna(y):
+            return True
+        progs = progs_by_year.get((str(int(y)), id_n))
+        if progs is None:
+            return True
+        return bool(progs & selected_programs)
+
+    mask = pd.Series([_keep(y, i) for y, i in zip(years, id_norm)], index=df_in.index)
+    return df_in[mask].copy()
+
+
 def _render_program_filter_ui(page_key: str):
     """Expander 'Program filter' reusable (Composition/Staffing): todos los
     programas marcados por defecto, excepto especializaciones ('Specialization...')
@@ -1794,15 +1822,13 @@ def page_area():
     # Active dataset
     df = df_full.copy() if st.session_state.modo_faculty == "Full-time" else df_part.copy()
 
-    # Filtro de programa -- APAGADO por defecto; solo se activa (y solo ahí
-    # aparece el "Program filter") si se prende este toggle. Misma regla de
-    # siempre: un profesor que no dictó nada ese periodo se cuenta igual,
-    # sin importar el filtro (no cambia el total real de planta).
-    area_prog_filter_on = st.toggle("Enable program filter", value=False, key="area_prog_filter_on")
-    if area_prog_filter_on:
-        _selected_programs_area = _render_program_filter_ui("area")
-        if _selected_programs_area is not None:
-            df = _apply_program_filter(df, _selected_programs_area)
+    # Program filter (siempre visible, igual que en Composition/Staffing):
+    # mismos programas marcados por defecto y misma regla -- un profesor que
+    # no dictó nada ese periodo se cuenta igual, sin importar el filtro (no
+    # cambia el total real de planta).
+    _selected_programs_area = _render_program_filter_ui("area")
+    if _selected_programs_area is not None:
+        df = _apply_program_filter(df, _selected_programs_area)
 
     tmode_now = st.session_state.get("sel_tf_mode", "Semestral")
     sel_value = st.session_state.get("sel_tf_value")
@@ -2215,17 +2241,15 @@ def page_demographics():
     if "ID Nr." not in df.columns and "ID" in df.columns:
         df["ID Nr."] = df["ID"]
 
-    # Filtro de programa -- APAGADO por defecto; solo se activa (y solo ahí
-    # aparece el "Program filter") si se prende este toggle. Misma regla de
-    # siempre: un profesor que no dictó nada ese periodo se cuenta igual,
-    # sin importar el filtro (no cambia el total real de planta).
-    demo_prog_filter_on = st.toggle("Enable program filter", value=False, key="demo_prog_filter_on")
-    if demo_prog_filter_on:
-        _selected_programs_demo = _render_program_filter_ui("demo")
-        if _selected_programs_demo is not None:
-            df = _apply_program_filter(df, _selected_programs_demo)
-            if "ID Nr." not in df.columns and "ID" in df.columns:
-                df["ID Nr."] = df["ID"]
+    # Program filter (siempre visible, igual que en Composition/Staffing):
+    # mismos programas marcados por defecto y misma regla -- un profesor que
+    # no dictó nada ese periodo se cuenta igual, sin importar el filtro (no
+    # cambia el total real de planta).
+    _selected_programs_demo = _render_program_filter_ui("demo")
+    if _selected_programs_demo is not None:
+        df = _apply_program_filter(df, _selected_programs_demo)
+        if "ID Nr." not in df.columns and "ID" in df.columns:
+            df["ID Nr."] = df["ID"]
 
     sel_period_text = st.session_state.get("sel_tf_label") or ""
     st.subheader("Full-time demographics by Faculty ranking" if mode_now == "Full-time" else "Part-time demographic table")
@@ -2840,6 +2864,15 @@ def page_activities():
     df_full = load_fulltime()
     df_q    = load_questionnaire()
     df_credit_sheet, df_noncredit_sheet, credit_sheet_name, noncredit_sheet_name = load_courses_sheets()
+
+    # Program filter (siempre visible, igual que en Composition/Staffing).
+    # Se aplica a planta (total de profesores) y al cuestionario (por año).
+    _selected_programs_act = _render_program_filter_ui("act")
+    if _selected_programs_act is not None:
+        df_full = _apply_program_filter(df_full, _selected_programs_act)
+        _ycol_q = resolve_column(df_q, "Year")
+        if _ycol_q:
+            df_q = _apply_program_filter_by_year(df_q, _selected_programs_act, _ycol_q)
 
     # ================= SIDEBAR: NAVIGATION (selector + Open) =================
 
@@ -7601,6 +7634,11 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
             ids_new = ids_by_period.get(p_new, set())
             left_ids = ids_prev - ids_new
             new_ids = ids_new - ids_prev
+            # El conteo es por diferencia de IDs entre periodos, no por filas
+            # marcadas ahora: si la template ya traia 'IN IN'/'OUT IN' escritos
+            # (se saltan abajo para no pisarlos), igual cuentan.
+            n_left_total += len(left_ids)
+            n_new_total += len(new_ids)
 
             if left_ids:
                 for r, per, pid in all_rows_now:
@@ -7610,7 +7648,6 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
                     if str(notes_cell.value or "").strip().upper().startswith("OUT IN"):
                         continue
                     notes_cell.value = f"OUT IN {p_new}"
-                    n_left_total += 1
                     for c in range(1, 29):
                         ws.cell(row=r, column=c).font = red_font
 
@@ -7622,7 +7659,6 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
                     if str(notes_cell.value or "").strip().upper().startswith("IN IN"):
                         continue
                     notes_cell.value = f"IN IN {p_new}"
-                    n_new_total += 1
                     for c in range(1, 29):
                         ws.cell(row=r, column=c).font = blue_bold_font
 
@@ -7715,35 +7751,141 @@ def _read_profesores_nuevos_template(uploaded_file) -> pd.DataFrame:
     return df_
 
 
+def _name_tokens(name) -> Tuple[str, ...]:
+    """Nombre -> tokens en MAYÚSCULAS, sin tildes ni puntuación. Sirve para
+    comparar el mismo nombre escrito distinto en planta ('Veneta Andonova')
+    y en cartelera ('VENETA ANDONOVA ...')."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", str(name or ""))
+    s = "".join(ch for ch in s if not unicodedata.combining(ch)).upper()
+    s = re.sub(r"[^A-Z0-9]+", " ", s)
+    return tuple(t for t in s.split() if t)
+
+
+class _ProfLookup(dict):
+    """Nombre del profesor -> (ID, AREA_PROFESOR, TIPO, P/S).
+
+    Se comporta como un dict normal (claves = nombre en MAYÚSCULAS tal como
+    está en cartelera), pero si el nombre no está tal cual, prueba:
+      1) el mismo nombre sin tildes ni espacios/puntuación de más;
+      2) coincidencia por tokens contra los nombres de planta/cátedra
+         (p.ej. 'Germán Andrade' dentro de 'GERMAN ANDRADE JARAMILLO'),
+         solo si TODOS los candidatos apuntan al mismo ID y el nombre
+         tiene 2+ palabras.
+    Los nombres que llegan por otras vías (p.ej. profesores nuevos que se
+    agregan en la misma carga) se agregan con ``lookup[nombre] = ...`` y
+    funcionan igual."""
+
+    def __init__(self, *args, token_index=None, **kw):
+        super().__init__(*args, **kw)
+        self._token_index = token_index or []  # [(frozenset(tokens), ID_key, valor)]
+
+    def copy(self):
+        return _ProfLookup(self, token_index=self._token_index)
+
+    def _resolve_key(self, name):
+        if dict.__contains__(self, name):
+            return name
+        raw = str(name or "").strip().upper()
+        if dict.__contains__(self, raw):
+            return raw
+        toks = _name_tokens(name)
+        if not toks:
+            return None
+        norm = " ".join(toks)
+        if dict.__contains__(self, norm):
+            return norm
+        if len(toks) < 2:
+            return None
+        ts = set(toks)
+        hits = {}
+        for cand, id_key, val in self._token_index:
+            if len(cand) >= 2 and (cand <= ts or ts <= cand):
+                hits[id_key] = val
+        if len(hits) == 1:
+            val = next(iter(hits.values()))
+            dict.__setitem__(self, norm, val)  # cachea el hallazgo
+            return norm
+        return None
+
+    def __contains__(self, name):
+        return self._resolve_key(name) is not None
+
+    def get(self, name, default=None):
+        k = self._resolve_key(name)
+        return dict.__getitem__(self, k) if k is not None else default
+
+    def __getitem__(self, name):
+        k = self._resolve_key(name)
+        if k is None:
+            raise KeyError(name)
+        return dict.__getitem__(self, k)
+
+
 @st.cache_data(ttl=60)
-def _load_profesores_lookup() -> Dict[str, Tuple]:
+def _load_profesores_lookup_data() -> Tuple[dict, list]:
     """Nombre del profesor (normalizado) → (ID, AREA_PROFESOR, TIPO, P/S).
 
-    Antes salía de la hoja estática 'Info. Profesores'. Ahora se arma desde
-    _prof_info_by_period(), que une 'catedra' y 'planta': se toma el
-    registro MÁS RECIENTE de cada profesor, porque este lookup se usa para
-    reconocer nombres al subir una cartelera nueva y lo vigente es lo que
-    corresponde. Se indexa por nombre (no por ID) porque la cartelera solo
-    trae el nombre."""
+    Se usa para reconocer a los profesores al subir una cartelera nueva.
+    La fuente PRINCIPAL es la hoja 'Faculty Distribution': ahí el nombre está
+    escrito exactamente como en la cartelera (Semestre, Profesor, ID...), así
+    que nombre -> ID es directo y confiable. Con ese ID se toman los datos
+    vigentes (área, tipo, P/S) del registro MÁS RECIENTE del profesor en
+    _prof_info_by_period() -- que une 'catedra' y 'planta' -- y de ahí sale
+    también si es de planta o de cátedra. Como respaldo (profesores que aún
+    no aparecen en Faculty Distribution) se indexan también las variantes de
+    nombre de 'catedra' y 'planta', y _ProfLookup tolera diferencias de
+    tildes/palabras entre planta y cartelera."""
     info = _prof_info_by_period()
     if info.empty or "Profesor" not in info.columns:
-        return {}
+        return {}, []
     ordered = info.sort_values("_ord")
     # Datos vigentes de cada profesor (su registro más reciente).
     latest_by_id = {
         row["_id_key"]: (row["ID"], row["AREA_PROFESOR"], row["TIPO"], row["P/S"])
         for _, row in ordered.drop_duplicates(subset=["_id_key"], keep="last").iterrows()
     }
-    # Se indexa por TODAS las variantes de nombre que ha tenido el profesor
-    # (planta y catedra no siempre lo escriben igual, y la cartelera puede
-    # traer cualquiera de las dos), pero todas apuntan a sus datos vigentes.
-    lookup: Dict[str, Tuple] = {}
+    lookup: dict = {}
+    token_index: list = []
+
+    # 1) Respaldo: variantes de nombre de catedra/planta -> datos vigentes.
     for name, key_id in zip(ordered["Profesor"], ordered["_id_key"]):
         nm = str(name).strip().upper()
         if not nm or nm == "NAN" or key_id not in latest_by_id:
             continue
         lookup[nm] = latest_by_id[key_id]
-    return lookup
+        token_index.append((frozenset(_name_tokens(nm)), key_id, latest_by_id[key_id]))
+
+    # 2) Principal: Faculty Distribution (nombre como en cartelera -> ID).
+    #    Se procesa del más antiguo al más reciente para que, si un mismo
+    #    nombre aparece con IDs distintos, gane el más reciente.
+    try:
+        fd = _load_faculty_distribution_sheet_raw().copy()
+        fd.columns = fd.columns.str.strip()
+        if {"Semestre", "Profesor", "ID"} <= set(fd.columns):
+            fd["_ord"] = fd["Semestre"].map(_period_ord)
+            fd = fd[fd["_ord"].notna()].sort_values("_ord")
+            for name, pid in zip(fd["Profesor"], fd["ID"]):
+                nm = str(name).strip().upper()
+                key_id = _norm_id(pid)
+                if not nm or nm == "NAN" or not key_id or key_id not in latest_by_id:
+                    continue
+                lookup[nm] = latest_by_id[key_id]
+                token_index.append((frozenset(_name_tokens(nm)), key_id, latest_by_id[key_id]))
+    except Exception:
+        pass  # sin Faculty Distribution, queda el respaldo de catedra/planta
+
+    return lookup, token_index
+
+
+def _load_profesores_lookup() -> "_ProfLookup":
+    """Envuelve la versión cacheada (datos planos) en _ProfLookup; la clase
+    no se cachea directamente porque st.cache_data la serializa con pickle."""
+    data, token_index = _load_profesores_lookup_data()
+    return _ProfLookup(data, token_index=token_index)
+
+
+_load_profesores_lookup.clear = _load_profesores_lookup_data.clear
 
 
 def _build_prefilled_cursos_template(missing_rows: pd.DataFrame) -> bytes:
@@ -9177,7 +9319,7 @@ def page_update_data():
                 # --- Profesor (lookup contra 'catedra' + 'planta') ---
                 prof_lookup = _load_profesores_lookup()
                 cart_df["Profesor"] = cart_df["Profesor"].astype(str).str.strip()
-                missing_prof_mask = ~cart_df["Profesor"].str.upper().isin(prof_lookup.keys())
+                missing_prof_mask = ~cart_df["Profesor"].map(lambda n: n in prof_lookup)
 
                 st.success(
                     f"{len(cart_df)} filas detectadas · "
@@ -9398,7 +9540,7 @@ def page_update_data():
                 if st.button("Guardar en BD_Cartelera", type="primary", disabled=not ready, icon=":material/save:"):
                     save_df = cart_df.drop(columns=["Area del curso"])
                     with st.spinner("Escribiendo en Drive…"):
-                        combined_lookup = dict(prof_lookup)
+                        combined_lookup = prof_lookup.copy()
                         # Periodo al que pertenece esta carga: la hoja 'catedra' es
                         # por periodo, así que los profesores nuevos se agregan con
                         # el semestre de la cartelera que se está subiendo. Si la
