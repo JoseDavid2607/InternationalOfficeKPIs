@@ -229,7 +229,7 @@ def _is_inter_label(p) -> bool:
 # 3) CARGA DE DATOS (compartida por todas las páginas)
 # BD_Faculty (el Google Sheet combinado) fue retirado. Ahora la fuente de
 # verdad son 3 archivos .xlsx sueltos en Drive — cada uno con varias hojas:
-PROFESORES_FILE_ID = "1ncnUk_8VsDt1I0Hui9g0VyoTkA-8P376"      # BD_profesores.xlsx  → hojas: planta, Info. Profesores, Faculty Distribution
+PROFESORES_FILE_ID = "1ncnUk_8VsDt1I0Hui9g0VyoTkA-8P376"      # BD_profesores.xlsx  → hojas: planta, catedra, Faculty Distribution
 CARTELERA_FILE_ID = "14Hongi8a180XTvuZGUf3soixgQpFp0Wl"       # BD_cartelera.xlsx   → hojas: cartelera, programas, cursos, qualifications
 QUESTIONNAIRE_FILE_ID = "1u6YTILxGOEq7eq1RE_l5sPg-vM5Wu5jH"   # BD_faculty_questionnaire.xlsx → hoja: Faculty_questionnaire
 TEMPLATE_PROFESORES_NUEVOS_FILE_ID = "1EEFfstkupiSD-2YyBPauO2WvzelZnYDl"  # Template_profesores_nuevos.xlsx (carpeta de templates)
@@ -338,9 +338,200 @@ def _load_faculty_distribution_sheet_raw() -> pd.DataFrame:
 
 
 @st.cache_data
-def _load_info_profesores_sheet_raw() -> pd.DataFrame:
+def _load_catedra_sheet_raw() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    return pd.read_excel(raw, sheet_name="Info. Profesores")
+    return pd.read_excel(raw, sheet_name="catedra")
+
+
+# La hoja 'planta' guarda la misma información que 'catedra' pero con otros
+# nombres de columna. Este mapa la traduce al vocabulario de 'catedra' para
+# poder unir ambas en una sola tabla de información por periodo.
+_PLANTA_TO_CATEDRA_COLS = {
+    "Full Name": "Profesor",
+    "ID Nr.": "ID",
+    "Academic Area": "AREA_PROFESOR",
+    "Gender": "GÉNERO",
+    "Faculty Qualific.": "TIPO",
+    "Year": "Highest Degree, Year Earned",
+    "Region were degree was obtained": "Region Where it was obtained",
+    "International Degree": "International Degree?",
+    "Normal professional Resp.": "Normal Professional Responsibilities",
+    "Country of Birth": "Nationality",
+    "Date of Birth": "Date of birth",
+}
+
+
+# Posición (1-based) de cada columna de 'catedra' dentro de la hoja 'planta'.
+# Sirve para convertir una fila de planta en una fila de catedra cuando un
+# profesor pasa de planta a cátedra: hereda su información del periodo
+# anterior, que en ese caso vive en 'planta'. None = no existe en planta.
+_PLANTA_COL_FOR_CATEDRA = {
+    2: 6,    # Profesor            <- Full Name
+    3: 3,    # ID                  <- ID Nr.
+    4: 8,    # AREA_PROFESOR       <- Academic Area
+    5: 23,   # GÉNERO              <- Gender
+    6: 24,   # TIPO                <- Faculty Qualific.
+    7: 25,   # P/S                 <- P/S
+    8: 7,    # Date of First Appointment to the School
+    9: 9,    # Highest Earned Degree
+    10: 10,  # Highest Degree, Year Earned <- Year
+    11: 13,  # Highest Degree
+    12: 11,  # University
+    13: 12,  # Region Where it was obtained <- Region were degree was obtained
+    14: 14,  # International Degree?        <- International Degree
+    15: 26,  # Normal Professional Responsibilities <- Normal professional Resp.
+    16: None,  # Basis for qualification   -> no existe en planta
+    17: 19,  # Nationality         <- Country of Birth
+    18: 21,  # Date of birth       <- Date of Birth
+    19: 22,  # Age
+    20: None,  # Years Industry experience -> no existe en planta
+}
+
+
+def _norm_sem_key(v) -> str:
+    """Normaliza un periodo para comparar entre hojas: '2026-10'/'202610.0'
+    -> '202610'; '2026 Intersemestral' se deja tal cual (sin espacios de
+    más). Es la llave con la que se cruzan planta, catedra y Faculty
+    Distribution, que no siempre escriben el periodo igual."""
+    s = str(v or "").strip()
+    if not s or s.lower() == "nan":
+        return ""
+    if "intersemestral" in s.lower():
+        return f"{s[:4]} Intersemestral"
+    s = s.replace("-", "").replace(" ", "")
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
+
+def _period_ord(v):
+    """Convierte un periodo en un entero ordenable que respeta el orden real
+    del calendario: YYYY10 -> YYYY Intersemestral -> YYYY20.
+    '202610'->202610, '2026 Intersemestral'->202615, '202620'->202620."""
+    s = _norm_sem_key(v)
+    if not s:
+        return None
+    try:
+        year = int(s[:4])
+    except ValueError:
+        return None
+    if "Intersemestral" in s:
+        sub = 15
+    else:
+        try:
+            sub = int(s[-2:])
+        except ValueError:
+            return None
+    return year * 100 + sub
+
+
+@st.cache_data
+def _prof_info_by_period() -> pd.DataFrame:
+    """Información completa de cada profesor POR PERIODO, uniendo las dos
+    hojas que ahora la guardan: 'catedra' (profesores de cátedra, ya viene
+    por periodo) y 'planta' (profesores de planta, traducida al vocabulario
+    de 'catedra' con _PLANTA_TO_CATEDRA_COLS).
+
+    Antes esto vivía en una sola hoja estática ('Info. Profesores') con una
+    fila por profesor. Ahora es por periodo, así que la llave es
+    (_sem_key, _id_key) -- eso permite que la información de un profesor
+    cambie de un semestre a otro (p.ej. si termina un doctorado) y que un
+    mismo profesor sea cátedra en un periodo y planta en otro."""
+    cat = _load_catedra_sheet_raw().copy()
+    cat.columns = cat.columns.str.strip()
+    cat["_sem_key"] = cat["Semestre"].map(_norm_sem_key)
+    cat["_id_key"] = cat["ID"].map(_norm_id)
+
+    pla = _load_planta_sheet_raw().copy()
+    pla.columns = pla.columns.str.strip()
+    pla = pla.rename(columns={k: v for k, v in _PLANTA_TO_CATEDRA_COLS.items() if k in pla.columns})
+    per_col = "Periodo" if "Periodo" in pla.columns else pla.columns[0]
+    pla["_sem_key"] = pla[per_col].map(_norm_sem_key)
+    pla["_id_key"] = pla["ID"].map(_norm_id) if "ID" in pla.columns else None
+
+    keep = ["_sem_key", "_id_key"] + [c for c in cat.columns if c not in ("_sem_key", "_id_key")]
+    pla_keep = [c for c in keep if c in pla.columns]
+    out = pd.concat([cat[keep], pla[pla_keep]], ignore_index=True)
+    out = out[out["_id_key"].notna() & (out["_sem_key"] != "")]
+    out = out.drop_duplicates(subset=["_sem_key", "_id_key"], keep="first")
+    out["_ord"] = out["_sem_key"].map(_period_ord)
+    return out[out["_ord"].notna()].copy()
+
+
+@st.cache_data
+def _planta_keys() -> set:
+    """Conjunto de (periodo_normalizado, ID_normalizado) presentes en la hoja
+    'planta'. Es la base para decidir quién es PLANTA y quién CÁTEDRA."""
+    pla = _load_planta_sheet_raw()
+    pla.columns = pla.columns.str.strip()
+    per_col = "Periodo" if "Periodo" in pla.columns else pla.columns[0]
+    id_col = "ID Nr." if "ID Nr." in pla.columns else "ID"
+    return {
+        (_norm_sem_key(p), _norm_id(i))
+        for p, i in zip(pla[per_col], pla[id_col])
+        if _norm_sem_key(p) and _norm_id(i)
+    }
+
+
+def _is_planta_in_period(sem, prof_id) -> bool:
+    """¿Ese profesor es de PLANTA en ese periodo?
+
+    La hoja 'planta' solo guarda YYYY10 y YYYY20 -- nunca Intersemestral.
+    Por eso, para un Intersemestral se considera PLANTA si lo fue en
+    cualquiera de los dos semestres de ESE MISMO año (YYYY10 o YYYY20).
+    Verificado contra el histórico completo de Faculty Distribution:
+    reproduce las 2640 filas sin una sola diferencia."""
+    sem_key, id_key = _norm_sem_key(sem), _norm_id(prof_id)
+    if not sem_key or not id_key:
+        return False
+    keys = _planta_keys()
+    if (sem_key, id_key) in keys:
+        return True
+    if "Intersemestral" in sem_key:
+        year = sem_key[:4]
+        return (f"{year}10", id_key) in keys or (f"{year}20", id_key) in keys
+    return False
+
+
+def _merge_prof_info(df: pd.DataFrame, sem_col: str = "Semestre", id_col: str = "ID") -> pd.DataFrame:
+    """Le pega a df la información del profesor vigente en cada periodo.
+
+    Usa merge_asof hacia atrás: si para ese (periodo, ID) no hay fila
+    propia, hereda la del periodo inmediatamente anterior de ese mismo
+    profesor. Eso es lo que hace que los profesores de PLANTA tengan datos
+    en los periodos Intersemestral -- la hoja 'planta' solo guarda YYYY10 y
+    YYYY20, así que un Intersemestral hereda del YYYY10 que lo precede.
+    Solo se agregan columnas que df no tenga ya, para no generar sufijos
+    '_x'/'_y' que romperían las búsquedas por nombre exacto."""
+    info = _prof_info_by_period()
+    if df is None or df.empty or info.empty or id_col not in df.columns or sem_col not in df.columns:
+        return df
+    extra = [c for c in info.columns
+             if c not in df.columns and c not in ("_sem_key", "_id_key", "_ord")]
+    if not extra:
+        return df
+
+    left = df.copy()
+    left["_id_key"] = left[id_col].map(_norm_id)
+    left["_ord"] = left[sem_col].map(_period_ord)
+    left["_row_order"] = range(len(left))          # para devolver el df en su orden original
+    ok = left["_id_key"].notna() & left["_ord"].notna()
+
+    right = info[["_id_key", "_ord"] + extra].dropna(subset=["_id_key", "_ord"]).sort_values("_ord")
+    base = left[ok].sort_values("_ord")
+    merged = pd.merge_asof(base, right, on="_ord", by="_id_key", direction="backward")
+
+    # Respaldo hacia adelante: si un profesor dictó en un periodo ANTERIOR a
+    # su primer registro (pasa, p.ej., con quien dicta un Intersemestral y
+    # entra a planta en el YYYY20 siguiente), hacia atrás no hay nada que
+    # heredar. En ese caso se toma su registro más cercano hacia adelante.
+    missing = merged[extra].isna().all(axis=1)
+    if missing.any():
+        fwd = pd.merge_asof(base, right, on="_ord", by="_id_key", direction="forward")
+        merged.loc[missing.values, extra] = fwd.loc[missing.values, extra].values
+
+    out = pd.concat([merged, left[~ok]], ignore_index=True).sort_values("_row_order")
+    return out.drop(columns=["_id_key", "_ord", "_row_order"]).reset_index(drop=True)
 
 
 @st.cache_data
@@ -351,14 +542,15 @@ def _load_cartelera_sheet_raw() -> pd.DataFrame:
 
 def _clear_profesores_cache():
     """Limpia todo el caché derivado de BD_profesores.xlsx -- se llama justo
-    después de cualquier guardado exitoso a ese archivo (planta, Faculty
-    Distribution o Info. Profesores), para que el resto de la app vea los
-    datos nuevos en el próximo render, sin tener que esperar a que venza
-    ningún TTL."""
+    después de cualquier guardado exitoso a ese archivo (planta, catedra o
+    Faculty Distribution), para que el resto de la app vea los datos nuevos
+    en el próximo render, sin tener que esperar a que venza ningún TTL."""
     _download_drive_file_bytes.clear()
     _load_planta_sheet_raw.clear()
     _load_faculty_distribution_sheet_raw.clear()
-    _load_info_profesores_sheet_raw.clear()
+    _load_catedra_sheet_raw.clear()
+    _prof_info_by_period.clear()
+    _planta_keys.clear()
     load_data.clear()
     area_load_fulltime.clear()
     area_load_parttime.clear()
@@ -507,30 +699,19 @@ def demo_load_parttime() -> pd.DataFrame:
     df_.loc[is_inter, "Periodo"] = sem.str[:4] + " Intersemestral"
 
     # 'Faculty Distribution' solo trae 8 columnas (Semestre, Profesor, ID,
+    # 'Faculty Distribution' solo trae 8 columnas (Semestre, Profesor, ID,
     # AREA_PROFESOR, GÉNERO, TIPO, P/S, PLANTA_CATEDRA) — insuficiente para el
     # análisis de demografía completo (título, nacionalidad, fecha de
-    # nacimiento, universidad, etc.). Se trae TODA la información adicional
-    # desde 'Info. Profesores', unida por ID (normalizado como texto — NO con
-    # pd.to_numeric, que convierte las cédulas/pasaportes no numéricos en NaN
-    # y como pandas trata NaN==NaN en un merge, eso multiplicaba filas).
-    # 'Info. Profesores' puede repetir alguna columna que 'Faculty
-    # Distribution' ya trae (p.ej. 'Highest Degree' vive en las dos) -- si
-    # no se excluye del merge, pandas la duplica con sufijos '_x'/'_y' y
-    # deja de existir la columna literal que el resto del código busca por
-    # nombre exacto (mismo bug que se arregló en qual_load_faculty_distribution).
-    # Por eso se excluyen del merge TODAS las columnas que ya están en
-    # 'Faculty Distribution', no solo una lista fija.
-    df_info = _load_info_profesores_sheet_raw().copy()
-    df_info.columns = df_info.columns.str.strip()
-    if "ID" in df_.columns and "ID" in df_info.columns:
-        extra_cols = [c for c in df_info.columns if c not in df_.columns and c != "ID"]
-        df_info_extra = df_info[["ID"] + extra_cols].copy()
-        df_info_extra["_id_key"] = df_info_extra["ID"].map(_norm_id)
-        df_info_extra = df_info_extra.dropna(subset=["_id_key"]).drop_duplicates(subset=["_id_key"])
-        df_info_extra = df_info_extra.drop(columns=["ID"])
-
-        df_["_id_key"] = df_["ID"].map(_norm_id)
-        df_ = df_.merge(df_info_extra, on="_id_key", how="left").drop(columns=["_id_key"])
+    # nacimiento, universidad, etc.). La información adicional se trae de
+    # _prof_info_by_period(), cruzando por (Semestre, ID): antes vivía en una
+    # hoja estática y se cruzaba solo por ID, pero ahora está por periodo, así
+    # que cada fila toma la información vigente EN ESE semestre.
+    # Se excluyen del merge TODAS las columnas que 'Faculty Distribution' ya
+    # trae (no una lista fija): si se repite alguna (p.ej. 'Highest Degree',
+    # que vive en las dos), pandas la duplicaría con sufijos '_x'/'_y' y
+    # dejaría de existir la columna literal que el resto del código busca.
+    if "ID" in df_.columns:
+        df_ = _merge_prof_info(df_, sem_col="Semestre", id_col="ID")
 
     if "ID Nr." not in df_.columns and "ID" in df_.columns:
         df_ = df_.rename(columns={"ID": "ID Nr."})
@@ -555,24 +736,18 @@ def qual_load_faculty_distribution() -> pd.DataFrame:
     df_ = _load_faculty_distribution_sheet_raw().copy()
     df_.columns = df_.columns.str.strip()
 
-    # 'Info. Profesores' puede traer campos que 'Faculty Distribution' no
-    # tiene (se agregan con este merge) -- pero si ALGUNA columna ya existe
-    # en ambas hojas con el MISMO nombre (p.ej. 'Highest Degree', que vive
-    # en las dos), un merge normal la duplica con sufijos '_x'/'_y' y deja
-    # de existir la columna literal que el resto del código busca por
-    # nombre exacto. Por eso se excluyen del merge TODAS las columnas que
-    # ya están en 'Faculty Distribution' (no solo una lista fija) -- así
-    # nunca se generan esos sufijos, sea cual sea el nombre que se repita.
-    df_info = _load_info_profesores_sheet_raw().copy()
-    df_info.columns = df_info.columns.str.strip()
-    if "ID" in df_.columns and "ID" in df_info.columns:
-        extra_cols = [c for c in df_info.columns if c not in df_.columns and c != "ID"]
-        df_info_extra = df_info[["ID"] + extra_cols].copy()
-        df_info_extra["_id_key"] = df_info_extra["ID"].map(_norm_id)
-        df_info_extra = df_info_extra.dropna(subset=["_id_key"]).drop_duplicates(subset=["_id_key"])
-        df_info_extra = df_info_extra.drop(columns=["ID"])
-        df_["_id_key"] = df_["ID"].map(_norm_id)
-        df_ = df_.merge(df_info_extra, on="_id_key", how="left").drop(columns=["_id_key"])
+    # 'Faculty Distribution' trae solo las 8 columnas base; los campos
+    # extra (Highest Degree, etc., que necesitan las tablas BSQ) vienen de
+    # _prof_info_by_period(), que une 'catedra' y 'planta'. Esa unión es
+    # importante: 'catedra' sola NO cubre a los profesores de planta, y las
+    # tablas BSQ los necesitan a todos. El cruce es por (Semestre, ID)
+    # porque la información ahora es por periodo.
+    # Se excluyen del merge TODAS las columnas que 'Faculty Distribution' ya
+    # trae (no una lista fija): si se repite alguna, pandas la duplicaría
+    # con sufijos '_x'/'_y' y dejaría de existir la columna literal que el
+    # resto del código busca por nombre exacto.
+    if "ID" in df_.columns:
+        df_ = _merge_prof_info(df_, sem_col="Semestre", id_col="ID")
     return df_
 
 
@@ -2422,7 +2597,7 @@ def page_demographics():
         total_phd_valid = int(phd_now_all[IDCOL].nunique()) if not phd_now_all.empty else 0
 
         # planta usa el nombre viejo con el error de tipeo original ("were" en
-        # vez de "Where"); Info. Profesores ya lo tiene bien escrito — se
+        # vez de "Where"); la hoja 'catedra' ya lo tiene bien escrito — se
         # aceptan ambos para que funcione igual en Full-time y Part-time.
         region_col = next(
             (c for c in ["Region Where it was obtained", "Region were degree was obtained"]
@@ -6842,7 +7017,7 @@ AREA_OPTIONS = [
     "MANAGEMENT", "MARKETING", "FINANCE", "SCM & IT",
 ]
 
-# Listas de valores reales encontrados en 'Info. Profesores', para los
+# Listas de valores reales encontrados en la base de profesores, para los
 # desplegables de la sección "Profesores nuevos" (mismo patrón que AREA_OPTIONS).
 GENERO_OPTIONS = ["Male", "Female"]
 TIPO_OPTIONS = ["IP", "OTHER", "PA", "SA", "SP"]
@@ -7502,14 +7677,33 @@ def _read_profesores_nuevos_template(uploaded_file) -> pd.DataFrame:
 
 @st.cache_data(ttl=60)
 def _load_profesores_lookup() -> Dict[str, Tuple]:
-    """Profesor (columna A de 'Info. Profesores', normalizado) → (ID,
-    AREA_PROFESOR, TIPO, P/S) desde las columnas B, C, E, F."""
-    raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    dfp = pd.read_excel(raw, sheet_name="Info. Profesores")
-    dfp.columns = dfp.columns.str.strip()
-    key = dfp["Profesor"].astype(str).str.strip().str.upper()
-    vals = list(zip(dfp["ID"], dfp["AREA_PROFESOR"], dfp["TIPO"], dfp["P/S"]))
-    return dict(zip(key, vals))
+    """Nombre del profesor (normalizado) → (ID, AREA_PROFESOR, TIPO, P/S).
+
+    Antes salía de la hoja estática 'Info. Profesores'. Ahora se arma desde
+    _prof_info_by_period(), que une 'catedra' y 'planta': se toma el
+    registro MÁS RECIENTE de cada profesor, porque este lookup se usa para
+    reconocer nombres al subir una cartelera nueva y lo vigente es lo que
+    corresponde. Se indexa por nombre (no por ID) porque la cartelera solo
+    trae el nombre."""
+    info = _prof_info_by_period()
+    if info.empty or "Profesor" not in info.columns:
+        return {}
+    ordered = info.sort_values("_ord")
+    # Datos vigentes de cada profesor (su registro más reciente).
+    latest_by_id = {
+        row["_id_key"]: (row["ID"], row["AREA_PROFESOR"], row["TIPO"], row["P/S"])
+        for _, row in ordered.drop_duplicates(subset=["_id_key"], keep="last").iterrows()
+    }
+    # Se indexa por TODAS las variantes de nombre que ha tenido el profesor
+    # (planta y catedra no siempre lo escriben igual, y la cartelera puede
+    # traer cualquiera de las dos), pero todas apuntan a sus datos vigentes.
+    lookup: Dict[str, Tuple] = {}
+    for name, key_id in zip(ordered["Profesor"], ordered["_id_key"]):
+        nm = str(name).strip().upper()
+        if not nm or nm == "NAN" or key_id not in latest_by_id:
+            continue
+        lookup[nm] = latest_by_id[key_id]
+    return lookup
 
 
 def _build_prefilled_cursos_template(missing_rows: pd.DataFrame) -> bytes:
@@ -7536,10 +7730,10 @@ def _build_cursos_download() -> bytes:
 
 
 def _build_info_profesores_download() -> bytes:
-    """Devuelve la hoja 'Info. Profesores' completa como un .xlsx descargable."""
+    """Devuelve la hoja 'catedra' completa como un .xlsx descargable."""
     raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    dfi = pd.read_excel(raw, sheet_name="Info. Profesores")
-    return _xlsx_bytes(dfi, sheet_name="Info. Profesores")
+    dfi = pd.read_excel(raw, sheet_name="catedra")
+    return _xlsx_bytes(dfi, sheet_name="catedra")
 
 
 def _build_prefilled_profesores_template(missing_names: List[str]) -> bytes:
@@ -7621,12 +7815,13 @@ def repair_planta_catedra_cache() -> Tuple[bool, str]:
         return False, f"Error al reparar PLANTA_CATEDRA: {e}"
 
 
-def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[bool, str]:
+def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List],
+                                       name_by_id: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
     """Agrega a 'Faculty Distribution' (BD_profesores.xlsx) una fila por cada
     ID único que quedó en la cartelera recién cargada, agrupado por periodo:
     A=Periodo, C=ID (valores directos). B,D,E,F,G,H se escriben como VALOR
     LITERAL (no como fórmula copiada) — se calculan en Python con la misma
-    lógica que ya tenían esas fórmulas (lookup contra 'Info. Profesores' y
+    lógica que ya tenían esas fórmulas (lookup contra 'catedra' y
     'planta'), con fondo #caedfb. Se dejó de copiar la fórmula porque
     openpyxl no la recalcula sola: la app (que lee con pandas) veía esas
     columnas en blanco hasta que alguien abría el archivo manualmente en
@@ -7641,10 +7836,10 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
         wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
         if "Faculty Distribution" not in wb.sheetnames:
             return False, "No encontré la hoja 'Faculty Distribution' en BD_profesores.xlsx."
-        if "Info. Profesores" not in wb.sheetnames or "planta" not in wb.sheetnames:
-            return False, "No encontré 'Info. Profesores' y/o 'planta' en BD_profesores.xlsx."
+        if "catedra" not in wb.sheetnames or "planta" not in wb.sheetnames:
+            return False, "No encontré 'catedra' y/o 'planta' en BD_profesores.xlsx."
         ws = wb["Faculty Distribution"]
-        ws_info = wb["Info. Profesores"]
+        ws_info = wb["catedra"]
         ws_planta = wb["planta"]
 
         info = _table_info(ws, "tabla_faculty_distribution")
@@ -7656,37 +7851,117 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
         calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
 
         # ── Tablas de referencia reales, leídas del propio archivo ──
-        # Info. Profesores: A=Profesor,B=ID,C=AREA_PROFESOR,D=GÉNERO,E=TIPO,F=P/S
-        info_lookup: Dict[str, Tuple] = {}
-        for r in range(2, ws_info.max_row + 1):
-            pid = ws_info.cell(row=r, column=2).value
-            if pid is None:
-                continue
-            key = _norm_id(pid)
-            info_lookup[key] = (
-                ws_info.cell(row=r, column=1).value,  # Profesor
-                ws_info.cell(row=r, column=3).value,  # AREA_PROFESOR
-                ws_info.cell(row=r, column=4).value,  # GÉNERO
-                ws_info.cell(row=r, column=5).value,  # TIPO
-                ws_info.cell(row=r, column=6).value,  # P/S
-            )
+        # catedra: A=Semestre,B=Profesor,C=ID,D=AREA_PROFESOR,E=GÉNERO,F=TIPO,G=P/S.
+        # Ahora es por periodo, así que se guarda por (periodo, ID) y también
+        # el registro más reciente de cada ID, para heredarlo cuando un
+        # profesor no tenga fila propia en el periodo que se está cargando.
+        # Historial unificado de cada profesor: las filas de 'catedra' y las
+        # de 'planta', todas con su periodo. Se guarda ordenado para poder
+        # resolver "lo vigente en este periodo": el registro propio si
+        # existe, y si no, el del periodo inmediatamente anterior. Eso cubre
+        # la transición PLANTA -> CÁTEDRA (un profesor que ya no está en la
+        # base de planta conserva su TIPO y qualifications del periodo
+        # anterior) y también el caso inverso.
+        info_by_period: Dict[Tuple[str, str], Tuple] = {}
+        info_hist: Dict[str, List[Tuple[int, Tuple]]] = {}
 
-        # planta: A=Periodo,C=ID Nr.,X=Faculty Qualific.(24),Y=P/S(25)
+        def _push_hist(key_id, sem_key, ordv, vals):
+            if key_id is None:
+                return
+            info_by_period[(sem_key, key_id)] = vals
+            if ordv is not None:
+                info_hist.setdefault(key_id, []).append((ordv, vals))
+
+        for r in range(2, ws_info.max_row + 1):
+            pid = ws_info.cell(row=r, column=3).value
+            per = ws_info.cell(row=r, column=1).value
+            if pid is None or per is None:
+                continue
+            _push_hist(_norm_id(pid), _norm_sem_key(per), _period_ord(per), (
+                ws_info.cell(row=r, column=2).value,  # Profesor
+                ws_info.cell(row=r, column=4).value,  # AREA_PROFESOR
+                ws_info.cell(row=r, column=5).value,  # GÉNERO
+                ws_info.cell(row=r, column=6).value,  # TIPO
+                ws_info.cell(row=r, column=7).value,  # P/S
+            ))
+        for r in range(2, ws_planta.max_row + 1):
+            pid = ws_planta.cell(row=r, column=3).value
+            per = ws_planta.cell(row=r, column=1).value
+            if pid is None or per is None:
+                continue
+            _push_hist(_norm_id(pid), _norm_sem_key(per), _period_ord(per), (
+                ws_planta.cell(row=r, column=6).value,   # Full Name      -> Profesor
+                ws_planta.cell(row=r, column=8).value,   # Academic Area  -> AREA_PROFESOR
+                ws_planta.cell(row=r, column=23).value,  # Gender         -> GÉNERO
+                ws_planta.cell(row=r, column=24).value,  # Faculty Qualific. -> TIPO
+                ws_planta.cell(row=r, column=25).value,  # P/S
+            ))
+        for k in info_hist:
+            info_hist[k].sort(key=lambda t: t[0])
+
+        def _info_for(sem_key: str, key_id: str):
+            """Información vigente de ese profesor en ese periodo: la propia
+            si existe; si no, la del periodo inmediatamente anterior; y si
+            solo hay posteriores (dictó antes de su primer registro), la más
+            cercana hacia adelante."""
+            hit = info_by_period.get((sem_key, key_id))
+            if hit is not None:
+                return hit
+            hist = info_hist.get(key_id)
+            if not hist:
+                return (None, None, None, None, None)
+            target = _period_ord(sem_key)
+            if target is None:
+                return hist[-1][1]
+            previos = [v for o, v in hist if o <= target]
+            return previos[-1] if previos else hist[0][1]
+
+        # planta: A=Periodo,C=ID Nr.,F=Full Name(6),H=Academic Area(8),
+        #         W=Gender(23),X=Faculty Qualific.(24),Y=P/S(25)
         planta_lookup: Dict[Tuple[str, str], Tuple] = {}
         for r in range(2, ws_planta.max_row + 1):
             pid = ws_planta.cell(row=r, column=3).value
             per = ws_planta.cell(row=r, column=1).value
             if pid is None or per is None:
                 continue
-            key = (str(per).strip(), _norm_id(pid))
+            key = (_norm_sem_key(per), _norm_id(pid))
             planta_lookup[key] = (
                 ws_planta.cell(row=r, column=24).value,  # Faculty Qualific. (TIPO en planta)
                 ws_planta.cell(row=r, column=25).value,  # P/S
             )
 
+        def _planta_for(sem_key: str, key_id: str):
+            """¿Ese profesor es de PLANTA en ese periodo? La hoja 'planta'
+            solo guarda YYYY10 y YYYY20 -- nunca Intersemestral. Así que en
+            un Intersemestral se considera PLANTA si lo fue en cualquiera de
+            los dos semestres de ESE MISMO año. Verificado contra el
+            histórico completo de Faculty Distribution: reproduce las 2640
+            filas sin una sola diferencia."""
+            hit = planta_lookup.get((sem_key, key_id))
+            if hit is not None:
+                return hit
+            if "Intersemestral" in sem_key:
+                year = sem_key[:4]
+                return (planta_lookup.get((f"{year}10", key_id))
+                        or planta_lookup.get((f"{year}20", key_id)))
+            return None
+
+        # Subir de nuevo un periodo es una ACTUALIZACIÓN: se borran sus filas
+        # existentes y se reescriben con lo que traiga la cartelera nueva.
+        # Si no se borraran, quedarían colgados los profesores que ya no
+        # dictan en ese periodo (misma regla que en 'cartelera' y 'catedra').
+        periodos_carga = {_norm_sem_key(p) for p in periodo_to_ids.keys()}
+        names = {_norm_id(k): v for k, v in (name_by_id or {}).items() if _norm_id(k)}
+        rows_to_delete = [
+            r for r in range(2, last_row + 1)
+            if _norm_sem_key(ws.cell(row=r, column=1).value) in periodos_carga
+        ]
+        _delete_rows_batched(ws, rows_to_delete)
+        last_row -= len(rows_to_delete)
+
         existing_pairs = set()
         for r in range(2, last_row + 1):
-            p = str(ws.cell(row=r, column=1).value or "").strip()
+            p = _norm_sem_key(ws.cell(row=r, column=1).value)
             i = _norm_id(ws.cell(row=r, column=3).value)
             existing_pairs.add((p, i))
 
@@ -7694,7 +7969,7 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
         n_written = 0
         for periodo, ids in periodo_to_ids.items():
             for prof_id in ids:
-                periodo_s, id_s = str(periodo).strip(), _norm_id(prof_id)
+                periodo_s, id_s = _norm_sem_key(periodo), _norm_id(prof_id)
                 pair = (periodo_s, id_s)
                 if pair in existing_pairs:
                     continue
@@ -7703,14 +7978,25 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
                     cell = ws.cell(row=rn, column=col, value=val)
                     cell.font = base_font
 
-                info_row = info_lookup.get(id_s, (None, None, None, None, None))
-                profesor, area_prof, genero, tipo_info, ps_info = info_row
-                planta_vals = planta_lookup.get((periodo_s, id_s))
+                profesor, area_prof, genero, tipo_info, ps_info = _info_for(periodo_s, id_s)
+                planta_vals = _planta_for(periodo_s, id_s)
                 planta_catedra = "PLANTA" if planta_vals is not None else "CÁTEDRA"
                 if planta_vals is not None:
                     tipo_val, ps_val = planta_vals
                 else:
+                    # Si ya no está en la base de planta, pasa a CÁTEDRA
+                    # conservando el TIPO y las qualifications vigentes del
+                    # periodo inmediatamente anterior (que _info_for resuelve
+                    # mirando tanto 'catedra' como 'planta').
                     tipo_val, ps_val = tipo_info, ps_info
+                # El nombre completo en mayúsculas sale de la CARTELERA, que
+                # es donde viene igual para planta y cátedra. Solo si esa
+                # fila no trajera nombre se cae al del historial.
+                nombre_cart = names.get(id_s)
+                if nombre_cart:
+                    profesor = str(nombre_cart).strip().upper()
+                elif profesor is not None:
+                    profesor = str(profesor).strip().upper()
 
                 calc_vals = {2: profesor, 4: area_prof, 5: genero, 6: tipo_val, 7: ps_val, 8: planta_catedra}
                 for col, val in calc_vals.items():
@@ -7721,10 +8007,10 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
                 existing_pairs.add(pair)
                 n_written += 1
 
-        if n_written == 0:
+        if n_written == 0 and not rows_to_delete:
             return True, "✓ Faculty Distribution: no había IDs nuevos que agregar (ya estaban todos)."
 
-        new_last_row = append_start + n_written - 1
+        new_last_row = max(last_row, append_start + n_written - 1)
         if match:
             ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
 
@@ -7744,79 +8030,204 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List]) -> Tuple[
         return False, f"Error al escribir en Faculty Distribution: {e}"
 
 
-def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
-    """Agrega profesores nuevos a la hoja 'Info. Profesores' de
-    BD_profesores.xlsx. Columnas A-F, H-Q, S vienen directo de la template
-    (los campos opcionales que queden vacíos se completan con "TBD", igual
-    que la convención ya usada en el resto del archivo). R (Age) SÍ tiene
-    fórmula real (DATEDIF sobre Date of birth) — se copia y traslada igual
-    que F/V en planta, con fondo #caedfb."""
+def push_profesores_updates(new_profs_df: pd.DataFrame, periodo: str,
+                            catedra_ids: Optional[List] = None,
+                            name_by_id: Optional[Dict[str, str]] = None) -> Tuple[bool, str]:
+    """Sincroniza la hoja 'catedra' para el periodo que se esta cargando.
+
+    La hoja 'catedra' es POR PERIODO: cada profesor de catedra que dicta en
+    un semestre tiene su propia fila en ese semestre. Por eso esta funcion
+    no solo agrega los profesores nuevos, sino que reconstruye todo el
+    periodo:
+
+      1. Borra las filas que ya existan de ese periodo (subir una cartelera
+         del mismo semestre es una ACTUALIZACION: se reemplaza completo).
+      2. Para cada profesor de catedra que dicta en el periodo:
+         - si viene en la template de profesores nuevos, se usan esos datos;
+         - si ya existia en 'catedra' en otro periodo, se HEREDA su registro
+           mas reciente anterior (orden real: YYYY10 -> YYYY Intersemestral
+           -> YYYY20), cambiandole el Semestre;
+         - si era de PLANTA y ya no aparece en la base de planta, pasa a
+           catedra heredando su TIPO, qualifications y demas datos del
+           periodo inmediatamente anterior, que en ese caso viven en la
+           hoja 'planta' (se traducen con _PLANTA_COL_FOR_CATEDRA).
+
+    El nombre se toma de la cartelera (name_by_id), que es donde viene el
+    nombre completo en mayusculas, tanto para catedra como para planta.
+
+    La template de profesores nuevos NO trae el periodo (se entiende que es
+    el de la cartelera que se sube), asi que lo pone la app en la columna A.
+    Los campos opcionales vacios se completan con "TBD". Age (columna S) se
+    calcula como valor literal desde Date of birth -- asi lo guarda la hoja,
+    y ademas openpyxl no recalcula formulas al guardar."""
     if not _OPENPYXL_OK:
-        return False, "Falta la librería `openpyxl` en el entorno."
+        return False, "Falta la libreria `openpyxl` en el entorno."
     token = _get_gspread_access_token()
     if not token:
         return False, "No hay credenciales configuradas para escribir en Drive."
+    sem_val = _norm_sem_key(periodo)
+    if not sem_val:
+        return False, "No pude determinar el periodo al que agregar los profesores."
+    sem_ord = _period_ord(sem_val) or 0
+    names = {_norm_id(k): v for k, v in (name_by_id or {}).items() if _norm_id(k)}
     try:
         raw_bytes = _download_drive_file_bytes(PROFESORES_FILE_ID)
         wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
-        if "Info. Profesores" not in wb.sheetnames:
-            return False, "No encontré la hoja 'Info. Profesores' en BD_profesores.xlsx."
-        ws = wb["Info. Profesores"]
+        if "catedra" not in wb.sheetnames:
+            return False, "No encontre la hoja 'catedra' en BD_profesores.xlsx."
+        ws = wb["catedra"]
 
-        info = _table_info(ws, "tabla_profesores")
+        info = _table_info(ws, "tabla_catedra")
         if not info:
-            return False, "No encontré la Tabla de Excel 'tabla_profesores'."
+            return False, "No encontre la Tabla de Excel 'tabla_catedra'."
         match, min_col, min_row, max_col, last_row = info
 
         base_font = _BASE_ARIAL_FONT
         age_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
+        N_COLS = 20          # A..T en 'catedra'
+        ID_COL, AGE_COL = 3, 19
 
-        tpl_age_text, age_is_array = _get_formula_text(ws.cell(row=last_row, column=18))
-        age_template_row = last_row
-        age_ok = bool(tpl_age_text)
+        # ── 1) Leer lo que hay hoy: el registro mas reciente de cada profesor
+        #        para poder heredarlo, y las filas del periodo actual para
+        #        borrarlas. Las filas del periodo que se reemplaza TAMBIEN
+        #        cuentan como fuente: si se vuelve a subir el mismo semestre
+        #        y un profesor no viene en la template, su informacion no
+        #        cambia, asi que se reescribe tal cual estaba (y al ser las
+        #        de mayor periodo, ganan sobre las de semestres anteriores).
+        latest_row_by_id: Dict[str, Tuple[int, list]] = {}
+        rows_to_delete: List[int] = []
+        for r in range(2, last_row + 1):
+            per = ws.cell(row=r, column=1).value
+            pid = ws.cell(row=r, column=ID_COL).value
+            if pid is None:
+                continue
+            key_id = _norm_id(pid)
+            if _norm_sem_key(per) == sem_val:
+                rows_to_delete.append(r)
+            ordv = _period_ord(per)
+            if ordv is None or key_id is None:
+                continue
+            if key_id not in latest_row_by_id or ordv >= latest_row_by_id[key_id][0]:
+                latest_row_by_id[key_id] = (
+                    ordv, [ws.cell(row=r, column=c).value for c in range(1, N_COLS + 1)]
+                )
 
-        # Template B..T → Info.Profesores A,B,C,D,E,F,(H sin destino=PLANTA_CATEDRA),G,H,I,J,K,L,M,N,O,P,Q,S
+        _delete_rows_batched(ws, rows_to_delete)
+        last_row -= len(rows_to_delete)
+
+        # ── 1b) Respaldo desde 'planta': un profesor que venia siendo de
+        #        planta y ahora ya no aparece en esa base pasa a catedra. Su
+        #        informacion (TIPO, qualifications, etc.) se hereda del
+        #        periodo inmediatamente anterior, que para el vive en la
+        #        hoja 'planta'. Solo gana si es mas reciente que lo que ya
+        #        haya en 'catedra' para ese profesor.
+        if "planta" in wb.sheetnames:
+            ws_pla = wb["planta"]
+            for r in range(2, ws_pla.max_row + 1):
+                pid = ws_pla.cell(row=r, column=3).value
+                per = ws_pla.cell(row=r, column=1).value
+                if pid is None or per is None:
+                    continue
+                key_id, ordv = _norm_id(pid), _period_ord(per)
+                if key_id is None or ordv is None or ordv >= sem_ord:
+                    continue          # solo periodos ANTERIORES al que se carga
+                if key_id in latest_row_by_id and latest_row_by_id[key_id][0] >= ordv:
+                    continue
+                fila = [None] * N_COLS
+                for dest_col, src_col in _PLANTA_COL_FOR_CATEDRA.items():
+                    fila[dest_col - 1] = ws_pla.cell(row=r, column=src_col).value if src_col else "TBD"
+                latest_row_by_id[key_id] = (ordv, fila)
+
+        # ── 2) Armar las filas nuevas del periodo ──
+        # Template B..T -> catedra B,C,D,E,F,G,(idx6 PLANTA_CATEDRA sin destino),
+        # H,I,J,K,L,M,N,O,P,Q,R,T. Todo corrido +1 respecto de la hoja vieja,
+        # porque en 'catedra' la columna A es el Semestre.
         col_map = {
-            0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6,        # Profesor,ID,AREA_PROFESOR,GÉNERO,TIPO,P/S
-            # idx 6 = PLANTA_CATEDRA -> sin columna destino en Info. Profesores, se omite
-            7: 7, 8: 8, 9: 9, 10: 10, 11: 11, 12: 12,
-            13: 13, 14: 14, 15: 15, 16: 16, 17: 17, 18: 19,  # ...hasta S (Years Industry exp -> col 19)
+            0: 2, 1: 3, 2: 4, 3: 5, 4: 6, 5: 7,
+            7: 8, 8: 9, 9: 10, 10: 11, 11: 12, 12: 13,
+            13: 14, 14: 15, 15: 16, 16: 17, 17: 18, 18: 20,
         }
-        required_idx = {0: "Profesor", 1: "ID", 2: "AREA_PROFESOR", 3: "GÉNERO", 4: "TIPO", 5: "P/S"}
+        required_idx = {0: "Profesor", 1: "ID", 2: "AREA_PROFESOR", 3: "GENERO", 4: "TIPO", 5: "P/S"}
+        DOB_IDX = 17
+
+        def _age_from(dob) -> object:
+            try:
+                d = pd.to_datetime(dob, errors="coerce")
+                if pd.isna(d):
+                    return "TBD"
+                return int((pd.Timestamp.today() - d).days // 365.25)
+            except Exception:
+                return "TBD"
+
+        nuevos: Dict[str, list] = {}      # id -> fila completa (1..N_COLS)
+        if new_profs_df is not None and not new_profs_df.empty:
+            for i, r in enumerate(new_profs_df.itertuples(index=False, name=None)):
+                faltan = [
+                    label for idx, label in required_idx.items()
+                    if idx >= len(r) or r[idx] is None
+                    or (isinstance(r[idx], float) and pd.isna(r[idx])) or str(r[idx]).strip() == ""
+                ]
+                if faltan:
+                    return False, (
+                        f"Fila {i+1} de la template de profesores: faltan campos obligatorios "
+                        f"({', '.join(faltan)}). No se guardo nada - corrige y vuelve a subir."
+                    )
+                fila = [None] * N_COLS
+                fila[0] = sem_val
+                for tpl_idx, dest_col in col_map.items():
+                    val = r[tpl_idx] if tpl_idx < len(r) else None
+                    if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() == "":
+                        val = "TBD" if tpl_idx not in required_idx else val
+                    fila[dest_col - 1] = val
+                fila[AGE_COL - 1] = _age_from(r[DOB_IDX] if DOB_IDX < len(r) else None)
+                nuevos[_norm_id(r[1])] = fila
+
+        # Quienes deben quedar en el periodo: los que dictaron (catedra_ids) o,
+        # si no se paso esa lista, al menos los de la template.
+        objetivo = [_norm_id(x) for x in (catedra_ids or [])]
+        objetivo = [x for x in objetivo if x]
+        if not objetivo:
+            objetivo = list(nuevos.keys())
+
+        filas_out: List[list] = []
+        sin_datos: List[str] = []
+        vistos = set()
+        for key_id in objetivo:
+            if key_id in vistos:
+                continue
+            vistos.add(key_id)
+            if key_id in nuevos:
+                fila = nuevos[key_id]
+            elif key_id in latest_row_by_id:
+                fila = list(latest_row_by_id[key_id][1])     # hereda el registro anterior
+                fila[0] = sem_val                            # con el semestre nuevo
+            else:
+                sin_datos.append(str(key_id))
+                continue
+            # El nombre completo en mayusculas viene de la cartelera; es la
+            # fuente canonica y evita que quede el nombre corto de 'planta'
+            # cuando el profesor viene de una transicion planta -> catedra.
+            if names.get(key_id):
+                fila[1] = str(names[key_id]).strip().upper()
+            filas_out.append(fila)
+        if sin_datos:
+            return False, (
+                "No tengo informacion para estos profesores de catedra y no vinieron en la "
+                f"template: {', '.join(sin_datos[:10])}"
+                f"{' ...' if len(sin_datos) > 10 else ''}. No se guardo nada."
+            )
 
         append_start = last_row + 1
-        n_written = 0
-        for i, r in enumerate(new_profs_df.itertuples(index=False, name=None)):
+        for i, fila in enumerate(filas_out):
             rn = append_start + i
-            missing_required = [
-                label for idx, label in required_idx.items()
-                if idx >= len(r) or r[idx] is None or (isinstance(r[idx], float) and pd.isna(r[idx])) or str(r[idx]).strip() == ""
-            ]
-            if missing_required:
-                return False, (
-                    f"Fila {i+1} de la template de profesores: faltan campos obligatorios "
-                    f"({', '.join(missing_required)}). No se guardó nada — corrige y vuelve a subir."
-                )
-            for tpl_idx, dest_col in col_map.items():
-                val = r[tpl_idx] if tpl_idx < len(r) else None
-                if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() == "":
-                    val = "TBD" if tpl_idx not in required_idx else val
-                cell = ws.cell(row=rn, column=dest_col, value=val)
+            for c in range(1, N_COLS + 1):
+                cell = ws.cell(row=rn, column=c, value=fila[c - 1])
                 cell.font = base_font
-            # R — Age: fórmula real copiada/trasladada (o "TBD" si no había de dónde copiarla)
-            if age_ok:
-                _write_translated_formula(ws, 18, rn, tpl_age_text, age_is_array, f"R{age_template_row}", f"R{rn}")
-            else:
-                ws.cell(row=rn, column=18, value="TBD")
-            age_cell = ws.cell(row=rn, column=18)
-            age_cell.font = base_font
-            age_cell.fill = age_fill
-            n_written += 1
+                if c == AGE_COL:
+                    cell.fill = age_fill
 
-        if n_written == 0:
-            return True, "No había profesores nuevos que agregar."
-
-        new_last_row = append_start + n_written - 1
+        n_written = len(filas_out)
+        new_last_row = max(last_row, append_start + n_written - 1)
         if match:
             ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
 
@@ -7829,12 +8240,15 @@ def push_profesores_updates(new_profs_df: pd.DataFrame) -> Tuple[bool, str]:
         if not ok:
             return False, f"Error al subir el archivo actualizado a Drive: {err}"
 
-        _download_drive_file_bytes.clear()
-        _load_profesores_lookup.clear()
+        _clear_profesores_cache()
 
-        return True, f"✓ Info. Profesores actualizada — {n_written} profesor(es) nuevo(s)."
+        n_nuevos = sum(1 for k in vistos if k in nuevos)
+        return True, (
+            f"\u2713 catedra actualizada - {n_written} profesor(es) de catedra en {sem_val}"
+            f" ({n_nuevos} nuevo(s))."
+        )
     except Exception as e:
-        return False, f"Error al escribir en Info. Profesores: {e}"
+        return False, f"Error al escribir en la hoja 'catedra': {e}"
 
 
 def _copy_ws_with_style(src_ws, dst_wb, sheet_name: str):
@@ -8540,7 +8954,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             # 'planta' -- porque para profesores de PLANTA esos valores
             # pueden cambiar de un semestre a otro -- y solo si ese par no
             # aparece en 'planta' (profesor de CÁTEDRA, o sin registro ese
-            # semestre) se usa el TIPO/P-S de 'Info. Profesores' por nombre.
+            # semestre) se usa el TIPO/P-S de la base de cátedra por nombre.
             prof_key = str(profesor).strip().upper()
             match_prof = lookup.get(prof_key)
             tipo_val, ps_val = "", ""
@@ -8625,7 +9039,7 @@ def page_update_data():
             with st.popover("", icon=":material/help:"):
                 st.caption("Base de referencia con toda la información de profesores.")
                 st.download_button(
-                    "Descargar Base Info. Profesores", data=_build_info_profesores_download(),
+                    "Descargar Base Cátedra", data=_build_info_profesores_download(),
                     file_name="Info_Profesores.xlsx", key="dl_info_profesores",
                     icon=":material/download:",
                 )
@@ -8720,7 +9134,7 @@ def page_update_data():
                 cart_df["Area del curso"] = cart_df["Materia"].map(area_map)
                 missing_area_mask = cart_df["Area del curso"].isna()
 
-                # --- Profesor (lookup contra 'Info. Profesores') ---
+                # --- Profesor (lookup contra 'catedra' + 'planta') ---
                 prof_lookup = _load_profesores_lookup()
                 cart_df["Profesor"] = cart_df["Profesor"].astype(str).str.strip()
                 missing_prof_mask = ~cart_df["Profesor"].str.upper().isin(prof_lookup.keys())
@@ -8817,7 +9231,7 @@ def page_update_data():
                     new_profs_df = pd.DataFrame()
                 else:
                     st.warning(
-                        f"⚠️ {len(missing_profs)} profesor(es) no están en 'Info. Profesores' — "
+                        f"⚠️ {len(missing_profs)} profesor(es) no están registrados — "
                         "hay que completarlos antes de poder guardar."
                     )
                     prof_fill_mode = st.radio(
@@ -8945,15 +9359,54 @@ def page_update_data():
                     save_df = cart_df.drop(columns=["Area del curso"])
                     with st.spinner("Escribiendo en Drive…"):
                         combined_lookup = dict(prof_lookup)
-                        if new_profs_df is not None and not new_profs_df.empty:
-                            ok_p, msg_p = push_profesores_updates(new_profs_df)
+                        # Periodo al que pertenece esta carga: la hoja 'catedra' es
+                        # por periodo, así que los profesores nuevos se agregan con
+                        # el semestre de la cartelera que se está subiendo. Si la
+                        # carga trajera varios, se toma el más reciente.
+                        _sems_carga = sorted(
+                            {_semestre_from_periodo(p) for p in save_df["Periodo"]} - {""},
+                            key=_period_sort_key,
+                        )
+                        _periodo_carga = _sems_carga[-1] if _sems_carga else ""
+                        # Profesores de CÁTEDRA que dictan en ese periodo: los que
+                        # aparecen en la cartelera y NO están en la hoja 'planta'
+                        # para ese semestre (esa es la regla: si no está en planta,
+                        # es de cátedra). Se sincroniza la hoja 'catedra' completa
+                        # para el periodo, no solo los nuevos.
+                        _catedra_ids = []
+                        _vistos_cat = set()
+                        # Nombre completo en MAYÚSCULAS tal como viene en la
+                        # cartelera: es la fuente canónica del nombre, tanto
+                        # para planta como para cátedra.
+                        _name_by_id: Dict[str, str] = {}
+                        for _pv, _pn in zip(save_df["Periodo"], save_df["Profesor"]):
+                            if _semestre_from_periodo(_pv) != _periodo_carga:
+                                continue
+                            _m = combined_lookup.get(str(_pn).strip().upper())
+                            if not _m:
+                                continue
+                            _pid = _m[0]
+                            _k = _norm_id(_pid)
+                            if _k and _k not in _name_by_id:
+                                _name_by_id[_k] = str(_pn).strip().upper()
+                            if _is_planta_in_period(_periodo_carga, _pid):
+                                continue
+                            if _k and _k not in _vistos_cat:
+                                _vistos_cat.add(_k)
+                                _catedra_ids.append(_pid)
+                        if _catedra_ids or (new_profs_df is not None and not new_profs_df.empty):
+                            ok_p, msg_p = push_profesores_updates(
+                                new_profs_df, _periodo_carga,
+                                catedra_ids=_catedra_ids, name_by_id=_name_by_id,
+                            )
                             if not ok_p:
                                 st.error(msg_p)
                                 st.stop()
                             st.success(msg_p)
-                            for r in new_profs_df.itertuples(index=False, name=None):
-                                name_key = str(r[0]).strip().upper()
-                                combined_lookup[name_key] = (r[1], r[2], r[4], r[5])  # ID, AREA_PROFESOR, TIPO, P/S
+                            if new_profs_df is not None and not new_profs_df.empty:
+                                for r in new_profs_df.itertuples(index=False, name=None):
+                                    name_key = str(r[0]).strip().upper()
+                                    combined_lookup[name_key] = (r[1], r[2], r[4], r[5])  # ID, AREA_PROFESOR, TIPO, P/S
                         ok, msg = push_cartelera_updates(save_df, new_courses_df, combined_lookup, area_map)
                     if ok:
                         st.cache_data.clear()  # datos nuevos en Drive: limpia acá para que Faculty Distribution y el reporte de más abajo (en este mismo guardado) ya lean la versión recién escrita, no la vieja en caché
@@ -8963,16 +9416,23 @@ def page_update_data():
                         # código crudo de Periodo -- así Faculty Distribution siempre queda con
                         # exactamente 202610 / 202620 / 2026 Intersemestral, nunca con el código sin normalizar.
                         periodo_to_ids: Dict[str, List] = {}
+                        fd_name_by_id: Dict[str, str] = {}
                         for periodo_val, prof_name in zip(save_df["Periodo"], save_df["Profesor"]):
                             m = combined_lookup.get(str(prof_name).strip().upper())
                             if not m:
                                 continue
                             semestre_limpio = _semestre_from_periodo(periodo_val)
                             periodo_to_ids.setdefault(semestre_limpio, set()).add(m[0])
+                            # El nombre de Faculty Distribution sale de la cartelera.
+                            k = _norm_id(m[0])
+                            if k and k not in fd_name_by_id:
+                                fd_name_by_id[k] = str(prof_name).strip().upper()
                         periodo_to_ids = {p: sorted(ids, key=str) for p, ids in periodo_to_ids.items()}
                         if periodo_to_ids:
                             with st.spinner("Actualizando Faculty Distribution…"):
-                                ok_fd, msg_fd = push_faculty_distribution_updates(periodo_to_ids)
+                                ok_fd, msg_fd = push_faculty_distribution_updates(
+                                    periodo_to_ids, name_by_id=fd_name_by_id
+                                )
                             if ok_fd:
                                 st.success(msg_fd)
                             else:
