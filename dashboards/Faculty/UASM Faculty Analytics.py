@@ -315,6 +315,46 @@ def _download_drive_file_bytes(file_id: str) -> bytes:
     st.stop()
 
 
+# Detección de cambios en Drive: pregunta solo por la fecha de modificación
+# (llamada liviana, cacheada ~10 s) y, si algún archivo cambió, limpia el
+# caché una sola vez para todos los usuarios. Sin cambios, el caché sigue
+# sirviendo y el dashboard no pierde velocidad.
+_DRIVE_WATCHED_FILE_IDS = (PROFESORES_FILE_ID, CARTELERA_FILE_ID, QUESTIONNAIRE_FILE_ID)
+_DRIVE_SEEN_VERSIONS: dict = {}  # a nivel de proceso: compartido entre sesiones
+
+
+@st.cache_data(ttl=10, show_spinner=False)
+def _drive_modified_times() -> dict:
+    token = _get_gspread_access_token()
+    if not token:
+        return {}
+    out = {}
+    for fid in _DRIVE_WATCHED_FILE_IDS:
+        try:
+            r = requests.get(
+                f"https://www.googleapis.com/drive/v3/files/{fid}?fields=modifiedTime",
+                headers={"Authorization": f"Bearer {token}"}, timeout=10,
+            )
+            if r.status_code == 200:
+                out[fid] = r.json().get("modifiedTime")
+        except Exception:
+            pass  # si falla la consulta, no se invalida nada
+    return out
+
+
+def _refresh_cache_if_drive_changed() -> None:
+    current = _drive_modified_times()
+    changed = any(
+        v and fid in _DRIVE_SEEN_VERSIONS and _DRIVE_SEEN_VERSIONS[fid] != v
+        for fid, v in current.items()
+    )
+    for fid, v in current.items():
+        if v:
+            _DRIVE_SEEN_VERSIONS[fid] = v
+    if changed:
+        st.cache_data.clear()
+
+
 # ---------------------------------------------------------------------------
 # Lectura "cruda" de cada hoja, compartida entre todas las páginas.
 # Antes, cada página (Composition/Staffing/Area/Demographics/Qualifications)
@@ -9554,6 +9594,7 @@ if not IS_UPDATE_PAGE:
         with arrow_r:
             st.page_link(_next_pg, label="›")
 
+_refresh_cache_if_drive_changed()
 pg.run()
 
 if IS_UPDATE_PAGE:
