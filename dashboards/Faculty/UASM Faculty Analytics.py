@@ -921,6 +921,10 @@ def _apply_program_filter(df_in: pd.DataFrame, selected_programs: set, period_co
     cartelera ese periodo (siempre se cuenta, no cambia el total de
     planta), o si dictó al menos un curso en alguno de selected_programs
     ese periodo."""
+    if id_col not in df_in.columns:
+        # Demographics (Part-time) llama a la columna 'ID Nr.', no 'ID': sin esto el
+        # filtro no se aplicaba y los totales no coincidían con By Area.
+        id_col = next((c for c in ("ID", "ID Nr.") if c in df_in.columns), id_col)
     if period_col not in df_in.columns or id_col not in df_in.columns:
         return df_in
     prof_map = _prof_program_map()
@@ -2293,6 +2297,7 @@ def page_demographics():
             "Semester" if time_mode_side == "Semestral" else "Year", options_tf,
             index=(options_tf.index(st.session_state.sel_tf_label)
                    if st.session_state.sel_tf_label in options_tf else 0),
+            format_func=_dash_label,
         ) if options_tf else None
 
         if sel_label != st.session_state.get("sel_tf_label"):
@@ -2318,7 +2323,7 @@ def page_demographics():
     sel_period_text = st.session_state.get("sel_tf_label") or ""
     st.subheader("Full-time demographics by Faculty ranking" if mode_now == "Full-time" else "Part-time demographic table")
     if sel_period_text and mode_now == "Full-time":
-        st.markdown(f"<div class='period-label'>{sel_period_text}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='period-label'>{_dash_label(sel_period_text)}</div>", unsafe_allow_html=True)
 
     col_table, col_side = st.columns([3, 1.2])
 
@@ -2550,6 +2555,7 @@ def page_demographics():
                 .apply(style_gray, axis=None)
                 .apply(style_last_col, axis=None)
                 .apply(style_tbd, axis=None)
+                .format_index(_dash_label, axis=1)  # encabezados YYYY-PP (solo visual)
                 .hide(axis="index")
             )
             with st.container(key="tct_demo_parttime"):
@@ -2569,7 +2575,7 @@ def page_demographics():
         if not sel_lbl:
             st.info("Select a period.")
         else:
-            st.markdown(f"<div class='period-label'>{sel_lbl}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='period-label'>{_dash_label(sel_lbl)}</div>", unsafe_allow_html=True)
 
             if tmode == "Semestral":
                 active_side = filter_for_timeframe(df, "Semestral", sel_sem=sel_lbl)
