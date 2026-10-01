@@ -7056,6 +7056,17 @@ _PLANTA_TEMPLATE_START_COL = 1      # columna B (0-indexado) = primera columna d
 
 # Todas las templates (BD_PLANTA, BD_Cartelera, Cursos_Nuevos) comparten el
 # mismo layout: encabezados en la fila 4, datos desde la fila 6, columna B en adelante.
+def _dates_without_time(df: pd.DataFrame) -> pd.DataFrame:
+    """Las fechas leídas de una template llegan como Timestamp (con hora
+    00:00:00); se pasan a fecha pura para que ni la vista previa ni lo que
+    se guarda muestren horas."""
+    def _f(v):
+        if isinstance(v, datetime.datetime) and not pd.isna(v):
+            return v.date()
+        return v
+    return df.apply(lambda col: col.map(_f))
+
+
 def _read_generic_template(uploaded_file, header_row: int = 4, data_row: int = 6, start_col: int = 1) -> pd.DataFrame:
     raw = pd.read_excel(uploaded_file, sheet_name=0, header=None)
     headers = raw.iloc[header_row - 1, start_col:].tolist()
@@ -7063,7 +7074,7 @@ def _read_generic_template(uploaded_file, header_row: int = 4, data_row: int = 6
     data = raw.iloc[data_row - 1:, start_col:].copy()
     data.columns = headers
     data = data.dropna(how="all").reset_index(drop=True)
-    return data
+    return _dates_without_time(data)
 
 
 def _validate_template_columns(df: pd.DataFrame, required_cols: List[str], template_label: str):
@@ -7203,33 +7214,106 @@ def _compute_full_name(first_name, last_name) -> str:
     return f"{fn} {ln}".strip()
 
 
-def _compute_age(dob) -> Optional[int]:
-    """Replica en Python la fórmula real de V (Age) en 'planta': edad en
-    años completos a la fecha de hoy (equivalente a DATEDIF(DOB,HOY,"Y")).
-    DOB llega normalizada por _planta_fmt_date() como texto DD/MM/YYYY --
-    antes solo se probaba %Y-%m-%d y %m/%d/%Y, que nunca calzaban con ese
-    formato real y dejaban la mayoria de edades en blanco."""
-    import datetime as _dt
-    if dob is None or dob == "":
+def _to_date(v) -> Optional[datetime.date]:
+    """Convierte lo que venga (datetime/Timestamp, date, serial de Excel o
+    texto 'DD/MM/YYYY' / 'YYYY-MM-DD [hh:mm:ss]') en un date SIN hora. Devuelve
+    None si no es una fecha válida ('TBD', vacío, etc.)."""
+    if v is None:
         return None
-    if isinstance(dob, str):
-        dob_s = dob.strip()
-        parsed = None
-        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y", "%d-%m-%Y", "%Y/%m/%d"):
-            try:
-                parsed = _dt.datetime.strptime(dob_s, fmt)
-                break
-            except ValueError:
-                continue
-        if parsed is None:
+    if isinstance(v, float) and pd.isna(v):
+        return None
+    if isinstance(v, datetime.datetime):
+        return None if pd.isna(v) else v.date()
+    if isinstance(v, datetime.date):
+        return v
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        if 1 <= v <= 80000:  # serial de Excel
+            return (datetime.datetime(1899, 12, 30) + datetime.timedelta(days=float(v))).date()
+        return None
+    s_ = str(v).strip()
+    if not s_ or s_.upper() in {"TBD", "NAN", "NAT", "NONE"}:
+        return None
+    s_ = s_.split(" ")[0].split("T")[0]
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%m/%d/%Y"):
+        try:
+            return datetime.datetime.strptime(s_, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _period_start_date(period) -> Optional[datetime.date]:
+    """Fecha de inicio del periodo académico: el semestre 10 empieza en
+    febrero, el Intersemestral en junio y el 20 en agosto (día 1)."""
+    key = _norm_sem_key(period)
+    if not key:
+        return None
+    try:
+        year = int(key[:4])
+    except ValueError:
+        return None
+    if "Intersemestral" in key:
+        month = 6
+    else:
+        try:
+            nn = int(key[-2:])
+        except ValueError:
             return None
-        dob = parsed
-    if isinstance(dob, _dt.datetime):
-        dob = dob.date()
-    if not isinstance(dob, _dt.date):
+        if nn in (13, 18, 19):
+            month = 6
+        elif nn in (1, 2, 3, 10, 11, 12):
+            month = 2
+        else:
+            month = 8
+    return datetime.date(year, month, 1)
+
+
+def _compute_age(dob, period=None) -> Optional[int]:
+    """Edad en años completos. Con `period`, es la edad que tenía el
+    profesor al INICIO de ese periodo (un profesor que dictó en 2020 tenía
+    otra edad que hoy); sin `period`, la de hoy. Devuelve None si la fecha
+    de nacimiento no es válida."""
+    d = _to_date(dob)
+    if d is None:
         return None
-    today = _dt.date.today()
-    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    ref = _period_start_date(period) if period not in (None, "") else None
+    if ref is None:
+        ref = datetime.date.today()
+    return ref.year - d.year - ((ref.month, ref.day) < (d.month, d.day))
+
+
+def _copy_cell_style(src, dst):
+    """Copia el formato completo de una celda a otra (fuente, relleno,
+    borde, alineación, formato numérico, protección)."""
+    if src.has_style:
+        dst.font = copy.copy(src.font)
+        dst.fill = copy.copy(src.fill)
+        dst.border = copy.copy(src.border)
+        dst.alignment = copy.copy(src.alignment)
+        dst.number_format = src.number_format
+        dst.protection = copy.copy(src.protection)
+
+
+def _reference_row(ws, last_row: int, date_col: int, min_row: int = 2) -> int:
+    """Fila de la que se copia el formato para las filas nuevas: la última
+    fila con formato 'bueno', es decir, cuya columna de fecha es una fecha
+    real (no un texto escrito por una carga anterior). Si no hay ninguna,
+    la última fila de datos."""
+    for r in range(last_row, min_row - 1, -1):
+        if isinstance(ws.cell(row=r, column=date_col).value, (datetime.date, datetime.datetime)):
+            return r
+    return max(last_row, min_row)
+
+
+def _extend_table_or_filter(ws, match, min_col: int, min_row: int, max_col: int, new_last_row: int):
+    """Hace que las filas nuevas queden DENTRO del rango de la hoja: si hay
+    una Tabla de Excel se extiende su ref; si no la hay (hoja con solo
+    autofiltro, como 'cursos') se extiende el autofiltro."""
+    ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
+    if match:
+        ws.tables[match].ref = ref
+    elif getattr(ws, "auto_filter", None) is not None and ws.auto_filter.ref:
+        ws.auto_filter.ref = ref
 
 
 def _eval_simple_lookup_formula(wb, formula_text: str, row: int, home_sheet: str) -> Optional[object]:
@@ -7391,13 +7475,16 @@ def _build_planta_row(tpl_row: list, nro: int, formula_row_num: int) -> list:
 
     row = [""] * 28  # A .. AB
 
-    row[0] = t(0)                                        # A -- Periodo (tpl B, ahora es el Periodo)
+    _per = t(0)
+    if str(_per).strip().replace(".0", "").isdigit():
+        _per = int(float(str(_per).strip()))                  # numérico, igual que el resto de la columna A
+    row[0] = _per                                        # A -- Periodo (tpl B, ahora es el Periodo)
     row[1] = nro                                          # B -- Nro (generado por la app)
     row[2] = t(1)                                       # C -- ID Nr.            (tpl C)
     row[3] = t(2)                                       # D -- First Name        (tpl D)
     row[4] = t(3)                                       # E -- Last Name         (tpl E)
     row[5] = None                                        # F -- Full Name (formula existente, NO se escribe)
-    row[6] = _planta_fmt_date(t(8))                      # G -- Date of First Appointment (tpl J)
+    row[6] = _to_date(t(8)) or ""                       # G -- Date of First Appointment (tpl J) -- fecha real, sin hora
     row[7] = t(9)                                        # H -- Academic Area     (tpl K)
     row[8] = t(13)                                       # I -- Highest Earned Degree (tpl O)
     row[9] = t(14)                                       # J -- Year (Degree)     (tpl P)
@@ -7411,7 +7498,7 @@ def _build_planta_row(tpl_row: list, nro: int, formula_row_num: int) -> list:
     row[17] = t(19)                                      # R -- Field             (tpl U)
     row[18] = t(6)                                       # S -- Country of Birth  (tpl H)
     row[19] = t(7)                                       # T -- Double Nationality (tpl I)
-    row[20] = _planta_fmt_date(t(4))                     # U -- Date of Birth     (tpl F)
+    row[20] = _to_date(t(4)) or ""                      # U -- Date of Birth     (tpl F) -- fecha real, sin hora
     row[21] = None                                       # V -- Age (formula existente, NO se escribe)
     row[22] = t(5)                                        # W -- Gender            (tpl G)
     row[23] = t(12)                                       # X -- Faculty Qualific. (tpl N)
@@ -7443,7 +7530,7 @@ def _read_planta_template(uploaded_file) -> pd.DataFrame:
     data.columns = headers
     data = data.dropna(how="all").reset_index(drop=True)
     _validate_template_columns(data, ["First Name", "Last Name", "ID Nr."], "Template_planta.xlsx")
-    return data
+    return _dates_without_time(data)
 
 
 def _style_planta_preview(df: pd.DataFrame):
@@ -7552,47 +7639,56 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
         base_font = _BASE_ARIAL_FONT
         blue_bold_font = Font(name="Arial", size=11, color="1D4ED8", bold=True)
         red_font = Font(name="Arial", size=11, color="DC2626")
-        thin = Side(style="thin")
-        thin_border = Border(left=thin, right=thin, top=thin, bottom=thin)
-        fv_fill = PatternFill(fill_type="solid", fgColor="F1CEEE")
-        fv_align = Alignment(horizontal="left")
+
+        # Formato de las filas nuevas = el de las filas ya existentes: se copia
+        # celda por celda de la última fila "buena" (fecha real, no texto).
+        PL_DATE_COLS = (7, 21)  # G Date of First Appointment, U Date of Birth
+        ref_row = _reference_row(ws, last_real_row, date_col=7)
+        date_fmt_pl = ws.cell(row=ref_row, column=7).number_format
 
         for i, row_vals in enumerate(rows):
             rn = append_start + i
             style = _planta_note_style(row_vals[26])  # indice 26 = columna AA (Notes)
-            font = blue_bold_font if style == "blue_bold" else red_font if style == "red" else base_font
             for c, val in enumerate(row_vals, start=1):
+                cell = ws.cell(row=rn, column=c)
+                _copy_cell_style(ws.cell(row=ref_row, column=c), cell)
                 if val is None:
                     if c == 6:      # F -- Full Name: se calcula en Python (First + Last), no formula
                         val = _compute_full_name(row_vals[3], row_vals[4])
-                    elif c == 22:    # V -- Age: se calcula en Python desde Date of Birth (col U, indice 20)
-                        val = _compute_age(row_vals[20])
+                    elif c == 22:    # V -- Age: edad al INICIO del periodo de esa fila (col A)
+                        val = _compute_age(row_vals[20], period=row_vals[0])
                         if val is None:
                             continue
                     else:
                         continue
-                cell = ws.cell(row=rn, column=c, value=val)
-                cell.font = font
-                cell.border = thin_border
-                if c in (6, 22):  # F (Full Name) y V (Age): relleno rosado + alineado a la izquierda
-                    cell.fill = fv_fill
-                    cell.alignment = fv_align
+                cell.value = val
+                if c in PL_DATE_COLS and isinstance(val, datetime.date):
+                    cell.number_format = date_fmt_pl
+                if style == "blue_bold":
+                    cell.font = blue_bold_font
+                elif style == "red":
+                    cell.font = red_font
 
-        # 2.6) Repara de paso cualquier fila EXISTENTE de F/V que haya quedado
-        # como texto de formula sin resolver (de cargas anteriores a este
-        # cambio) o mal alineada, para que toda la columna quede consistente.
+        # 2.6) Repara las filas EXISTENTES: fechas guardadas como texto por
+        # cargas anteriores -> fecha real (sin hora), y la Edad de TODAS las
+        # filas se recalcula con la edad que tenía el profesor al inicio de
+        # SU periodo (no la de hoy). Si la fecha de nacimiento no es válida,
+        # la edad existente se deja como está.
         for r in range(2, append_start):
-            for c in (6, 22):
+            for c in PL_DATE_COLS:
                 cell = ws.cell(row=r, column=c)
-                v = cell.value
-                if isinstance(v, str) and v.startswith("="):
-                    if c == 6:
-                        cell.value = _compute_full_name(ws.cell(row=r, column=4).value, ws.cell(row=r, column=5).value)
-                    else:
-                        age = _compute_age(ws.cell(row=r, column=21).value)
-                        if age is not None:
-                            cell.value = age
-                cell.alignment = fv_align
+                d = _to_date(cell.value)
+                if d is not None and not isinstance(cell.value, (datetime.datetime, datetime.date)):
+                    cell.value = d
+                    cell.number_format = date_fmt_pl
+                elif isinstance(cell.value, datetime.datetime):
+                    cell.value = cell.value.date()
+            fcell = ws.cell(row=r, column=6)
+            if isinstance(fcell.value, str) and fcell.value.startswith("="):
+                fcell.value = _compute_full_name(ws.cell(row=r, column=4).value, ws.cell(row=r, column=5).value)
+            age = _compute_age(ws.cell(row=r, column=21).value, period=ws.cell(row=r, column=1).value)
+            if age is not None:
+                ws.cell(row=r, column=22).value = age
 
         # 2.7) Detecta profesores que ENTRARON y SALIERON: para cada periodo
         # recién cargado, se compara contra el periodo inmediatamente
@@ -8282,7 +8378,6 @@ def push_profesores_updates(new_profs_df: pd.DataFrame, periodo: str,
         match, min_col, min_row, max_col, last_row = info
 
         base_font = _BASE_ARIAL_FONT
-        age_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
         N_COLS = 20          # A..T en 'catedra'
         ID_COL, AGE_COL = 3, 19
 
@@ -8350,13 +8445,9 @@ def push_profesores_updates(new_profs_df: pd.DataFrame, periodo: str,
         DOB_IDX = 17
 
         def _age_from(dob) -> object:
-            try:
-                d = pd.to_datetime(dob, errors="coerce")
-                if pd.isna(d):
-                    return "TBD"
-                return int((pd.Timestamp.today() - d).days // 365.25)
-            except Exception:
-                return "TBD"
+            # Edad al INICIO del periodo que se está cargando (sem_val), no la de hoy.
+            age = _compute_age(dob, period=sem_val)
+            return "TBD" if age is None else age
 
         nuevos: Dict[str, list] = {}      # id -> fila completa (1..N_COLS)
         if new_profs_df is not None and not new_profs_df.empty:
@@ -8417,14 +8508,46 @@ def push_profesores_updates(new_profs_df: pd.DataFrame, periodo: str,
                 f"{' ...' if len(sin_datos) > 10 else ''}. No se guardo nada."
             )
 
+        # Fechas reales (sin hora) y edad al inicio del periodo para TODAS las
+        # filas que se escriben (nuevas y heredadas). H=8 Date of First
+        # Appointment, R=18 Date of birth, S=19 Age.
+        CAT_DATE_COLS = (8, 18)
+        for fila in filas_out:
+            for c in CAT_DATE_COLS:
+                d = _to_date(fila[c - 1])
+                if d is not None:
+                    fila[c - 1] = d
+            fila[AGE_COL - 1] = _age_from(fila[CAT_DATE_COLS[1] - 1])
+
         append_start = last_row + 1
+        # Formato de las filas nuevas = el de las filas existentes: se copia de
+        # la última fila con fecha real en H.
+        ref_row = _reference_row(ws, last_row, date_col=8)
+        date_fmt_cat = ws.cell(row=ref_row, column=8).number_format
         for i, fila in enumerate(filas_out):
             rn = append_start + i
             for c in range(1, N_COLS + 1):
-                cell = ws.cell(row=rn, column=c, value=fila[c - 1])
-                cell.font = base_font
-                if c == AGE_COL:
-                    cell.fill = age_fill
+                cell = ws.cell(row=rn, column=c)
+                _copy_cell_style(ws.cell(row=ref_row, column=c), cell)
+                cell.value = fila[c - 1]
+                if c in CAT_DATE_COLS and isinstance(fila[c - 1], datetime.date):
+                    cell.number_format = date_fmt_cat
+
+        # Filas EXISTENTES: fechas en texto -> fecha real (sin hora) y Edad de
+        # TODAS recalculada con la edad al inicio de su propio periodo.
+        for r in range(2, append_start):
+            for c in CAT_DATE_COLS:
+                cell = ws.cell(row=r, column=c)
+                if isinstance(cell.value, datetime.datetime):
+                    cell.value = cell.value.date()
+                elif isinstance(cell.value, str):
+                    d = _to_date(cell.value)
+                    if d is not None:
+                        cell.value = d
+                        cell.number_format = date_fmt_cat
+            age = _compute_age(ws.cell(row=r, column=CAT_DATE_COLS[1]).value, period=ws.cell(row=r, column=1).value)
+            if age is not None:
+                ws.cell(row=r, column=AGE_COL).value = age
 
         n_written = len(filas_out)
         new_last_row = max(last_row, append_start + n_written - 1)
@@ -8580,9 +8703,13 @@ def _write_simple_table(ws, dfx: pd.DataFrame):
         ws.column_dimensions[cell.column_letter].width = max(14, len(str(col)) + 2)
     for r, row_vals in enumerate(dfx.itertuples(index=False, name=None), start=2):
         for c, val in enumerate(row_vals, start=1):
+            if isinstance(val, datetime.datetime) and not pd.isna(val):
+                val = val.date()
             cell = ws.cell(row=r, column=c, value=val)
             cell.font = base_font
             cell.border = border
+            if isinstance(val, datetime.date):
+                cell.number_format = "d/m/yyyy"
 
 
 def _qual_norm_tipo(val) -> str:
@@ -9011,9 +9138,11 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
             for i, r in enumerate(new_courses_df.itertuples(index=False, name=None)):
                 rn = append_start_c + i
                 codigo, creditos, nombre, area = (r + ("", "", "", ""))[:4]
+                # Mismo formato que la última fila existente de 'cursos'.
+                for col in range(1, 7):
+                    _copy_cell_style(ws_cursos.cell(row=template_row_c, column=col), ws_cursos.cell(row=rn, column=col))
                 for col, val in [(1, codigo), (2, creditos), (3, nombre), (4, area)]:
-                    cell = ws_cursos.cell(row=rn, column=col, value=val)
-                    cell.font = base_font
+                    ws_cursos.cell(row=rn, column=col).value = val
                 if ef_ok:
                     # E y F se CALCULAN en Python (evaluando la fórmula real
                     # contra las tablas de referencia que ya viven en el
@@ -9030,19 +9159,12 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                         _write_translated_formula(ws_cursos, 6, rn, tpl_f_text, f_is_array, f"F{template_row_c}", f"F{rn}")
                     else:
                         ws_cursos.cell(row=rn, column=6, value=val_f)
-                    for col in (5, 6):
-                        cell = ws_cursos.cell(row=rn, column=col)
-                        cell.font = base_font
-                        cell.fill = cursos_fill
-                        cell.alignment = Alignment(horizontal="left")
-                        cell.fill = cursos_fill
                 n_new_courses += 1
 
             new_last_row_c = append_start_c + n_new_courses - 1
-            if info[0]:
-                ws_cursos.tables[info[0]].ref = (
-                    f"{get_column_letter(min_col_c)}{min_row_c}:{get_column_letter(max_col_c)}{new_last_row_c}"
-                )
+            # Las filas nuevas deben quedar DENTRO del rango de 'cursos': Tabla de
+            # Excel si existe, y si no (esta hoja solo tiene autofiltro), el autofiltro.
+            _extend_table_or_filter(ws_cursos, info[0], min_col_c, min_row_c, max_col_c, new_last_row_c)
 
         # ── Tablas de referencia reales, leídas del propio archivo (no inventadas) ──
         # AD:AE de 'cartelera' → Periodo crudo -> Semestre limpio
