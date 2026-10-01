@@ -2812,20 +2812,13 @@ def page_demographics():
             nat_counts = pd.DataFrame({"Nationality": [], "Count": []})
             total_intl = n_nats = 0
 
-        # Nacionalidad (gentilicio) -> país, para poder ubicar la burbuja en el mapa
-        _NATIONALITY_TO_COUNTRY = {
-            "American": "United States", "Argentinian": "Argentina", "Australian": "Australia",
-            "Brazilian": "Brazil", "British": "United Kingdom", "Bulgarian": "Bulgaria",
-            "Canadian": "Canada", "Chilean": "Chile", "Dominican": "Dominican Republic",
-            "Egyptian": "Egypt", "French": "France", "German": "Germany", "Indian": "India",
-            "Italian": "Italy", "Kenyan": "Kenya", "New Zealander": "New Zealand",
-            "Peruvian": "Peru", "Philippine": "Philippines", "Portuguese": "Portugal",
-            "Russian": "Russia", "South African": "South Africa", "Spanish": "Spain",
-            "Turkish": "Turkey", "Venezuelan": "Venezuela", "Dutch": "Netherlands",
-            "Belgian": "Belgium", "Finnish": "Finland", "Mexican": "Mexico",
-        }
-        nat_counts["Country"] = nat_counts["Nationality"].map(_NATIONALITY_TO_COUNTRY)
+        # Nacionalidad (gentilicio) -> país, para ubicar la burbuja en el mapa.
+        # Tabla ampliada + variantes de escritura (p.ej. 'Ecuatorian'/'Ecuadorian');
+        # si el valor ya es un país ('France') se usa tal cual. Lo que no se pueda
+        # ubicar se avisa debajo del mapa en vez de desaparecer en silencio.
+        nat_counts["Country"] = nat_counts["Nationality"].map(_nationality_to_country)
         map_df = nat_counts.dropna(subset=["Country"])
+        _unplaced = nat_counts[nat_counts["Country"].isna()]["Nationality"].tolist()
 
         title_nat = f"{total_intl} international Faculty. {n_nats} different nationalities"
         fig_nat = px.scatter_geo(
@@ -2840,6 +2833,8 @@ def page_demographics():
                              showocean=True, oceancolor="#EAF6F4", bgcolor="rgba(0,0,0,0)")
         fig_nat.update_layout(height=380, margin=dict(l=10, r=10, t=50, b=6))
         st.plotly_chart(fig_nat, use_container_width=True)
+        if _unplaced:
+            st.caption("Not placed on the map (unrecognized nationality): " + ", ".join(map(str, _unplaced)))
 
         if not intl_now.empty:
             detalle_nat = pick_cols(intl_now, {
@@ -9499,6 +9494,46 @@ def _period_sort_key(p):
         return (int(s[:4]), 15 if "Intersemestral" in s else int(s[-2:].replace("-", "")))
     except (ValueError, IndexError):
         return (-1, -1)  # valores no reconocibles (vacíos, ruido de datos) quedan al final al ordenar
+
+
+_NATIONALITY_COUNTRY = {
+    "american": "United States", "usa": "United States", "united states": "United States",
+    "argentinian": "Argentina", "argentine": "Argentina", "argentinean": "Argentina",
+    "australian": "Australia", "austrian": "Austria", "belgian": "Belgium",
+    "bolivian": "Bolivia", "brazilian": "Brazil", "british": "United Kingdom",
+    "english": "United Kingdom", "scottish": "United Kingdom", "bulgarian": "Bulgaria",
+    "canadian": "Canada", "chilean": "Chile", "chinese": "China", "costa rican": "Costa Rica",
+    "croatian": "Croatia", "cuban": "Cuba", "czech": "Czechia", "danish": "Denmark",
+    "dominican": "Dominican Republic", "dutch": "Netherlands", "ecuadorian": "Ecuador",
+    "ecuatorian": "Ecuador", "ecuadorean": "Ecuador", "ecuatoriano": "Ecuador",
+    "egyptian": "Egypt", "ethiopian": "Ethiopia", "finnish": "Finland", "french": "France",
+    "german": "Germany", "greek": "Greece", "guatemalan": "Guatemala", "honduran": "Honduras",
+    "hungarian": "Hungary", "indian": "India", "indonesian": "Indonesia", "iranian": "Iran",
+    "irish": "Ireland", "israeli": "Israel", "italian": "Italy", "japanese": "Japan",
+    "kenyan": "Kenya", "korean": "South Korea", "south korean": "South Korea",
+    "lebanese": "Lebanon", "mexican": "Mexico", "moroccan": "Morocco", "new zealander": "New Zealand",
+    "nigerian": "Nigeria", "norwegian": "Norway", "pakistani": "Pakistan", "panamanian": "Panama",
+    "paraguayan": "Paraguay", "peruvian": "Peru", "philippine": "Philippines",
+    "filipino": "Philippines", "polish": "Poland", "portuguese": "Portugal",
+    "puerto rican": "Puerto Rico", "romanian": "Romania", "russian": "Russia",
+    "salvadoran": "El Salvador", "serbian": "Serbia", "singaporean": "Singapore",
+    "south african": "South Africa", "spanish": "Spain", "swedish": "Sweden", "swiss": "Switzerland",
+    "taiwanese": "Taiwan", "thai": "Thailand", "turkish": "Turkey", "ukrainian": "Ukraine",
+    "uruguayan": "Uruguay", "venezuelan": "Venezuela", "vietnamese": "Vietnam",
+    "colombian": "Colombia",
+}
+_COUNTRY_NAMES = {v.lower(): v for v in _NATIONALITY_COUNTRY.values()}
+
+
+def _nationality_to_country(nat) -> Optional[str]:
+    """Gentilicio ('Ecuatorian', 'Mexican'...) -> nombre de país para el mapa;
+    None si no se reconoce. Ignora mayúsculas, tildes y espacios de más, y
+    acepta que el dato ya venga como país ('France')."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(nat or ""))
+    t = "".join(ch for ch in t if not unicodedata.combining(ch)).lower().strip()
+    t = re.sub(r"\s+", " ", t)
+    return _NATIONALITY_COUNTRY.get(t) or _COUNTRY_NAMES.get(t)
 
 
 def _dash_label(p) -> str:
