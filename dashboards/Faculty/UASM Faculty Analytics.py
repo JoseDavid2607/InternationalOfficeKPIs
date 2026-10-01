@@ -2525,17 +2525,22 @@ def page_demographics():
             blue_light, blue_dark = "#dff7f2", "#00A896"
             red_light, red_dark = "#f8d7da", "#721c24"
 
+            # Encabezados de periodo con guion (YYYY-PP): se renombran las columnas de la
+            # tabla que se muestra (los cálculos de arriba siguen con las claves originales).
+            dkeys = [_dash_label(k) for k in keys]
+            display_df = display_df.rename(columns=dict(zip(keys, dkeys)))
+
             def style_gray(df_):
                 styles = pd.DataFrame('', index=df_.index, columns=df_.columns)
                 gray_rows = df_["Category"].isin(GROUPS_PT) | df_["Category"].eq("Avg years of Work Exp.")
-                styles.loc[gray_rows, ["Category"] + keys] = 'background-color:#f2f2f2; font-weight:700;'
+                styles.loc[gray_rows, ["Category"] + dkeys] = 'background-color:#f2f2f2; font-weight:700;'
                 return styles
 
             def style_last_col(df_):
                 styles = pd.DataFrame('', index=df_.index, columns=df_.columns)
                 if keys:
                     _sel = st.session_state.get("sel_tf_label", "")
-                    target = _sel if _sel in keys else keys[-1]
+                    target = _dash_label(_sel if _sel in keys else keys[-1])
                     mask = df_["Category"].isin(GROUPS_PT)
                     styles.loc[mask, target] = f'background-color:{blue_light}; color:{blue_dark}; font-weight:800;'
                 return styles
@@ -2547,7 +2552,7 @@ def page_demographics():
                         for c in keys:
                             v = pd.to_numeric(table_df.loc[i, c], errors="coerce")
                             if pd.notna(v) and v > 0:
-                                styles.at[i, c] = f'background-color:{red_light}; color:{red_dark}; font-weight:800;'
+                                styles.at[i, _dash_label(c)] = f'background-color:{red_light}; color:{red_dark}; font-weight:800;'
                 return styles
 
             styled_table = (
@@ -2555,7 +2560,6 @@ def page_demographics():
                 .apply(style_gray, axis=None)
                 .apply(style_last_col, axis=None)
                 .apply(style_tbd, axis=None)
-                .format_index(_dash_label, axis=1)  # encabezados YYYY-PP (solo visual)
                 .hide(axis="index")
             )
             with st.container(key="tct_demo_parttime"):
