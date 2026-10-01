@@ -7305,6 +7305,38 @@ def _reference_row(ws, last_row: int, date_col: int, min_row: int = 2) -> int:
     return max(last_row, min_row)
 
 
+def _extend_tbd_highlight(ws, first_col: int, last_col: int, new_last_row: int, header_row: int = 1):
+    """Los 'TBD' de 'catedra' se resaltan en rojo (letra roja + fondo rosado)
+    con una regla de formato condicional cuyo rango termina en la última fila
+    que había cuando se creó. Aquí se extiende ese rango hasta la última fila
+    nueva para que los TBD de lo que se sube también queden resaltados; si la
+    regla no existe, se crea con el mismo estilo."""
+    from openpyxl.formatting.formatting import ConditionalFormattingList
+    from openpyxl.formatting.rule import Rule
+    from openpyxl.styles.differential import DifferentialStyle
+
+    first = f"{get_column_letter(first_col)}{header_row + 1}"
+    new_rng = f"{first}:{get_column_letter(last_col)}{new_last_row}"
+    new_cf = ConditionalFormattingList()
+    found = False
+    for cf in ws.conditional_formatting:
+        rng = str(cf.sqref)
+        for rule in cf.rules:
+            is_tbd = rule.type == "containsText" and str(getattr(rule, "text", "")).upper() == "TBD"
+            if is_tbd and not found:
+                found = True
+                new_cf.add(new_rng, rule)
+            else:
+                new_cf.add(rng, rule)
+    if not found:
+        dxf = DifferentialStyle(font=Font(color="FFFF0000"), fill=PatternFill(bgColor="FFF4CCCC", fill_type="solid"))
+        new_cf.add(new_rng, Rule(
+            type="containsText", operator="containsText", text="TBD", dxf=dxf,
+            formula=[f'NOT(ISERROR(SEARCH("TBD",{first})))'],
+        ))
+    ws.conditional_formatting = new_cf
+
+
 def _extend_table_or_filter(ws, match, min_col: int, min_row: int, max_col: int, new_last_row: int):
     """Hace que las filas nuevas queden DENTRO del rango de la hoja: si hay
     una Tabla de Excel se extiende su ref; si no la hay (hoja con solo
@@ -8524,6 +8556,8 @@ def push_profesores_updates(new_profs_df: pd.DataFrame, periodo: str,
         new_last_row = max(last_row, append_start + n_written - 1)
         if match:
             ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
+        # TBD en rojo también en las filas nuevas (H:T, como en el resto de la hoja).
+        _extend_tbd_highlight(ws, 8, N_COLS, new_last_row, header_row=min_row)
 
         wb.calculation.fullCalcOnLoad = True
         buf = io.BytesIO()
