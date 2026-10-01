@@ -7378,30 +7378,6 @@ def _heal_cartelera_tables(wb):
             ws_c.auto_filter.ref = f"A1:F{last}"
 
 
-def repair_drive_ranges() -> Tuple[bool, str]:
-    """Botón de mantenimiento: revisa BD_profesores.xlsx y BD_cartelera.xlsx y
-    hace que las tablas (y el autofiltro de 'cursos') cubran TODOS los datos,
-    para que al filtrar aparezca también lo que se subió después."""
-    if not _OPENPYXL_OK:
-        return False, "Falta la libreria `openpyxl` en el entorno."
-    if not _get_gspread_access_token():
-        return False, "No hay credenciales configuradas para escribir en Drive."
-    try:
-        for file_id, healer in ((PROFESORES_FILE_ID, _heal_profesores_tables), (CARTELERA_FILE_ID, _heal_cartelera_tables)):
-            wb = openpyxl.load_workbook(io.BytesIO(_download_drive_file_bytes(file_id)))
-            healer(wb)
-            wb.calculation.fullCalcOnLoad = True
-            buf = io.BytesIO()
-            wb.save(buf)
-            ok, err = _drive_upload_file_bytes(file_id, buf.getvalue())
-            if not ok:
-                return False, f"Error al subir el archivo a Drive: {err}"
-            _download_drive_file_bytes.clear()
-        return True, "✓ Tablas reparadas: ahora cubren todos los datos en BD_profesores y BD_cartelera."
-    except Exception as e:
-        return False, f"Error al reparar las tablas: {e}"
-
-
 def _extend_tbd_highlight(ws, first_col: int, last_col: int, new_last_row: int, header_row: int = 1):
     """Los 'TBD' de 'catedra' se resaltan en rojo (letra roja + fondo rosado)
     con una regla de formato condicional cuyo rango termina en la última fila
@@ -10045,20 +10021,6 @@ def page_update_data():
     # ── BD_Faculty_Questionnaire ─────────────────────────────────────────
     with tab_quest:
         pass
-
-    with st.expander("Mantenimiento", expanded=False, icon=":material/build:"):
-        st.caption(
-            "Si al filtrar en Drive no salen las filas más recientes (quedaron por fuera de la tabla), "
-            "este botón hace que las tablas de BD_profesores y BD_cartelera cubran todos los datos."
-        )
-        if st.button("Reparar tablas en Drive", key="repair_drive_ranges_btn", icon=":material/build:"):
-            with st.spinner("Revisando y reparando las tablas…"):
-                ok_rep, msg_rep = repair_drive_ranges()
-            if ok_rep:
-                st.cache_data.clear()
-                st.success(msg_rep)
-            else:
-                st.error(msg_rep)
 
 
 # Navegación multipágina — menú nativo oculto; desplegable sutil (flecha) con los enlaces
