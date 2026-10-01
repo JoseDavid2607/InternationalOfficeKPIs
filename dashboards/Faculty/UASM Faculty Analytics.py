@@ -7305,6 +7305,103 @@ def _reference_row(ws, last_row: int, date_col: int, min_row: int = 2) -> int:
     return max(last_row, min_row)
 
 
+def _ensure_table_range(ws, table_name: str, ncols: int, style_name: Optional[str] = None, header_row: int = 1) -> bool:
+    """Garantiza que la Tabla de Excel `table_name` cubra TODOS los datos de la
+    hoja (desde A{header_row} hasta la última fila con datos reales).
+
+    - Si la tabla existe: actualiza su rango Y el de su autofiltro (si solo se
+      cambia `ref`, el autofiltro queda con el rango viejo y al filtrar solo
+      salen las filas antiguas).
+    - Si la tabla NO existe (se perdió en un guardado anterior, y la hoja
+      quedó con un autofiltro suelto sobre el rango viejo): la recrea con el
+      mismo nombre y estilo, y quita ese autofiltro suelto (una hoja no
+      puede tener un autofiltro encima de una Tabla).
+    Devuelve True si quedó una Tabla cubriendo los datos."""
+    from openpyxl.worksheet.filters import AutoFilter
+
+    last = _last_data_row(ws, key_col=1, header_row=header_row, upper_bound=ws.max_row)
+    ref = f"A{header_row}:{get_column_letter(ncols)}{last}"
+    try:
+        names = list(ws.tables.keys())
+    except AttributeError:
+        names = list(ws.tables)
+    match = next((n for n in names if n.strip().lower() == table_name.strip().lower()), None)
+    if match:
+        tbl = ws.tables[match]
+        tbl.ref = ref
+        tbl.autoFilter = AutoFilter(ref=ref)
+        if ws.auto_filter is not None:
+            ws.auto_filter.ref = None
+        return True
+
+    headers = [ws.cell(row=header_row, column=c).value for c in range(1, ncols + 1)]
+    norm = [str(h).strip() for h in headers if h is not None and str(h).strip() != ""]
+    if len(norm) != ncols or len(set(x.lower() for x in norm)) != ncols:
+        # Encabezados vacíos/repetidos: no se puede crear una Tabla; al menos
+        # se extiende el autofiltro suelto para que cubra todo.
+        if getattr(ws, "auto_filter", None) is not None and ws.auto_filter.ref:
+            ws.auto_filter.ref = ref
+        return False
+    tbl = Table(displayName=table_name, ref=ref)
+    if style_name:
+        tbl.tableStyleInfo = TableStyleInfo(
+            name=style_name, showFirstColumn=True, showLastColumn=True,
+            showRowStripes=True, showColumnStripes=False,
+        )
+    tbl.autoFilter = AutoFilter(ref=ref)
+    ws.add_table(tbl)
+    if ws.auto_filter is not None:
+        ws.auto_filter.ref = None
+    return True
+
+
+def _heal_profesores_tables(wb):
+    """Rango de tabla correcto en las 3 hojas de BD_profesores.xlsx."""
+    for sheet, name, ncols, style in (
+        ("planta", "tabla_planta", 27, "planta-style"),
+        ("catedra", "tabla_catedra", 20, "catedra-style"),
+        ("Faculty Distribution", "tabla_faculty_distribution", 8, "Faculty Distribution-style"),
+    ):
+        if sheet in wb.sheetnames:
+            _ensure_table_range(wb[sheet], name, ncols, style)
+
+
+def _heal_cartelera_tables(wb):
+    """Rango de tabla/autofiltro correcto en BD_cartelera.xlsx ('cartelera' es
+    una Tabla de Excel; 'cursos' solo tiene autofiltro A:F)."""
+    if "cartelera" in wb.sheetnames:
+        _ensure_table_range(wb["cartelera"], "Tabla_cartelera", 23, "cartelera-style")
+    if "cursos" in wb.sheetnames:
+        ws_c = wb["cursos"]
+        last = _last_data_row(ws_c, key_col=1, header_row=1, upper_bound=ws_c.max_row)
+        if getattr(ws_c, "auto_filter", None) is not None and ws_c.auto_filter.ref:
+            ws_c.auto_filter.ref = f"A1:F{last}"
+
+
+def repair_drive_ranges() -> Tuple[bool, str]:
+    """Botón de mantenimiento: revisa BD_profesores.xlsx y BD_cartelera.xlsx y
+    hace que las tablas (y el autofiltro de 'cursos') cubran TODOS los datos,
+    para que al filtrar aparezca también lo que se subió después."""
+    if not _OPENPYXL_OK:
+        return False, "Falta la libreria `openpyxl` en el entorno."
+    if not _get_gspread_access_token():
+        return False, "No hay credenciales configuradas para escribir en Drive."
+    try:
+        for file_id, healer in ((PROFESORES_FILE_ID, _heal_profesores_tables), (CARTELERA_FILE_ID, _heal_cartelera_tables)):
+            wb = openpyxl.load_workbook(io.BytesIO(_download_drive_file_bytes(file_id)))
+            healer(wb)
+            wb.calculation.fullCalcOnLoad = True
+            buf = io.BytesIO()
+            wb.save(buf)
+            ok, err = _drive_upload_file_bytes(file_id, buf.getvalue())
+            if not ok:
+                return False, f"Error al subir el archivo a Drive: {err}"
+            _download_drive_file_bytes.clear()
+        return True, "✓ Tablas reparadas: ahora cubren todos los datos en BD_profesores y BD_cartelera."
+    except Exception as e:
+        return False, f"Error al reparar las tablas: {e}"
+
+
 def _extend_tbd_highlight(ws, first_col: int, last_col: int, new_last_row: int, header_row: int = 1):
     """Los 'TBD' de 'catedra' se resaltan en rojo (letra roja + fondo rosado)
     con una regla de formato condicional cuyo rango termina en la última fila
@@ -7808,6 +7905,7 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
             min_col, min_row, max_col, _old_max_row = range_boundaries(tbl.ref)
             tbl.ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
 
+        _heal_profesores_tables(wb)  # tablas con todos los datos (también si se habían perdido)
         wb.calculation.fullCalcOnLoad = True  # fuerza recalculo de formulas al abrir en Excel
         buf = io.BytesIO()
         wb.save(buf)
@@ -8327,6 +8425,7 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List],
         if match:
             ws.tables[match].ref = f"{get_column_letter(min_col)}{min_row}:{get_column_letter(max_col)}{new_last_row}"
 
+        _heal_profesores_tables(wb)  # tablas con todos los datos (también si se habían perdido)
         wb.calculation.fullCalcOnLoad = True
         buf = io.BytesIO()
         wb.save(buf)
@@ -8559,6 +8658,7 @@ def push_profesores_updates(new_profs_df: pd.DataFrame, periodo: str,
         # TBD en rojo también en las filas nuevas (H:T, como en el resto de la hoja).
         _extend_tbd_highlight(ws, 8, N_COLS, new_last_row, header_row=min_row)
 
+        _heal_profesores_tables(wb)  # tablas con todos los datos (también si se habían perdido)
         wb.calculation.fullCalcOnLoad = True
         buf = io.BytesIO()
         wb.save(buf)
@@ -9444,6 +9544,7 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
                 f"{get_column_letter(min_col_ct)}{min_row_ct}:{get_column_letter(max_col_ct)}{new_last_row_ct}"
             )
 
+        _heal_cartelera_tables(wb)  # tabla de cartelera y autofiltro de cursos con todos los datos
         wb.calculation.fullCalcOnLoad = True
         buf = io.BytesIO()
         wb.save(buf)
@@ -9944,6 +10045,20 @@ def page_update_data():
     # ── BD_Faculty_Questionnaire ─────────────────────────────────────────
     with tab_quest:
         pass
+
+    with st.expander("Mantenimiento", expanded=False, icon=":material/build:"):
+        st.caption(
+            "Si al filtrar en Drive no salen las filas más recientes (quedaron por fuera de la tabla), "
+            "este botón hace que las tablas de BD_profesores y BD_cartelera cubran todos los datos."
+        )
+        if st.button("Reparar tablas en Drive", key="repair_drive_ranges_btn", icon=":material/build:"):
+            with st.spinner("Revisando y reparando las tablas…"):
+                ok_rep, msg_rep = repair_drive_ranges()
+            if ok_rep:
+                st.cache_data.clear()
+                st.success(msg_rep)
+            else:
+                st.error(msg_rep)
 
 
 # Navegación multipágina — menú nativo oculto; desplegable sutil (flecha) con los enlaces
