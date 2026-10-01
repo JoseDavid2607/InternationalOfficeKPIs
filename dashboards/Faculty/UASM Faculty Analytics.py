@@ -7669,27 +7669,6 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
                 elif style == "red":
                     cell.font = red_font
 
-        # 2.6) Repara las filas EXISTENTES: fechas guardadas como texto por
-        # cargas anteriores -> fecha real (sin hora), y la Edad de TODAS las
-        # filas se recalcula con la edad que tenía el profesor al inicio de
-        # SU periodo (no la de hoy). Si la fecha de nacimiento no es válida,
-        # la edad existente se deja como está.
-        for r in range(2, append_start):
-            for c in PL_DATE_COLS:
-                cell = ws.cell(row=r, column=c)
-                d = _to_date(cell.value)
-                if d is not None and not isinstance(cell.value, (datetime.datetime, datetime.date)):
-                    cell.value = d
-                    cell.number_format = date_fmt_pl
-                elif isinstance(cell.value, datetime.datetime):
-                    cell.value = cell.value.date()
-            fcell = ws.cell(row=r, column=6)
-            if isinstance(fcell.value, str) and fcell.value.startswith("="):
-                fcell.value = _compute_full_name(ws.cell(row=r, column=4).value, ws.cell(row=r, column=5).value)
-            age = _compute_age(ws.cell(row=r, column=21).value, period=ws.cell(row=r, column=1).value)
-            if age is not None:
-                ws.cell(row=r, column=22).value = age
-
         # 2.7) Detecta profesores que ENTRARON y SALIERON: para cada periodo
         # recién cargado, se compara contra el periodo inmediatamente
         # anterior que ya está presente en la hoja (puede ser un periodo
@@ -7723,8 +7702,20 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
         # template solo tenía 1). La detección automática queda solo como
         # respaldo para templates sin ninguna marca.
         _template_has_marks = any(
-            str(rv[26] or "").strip().upper().startswith(("IN IN", "OUT IN")) for rv in rows
+            re.match(r"^\s*(?:IN|OUT)\b", str(rv[26] or ""), re.I) for rv in rows
         )
+        if _template_has_marks:
+            # Marcas viejas de cargas anteriores (p.ej. 'OUT IN 202610' puesto
+            # por la detección automática en filas del periodo anterior) que
+            # ya no vienen en esta template: se limpian para que el
+            # Staffing no cuente de más. Solo se tocan filas de OTROS periodos.
+            for r in range(2, append_start):
+                note_cell = ws.cell(row=r, column=27)
+                m_old = re.match(r"^\s*(?:IN|OUT)\s+IN\s+\(?(\d{6})\)?", str(note_cell.value or ""), re.I)
+                if m_old and m_old.group(1) in periodos:
+                    note_cell.value = None
+                    for c in range(1, 29):
+                        ws.cell(row=r, column=c).font = Font(name="Arial", size=11)
         for p_new in ([] if _template_has_marks else periodos):
             if p_new not in ids_by_period:
                 continue
@@ -7759,21 +7750,11 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
                     for c in range(1, 29):
                         ws.cell(row=r, column=c).font = blue_bold_font
 
-        # Conteo final = lo que REALMENTE quedó marcado en la hoja para los
-        # periodos cargados (es lo mismo que cuenta Staffing Levels): filas
-        # con Notes 'IN IN <periodo>' / 'OUT IN <periodo>', vengan de la
-        # template o de la detección automática.
-        n_new_total = 0
-        n_left_total = 0
-        for r in range(2, ws.max_row + 1):
-            note = str(ws.cell(row=r, column=27).value or "").strip().upper()
-            m_note = re.match(r"^(IN|OUT)\s+IN\s+\(?(\d{6})\)?", note)
-            if not m_note or m_note.group(2) not in periodos:
-                continue
-            if m_note.group(1) == "IN":
-                n_new_total += 1
-            else:
-                n_left_total += 1
+        # Conteo = lo que dice la columna Notes de las filas de la template
+        # que se acaba de subir: 'IN...' = entró, 'OUT...' = salió. No se
+        # cuentan marcas viejas que ya estuvieran en la hoja de cargas anteriores.
+        n_new_total = sum(1 for rv in rows if re.match(r"^\s*IN\b", str(rv[26] or ""), re.I))
+        n_left_total = sum(1 for rv in rows if re.match(r"^\s*OUT\b", str(rv[26] or ""), re.I))
 
         # 3.5) Extiende la Tabla de Excel "tabla_planta" para que incluya las
         # filas nuevas -- sin esto, aunque las celdas queden vacias, Excel no
@@ -8533,21 +8514,6 @@ def push_profesores_updates(new_profs_df: pd.DataFrame, periodo: str,
                 if c in CAT_DATE_COLS and isinstance(fila[c - 1], datetime.date):
                     cell.number_format = date_fmt_cat
 
-        # Filas EXISTENTES: fechas en texto -> fecha real (sin hora) y Edad de
-        # TODAS recalculada con la edad al inicio de su propio periodo.
-        for r in range(2, append_start):
-            for c in CAT_DATE_COLS:
-                cell = ws.cell(row=r, column=c)
-                if isinstance(cell.value, datetime.datetime):
-                    cell.value = cell.value.date()
-                elif isinstance(cell.value, str):
-                    d = _to_date(cell.value)
-                    if d is not None:
-                        cell.value = d
-                        cell.number_format = date_fmt_cat
-            age = _compute_age(ws.cell(row=r, column=CAT_DATE_COLS[1]).value, period=ws.cell(row=r, column=1).value)
-            if age is not None:
-                ws.cell(row=r, column=AGE_COL).value = age
 
         n_written = len(filas_out)
         new_last_row = max(last_row, append_start + n_written - 1)
@@ -8959,6 +8925,14 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     if "Faculty Distribution" in wb_fd.sheetnames:
         ws_fd_new = _copy_ws_with_style(wb_fd["Faculty Distribution"], wb_out, "Faculty Distribution")
         _filter_ws_rows_by_period(ws_fd_new, "Semestre", target_periods)
+        # El fondo de los títulos lo daba el estilo de la Tabla de Excel, que
+        # no viaja en la copia: se deja explícito (azul oscuro, letra blanca).
+        _hdr_fill = PatternFill(fill_type="solid", fgColor="1F3864")
+        for _c in range(1, ws_fd_new.max_column + 1):
+            _hc = ws_fd_new.cell(row=1, column=_c)
+            if _hc.value not in (None, ""):
+                _hc.fill = _hdr_fill
+                _hc.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
 
     # --- 2) Profesores Nuevos ---
     ws_pn = wb_out.create_sheet("Profesores Nuevos")
@@ -9773,6 +9747,7 @@ def page_update_data():
                             {_semestre_from_periodo(p) for p in save_df["Periodo"]} - {""},
                             key=_period_sort_key,
                         )
+                        _new_names_written: set = set()  # profesores nuevos realmente escritos en 'catedra'
                         for _periodo_carga in _sems_carga:
                             # Profesores de CÁTEDRA que dictan en ese periodo: los que
                             # aparecen en la cartelera y NO están en la hoja 'planta'
@@ -9817,15 +9792,13 @@ def page_update_data():
                                 if not ok_p:
                                     st.error(msg_p)
                                     st.stop()
-                                st.success(msg_p)
-                        if new_profs_df is not None and not new_profs_df.empty:
-                            # Mismo número que el aviso de antes de guardar ("N profesor(es)
-                            # no están registrados") y que la hoja 'Profesores Nuevos' del reporte.
-                            st.success(f"✓ {len(new_profs_df)} profesor(es) nuevo(s) registrado(s) en total.")
+                                if _has_new:
+                                    _new_names_written |= set(
+                                        _new_profs_periodo.iloc[:, 0].astype(str).str.strip().str.upper()
+                                    )
                         ok, msg = push_cartelera_updates(save_df, new_courses_df, combined_lookup, area_map)
                     if ok:
                         st.cache_data.clear()  # datos nuevos en Drive: limpia acá para que Faculty Distribution y el reporte de más abajo (en este mismo guardado) ya lean la versión recién escrita, no la vieja en caché
-                        st.success(msg)
                         # Faculty Distribution: un ID único por periodo, tomado de la cartelera recién guardada.
                         # Usa el Semestre LIMPIO (regla YYYYNN -> YYYY10/YYYY20/YYYY Intersemestral), no el
                         # código crudo de Periodo -- así Faculty Distribution siempre queda con
@@ -9848,10 +9821,22 @@ def page_update_data():
                                 ok_fd, msg_fd = push_faculty_distribution_updates(
                                     periodo_to_ids, name_by_id=fd_name_by_id
                                 )
-                            if ok_fd:
-                                st.success(msg_fd)
-                            else:
+                            if not ok_fd:
                                 st.error(msg_fd)
+                        # ÚNICA confirmación: filas de cartelera, profesores nuevos
+                        # actualizados (mismo número que el aviso de "N profesor(es) no
+                        # están registrados" de antes de guardar) y filas de Faculty Distribution.
+                        _m_fd = re.search(r"(\d+)\s+fila", msg_fd) if (periodo_to_ids and ok_fd) else None
+                        _n_fd = int(_m_fd.group(1)) if _m_fd else 0
+                        _n_prof_ok = len(_new_names_written)
+                        _n_prof_req = len(missing_profs)
+                        _lineas = [
+                            f"✓ **{len(save_df)}** filas agregadas en cartelera",
+                            f"✓ **{_n_prof_ok}** profesor(es) nuevo(s) actualizado(s)"
+                            + ("" if _n_prof_ok == _n_prof_req else f" (de {_n_prof_req} solicitados)"),
+                            f"✓ **{_n_fd}** filas agregadas en Faculty Distribution",
+                        ]
+                        st.success("  \n".join(_lineas))
                         st.balloons()
 
                         target_periods = sorted(periodo_to_ids.keys(), key=_period_sort_key)
