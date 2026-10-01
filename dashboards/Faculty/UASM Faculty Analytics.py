@@ -38,7 +38,7 @@ except ImportError as _e:
 
 try:
     import openpyxl
-    from openpyxl.styles import Font, Border, Side, PatternFill, Alignment
+    from openpyxl.styles import Font, Border, Side, PatternFill
     from openpyxl.utils import range_boundaries, get_column_letter, column_index_from_string
     from openpyxl.formula.translate import Translator
     from openpyxl.worksheet.formula import ArrayFormula
@@ -186,12 +186,67 @@ def _scroll_table_right_once(container_key: str):
     )
 
 # 2) HELPERS COMPARTIDOS
+def _read_excel_fast(src, **kw):
+    """pd.read_excel con el motor 'calamine' (Rust), unas 7-10 veces más rápido
+    que openpyxl para LEER; si no está instalado, cae a openpyxl con el mismo
+    resultado. Se usa solo para leer las bases de Drive."""
+    try:
+        return pd.read_excel(src, engine="calamine", **kw)
+    except (ImportError, ValueError):
+        if hasattr(src, "seek"):
+            src.seek(0)
+        return pd.read_excel(src, **kw)
+
+
+def _excel_file_fast(src):
+    try:
+        return pd.ExcelFile(src, engine="calamine")
+    except (ImportError, ValueError):
+        if hasattr(src, "seek"):
+            src.seek(0)
+        return pd.ExcelFile(src)
+
+
+def _download_button_lazy(label, make_bytes, **kw):
+    """st.download_button que NO genera el archivo en cada rerun: `make_bytes`
+    es una función que solo se ejecuta cuando el usuario hace clic en
+    descargar (antes se armaba el Excel completo en cada carga de página,
+    aunque nadie lo descargara). Si la versión de Streamlit no admite datos
+    perezosos, cae al comportamiento anterior (bytes ya listos)."""
+    try:
+        return st.download_button(label, data=make_bytes, on_click="ignore", **kw)
+    except Exception:
+        return st.download_button(label, data=make_bytes(), **kw)
+
+
+@st.cache_resource
+def _xlsx_memo() -> dict:
+    return {}
+
+
 def _xlsx_bytes(df, sheet_name="Data"):
+    """DataFrame -> bytes de .xlsx. Se memoriza por contenido (hash de la
+    tabla): los enlaces 'Download table (Excel)' de cada página llaman esto en
+    CADA rerun, y armar el Excel con openpyxl era de lo más lento. Si la tabla
+    no se puede hashear, se genera sin memorizar."""
+    key = None
+    try:
+        key = (sheet_name, tuple(map(str, df.columns)), int(pd.util.hash_pandas_object(df, index=True).sum()))
+    except Exception:
+        pass
+    memo = _xlsx_memo()
+    if key is not None and key in memo:
+        return memo[key]
     buf = io.BytesIO()
     with pd.ExcelWriter(buf) as w:
         df.to_excel(w, index=False, sheet_name=sheet_name[:31])
     buf.seek(0)
-    return buf.getvalue()
+    out = buf.getvalue()
+    if key is not None:
+        if len(memo) >= 64:
+            memo.pop(next(iter(memo)))
+        memo[key] = out
+    return out
 
 
 def _download_link(label, df, filename):
@@ -247,17 +302,33 @@ _GSPREAD_SCOPES = [
 ]
 
 
+@st.cache_resource
+def _token_store() -> dict:
+    """Guarda el token OAuth entre reruns y sesiones (cache_resource persiste en
+    el proceso; las variables de módulo se reinician en cada rerun)."""
+    return {"token": None, "exp": 0.0}
+
+
 def _get_gspread_access_token() -> Optional[str]:
     """Token de acceso de la service account, para llamar la API de Drive
-    ya autenticados (necesario porque estos archivos ya no son públicos)."""
+    ya autenticados (necesario porque estos archivos ya no son públicos).
+    El token dura ~1 h: se reutiliza hasta 5 min antes de vencer en vez de
+    pedir uno nuevo (una llamada de red) en CADA descarga/escritura."""
     if not _GSPREAD_OK or "gcp_service_account" not in st.secrets:
         return None
+    store = _token_store()
+    now = time.time()
+    if store["token"] and now < store["exp"] - 300:
+        return store["token"]
     try:
         from google.auth.transport.requests import Request as _GoogleAuthRequest
         creds = Credentials.from_service_account_info(
             dict(st.secrets["gcp_service_account"]), scopes=_GSPREAD_SCOPES
         )
         creds.refresh(_GoogleAuthRequest())
+        exp = getattr(creds, "expiry", None)
+        store["token"] = creds.token
+        store["exp"] = exp.replace(tzinfo=datetime.timezone.utc).timestamp() if exp is not None else now + 3000
         return creds.token
     except Exception:
         return None
@@ -316,41 +387,49 @@ def _download_drive_file_bytes(file_id: str) -> bytes:
 
 
 # Detección de cambios en Drive: pregunta solo por la fecha de modificación
-# (llamada liviana, cacheada ~10 s) y, si algún archivo cambió, limpia el
-# caché una sola vez para todos los usuarios. Sin cambios, el caché sigue
-# sirviendo y el dashboard no pierde velocidad.
+# (llamada liviana, cacheada ~15 s, las 3 consultas en paralelo) y, si algún
+# archivo cambió, limpia el caché una sola vez para todos los usuarios. Sin
+# cambios, el caché sigue sirviendo y el dashboard no pierde velocidad.
+# IMPORTANTE: las versiones vistas se guardan en cache_resource, NO en una
+# variable de módulo: el script se vuelve a ejecutar completo en cada rerun,
+# y una variable de módulo se reiniciaría vacía cada vez.
 _DRIVE_WATCHED_FILE_IDS = (PROFESORES_FILE_ID, CARTELERA_FILE_ID, QUESTIONNAIRE_FILE_ID)
-_DRIVE_SEEN_VERSIONS: dict = {}  # a nivel de proceso: compartido entre sesiones
 
 
-@st.cache_data(ttl=10, show_spinner=False)
+@st.cache_resource
+def _drive_seen_versions() -> dict:
+    return {}
+
+
+@st.cache_data(ttl=15, show_spinner=False)
 def _drive_modified_times() -> dict:
     token = _get_gspread_access_token()
     if not token:
         return {}
-    out = {}
-    for fid in _DRIVE_WATCHED_FILE_IDS:
+    headers = {"Authorization": f"Bearer {token}"}
+
+    def _one(fid):
         try:
             r = requests.get(
                 f"https://www.googleapis.com/drive/v3/files/{fid}?fields=modifiedTime",
-                headers={"Authorization": f"Bearer {token}"}, timeout=10,
+                headers=headers, timeout=10,
             )
-            if r.status_code == 200:
-                out[fid] = r.json().get("modifiedTime")
+            return fid, (r.json().get("modifiedTime") if r.status_code == 200 else None)
         except Exception:
-            pass  # si falla la consulta, no se invalida nada
-    return out
+            return fid, None  # si falla la consulta, no se invalida nada
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=len(_DRIVE_WATCHED_FILE_IDS)) as ex:
+        return {fid: v for fid, v in ex.map(_one, _DRIVE_WATCHED_FILE_IDS)}
 
 
 def _refresh_cache_if_drive_changed() -> None:
     current = _drive_modified_times()
-    changed = any(
-        v and _DRIVE_SEEN_VERSIONS.get(fid) != v  # incluye la 1.ª vez: el caché pudo quedar de antes
-        for fid, v in current.items()
-    )
+    seen = _drive_seen_versions()
+    changed = any(v and fid in seen and seen[fid] != v for fid, v in current.items())
     for fid, v in current.items():
         if v:
-            _DRIVE_SEEN_VERSIONS[fid] = v
+            seen[fid] = v
     if changed:
         st.cache_data.clear()
 
@@ -368,19 +447,19 @@ def _refresh_cache_if_drive_changed() -> None:
 @st.cache_data
 def _load_planta_sheet_raw() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    return pd.read_excel(raw, sheet_name="planta")
+    return _read_excel_fast(raw, sheet_name="planta")
 
 
 @st.cache_data
 def _load_faculty_distribution_sheet_raw() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    return pd.read_excel(raw, sheet_name="Faculty Distribution")
+    return _read_excel_fast(raw, sheet_name="Faculty Distribution")
 
 
 @st.cache_data
 def _load_catedra_sheet_raw() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    return pd.read_excel(raw, sheet_name="catedra")
+    return _read_excel_fast(raw, sheet_name="catedra")
 
 
 # La hoja 'planta' guarda la misma información que 'catedra' pero con otros
@@ -574,12 +653,6 @@ def _merge_prof_info(df: pd.DataFrame, sem_col: str = "Semestre", id_col: str = 
     return out.drop(columns=["_id_key", "_ord", "_row_order"]).reset_index(drop=True)
 
 
-@st.cache_data
-def _load_cartelera_sheet_raw() -> pd.DataFrame:
-    raw = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
-    return pd.read_excel(raw, sheet_name="cartelera")
-
-
 def _clear_profesores_cache():
     """Limpia todo el caché derivado de BD_profesores.xlsx -- se llama justo
     después de cualquier guardado exitoso a ese archivo (planta, catedra o
@@ -599,14 +672,6 @@ def _clear_profesores_cache():
     qual_load_planta.clear()
     qual_load_faculty_distribution.clear()
     _load_profesores_lookup.clear()
-
-
-def _clear_cartelera_cache():
-    """Limpia todo el caché derivado de BD_cartelera.xlsx -- se llama justo
-    después de cualquier guardado exitoso a ese archivo."""
-    _download_drive_file_bytes.clear()
-    _load_cartelera_sheet_raw.clear()
-    qual_load_cartelera.clear()
 
 
 @st.cache_data(ttl=300)
@@ -794,7 +859,7 @@ def qual_load_faculty_distribution() -> pd.DataFrame:
 @st.cache_data
 def qual_load_cartelera() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
-    df_ = pd.read_excel(raw, sheet_name="cartelera")
+    df_ = _read_excel_fast(raw, sheet_name="cartelera")
     df_.columns = df_.columns.str.strip()
     return df_
 
@@ -813,6 +878,7 @@ def _resolve_col_any(df: pd.DataFrame, *cands):
     return None
 
 
+@st.cache_data(show_spinner=False)
 def _prof_program_map() -> dict:
     """Para cada (periodo, ID de profesor) de cartelera, qué programas
     dictó ese profesor ese periodo -- {(periodo_norm, id_norm): {programas}}.
@@ -838,6 +904,7 @@ def _prof_program_map() -> dict:
     return d
 
 
+@st.cache_data(show_spinner=False)
 def _all_programs_seen() -> list:
     """Todos los programas que aparecen en cartelera (cualquier periodo),
     para armar la lista de checkboxes del Program filter."""
@@ -950,10 +1017,6 @@ def page_composition():
         [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}-(10|20)', p)],
         key=_period_sort_key,
     )  # cronológico — alimenta tablas/gráficas de evolución
-    inter_periods = sorted(
-        [p for p in all_periods if re.fullmatch(r'(?:19|20)\d{2}\sIntersemestral', p)],
-        key=_period_sort_key,
-    )
     years = sorted(pd.Series(all_periods).str[:4].unique().tolist())
 
     # Sidebar específico de esta página
@@ -962,7 +1025,6 @@ def page_composition():
         tmode = st.radio("", ["Semestral", "Anual"], key="ft_comp_timeframe")
 
         sem_periods_desc = sorted(sem_periods, key=_period_sort_key, reverse=True)
-        inter_periods_desc = sorted(inter_periods, key=_period_sort_key, reverse=True)
         years_desc = sorted(years, reverse=True)
 
         if tmode == "Semestral":
@@ -1167,7 +1229,6 @@ def page_composition():
         # que la línea siga cayendo justo entre los dos grupos.
         n_total = len(display_order)
         n_ranked = sum(1 for r in display_order if r in RANKED_GROUP)
-        n_not_ranked = n_total - n_ranked
         if n_total > 0 and 0 < n_ranked < n_total:
             x_max = max(1, int(bar_counts_vis["Count"].max() or 0)) + 5
             boundary_y = n_ranked - 0.5
@@ -2080,21 +2141,24 @@ def page_demographics():
         return bool(re.fullmatch(r"\d{4}(10|20)", str(p)))
 
     def normalize_degree(series: pd.Series) -> pd.Series:
+        # Se normalizan solo los textos ÚNICOS (hay pocas decenas de títulos
+        # distintos en miles de filas) y luego se mapea de vuelta.
         s = series.astype(str).str.strip()
-        is_tbd = s.str.upper().eq("TBD") | s.eq("") | s.str.lower().isin(["na", "none"])
-        s_norm = s.str.lower().str.replace(".", "", regex=False)
+        u = pd.Series(s.unique())
+        is_tbd = u.str.upper().eq("TBD") | u.eq("") | u.str.lower().isin(["na", "none"])
+        s_norm = u.str.lower().str.replace(".", "", regex=False)
         s_norm = s_norm.str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("ascii")
         is_phd = s_norm.str.contains(r"\bphd\b") | s_norm.str.contains("doctor")
         is_master = s_norm.str.contains("master") | s_norm.str.contains(r"\bmsc\b") | s_norm.str.contains(r"\bms\b")
         is_bachelor = (s_norm.str.contains("bachelor") | s_norm.str.contains(r"\bbsc\b")
                        | s_norm.str.contains(r"\bbs\b") | s_norm.str.contains(r"\bba\b")
                        | s_norm.str.contains("licen"))
-        out = pd.Series("Other", index=s.index, dtype=object)
+        out = pd.Series("Other", index=u.index, dtype=object)
         out[is_tbd] = "TBD"
         out[~is_tbd & is_phd] = "PhD"
         out[~is_tbd & ~is_phd & is_master] = "Master"
         out[~is_tbd & ~is_phd & ~is_master & is_bachelor] = "Bachelor"
-        return out
+        return s.map(dict(zip(u, out))).astype(object)
 
 
     def filter_for_timeframe(df_in: pd.DataFrame, time_mode: str, sel_sem: str | None = None,
@@ -2596,13 +2660,7 @@ def page_demographics():
 
     row1_left, row1_right = st.columns([2, 1])
 
-    if mode_now == "Part-time":
-        y_min_phd, y_max_phd, bar_h = 0, 30, 220
-    else:
-        y_min_phd, y_max_phd, bar_h = 70, 100, 220
-    if tmode_ts == "Intersemestral":
-        y_min_phd, y_max_phd = 0, 100
-
+    bar_h = 220
     line_h = bar_h + 380 + 140  # iguala la altura combinada de la barra de región + el mapa, y un poco más
 
     with row1_left:
@@ -2802,7 +2860,7 @@ def page_activities():
 
     @st.cache_data
     def load_fulltime():
-        df = pd.read_excel(io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID)), sheet_name="planta")
+        df = _read_excel_fast(io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID)), sheet_name="planta")
         raw = df.iloc[:, 0].astype(str)
         df["Periodo"] = raw.str.slice(0, 4) + "-" + raw.str.slice(4, 6)
         if "ID Nr." in df.columns and "ID" not in df.columns:
@@ -2812,7 +2870,7 @@ def page_activities():
 
     @st.cache_data
     def load_questionnaire():
-        df = pd.read_excel(io.BytesIO(_download_drive_file_bytes(QUESTIONNAIRE_FILE_ID)), sheet_name="Faculty_questionnaire")
+        df = _read_excel_fast(io.BytesIO(_download_drive_file_bytes(QUESTIONNAIRE_FILE_ID)), sheet_name="Faculty_questionnaire")
         df.columns = df.columns.str.strip()
         ycol = resolve_column(df, "Year")
         if ycol:
@@ -2827,7 +2885,7 @@ def page_activities():
         Estas hojas no existen en el reparto actual de archivos (BD_cartelera.xlsx
         tiene cartelera/programas/cursos/qualifications) — se deja la búsqueda
         tolerante por si se agregan más adelante; si no aparecen, retorna vacío."""
-        xls = pd.ExcelFile(io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID)))
+        xls = _excel_file_fast(io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID)))
         sheets = xls.sheet_names
 
         def pick_sheet(candidates: List[str]) -> Optional[str]:
@@ -2852,8 +2910,8 @@ def page_activities():
         sh_credit = pick_sheet(credit_candidates)
         sh_noncr  = pick_sheet(noncredit_candidates)
 
-        df_credit = pd.read_excel(xls, sheet_name=sh_credit) if sh_credit else pd.DataFrame()
-        df_noncr  = pd.read_excel(xls, sheet_name=sh_noncr)  if sh_noncr  else pd.DataFrame()
+        df_credit = _read_excel_fast(xls, sheet_name=sh_credit) if sh_credit else pd.DataFrame()
+        df_noncr  = _read_excel_fast(xls, sheet_name=sh_noncr)  if sh_noncr  else pd.DataFrame()
         if not df_credit.empty: df_credit.columns = df_credit.columns.str.strip()
         if not df_noncr.empty:  df_noncr.columns  = df_noncr.columns.str.strip()
         return df_credit, df_noncr, sh_credit, sh_noncr
@@ -2887,12 +2945,23 @@ def page_activities():
     def _norm(s: pd.Series) -> pd.Series:
         return s.astype(str).str.strip().str.lower()
 
+    _year_filter_memo: dict = {}
+
     def _year_filter(df: pd.DataFrame, year: int) -> Tuple[pd.DataFrame, Optional[str]]:
+        # Se llama decenas de veces por render con los mismos (df, año): cada vez
+        # recortaba las ~310 columnas del cuestionario. Se memoriza el recorte
+        # (solo lectura) durante este render.
+        key = (id(df), year)
+        hit = _year_filter_memo.get(key)
+        if hit is not None:
+            return hit
         ycol = resolve_column(df, "Year")
         if not ycol:
-            return pd.DataFrame(), None
-        d = df[df[ycol].astype("Int64") == year]
-        return d, ycol
+            res = (pd.DataFrame(), None)
+        else:
+            res = (df[df[ycol].astype("Int64") == year], ycol)
+        _year_filter_memo[key] = res
+        return res
 
     def ft_second_sem_count(full_df: pd.DataFrame, year: int) -> Optional[int]:
         """Full-time total for the 2nd term; fallback to the last term of that year."""
@@ -3411,16 +3480,6 @@ def page_qualifications():
                 years.add(int(y))
         return sorted(years, reverse=True)
 
-    def years_with_inter():
-        sem_col = _get_any(df_car, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
-        inter = set()
-        if sem_col:
-            for s in df_car[sem_col].dropna().astype(str):
-                if "inter" in s.lower():
-                    y = extract_year_from_period(s)
-                    if y:
-                        inter.add(y)
-        return sorted(inter, reverse=True)
 
     def _slugify(s: str) -> str:
         return re.sub(r'[^A-Za-z0-9]+', '_', str(s)).strip('_')
@@ -3432,9 +3491,9 @@ def page_qualifications():
     def _download_xlsx_button(df: pd.DataFrame, fname: str, key: str, label: str = "Download Excel"):
         safe = _sanitize_for_export(df)
         clean = re.sub(r"[^\w\sÁÉÍÓÚÜÑáéíóúüñ().%/-]+", "", label).strip()
-        st.download_button(
+        _download_button_lazy(
             clean,
-            data=_xlsx_bytes(safe),
+            lambda: _xlsx_bytes(safe),
             file_name=fname,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key=key,
@@ -3487,177 +3546,20 @@ def page_qualifications():
         return mod_ps, mod_tipo
 
     # ===== Cálculo de “profesores necesarios” (3 créditos) por fila =====
-    def _needed_for_pctP(p: float, s: float, target_pct: float, credits_each: float = 4.0) -> int:
-        # (p + c*n)/(p + s + c*n) >= t  ->  n >= (t*s - (1-t)*p) / (c*(1-t))
-        t = target_pct / 100.0
-        denom = credits_each * (1 - t)
-        if denom <= 0:
-            return 0
-        rhs = (t * s - (1 - t) * p) / denom
-        return max(0, math.ceil(rhs))
 
-    def _needed_for_pctSA(sa: float, rest: float, target_pct: float, credits_each: float = 4.0) -> int:
-        # (sa + c*n)/(sa + rest + c*n) >= t -> n >= (t*rest - (1-t)*sa) / (c*(1-t))
-        t = target_pct / 100.0
-        denom = credits_each * (1 - t)
-        if denom <= 0:
-            return 0
-        rhs = (t * rest - (1 - t) * sa) / denom
-        return max(0, math.ceil(rhs))
 
-    def _needed_for_other_leq10(other: float, rest: float, credits_each: float = 4.0) -> int:
-        # other/(other + rest + c*n) <= 0.10  ->  n >= (0.9*other - 0.1*rest) / (0.3*c) = (9*other - rest)/(3*c)
-        num = 9*other - rest
-        denom = 3 * credits_each
-        if denom <= 0:
-            return 0
-        rhs = num / denom
-        return max(0, math.ceil(rhs))
 
-    def _objective_targets(obj: str) -> tuple[str, float, float]:
-        # devuelve etiqueta y targets por scope (by_area, overall)
-        if obj == "%P":   return ("%P", 60.0, 75.0)
-        if obj == "%SA":  return ("%SA", 40.0, 40.0)
-        return ("%OTHER", 10.0, 10.0)
 
     # ====== NUEVOS helpers para Overall/Impacto y secundarios ======
-    def _needed_for_overall_if_only_this_area_changes(obj: str, totals: dict[str, float], area_vals: dict[str, float], target_overall: float, credits_each: float = 4.0) -> int | None:
-        eps = 1e-9
-        t = target_overall / 100.0
-        Ptot = totals.get("P",0.0);  Stot = totals.get("S",0.0)
-        SA   = totals.get("SA",0.0); PA  = totals.get("PA",0.0)
-        SP   = totals.get("SP",0.0); IP  = totals.get("IP",0.0)
-        OT   = totals.get("OTHER",0.0)
-        TQ   = SA + PA + SP + IP + OT
-        if obj == "%P":
-            den = Ptot + Stot
-            if den <= eps: return 0
-            rhs = (t*den - Ptot) / (credits_each*(1 - t))
-            return max(0, math.ceil(rhs))
-        if obj == "%SA":
-            if TQ <= eps: return 0
-            rhs = (t*TQ - SA) / (credits_each*(1 - t))
-            return max(0, math.ceil(rhs))
-        if TQ <= eps: return 0
-        need_credits = (OT - 0.10*TQ) / 0.90
-        need_n = 0 if need_credits <= 0 else math.ceil(need_credits / credits_each)
-        OT_a = area_vals.get("OTHER", 0.0)
-        max_remove_n = math.floor(OT_a / credits_each)
-        return max(0, need_n) if need_n <= max_remove_n else None
 
-    def _impact_pp_area(obj: str, area_vals: dict[str,float], credits_each: float = 4.0) -> tuple[float,float]:
-        """Impacto en puntos porcentuales de las DOS acciones que también
-        mide 'Needed' -- para %P: subir 1 curso de P (up) / bajar 1 curso
-        de S (down); para %SA: subir 1 curso de SA (up) / bajar 1 curso de
-        no-SA (down); para %OTHER: subir 1 curso de no-OTHER (up) / bajar 1
-        curso de OTHER (down). Antes 'down' restaba del MISMO indicador
-        principal (p.ej. quitar un P, en vez de quitar un S) -- por eso el
-        peso salía distinto al de 'Needed', que sí mide la acción correcta
-        (quitar S)."""
-        eps = 1e-9
-        P = area_vals.get("P",0.0); S = area_vals.get("S",0.0)
-        SA = area_vals.get("SA",0.0); PA = area_vals.get("PA",0.0)
-        SP = area_vals.get("SP",0.0); IP = area_vals.get("IP",0.0)
-        OT = area_vals.get("OTHER",0.0)
-        denPS = P + S
-        denQ  = SA + PA + SP + IP + OT
-        nonSA = PA + SP + IP + OT
-        if obj == "%P":
-            if denPS <= eps: return (0.0, 0.0)
-            up   = ((P + credits_each) / (denPS + credits_each) - (P / denPS)) * 100.0
-            down = (P / (denPS - credits_each) - (P / denPS)) * 100.0 if S >= credits_each and denPS > credits_each else 0.0
-            return (round(up,2), round(down,2))
-        if obj == "%SA":
-            if denQ <= eps: return (0.0, 0.0)
-            up   = ((SA + credits_each) / (denQ + credits_each) - (SA / denQ)) * 100.0
-            down = (SA / (denQ - credits_each) - (SA / denQ)) * 100.0 if nonSA >= credits_each and denQ > credits_each else 0.0
-            return (round(up,2), round(down,2))
-        if denQ <= eps: return (0.0, 0.0)
-        up   = (OT / (denQ + credits_each) - (OT / denQ)) * 100.0
-        down = ((OT - credits_each) / (denQ - credits_each) - (OT / denQ)) * 100.0 if OT >= credits_each and denQ > credits_each else 0.0
-        return (round(up,2), round(down,2))
 
-    def _impact_pp_overall_if_area_changes(obj: str, totals: dict[str,float], credits_each: float = 4.0) -> tuple[float,float]:
-        """Misma corrección que _impact_pp_area, pero con los TOTALES
-        globales del colegio -- por eso el resultado es el mismo sin
-        importar en qué área se agregue/quite el curso (matemáticamente
-        correcto: mover 3 créditos del total global pesa igual venga de
-        donde venga)."""
-        eps = 1e-9
-        P = totals.get("P",0.0); S = totals.get("S",0.0)
-        SA = totals.get("SA",0.0); PA = totals.get("PA",0.0)
-        SP = totals.get("SP",0.0); IP = totals.get("IP",0.0)
-        OT = totals.get("OTHER",0.0)
-        denPS = P + S
-        denQ  = SA + PA + SP + IP + OT
-        nonSA = PA + SP + IP + OT
-        if obj == "%P":
-            if denPS <= eps: return (0.0, 0.0)
-            up   = ((P + credits_each) / (denPS + credits_each) - (P / denPS)) * 100.0
-            down = (P / (denPS - credits_each) - (P / denPS)) * 100.0 if S >= credits_each and denPS > credits_each else 0.0
-            return (round(up,2), round(down,2))
-        if obj == "%SA":
-            if denQ <= eps: return (0.0, 0.0)
-            up   = ((SA + credits_each) / (denQ + credits_each) - (SA / denQ)) * 100.0
-            down = (SA / (denQ - credits_each) - (SA / denQ)) * 100.0 if nonSA >= credits_each and denQ > credits_each else 0.0
-            return (round(up,2), round(down,2))
-        if denQ <= eps: return (0.0, 0.0)
-        up   = (OT / (denQ + credits_each) - (OT / denQ)) * 100.0
-        down = ((OT - credits_each) / (denQ - credits_each) - (OT / denQ)) * 100.0 if OT >= credits_each and denQ > credits_each else 0.0
-        return (round(up,2), round(down,2))
 
     # Secundarios para tablas "Needed"
-    def _needed_S_less_for_pctP_area(p: float, s: float, target_pct: float, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int:
-        # P/(P + S - c*n) >= t  ->  n >= (t*(P+S) - P)/(t*c)
-        t = target_pct/100.0
-        if t <= 0: return 0
-        den = t*credits_each
-        rhs = (t*(p+s) - p)/den
-        return max(0, math.ceil(rhs))
 
-    def _needed_S_less_for_pctP_overall(totals, area_vals, target_overall: float, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int | None:
-        t = target_overall/100.0
-        Ptot = totals.get("P",0.0); Stot = totals.get("S",0.0)
-        if t <= 0: return 0
-        need = (t*(Ptot+Stot) - Ptot) / (t*credits_each)
-        need_n = 0 if need <= 0 else math.ceil(need)
-        S_a = area_vals.get("S",0.0)
-        max_remove = math.floor(S_a/credits_each)
-        return need_n if need_n <= max_remove else None
 
-    def _needed_OTHERS_less_for_SA_area(sa, rest, target_pct, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int:
-        # SA/(SA + rest - c*n) >= t -> n >= (t*(SA+rest) - SA)/(t*c)
-        t = target_pct/100.0
-        if t <= 0: return 0
-        rhs = (t*(sa+rest) - sa)/(t*credits_each)
-        return max(0, math.ceil(rhs))
 
-    def _needed_OTHERS_less_for_SA_overall(totals, area_vals, target_overall, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int | None:
-        SA = totals.get("SA",0.0); PA=totals.get("PA",0.0); SP=totals.get("SP",0.0); IP=totals.get("IP",0.0); OT=totals.get("OTHER",0.0)
-        TQ = SA+PA+SP+IP+OT; rest = TQ - SA
-        t = target_overall/100.0
-        if t <= 0: return 0
-        need = (t*(SA+rest) - SA)/(t*credits_each)
-        need_n = 0 if need <= 0 else math.ceil(need)
-        rest_a = max(0.0, area_vals.get("PA",0.0)+area_vals.get("SP",0.0)+area_vals.get("IP",0.0)+area_vals.get("OTHER",0.0))
-        max_remove = math.floor(rest_a/credits_each)
-        return need_n if need_n <= max_remove else None
 
-    def _needed_OTHERS_more_for_OTHER_area(other, rest, target_pct, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int:
-        # OTHER/(OTHER + rest + c*n) <= t -> c*n >= (OTHER - t*(OTHER+rest))/t
-        t = target_pct/100.0
-        if t <= 0: return 0
-        need_credits = (other - t*(other+rest))/t
-        need = 0 if need_credits <= 0 else math.ceil(need_credits/credits_each)
-        return max(0, need)
 
-    def _needed_OTHERS_more_for_OTHER_overall(totals, target_overall, credits_each=float(st.session_state.get("sens_credits", 4.0))) -> int:
-        OT = totals.get("OTHER",0.0); SA=totals.get("SA",0.0); PA=totals.get("PA",0.0); SP=totals.get("SP",0.0); IP=totals.get("IP",0.0)
-        TQ = SA+PA+SP+IP+OT
-        t = target_overall/100.0
-        if t <= 0: return 0
-        need_credits = (OT - t*TQ)/t
-        return 0 if need_credits <= 0 else math.ceil(need_credits/credits_each)
 
     # ================== HISTORY (timeframe-aware) ==================
     def _period_sort_key(p: str) -> tuple[int,int]:
@@ -3996,22 +3898,10 @@ def page_qualifications():
         m = mask_timeframe(df["_SEM"], mode, selected_year, selected_sem)
         return df[m].copy()
 
-    def filter_df_fd(df: pd.DataFrame, mode: str, selected_year: int | None, selected_sem: str | None) -> pd.DataFrame:
-        semc = _get_any(df, "Semestre","Periodo","Periodo Académico","Periodo academico")
-        ycol = _get_any(df, "Year","Año")
-        out = df.copy()
-        if semc:
-            sem_series = out[semc].astype(str).str.strip()
-            m = mask_timeframe(sem_series, mode, selected_year, selected_sem)
-            out = out[m].copy()
-        elif ycol and selected_year is not None:
-            out = out[pd.to_numeric(out[ycol], errors="coerce").astype("Int64") == int(selected_year)].copy()
-        return out
 
     # ================== SIDEBAR ==================
     SEMESTRAL_PERIODS = list_periods_semestral()
     YEARS_ALL = list_years_from_sem()
-    INTER_YEARS = years_with_inter()
 
     with st.sidebar:
         st.markdown("#### Sensitivity analysis")
@@ -4122,7 +4012,6 @@ def page_qualifications():
     df_car_base = df_car.copy()
     base = df_fd.copy()
     df_car_filt_all = filter_df_car(df_car_base, time_mode, sel_year, sel_sem)
-    f = filter_df_fd(df_fd, time_mode, sel_year, sel_sem)
 
     # --------- Sensitivity: “Apply to” ---------
     if st.session_state.get("sens_mode", False):
@@ -4167,14 +4056,6 @@ def page_qualifications():
         return sty
 
     # ---------- util de estilo para la tabla de "Needed + Impact" ----------
-    def _style_needed_impact(df_, id_col):
-        sty = pd.DataFrame('', index=df_.index, columns=df_.columns)
-        numeric_cols = [c for c in df_.columns if c != id_col]
-        # rojo claro para todo valor != 0
-        for c in numeric_cols:
-            vals = pd.to_numeric(df_[c], errors="coerce").fillna(0)
-            sty.loc[vals != 0, c] = 'background-color:#FDE2E2;'
-        return sty
 
     # ---------- helpers de necesidades por objetivo (dos columnas) ----------
     def _apportion(total: int, weights: list) -> list:
@@ -4209,90 +4090,6 @@ def page_qualifications():
         extra = _apportion(total - n, weights)
         return [1 + e for e in extra]
 
-    def _needed_pairs_for_obj(
-        objective: str,
-        scope_label: str,
-        P: float, S: float, SA_: float, PA_: float, SP_: float, IP_: float, OT_: float,
-        totals: dict[str,float],
-        credits_each: float = 4.0
-    ) -> tuple[int, int]:
-        """
-        Devuelve dos números (enteros >= 0) según el objetivo:
-          - %P   -> (Need_P_more, Need_S_less)
-          - %SA  -> (Need_SA_more, Need_NonSA_less)
-          - %OTHER -> (Need_OTHER_less, Need_NonOTHER_more)
-
-        "By area": se calcula con los números PROPIOS de esta área contra
-        la meta de esa área (60/40/10) -- cada fila muestra cuánto LE toca
-        aportar a ELLA MISMA.
-        "Overall": se calcula con los TOTALES GLOBALES del colegio contra
-        la meta del overall (75/40/10) -- da el MISMO número en todas las
-        filas a propósito, porque es una universidad: la pregunta es
-        "¿cuántos cursos hacen falta en cualquier área para llegar a la
-        meta del overall?", no cuánto le toca a cada área en particular.
-        Nunca devuelve None; si no alcanza, devuelve el máximo posible (capped).
-        """
-        t_map = {"%P": (60.0, 75.0), "%SA": (40.0, 40.0), "%OTHER": (10.0, 10.0)}
-        tgt_area, tgt_overall = t_map[objective]
-        by_area = scope_label == "By area"
-        tgt = tgt_area if by_area else tgt_overall
-        t = tgt / 100.0
-
-        # "By area" usa los valores de esta fila; "Overall" usa los
-        # totales globales del colegio (mismo número en toda la tabla).
-        if by_area:
-            Pv, Sv = P, S
-            SAv, PAv, SPv, IPv, OTv = SA_, PA_, SP_, IP_, OT_
-        else:
-            Pv, Sv = totals.get("P", 0.0), totals.get("S", 0.0)
-            SAv = totals.get("SA", 0.0); PAv = totals.get("PA", 0.0)
-            SPv = totals.get("SP", 0.0); IPv = totals.get("IP", 0.0)
-            OTv = totals.get("OTHER", 0.0)
-
-        TQ = SAv + PAv + SPv + IPv + OTv
-        nonSA = PAv + SPv + IPv + OTv
-        nonOTHER = SAv + PAv + SPv + IPv
-
-        # --- %P ---
-        if objective == "%P":
-            # Aumentar P (+3cr)
-            nP = _needed_for_pctP(Pv, Sv, tgt, credits_each)
-
-            # Quitar S (-3cr):  P/(P + S - c*n) >= t  ->  n >= (t*(P+S) - P)/(t*c)
-            den = credits_each * t if t > 0 else float('inf')
-            rhs = 0 if den == float('inf') else (t*(Pv+Sv) - Pv) / den
-            nS_less = max(0, math.ceil(rhs))
-            nmax = math.floor(Sv / credits_each) if credits_each > 0 else 0
-            nS_less = min(nS_less, max(0, nmax))
-
-            return (nP, nS_less)
-
-        # --- %SA ---
-        if objective == "%SA":
-            # Aumentar SA (+3cr)
-            nSA = _needed_for_pctSA(SAv, nonSA, tgt, credits_each)
-
-            # Quitar No-SA (PA+SP+IP+OTHER) (-3cr)
-            den = credits_each * t if t > 0 else float('inf')
-            rhs = 0 if den == float('inf') else (t*(SAv+nonSA) - SAv) / den
-            nNonSA_less = max(0, math.ceil(rhs))
-            nmax = math.floor(nonSA / credits_each) if credits_each > 0 else 0
-            nNonSA_less = min(nNonSA_less, max(0, nmax))
-
-            return (nSA, nNonSA_less)
-
-        # --- %OTHER ---
-        # Quitar OTHER (-3cr): (OT - c*n)/(TQ - c*n) <= 0.10 -> c*n >= (OT - 0.10*TQ)/0.90
-        need_credits = (OTv - 0.10*TQ) / 0.90
-        nOT_less = 0 if need_credits <= 0 else math.ceil(need_credits / credits_each)
-        nmax = math.floor(OTv / credits_each) if credits_each > 0 else 0
-        nOT_less = min(nOT_less, max(0, nmax))
-
-        # Aumentar No-OTHER (+3cr): OT/(OT + nonOTHER + c*n) <= 0.10
-        num = (9*OTv - nonOTHER)
-        nNonOT_more = 0 if num <= 0 else math.ceil(num / credits_each)
-
-        return (nOT_less, nNonOT_more)
 
     def _needed_swap_for_obj(
         objective: str,
@@ -4350,55 +4147,7 @@ def page_qualifications():
         nmax = math.floor(OTv / credits_each) if credits_each > 0 else 0
         return min(n, max(0, nmax))
 
-    def _local_gap_size_weights(objective: str, idx_all: list, p, s, sa, pa, sp, ip, oth) -> list:
-        """Peso combinado para el reparto proporcional del Overall: brecha
-        de %P/%SA/%OTHER propia de cada área (cuánto le falta a SU meta de
-        área) MULTIPLICADA por su tamaño (créditos). Así el área que más
-        le falta Y que es más grande (donde un curso mueve MENOS el %, o
-        sea, tiene MENOS impacto por curso) se lleva proporcionalmente más
-        del total -- y un área ya lejos de necesitar nada, o muy chica,
-        recibe poco o nada. Combina 'cuánto necesita' con 'cuánto le
-        cuesta moverse' en un solo criterio."""
-        t_area = {"%P": 60.0, "%SA": 40.0, "%OTHER": 10.0}[objective]
-        weights = []
-        for lbl in idx_all:
-            Pv, Sv = float(p.get(lbl,0.0)), float(s.get(lbl,0.0))
-            SAv, PAv = float(sa.get(lbl,0.0)), float(pa.get(lbl,0.0))
-            SPv, IPv = float(sp.get(lbl,0.0)), float(ip.get(lbl,0.0))
-            OTv = float(oth.get(lbl,0.0))
-            if objective == "%P":
-                size = Pv + Sv
-                pct = (Pv/size*100.0) if size > 0 else 0.0
-                gap = max(0.0, t_area - pct)
-            elif objective == "%SA":
-                size = SAv + PAv + SPv + IPv + OTv
-                pct = (SAv/size*100.0) if size > 0 else 0.0
-                gap = max(0.0, t_area - pct)
-            else:  # %OTHER
-                size = SAv + PAv + SPv + IPv + OTv
-                pct = (OTv/size*100.0) if size > 0 else 0.0
-                gap = max(0.0, pct - t_area)
-            weights.append(gap * size)
-        if sum(weights) <= 0:
-            return [1.0] * len(idx_all)
-        return weights
 
-    def _swap_impact_pp(objective: str, P: float, S: float, SA_: float, PA_: float, SP_: float,
-                         IP_: float, OT_: float, credits_each: float = 4.0) -> float:
-        """Impacto en puntos porcentuales de hacer UN swap completo (agregar
-        credits_each al indicador principal Y quitar credits_each al
-        complementario, al mismo tiempo) -- un solo número, no uno para
-        'subir' y otro para 'bajar' por separado. Como el total (P+S, o TQ)
-        no cambia con un swap, la fórmula es simplemente credits_each sobre
-        ese total; negativo para %OTHER porque un swap bueno lo hace bajar."""
-        if objective == "%P":
-            denom = P + S
-            return round((credits_each / denom * 100.0) if denom > 0 else 0.0, 2)
-        denom = SA_ + PA_ + SP_ + IP_ + OT_
-        if denom <= 0:
-            return 0.0
-        pp = credits_each / denom * 100.0
-        return round(pp if objective == "%SA" else -pp, 2)
 
     def _swap_units_done_for_member(sens_ops: list, member: str, add_cats: list, remove_cats: list, credits_each: float) -> int:
         """Cuenta cuántos swaps COMPLETOS (agregar credits_each en alguna
@@ -4535,281 +4284,19 @@ def page_qualifications():
             )
         return styles
 
-    def _local_pct_gap_weights(objective: str, idx_all: list, p, s, sa, pa, sp, ip, oth) -> list:
-        """Peso de cada área para el reparto proporcional del Overall: qué
-        tan lejos está el %P/%SA/%OTHER PROPIO de cada área de su meta de
-        área (60/40/10) -- un número CONTINUO (puntos porcentuales), no un
-        conteo de cursos redondeado. Esto evita que, con cursos de
-        referencia más grandes (p.ej. 4cr), casi todas las áreas queden en
-        0 cursos localmente y el reparto se vuelva parejo/inútil: la
-        brecha de % casi nunca es exactamente 0, así que el área más
-        rezagada (menor %P) siempre se lleva proporcionalmente más del
-        total. Además, como se recalcula con los valores YA ajustados por
-        la simulación, un área que ya alcanzó su meta local (brecha = 0)
-        cae directo a 0 en el reparto -- sin necesidad de congelar nada."""
-        t_area = {"%P": 60.0, "%SA": 40.0, "%OTHER": 10.0}[objective]
-        weights = []
-        for lbl in idx_all:
-            Pv, Sv = float(p.get(lbl,0.0)), float(s.get(lbl,0.0))
-            SAv, PAv = float(sa.get(lbl,0.0)), float(pa.get(lbl,0.0))
-            SPv, IPv = float(sp.get(lbl,0.0)), float(ip.get(lbl,0.0))
-            OTv = float(oth.get(lbl,0.0))
-            if objective == "%P":
-                denom = Pv + Sv
-                pct = (Pv/denom*100.0) if denom > 0 else 0.0
-                gap = max(0.0, t_area - pct)
-            elif objective == "%SA":
-                denom = SAv + PAv + SPv + IPv + OTv
-                pct = (SAv/denom*100.0) if denom > 0 else 0.0
-                gap = max(0.0, t_area - pct)
-            else:  # %OTHER -- más alto es peor, la brecha es cuánto se pasa de la meta
-                denom = SAv + PAv + SPv + IPv + OTv
-                pct = (OTv/denom*100.0) if denom > 0 else 0.0
-                gap = max(0.0, pct - t_area)
-            weights.append(gap)
-        if sum(weights) <= 0:
-            return [1.0] * len(idx_all)  # respaldo: reparto equitativo si NINGUNA área tiene brecha local
-        return weights
 
-    def _local_need_weights(objective: str, idx_all: list, p, s, sa, pa, sp, ip, oth,
-                             totals: dict[str,float], credits_each: float = 4.0):
-        """Pesos para repartir el total Overall entre áreas: base equitativa
-        (todas parten de lo mismo) + una parte proporcional a cuántos swaps
-        le hacen falta a CADA área para llegar a SU propia meta ('By area',
-        60/40/10). Así ninguna área queda en cero -- todas reciben algo del
-        reparto -- pero la que está más lejos de su meta local se lleva una
-        porción notablemente mayor, y la que ya la cumple (necesita 0 swaps)
-        se lleva la porción mínima (el piso equitativo), no cero.
-        Devuelve una sola lista de pesos (uno por área)."""
-        n_list = []
-        for lbl in idx_all:
-            Pv, Sv = float(p.get(lbl,0.0)), float(s.get(lbl,0.0))
-            SAv, PAv = float(sa.get(lbl,0.0)), float(pa.get(lbl,0.0))
-            SPv, IPv = float(sp.get(lbl,0.0)), float(ip.get(lbl,0.0))
-            OTv = float(oth.get(lbl,0.0))
-            n = _needed_swap_for_obj(objective, "By area", Pv, Sv, SAv, PAv, SPv, IPv, OTv, totals, credits_each)
-            n_list.append(n)
-        # Piso equitativo: +1 a cada peso, para que toda área/field/program
-        # reciba al menos una porción base del reparto (no cero), y las que
-        # necesitan más localmente sigan llevándose proporcionalmente más.
-        return [n + 1 for n in n_list]
 
     # ---------- impacto (siempre visible) ----------
-    def _impact_pair(obj: str, area_vals: dict[str,float], totals: dict[str,float], scope_label: str, credits_each: float = 4.0):
-        # "By area": impacto sobre el % de ESA área, con sus propios
-        # números. "Overall": impacto sobre el % de TODO el colegio, con
-        # los totales globales -- por eso da el mismo número en todas las
-        # filas (matemáticamente correcto: 3 créditos pesan igual sobre el
-        # total global venga de donde venga). Ambas rutas ya usan la
-        # fórmula corregida (down = quitar el indicador complementario, no
-        # el mismo indicador principal).
-        if scope_label == "By area":
-            up_pp, down_pp = _impact_pp_area(obj, area_vals, credits_each)
-        else:
-            up_pp, down_pp = _impact_pp_overall_if_area_changes(obj, totals, credits_each)
-        # devolver números (no strings)
-        return round(up_pp, 2), round(down_pp, 2)
 
     # === HEATMAP + ROJO-CLARO PARA "Needed" ===
-    def _style_impact_heatmap(df: pd.DataFrame, id_col: str):
-        """
-        - Heatmap (verde→amarillo→naranja→rojo) para columnas 'Impact +3cr (pp)' y 'Impact -3cr (pp)'.
-          Se colorea por magnitud absoluta (mayor impacto = más rojo).
-        - Fondo rojo claro en columnas 'Needed ...' cuando el valor != 0.
-        - No toca la columna del identificador (id_col) ni otras columnas.
-        """
-        # DataFrame de estilos vacío
-        sty = pd.DataFrame('', index=df.index, columns=df.columns)
-
-        # --- 1) Rojo claro para "Needed ..." cuando != 0 ---
-        needed_cols = [c for c in df.columns if c.startswith("Needed ")]
-        for c in needed_cols:
-            if c in df:
-                vals = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
-                sty.loc[vals != 0, c] = sty.loc[vals != 0, c].astype(str) + 'background-color:#FDE2E2;'
-
-        # --- 2) Heatmap para columnas de Impact ---
-        impact_cols = [c for c in df.columns if c.startswith("Impact ")]
-        if impact_cols:
-            # Usamos por defecto la magnitud del "+3cr" si existe; si no, el promedio abs de todas
-            if "Impact +3cr (pp)" in df.columns:
-                base_vals = pd.to_numeric(df["Impact +3cr (pp)"], errors="coerce").abs()
-            else:
-                base_vals = (
-                    df[impact_cols]
-                    .apply(pd.to_numeric, errors="coerce")
-                    .abs()
-                    .mean(axis=1)
-                )
-            base_vals = base_vals.fillna(0.0)
-            vmin = float(np.nanmin(base_vals.values)) if base_vals.size else 0.0
-            vmax = float(np.nanmax(base_vals.values)) if base_vals.size else 0.0
-            rng = (vmax - vmin) if (vmax - vmin) > 1e-12 else 1.0  # evita división por cero
-
-            # Paleta suave: verde → amarillo → naranja → rojo
-            # (cuanto mayor el impacto, más "caliente")
-            def color_for(val_abs: float) -> str:
-                z = (val_abs - vmin) / rng  # 0..1  (0 = menor impacto, 1 = mayor impacto)
-                if z >= 0.60:
-                    return "#D9F2D9"  # verde claro
-                elif z >= 0.40:
-                    return "#FFF6B3"  # amarillo
-                elif z >= 0.20:
-                    return "#FFD6A6"  # naranja
-                else:
-                    return "#F5B5B5"  # rojo
-
-            # Aplica la paleta a TODAS las columnas de impacto (según la misma escala)
-            for c in impact_cols:
-                col_vals = pd.to_numeric(df[c], errors="coerce").abs().fillna(0.0)
-                for i, v in col_vals.items():
-                    sty.at[i, c] = sty.at[i, c] + f'background-color:{color_for(float(v))};'
-
-        # Asegura que el id_col no reciba estilo accidental
-        if id_col in sty.columns:
-            sty[id_col] = ''
-
-        return sty
 
     # ================== PRINCIPAL ==================
 
     # --- helpers específicos para el cabezote ---
-    def _guess_prof_cols(df: pd.DataFrame) -> list[str]:
-        """
-        Devuelve columnas candidatas para identificar un profesor.
-        Prioridad: Documento/ID/Email -> nombre/profesor.
-        """
-        pri = []
-        # IDs / correos
-        for c in df.columns:
-            cl = str(c).strip().lower()
-            if any(k in cl for k in ["documento", "identific", "id", "correo", "email", "mail"]):
-                pri.append(c)
-        # Nombres / profesor
-        for c in df.columns:
-            cl = str(c).strip().lower()
-            if any(k in cl for k in ["prof", "docent", "nombre", "name"]):
-                pri.append(c)
-        # Quitar duplicados preservando orden
-        seen, out = set(), []
-        for c in pri:
-            if c not in seen:
-                out.append(c); seen.add(c)
-        # Fallback simple si nada matchea
-        if not out:
-            for cand in ["Profesor(es)", "Profesor", "PROFESOR", "Docente", "Nombre", "Name", "Profesor(a)"]:
-                if cand in df.columns:
-                    out.append(cand)
-                    break
-        return out
 
-    def _unique_prof_count(df: pd.DataFrame, cols: list[str]) -> int:
-        if df is None or df.empty:
-            return 0
-        # Construir una UID robusta a partir de las columnas disponibles
-        use = [c for c in cols if c in df.columns]
-        if not use:
-            # último recurso: filas únicas por todas las columnas visibles (puede sobre-contar)
-            return int(df.astype(str).drop_duplicates().shape[0])
-        uid = df[use].astype(str).apply(lambda s: s.str.strip()).fillna("").agg(" | ".join, axis=1)
-        return int(uid.nunique())
 
-    def _filter_fd_by_timeframe(df_fd: pd.DataFrame, time_mode: str, sel_year, sel_sem) -> pd.DataFrame:
-        """
-        Filtra Faculty Distribution por Semestral / Anual / Intersemestral.
 
-        - Semestral:        == sel_sem (p.ej. '202520')
-        - Anual:            empieza por sel_year (incluye 10, 20 e intersemestral)
-        - Intersemestral:   contiene el año (en cualquier posición) y 'inter' en el texto
-                            (soporta '2025 Intersemestral', 'Intersemestral 2025', '2025-Inter', etc.)
-        """
-        if df_fd is None or df_fd.empty:
-            return df_fd.iloc[0:0]
 
-        sem_col = _get_any(df_fd, "Semestre", "Periodo", "Periodo Académico", "Periodo academico")
-        if not sem_col:
-            return df_fd.iloc[0:0]
-
-        s = df_fd[sem_col].astype(str).str.strip()
-        tm = (time_mode or "Semestral").strip()
-
-        if tm == "Semestral" and sel_sem:
-            m = s.eq(str(sel_sem))
-            return df_fd[m].copy()
-
-        if tm == "Anual" and sel_year is not None:
-            m = s.str.startswith(str(sel_year))
-            return df_fd[m].copy()
-
-        if tm == "Intersemestral" and sel_year is not None:
-            y = str(sel_year)
-            has_year  = s.str.contains(rf"(?:^|[^0-9]){re.escape(y)}(?:[^0-9]|$)", case=False, regex=True)
-            has_inter = s.str.contains("inter", case=False, na=False)
-            m = has_year & has_inter
-            return df_fd[m].copy()
-
-        return df_fd.copy()
-
-    def _count_teaching_from_fd_timeaware(df_fd: pd.DataFrame, time_mode: str, sel_year, sel_sem) -> dict[str,int]:
-        """
-        Cuenta profesores ÚNICOS en Faculty Distribution según timeframe:
-          - Full-time (FT):   PLANTA_CATEDRA == 'PLANTA'
-          - Part-time (PT):   PLANTA_CATEDRA == 'CÁTEDRA' / 'CATEDRA'
-          - Participating P:  P/S == 'P'
-          - Supporting   S:   P/S == 'S'
-        """
-        if df_fd is None or df_fd.empty:
-            return {"FT":0, "PT":0, "P":0, "S":0}
-
-        dff = _filter_fd_by_timeframe(df_fd, time_mode, sel_year, sel_sem)
-        if dff is None or dff.empty:
-            return {"FT":0, "PT":0, "P":0, "S":0}
-
-        prof_cols = _guess_prof_cols(dff)
-
-        # columnas de clasificación
-        pc_col = _get_any(dff, "PLANTA_CATEDRA", "Planta_Catedra", "Planta/Cátedra", "PLANTA CATEDRA", "Planta/Catedra")
-        ps_col = _get_any(dff, "P/S", "P - S", "Participating/Supporting", "P S")
-
-        # Full-time / Part-time
-        ft = pt = 0
-        if pc_col:
-            tag = _norm_str(dff[pc_col])
-            ft_df = dff[tag.eq("planta")]
-            pt_df = dff[tag.isin({"catedra", "cátedra"})]
-            ft = _unique_prof_count(ft_df, prof_cols)
-            pt = _unique_prof_count(pt_df, prof_cols)
-
-        # Participating / Supporting
-        p_cnt = s_cnt = 0
-        if ps_col:
-            tps = _norm_str(dff[ps_col])
-            p_df = dff[tps.eq("p")]
-            s_df = dff[tps.eq("s")]
-            p_cnt = _unique_prof_count(p_df, prof_cols)
-            s_cnt = _unique_prof_count(s_df, prof_cols)
-
-        return {"FT":ft, "PT":pt, "P":p_cnt, "S":s_cnt}
-
-    def compute_header_counts_teaching(df_fd: pd.DataFrame, time_mode: str, sel_year, sel_sem, sens: dict) -> dict:
-        base = _count_teaching_from_fd_timeaware(df_fd, time_mode, sel_year, sel_sem)
-
-        # Sensibilidad: +P suma a Full-time y Participating; +S suma a Part-time y Supporting
-        dP = dS = 0
-        if sens.get("on") and sens.get("ops"):
-            for op in sens["ops"]:
-                if op.get("scope") == "PS":
-                    if op.get("cat") == "P":
-                        dP += int(op.get("count", 0))
-                    elif op.get("cat") == "S":
-                        dS += int(op.get("count", 0))
-
-        return {
-            "Full-time":     max(0, base["FT"] + dP),
-            "Part-time":     max(0, base["PT"] + dS),
-            "Participating": max(0, base["P"]  + dP),
-            "Supporting":    max(0, base["S"]  + dS),
-        }
 
     # === Subheader ===
 
@@ -6436,31 +5923,25 @@ def page_qualifications():
                 df_bsq = df_bsq.drop(columns=["FTPT_raw","PS_raw","TIPO_raw"])
 
                 # ----------------- Agrupar por _PID para obtener una fila única por profesor (versión robusta) -----------------
-                def _first_non_empty_str_like(series):
-                    vals = series.fillna("").astype(str).str.strip().tolist()
-                    for v in vals:
-                        if v != "":
-                            return v
-                    return vals[0] if vals else ""
+                # Primer valor "bueno" de cada profesor: no vacío (y, para TIPO, distinto de
+                # OTHER); si no hay ninguno, el primer valor tal cual. Vectorizado con groupby
+                # (antes un groupby.apply fila por fila que tardaba ~1 s).
+                def _first_pick(col, skip_other=False):
+                    v = df_bsq[col].fillna("").astype(str).str.strip()
+                    ok = v.ne("")
+                    if skip_other:
+                        ok &= v.str.upper().ne("OTHER")
+                    by_pid = df_bsq["_PID"]
+                    return v.where(ok).groupby(by_pid).first().fillna(v.groupby(by_pid).first())
 
-                def _first_not_other_str_like(series):
-                    vals = series.fillna("").astype(str).str.strip().tolist()
-                    for v in vals:
-                        if v != "" and v.upper() != "OTHER":
-                            return v
-                    return vals[0] if vals else ""
-
-                def _make_fac_row(g):
-                    return pd.Series({
-                        "Gender":     _first_non_empty_str_like(g["Gender"]),
-                        "IsDoctoral": bool(g["IsDoctoral"].any()),
-                        "FTPT":       _first_non_empty_str_like(g["FTPT"]),
-                        "PS":         _first_non_empty_str_like(g["PS"]),
-                        "TIPO":       _first_not_other_str_like(g["TIPO"])
-                    })
-
-                # apply devuelve una fila por grupo (por _PID)
-                df_fac = df_bsq.groupby("_PID", as_index=True).apply(_make_fac_row).reset_index()
+                # una fila por _PID (profesor)
+                df_fac = pd.DataFrame({
+                    "Gender":     _first_pick("Gender"),
+                    "IsDoctoral": df_bsq.groupby("_PID")["IsDoctoral"].any(),
+                    "FTPT":       _first_pick("FTPT"),
+                    "PS":         _first_pick("PS"),
+                    "TIPO":       _first_pick("TIPO", skip_other=True),
+                }).reset_index()
 
                 # ----------------- Cálculos de tabla 7 (género) sobre df_fac (una fila por profesor) ----
                 def _count_by_gender_from(df_, mask) -> dict:
@@ -7550,21 +7031,6 @@ def _table_info(ws, table_name: str):
     return None
 
 
-def _planta_fmt_date(v) -> str:
-    """Normaliza una fecha de la template (datetime, serial de Excel, o texto) a DD/MM/YYYY."""
-    if v is None or (isinstance(v, float) and pd.isna(v)) or v == "":
-        return ""
-    if isinstance(v, (datetime.datetime, datetime.date)):
-        return v.strftime("%d/%m/%Y")
-    if isinstance(v, (int, float)):
-        try:
-            dt = datetime.datetime(1899, 12, 30) + datetime.timedelta(days=float(v))
-            return dt.strftime("%d/%m/%Y")
-        except (ValueError, OverflowError):
-            return str(v)
-    return str(v).strip()
-
-
 def _build_planta_row(tpl_row: list, nro: int, formula_row_num: int) -> list:
     """Traduce una fila de la Template_planta (empezando en columna B) a una
     fila completa A:AB de BD_PLANTA. La template ya NO trae el numero
@@ -7655,7 +7121,7 @@ def _drive_upload_file_bytes(file_id: str, content: bytes) -> Tuple[bool, str]:
     token = _get_gspread_access_token()
     if not token:
         return False, "No hay credenciales configuradas (falta st.secrets['gcp_service_account'])."
-    url = f"https://www.googleapis.com/upload/drive/v3/files/{file_id}?uploadType=media"
+    url = f"https://www.googleapis.com/upload/drive/v3/files/{file_id}?uploadType=media&fields=modifiedTime"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -7663,6 +7129,17 @@ def _drive_upload_file_bytes(file_id: str, content: bytes) -> Tuple[bool, str]:
     try:
         resp = requests.patch(url, headers=headers, data=content, timeout=120)
         if resp.status_code == 200:
+            # La subida la hizo esta misma app (y quien la hizo ya limpia el
+            # caché): se anota la nueva versión como "ya vista" para que el
+            # detector de cambios no vuelva a limpiar el caché por nuestra
+            # propia escritura (eso obligaba a recargar todo una 2.ª vez).
+            try:
+                new_ver = resp.json().get("modifiedTime")
+                if new_ver:
+                    _drive_seen_versions()[file_id] = new_ver
+                    _drive_modified_times.clear()
+            except Exception:
+                pass
             return True, ""
         return False, f"HTTP {resp.status_code}: {resp.text[:300]}"
     except Exception as e:
@@ -7746,7 +7223,6 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
             for i, r in enumerate(_tpl_rows)
         ]
 
-        base_font = _BASE_ARIAL_FONT
         blue_bold_font = Font(name="Arial", size=11, color="1D4ED8", bold=True)
         red_font = Font(name="Arial", size=11, color="DC2626")
 
@@ -7938,7 +7414,7 @@ def _load_cursos_area_map() -> Dict[str, str]:
     """Código Materia (columna A de 'cursos') → Area del curso (columna D),
     para saber en el preview qué cursos de la template ya existen y cuáles no."""
     raw = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
-    dfc = pd.read_excel(raw, sheet_name="cursos")
+    dfc = _read_excel_fast(raw, sheet_name="cursos")
     dfc.columns = dfc.columns.str.strip()
     key = dfc["Código Materia"].astype(str).str.strip()
     return dict(zip(key, dfc["Area del curso"]))
@@ -8112,14 +7588,14 @@ def _build_prefilled_cursos_template(missing_rows: pd.DataFrame) -> bytes:
 def _build_cursos_download() -> bytes:
     """Devuelve la hoja 'cursos' completa (de BD_cartelera.xlsx) como .xlsx descargable."""
     raw = io.BytesIO(_download_drive_file_bytes(CARTELERA_FILE_ID))
-    dfc = pd.read_excel(raw, sheet_name="cursos")
+    dfc = _read_excel_fast(raw, sheet_name="cursos")
     return _xlsx_bytes(dfc, sheet_name="cursos")
 
 
 def _build_info_profesores_download() -> bytes:
     """Devuelve la hoja 'catedra' completa como un .xlsx descargable."""
     raw = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
-    dfi = pd.read_excel(raw, sheet_name="catedra")
+    dfi = _read_excel_fast(raw, sheet_name="catedra")
     return _xlsx_bytes(dfi, sheet_name="catedra")
 
 
@@ -8134,72 +7610,6 @@ def _build_prefilled_profesores_template(missing_names: List[str]) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
-
-
-def repair_planta_catedra_cache() -> Tuple[bool, str]:
-    """Reparación de una sola vez: la columna PLANTA_CATEDRA de 'Faculty
-    Distribution' es una fórmula (=IF(COUNTIFS(planta!...)>0,"PLANTA","CÁTEDRA"))
-    cuyo valor en caché se perdió en guardados automatizados anteriores —
-    openpyxl no recalcula fórmulas, así que quedó en blanco para todos los
-    periodos históricos (solo el más reciente, escrito con valor literal,
-    se veía bien). Esta función calcula el valor real cruzando (Periodo, ID)
-    contra la hoja 'planta' y lo escribe como literal, para todas las filas
-    donde la celda siga siendo una fórmula sin resolver."""
-    if not _OPENPYXL_OK:
-        return False, "Falta la librería `openpyxl` en el entorno."
-    token = _get_gspread_access_token()
-    if not token:
-        return False, "No hay credenciales configuradas para escribir en Drive."
-    try:
-        raw_bytes = _download_drive_file_bytes(PROFESORES_FILE_ID)
-        wb = openpyxl.load_workbook(io.BytesIO(raw_bytes))
-        ws_fd = wb["Faculty Distribution"]
-        ws_planta = wb["planta"]
-
-        headers_planta = [c.value for c in ws_planta[1]]
-        col_periodo_p = headers_planta.index("Periodo") + 1 if "Periodo" in headers_planta else 1
-        col_id_p = headers_planta.index("ID Nr.") + 1 if "ID Nr." in headers_planta else 3
-        planta_pairs = set()
-        for r in range(2, ws_planta.max_row + 1):
-            periodo = ws_planta.cell(row=r, column=col_periodo_p).value
-            idval = ws_planta.cell(row=r, column=col_id_p).value
-            if periodo is not None and idval is not None:
-                planta_pairs.add((str(periodo).strip(), str(idval).strip()))
-
-        headers_fd = [c.value for c in ws_fd[1]]
-        col_periodo_fd = headers_fd.index("Semestre") + 1
-        col_id_fd = headers_fd.index("ID") + 1
-        col_pc_fd = headers_fd.index("PLANTA_CATEDRA") + 1
-
-        n_fixed = 0
-        for r in range(2, ws_fd.max_row + 1):
-            periodo = ws_fd.cell(row=r, column=col_periodo_fd).value
-            if periodo is None:
-                continue
-            current = ws_fd.cell(row=r, column=col_pc_fd).value
-            if isinstance(current, str) and current.startswith("="):
-                idval = ws_fd.cell(row=r, column=col_id_fd).value
-                key = (str(periodo).strip(), str(idval).strip())
-                computed = "PLANTA" if key in planta_pairs else "CÁTEDRA"
-                cell = ws_fd.cell(row=r, column=col_pc_fd, value=computed)
-                cell.font = _BASE_ARIAL_FONT
-                n_fixed += 1
-
-        if n_fixed == 0:
-            return True, "No había filas con fórmula sin resolver — nada que reparar."
-
-        wb.calculation.fullCalcOnLoad = True
-        buf = io.BytesIO()
-        wb.save(buf)
-        buf.seek(0)
-        ok, err = _drive_upload_file_bytes(PROFESORES_FILE_ID, buf.getvalue())
-        if not ok:
-            return False, f"Error al subir el archivo reparado a Drive: {err}"
-
-        _download_drive_file_bytes.clear()
-        return True, f"✓ Reparadas {n_fixed} fila(s) de PLANTA_CATEDRA en Faculty Distribution."
-    except Exception as e:
-        return False, f"Error al reparar PLANTA_CATEDRA: {e}"
 
 
 def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List],
@@ -8470,7 +7880,6 @@ def push_profesores_updates(new_profs_df: pd.DataFrame, periodo: str,
             return False, "No encontre la Tabla de Excel 'tabla_catedra'."
         match, min_col, min_row, max_col, last_row = info
 
-        base_font = _BASE_ARIAL_FONT
         N_COLS = 20          # A..T en 'catedra'
         ID_COL, AGE_COL = 3, 19
 
@@ -8657,31 +8066,59 @@ def push_profesores_updates(new_profs_df: pd.DataFrame, periodo: str,
         return False, f"Error al escribir en la hoja 'catedra': {e}"
 
 
-def _copy_ws_with_style(src_ws, dst_wb, sheet_name: str):
-    """Copia una hoja completa (valores + estilo de celda: fuente, relleno,
-    borde, alineación, formato numérico) a una hoja nueva de dst_wb,
-    incluyendo anchos de columna, alto de fila, celdas combinadas y freeze
-    panes. Se usa para hojas 'planas' (sin tablas dinámicas ni formato
-    condicional) -- para esas (p.ej. 'qualifications') es mejor no copiar
-    celda a celda y en cambio partir directo del workbook original."""
+def _copy_ws_with_style(src_ws, dst_wb, sheet_name: str, period_col: Optional[int] = None, keep_periods=None):
+    """Copia una hoja (valores + estilo de celda: fuente, relleno, borde,
+    alineación, formato numérico) a una hoja nueva de dst_wb, incluyendo
+    anchos de columna, alto de fila, celdas combinadas y freeze panes.
+
+    Si se pasan `period_col` (índice 1-based) y `keep_periods`, SOLO se copian
+    la fila de encabezado y las filas cuyo periodo está en keep_periods (las
+    demás ni se leen ni se copian: antes se copiaba la hoja entera, ~100 mil
+    celdas, para luego borrar casi todo). Los estilos se convierten una sola
+    vez por combinación distinta y se reutilizan (antes se hacía una copia
+    profunda por celda)."""
     dst_ws = dst_wb.create_sheet(sheet_name)
+    keep_norm = None
+    if period_col is not None and keep_periods is not None:
+        keep_norm = {str(p).strip().replace(".0", "") for p in keep_periods}
+
+    style_memo: dict = {}
+
+    def _styled(cell):
+        key = tuple(cell._style)
+        got = style_memo.get(key)
+        if got is None:
+            got = (copy.copy(cell.font), copy.copy(cell.fill), copy.copy(cell.border),
+                   copy.copy(cell.alignment), cell.number_format, copy.copy(cell.protection))
+            style_memo[key] = got
+        return got
+
+    dst_row = 0
+    row_map: dict = {}
     for row in src_ws.iter_rows():
+        src_r = row[0].row if row else None
+        if src_r is None:
+            continue
+        if keep_norm is not None and src_r > 1:
+            pv = row[period_col - 1].value if len(row) >= period_col else None
+            if str(pv if pv is not None else "").strip().replace(".0", "") not in keep_norm:
+                continue
+        dst_row += 1
+        row_map[src_r] = dst_row
         for cell in row:
-            new_cell = dst_ws.cell(row=cell.row, column=cell.column, value=cell.value)
+            new_cell = dst_ws.cell(row=dst_row, column=cell.column, value=cell.value)
             if cell.has_style:
-                new_cell.font = copy.copy(cell.font)
-                new_cell.fill = copy.copy(cell.fill)
-                new_cell.border = copy.copy(cell.border)
-                new_cell.alignment = copy.copy(cell.alignment)
-                new_cell.number_format = cell.number_format
-                new_cell.protection = copy.copy(cell.protection)
+                (new_cell.font, new_cell.fill, new_cell.border,
+                 new_cell.alignment, new_cell.number_format, new_cell.protection) = _styled(cell)
     for col_letter, dim in src_ws.column_dimensions.items():
         dst_ws.column_dimensions[col_letter].width = dim.width
         dst_ws.column_dimensions[col_letter].hidden = dim.hidden
     for row_idx, dim in src_ws.row_dimensions.items():
-        dst_ws.row_dimensions[row_idx].height = dim.height
-    for merged in src_ws.merged_cells.ranges:
-        dst_ws.merge_cells(str(merged))
+        if row_idx in row_map:
+            dst_ws.row_dimensions[row_map[row_idx]].height = dim.height
+    if keep_norm is None:
+        for merged in src_ws.merged_cells.ranges:
+            dst_ws.merge_cells(str(merged))
     if src_ws.freeze_panes:
         dst_ws.freeze_panes = src_ws.freeze_panes
     return dst_ws
@@ -9050,7 +8487,7 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     # hoja 5 -- se lee aparte con pandas porque es más simple para agrupar.
     # Se excluyen especializaciones (Program 'Specialization...' o Cod
     # program 'E-...') para que el reporte nunca muestre esa información.
-    df_cart_full = pd.read_excel(io.BytesIO(raw_cart_bytes), sheet_name="cartelera")
+    df_cart_full = _read_excel_fast(io.BytesIO(raw_cart_bytes), sheet_name="cartelera")
     keep_norm = {str(p).strip().replace(".0", "") for p in target_periods}
     df_cart_period = df_cart_full[
         df_cart_full["Semestre"].astype(str).str.strip().str.replace(".0", "", regex=False).isin(keep_norm)
@@ -9064,7 +8501,10 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     raw_fd = io.BytesIO(_download_drive_file_bytes(PROFESORES_FILE_ID))
     wb_fd = openpyxl.load_workbook(raw_fd)
     if "Faculty Distribution" in wb_fd.sheetnames:
-        ws_fd_new = _copy_ws_with_style(wb_fd["Faculty Distribution"], wb_out, "Faculty Distribution")
+        ws_fd_new = _copy_ws_with_style(
+            wb_fd["Faculty Distribution"], wb_out, "Faculty Distribution",
+            period_col=1, keep_periods=target_periods,
+        )
         _filter_ws_rows_by_period(ws_fd_new, "Semestre", target_periods)
         _sort_ws_rows_by_period(ws_fd_new, 1, 8)
         # El fondo de los títulos lo daba el estilo de la Tabla de Excel, que
@@ -9227,7 +8667,6 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
 
         base_font = _BASE_ARIAL_FONT
         area_fill = PatternFill(fill_type="solid", fgColor="F1CEEE")
-        cursos_fill = PatternFill(fill_type="solid", fgColor="C1F4E5")
         calc_fill = PatternFill(fill_type="solid", fgColor="CAEDFB")
 
         full_area_map = dict(area_map or {})
@@ -9565,8 +9004,8 @@ def page_update_data():
         with col_info:
             with st.popover("", icon=":material/help:"):
                 st.caption("Base de referencia con toda la información de profesores.")
-                st.download_button(
-                    "Descargar Base Cátedra", data=_build_info_profesores_download(),
+                _download_button_lazy(
+                    "Descargar Base Cátedra", _build_info_profesores_download,
                     file_name="Info_Profesores.xlsx", key="dl_info_profesores",
                     icon=":material/download:",
                 )
@@ -9575,8 +9014,8 @@ def page_update_data():
         last_period = sorted(_planta_regular, key=_period_sort_key)[-1] if _planta_regular else "—"
         st.caption(f"Último periodo registrado en la Base: **{last_period}**")
 
-        st.download_button(
-            "Descargar Template_planta.xlsx", data=_download_drive_file_bytes(TEMPLATE_PLANTA_FILE_ID),
+        _download_button_lazy(
+            "Descargar Template_planta.xlsx", lambda: _download_drive_file_bytes(TEMPLATE_PLANTA_FILE_ID),
             file_name="Template_planta.xlsx", key="dl_template_planta", icon=":material/download:",
         )
 
@@ -9620,8 +9059,8 @@ def page_update_data():
         with col_info2:
             with st.popover("", icon=":material/help:"):
                 st.caption("Hoja de referencia con los cursos y áreas ya cargados.")
-                st.download_button(
-                    "Descargar hoja de cursos", data=_build_cursos_download(),
+                _download_button_lazy(
+                    "Descargar hoja de cursos", _build_cursos_download,
                     file_name="cursos.xlsx", key="dl_cursos_sheet",
                     icon=":material/download:",
                 )
@@ -9640,8 +9079,8 @@ def page_update_data():
         last_cart_period = _with_dash(sorted(_cart_periods_raw, key=_period_sort_key)[-1]) if _cart_periods_raw else "—"
         st.caption(f"Último periodo registrado en la Base: **{last_cart_period}**")
 
-        st.download_button(
-            "Descargar Template_cartelera.xlsx", data=_download_drive_file_bytes(TEMPLATE_CARTELERA_FILE_ID),
+        _download_button_lazy(
+            "Descargar Template_cartelera.xlsx", lambda: _download_drive_file_bytes(TEMPLATE_CARTELERA_FILE_ID),
             file_name="Template_cartelera.xlsx", key="dl_template_cartelera", icon=":material/download:",
         )
 
@@ -9731,9 +9170,9 @@ def page_update_data():
                                 **{"Area del curso": missing_courses["Materia"].map(picked_areas)}
                             ).rename(columns={"Materia": "Código Materia"})
                     else:
-                        st.download_button(
+                        _download_button_lazy(
                             "Descargar Template_cursos_nuevos.xlsx (con los datos ya puestos)",
-                            data=_build_prefilled_cursos_template(missing_courses),
+                            lambda: _build_prefilled_cursos_template(missing_courses),
                             file_name="Template_cursos_nuevos.xlsx",
                             key="cursos_template_dl", icon=":material/download:",
                         )
@@ -9860,9 +9299,9 @@ def page_update_data():
                         if all_required_filled:
                             new_profs_df = pd.DataFrame(list(picked_profs.values()))
                     else:
-                        st.download_button(
+                        _download_button_lazy(
                             "Descargar Template_profesores_nuevos.xlsx (con los nombres ya puestos)",
-                            data=_build_prefilled_profesores_template(missing_profs),
+                            lambda: _build_prefilled_profesores_template(missing_profs),
                             file_name="Template_profesores_nuevos.xlsx",
                             key="prof_template_dl", icon=":material/download:",
                         )
@@ -10159,8 +9598,8 @@ else:
                     buf.seek(0)
                     return buf.getvalue()
 
-                st.download_button(
-                    "Download", data=_build_db_download(dl_period, dl_scope),
+                _download_button_lazy(
+                    "Download", lambda: _build_db_download(dl_period, dl_scope),
                     file_name=f"BD_{dl_scope}_{dl_period}.xlsx".replace(" ", "_"),
                     key="dl_db_btn", use_container_width=True,
                 )
