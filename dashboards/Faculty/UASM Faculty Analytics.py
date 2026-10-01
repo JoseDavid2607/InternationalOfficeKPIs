@@ -7631,9 +7631,14 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
         # delete_rows y dejaba un hueco de filas vacias antes de esta fila).
         last_real_row = _last_data_row(ws, key_col=1)
         append_start = last_real_row + 1
+        # Orden cronológico por periodo (10 -> Intersemestral -> 20); estable.
+        _tpl_rows = sorted(
+            (list(r) for r in new_rows_df.itertuples(index=False, name=None)),
+            key=lambda r: _period_ord(str(r[0]).replace(".0", "")) or 0,
+        )
         rows = [
-            _build_planta_row(list(r), max_nro + 1 + i, append_start + i)
-            for i, r in enumerate(new_rows_df.itertuples(index=False, name=None))
+            _build_planta_row(r, max_nro + 1 + i, append_start + i)
+            for i, r in enumerate(_tpl_rows)
         ]
 
         base_font = _BASE_ARIAL_FONT
@@ -7787,7 +7792,7 @@ def push_planta_updates(new_rows_df: pd.DataFrame) -> Tuple[bool, str]:
         demo_load_fulltime.clear()
         _download_drive_file_bytes.clear()
 
-        periodos_txt = ", ".join(sorted(periodos)) if periodos else "?"
+        periodos_txt = ", ".join(sorted(periodos, key=lambda x: _period_ord(x) or 0)) if periodos else "?"
         msg = f"\u2713 BD_profesores.xlsx (hoja 'planta') actualizada \u2014 {len(rows)} filas para el/los periodo(s) {periodos_txt}."
         msg += f" · :blue[{n_new_total} nuevo(s)] · :red[{n_left_total} se retiraron]"
         return True, msg
@@ -8243,7 +8248,7 @@ def push_faculty_distribution_updates(periodo_to_ids: Dict[str, List],
 
         append_start = last_row + 1
         n_written = 0
-        for periodo, ids in periodo_to_ids.items():
+        for periodo, ids in sorted(periodo_to_ids.items(), key=lambda kv: _period_ord(kv[0]) or 0):
             for prof_id in ids:
                 periodo_s, id_s = _norm_sem_key(periodo), _norm_id(prof_id)
                 pair = (periodo_s, id_s)
@@ -8649,6 +8654,32 @@ def _filter_ws_rows_exclude_specializations(ws, header_row: int = 1):
     _delete_rows_batched(ws, to_delete)
 
 
+def _sort_ws_rows_by_period(ws, period_col: int, ncols: int, header_row: int = 1):
+    """Ordena las filas de una hoja cronológicamente por periodo: YYYY10,
+    luego Intersemestral y luego YYYY20 (orden estable: dentro de un mismo
+    periodo se respeta el orden que ya tenían). Solo mueve las columnas
+    1..ncols (valores y formato). No hace nada si ya están en orden o si
+    hay fórmulas en el rango (moverlas rompería sus referencias)."""
+    rows = []
+    for r in range(header_row + 1, ws.max_row + 1):
+        raw = ws.cell(row=r, column=period_col).value
+        if raw is None or str(raw).strip() == "":
+            continue
+        vals = [ws.cell(row=r, column=c).value for c in range(1, ncols + 1)]
+        if any(isinstance(v, str) and v.startswith("=") for v in vals):
+            return
+        styles = [copy.copy(ws.cell(row=r, column=c)._style) for c in range(1, ncols + 1)]
+        rows.append((_period_ord(raw) or 0, r, vals, styles))
+    if all(rows[i][0] <= rows[i + 1][0] for i in range(len(rows) - 1)):
+        return
+    target_rows = [r for _, r, _, _ in rows]
+    for (_, _, vals, styles), tr in zip(sorted(rows, key=lambda x: (x[0], x[1])), target_rows):
+        for c in range(1, ncols + 1):
+            cell = ws.cell(row=tr, column=c)
+            cell.value = vals[c - 1]
+            cell._style = copy.copy(styles[c - 1])
+
+
 def _write_simple_table(ws, dfx: pd.DataFrame):
     """Escribe un DataFrame en una hoja nueva con estilo de template limpio:
     encabezado en negrilla blanca sobre fondo oscuro, bordes finos en todas
@@ -8925,6 +8956,7 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     if "Faculty Distribution" in wb_fd.sheetnames:
         ws_fd_new = _copy_ws_with_style(wb_fd["Faculty Distribution"], wb_out, "Faculty Distribution")
         _filter_ws_rows_by_period(ws_fd_new, "Semestre", target_periods)
+        _sort_ws_rows_by_period(ws_fd_new, 1, 8)
         # El fondo de los títulos lo daba el estilo de la Tabla de Excel, que
         # no viaja en la copia: se deja explícito (azul oscuro, letra blanca).
         _hdr_fill = PatternFill(fill_type="solid", fgColor="1F3864")
@@ -8945,6 +8977,7 @@ def _build_faculty_qualifications_report(target_periods, new_courses_df: pd.Data
     if "cartelera" in wb_out.sheetnames:
         _filter_ws_rows_by_period(wb_out["cartelera"], "Semestre", target_periods)
         _filter_ws_rows_exclude_specializations(wb_out["cartelera"])
+        _sort_ws_rows_by_period(wb_out["cartelera"], 2, 23)
 
         # Para que la hoja 'qualifications' dé EXACTAMENTE los mismos números
         # que la tabla de la página Qualifications del dashboard, se aplica
@@ -9181,6 +9214,15 @@ def push_cartelera_updates(cartelera_df: pd.DataFrame, new_courses_df: pd.DataFr
         if not info_cart:
             return False, "No encontré la Tabla de Excel 'tabla_cartelera' en la hoja 'cartelera'."
         match_cart, min_col_ct, min_row_ct, max_col_ct, last_row_ct = info_cart
+
+        # Orden cronológico de las filas nuevas: semestre 10 -> Intersemestral -> 20
+        # (orden estable: dentro de un mismo semestre se respeta el de la template).
+        cartelera_df = cartelera_df.iloc[
+            sorted(
+                range(len(cartelera_df)),
+                key=lambda i: (_period_ord(_semestre_from_periodo(cartelera_df["Periodo"].iloc[i])) or 0, i),
+            )
+        ].reset_index(drop=True)
 
         # Periodos presentes en la carga: borra filas existentes con esos periodos primero
         periodos = set(str(p).strip() for p in cartelera_df["Periodo"].dropna().unique())
