@@ -339,6 +339,7 @@ header.hero h1 {
 }
 .viewer-close:hover { background: #f3f4f6; }
 .viewer-frame { flex: 1; border: none; width: 100%; }
+.viewer-help { font-size: .76rem; color: var(--muted); padding: 6px 22px; background: #f8fafb; border-bottom: 1px solid #e5e7eb; }
 
 /* ── TOAST ── */
 .toast {
@@ -544,6 +545,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       <button class="action-btn action-btn--teal" id="viewerUpdateBtn" style="font-size:.82rem;padding:8px 14px;">Update</button>
       <button class="viewer-close" id="viewerClose">×</button>
     </div>
+    <div class="viewer-help" id="viewerHelp">Can't see the document? Make sure you are signed in to Google with your <strong>@uniandes.edu.co</strong> account (other accounts in this browser can block it) and use <strong>Open in Drive</strong>.</div>
     <iframe class="viewer-frame" id="viewerFrame" src="" allow="fullscreen; scripts; same-origin; popups" allowfullscreen></iframe>
     <div id="viewerNoUrl" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#6b7280;font-size:.95rem;text-align:center;padding:40px;">
       <div>This document has not been uploaded yet.</div>
@@ -584,64 +586,124 @@ const DRIVE_FOLDERS = {
   "f1-6": "1ygBhTnCIOfx3DIQ-eV3XZ67ahVlnBEro"
 };
 
-let googleAccessToken = sessionStorage.getItem("br_token") || null;
-let googleUserEmail   = sessionStorage.getItem("br_email") || null;
+// Sesión: se guarda en localStorage (sobrevive al cerrar la pestaña). El token de
+// Google dura ~1 h; se RENUEVA en silencio antes de vencer, así que el usuario no
+// tiene que volver a iniciar sesión mientras use la página. Solo se cierra la
+// sesión tras SESSION_IDLE_MS (12 h) sin ninguna actividad.
+const SESSION_IDLE_MS = 12 * 60 * 60 * 1000;
+const REFRESH_MARGIN_MS = 5 * 60 * 1000;   // se renueva 5 min antes de vencer
+let googleUserEmail   = localStorage.getItem("br_email") || null;
+let googleAccessToken = null;
+let tokenExpiresAt    = 0;
 let pendingActionAfterLogin = null;
-let sessionExpiry = parseInt(sessionStorage.getItem("br_expiry") || "0") || null;
+let refreshPromise = null;
+let refreshTimer = null;
 
-function silentTokenRefresh() {
-  if (!googleUserEmail) return;
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
-    hint: googleUserEmail,
-    prompt: "",
-    callback: (resp) => {
-      if (resp.error || !resp.access_token) {
-        googleAccessToken = null;
-        sessionStorage.removeItem("br_token");
-        return;
-      }
-      googleAccessToken = resp.access_token;
-      sessionStorage.setItem("br_token", googleAccessToken);
-      touchSession();
-    }
-  });
-  client.requestAccessToken();
+(function restoreSession(){
+  const last = parseInt(localStorage.getItem("br_last") || "0") || 0;
+  if (googleUserEmail && last && Date.now() - last > SESSION_IDLE_MS) {
+    googleUserEmail = null;
+    ["br_email","br_token","br_exp","br_last"].forEach(k => localStorage.removeItem(k));
+    return;
+  }
+  const tk  = localStorage.getItem("br_token");
+  const exp = parseInt(localStorage.getItem("br_exp") || "0") || 0;
+  if (googleUserEmail && tk && exp > Date.now() + 60000) { googleAccessToken = tk; tokenExpiresAt = exp; }
+})();
+
+function tokenValid(minMs = 60000) {
+  return !!googleAccessToken && tokenExpiresAt > Date.now() + minMs;
 }
-const SESSION_MS = 10 * 60 * 1000;
+function isSignedIn() {
+  return !!googleUserEmail && googleUserEmail.endsWith("@" + ALLOWED_DOMAIN);
+}
+function storeToken(accessToken, expiresInSec) {
+  googleAccessToken = accessToken;
+  tokenExpiresAt = Date.now() + (parseInt(expiresInSec || 3600) * 1000);
+  localStorage.setItem("br_token", googleAccessToken);
+  localStorage.setItem("br_exp", String(tokenExpiresAt));
+  if (googleUserEmail) localStorage.setItem("br_email", googleUserEmail);
+  touchSession(true);
+  scheduleRefresh();
+}
+function clearSession(msg) {
+  googleAccessToken = null; googleUserEmail = null; tokenExpiresAt = 0;
+  ["br_email","br_token","br_exp","br_last"].forEach(k => localStorage.removeItem(k));
+  clearTimeout(refreshTimer);
+  if (msg) showToast(msg);
+}
 
-function touchSession() {
-  if (!googleAccessToken) return;
-  sessionExpiry = Date.now() + SESSION_MS;
-  sessionStorage.setItem("br_expiry", String(sessionExpiry));
+// Renueva el token sin mostrar nada (Google reutiliza la sesión ya iniciada).
+// Devuelve true si se obtuvo un token nuevo; false si hace falta iniciar sesión.
+function refreshToken() {
+  if (!googleUserEmail) return Promise.resolve(false);
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = new Promise((resolve) => {
+    try {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
+        hint: googleUserEmail,
+        prompt: "",
+        callback: (resp) => {
+          if (resp.error || !resp.access_token) { resolve(false); return; }
+          storeToken(resp.access_token, resp.expires_in);
+          resolve(true);
+        },
+        error_callback: () => resolve(false)
+      });
+      client.requestAccessToken();
+    } catch (e) { resolve(false); }
+  }).finally(() => { refreshPromise = null; });
+  return refreshPromise;
+}
+// Token válido (renovándolo si hace falta) o null.
+async function getToken(minMs = 120000) {
+  if (tokenValid(minMs)) return googleAccessToken;
+  const ok = await refreshToken();
+  return ok ? googleAccessToken : null;
+}
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  if (!googleUserEmail || !tokenExpiresAt) return;
+  const wait = Math.max(30000, tokenExpiresAt - Date.now() - REFRESH_MARGIN_MS);
+  refreshTimer = setTimeout(() => { refreshToken().then(ok => { if (!ok) scheduleRefresh(); }); }, wait);
+}
+// Actividad: se anota como mucho una vez por minuto.
+let lastTouch = 0;
+function touchSession(force) {
+  if (!googleUserEmail) return;
+  const now = Date.now();
+  if (!force && now - lastTouch < 60000) return;
+  lastTouch = now;
+  localStorage.setItem("br_last", String(now));
 }
 function checkSession() {
-  if (googleAccessToken && sessionExpiry && Date.now() > sessionExpiry) {
-    googleAccessToken = null;
-    googleUserEmail   = null;
-    sessionExpiry     = null;
-    sessionStorage.removeItem("br_token");
-    sessionStorage.removeItem("br_email");
-    sessionStorage.removeItem("br_expiry");
-    showToast("Session expired. Please sign in again.");
+  const last = parseInt(localStorage.getItem("br_last") || "0") || 0;
+  if (googleUserEmail && last && Date.now() - last > SESSION_IDLE_MS) {
+    clearSession("Session expired after a long period of inactivity. Please sign in again.");
+    render();
   }
 }
 ["click","keydown","mousemove","touchstart"].forEach(ev =>
-  document.addEventListener(ev, () => { if(googleAccessToken) touchSession(); }, {passive:true})
+  document.addEventListener(ev, () => touchSession(false), {passive:true})
 );
-setInterval(checkSession, 15000);
+setInterval(checkSession, 5 * 60 * 1000);
+// Al volver a la pestaña (o recuperar internet) se revisa/renueva el token.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && googleUserEmail && !tokenValid(REFRESH_MARGIN_MS)) refreshToken().then(() => { render(); });
+});
+window.addEventListener("online", () => { if (googleUserEmail && !tokenValid(REFRESH_MARGIN_MS)) refreshToken(); });
 
 // =====================
 // LOGIN GATE
 // =====================
 function requireLogin(action) {
-  if (googleAccessToken && googleUserEmail && googleUserEmail.endsWith("@" + ALLOWED_DOMAIN)) {
-    action();
-  } else {
-    pendingActionAfterLogin = action;
-    document.getElementById("loginModal").classList.add("open");
-  }
+  const showLogin = () => { pendingActionAfterLogin = action; document.getElementById("loginModal").classList.add("open"); };
+  if (!isSignedIn()) { showLogin(); return; }
+  // Con ≥10 min de token se ejecuta ya (alcanza para una subida); si no, se renueva en silencio primero.
+  if (tokenValid(10 * 60 * 1000)) { action(); return; }
+  refreshToken().then(ok => { if (ok) action(); else showLogin(); });
 }
 
 document.getElementById("loginGoogleBtn").addEventListener("click", () => {
@@ -650,7 +712,8 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
     scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
     callback: (resp) => {
       if (resp.error) { showToast("Authentication error: " + resp.error); return; }
-      googleAccessToken = resp.access_token;
+      const loginToken = resp.access_token, loginExpires = resp.expires_in;
+      googleAccessToken = loginToken;
       fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
         headers: { Authorization: "Bearer " + googleAccessToken }
       })
@@ -663,9 +726,7 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
           showToast("Access denied. Only @uniandes.edu.co accounts are allowed.");
           return;
         }
-        touchSession();
-        sessionStorage.setItem("br_token", googleAccessToken);
-        sessionStorage.setItem("br_email", googleUserEmail);
+        storeToken(loginToken, loginExpires);
         closeModal("loginModal");
         showToast("Signed in as " + googleUserEmail);
         renderDocs();
@@ -690,12 +751,14 @@ async function loadFromSheet() {
   try {
     const range = encodeURIComponent(SHEET_NAME + "!A:I");
     let res;
-    if (googleAccessToken) {
+    const tk = await getToken();
+    if (tk) {
       res = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,
-        { headers: { Authorization: "Bearer " + googleAccessToken } }
+        { headers: { Authorization: "Bearer " + tk } }
       );
-    } else {
+    }
+    if (!res || res.status === 401) {   // sin sesión o token rechazado: lectura pública con la clave de API
       res = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
       );
@@ -750,15 +813,19 @@ async function loadFromSheet() {
   } catch(e) { console.warn("Could not load from Sheet", e); }
 }
 
-function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes='', type='PDF') {
-  const token = googleAccessToken;
+async function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes='', type='PDF') {
+  const token = await getToken();
+  if (!token) { showToast("Your session expired: the change could not be saved. Please sign in again."); return; }
   const range = SHEET_NAME + "!A:I";
   const body = { values: [[docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes, type]] };
-  fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
-    method: "POST",
-    headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  }).catch(e => console.warn("Sheet write error", e));
+  try {
+    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) { console.warn("Sheet write failed", r.status); showToast("The change could not be saved to the sheet (error " + r.status + ")."); }
+  } catch (e) { console.warn("Sheet write error", e); showToast("Network error while saving. Please try again."); }
 }
 
 // =====================
@@ -1344,7 +1411,7 @@ function renderDocs(){
   if(addBtn) addBtn.style.visibility="visible";
   const f=getFolders().find(f=>f.id===state.selectedFolder);
   desc.textContent=f?f.title:"";
-  if(!googleAccessToken || !googleUserEmail || !googleUserEmail.endsWith("@"+ALLOWED_DOMAIN)){
+  if(!isSignedIn()){
     el.innerHTML=`<div class="empty-state" style="padding:40px 24px;">
       <div style="font-size:2rem;margin-bottom:12px;">🔐</div>
       <div style="font-weight:800;color:#1f2937;margin-bottom:8px;font-size:.95rem;">Sign in to view documents</div>
@@ -1639,17 +1706,27 @@ function getViewerSrc(url,type){
   return url;
 }
 
+// Si el navegador tiene varias cuentas de Google abiertas, Drive usaba la equivocada y
+// mostraba "no tienes acceso". authuser le indica con cuál abrir el archivo.
+function withAuthUser(url){
+  if(!url||!googleUserEmail||!/drive\.google\.com|docs\.google\.com/i.test(url)) return url;
+  if(/[?&]authuser=/.test(url)) return url;
+  const hashAt=url.indexOf("#");
+  const base=hashAt>=0?url.slice(0,hashAt):url, hash=hashAt>=0?url.slice(hashAt):"";
+  return base+(base.includes("?")?"&":"?")+"authuser="+encodeURIComponent(googleUserEmail)+hash;
+}
+
 function openViewer(docId){
   window.currentViewerDocId=docId;
   const res=getDoc(docId);if(!res)return;
   const{doc,folder}=res;
   const rawUrl=doc.url&&doc.url!=="#"?doc.url:"";
-  const embedUrl=rawUrl?getViewerSrc(rawUrl,doc.type):"";
+  const embedUrl=rawUrl?withAuthUser(getViewerSrc(rawUrl,doc.type)):"";
   document.getElementById("viewerTitle").textContent=doc.title;
   const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:(doc.responsible||"");
   document.getElementById("viewerMeta").textContent=`${doc.type} · ${upd}`;
   const cleanUrl=rawUrl.replace(/[?&]embed=true/,"");
-  document.getElementById("viewerOpenBtn").href=doc.viewUrl||cleanUrl||folder.sharepointUrl||"#";
+  document.getElementById("viewerOpenBtn").href=withAuthUser(doc.viewUrl||cleanUrl||folder.sharepointUrl||"#");
   document.getElementById("viewerUpdateBtn").onclick=()=>{closeModal("viewerModal");resetViewer();requireLogin(()=>openUploadModal(docId));};
   const frame=document.getElementById("viewerFrame");
   const noUrl=document.getElementById("viewerNoUrl");
@@ -1682,8 +1759,15 @@ function showToast(msg){const t=document.getElementById("toast");t.textContent=m
 
 render();
 loadFromSheet().then(()=>{}).catch(()=>{});
+// Si ya había una sesión guardada: se renueva el token en silencio al abrir la página
+// (si ya hay uno vigente solo se programa la próxima renovación).
 if(googleUserEmail){
-  window.addEventListener("load",()=>{setTimeout(silentTokenRefresh,1000);});
+  window.addEventListener("load",()=>{
+    setTimeout(()=>{
+      if(tokenValid(REFRESH_MARGIN_MS)){ scheduleRefresh(); }
+      else { refreshToken().then(ok=>{ if(ok){ loadFromSheet().then(()=>render()); } render(); }); }
+    },800);
+  });
 }
 </script>
 
