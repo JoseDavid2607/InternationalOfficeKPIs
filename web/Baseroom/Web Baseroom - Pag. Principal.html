@@ -363,6 +363,45 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
   .intro-seneca { display: none; }
   header.hero { min-height: 260px; padding: 64px 18px 110px; }
 }
+/* ===== Estado por documento y avance ===== */
+.progress-panel { background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px 18px; margin:0 0 14px; }
+.pp-head { display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+.pp-pct { font-size:2rem; font-weight:900; color:#0f6e56; line-height:1; }
+.pp-pct small { display:block; font-size:.72rem; font-weight:700; color:var(--muted); letter-spacing:.02em; margin-top:4px; text-transform:uppercase; }
+.pp-bar-wrap { flex:1; min-width:240px; }
+.pp-bar { display:flex; height:14px; border-radius:999px; overflow:hidden; background:#eef0f2; }
+.pp-bar span { display:block; height:100%; }
+.pp-legend { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:8px; font-size:.76rem; color:#4b5563; }
+.pp-legend i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+.pp-actions { display:flex; gap:8px; align-items:center; }
+.pp-btn { padding:7px 14px; border-radius:999px; border:1.5px solid var(--border); background:#fff; font-size:.78rem; font-weight:700; color:#374151; cursor:pointer; }
+.pp-btn:hover { border-color:#9ca3af; }
+.pp-details { margin-top:10px; }
+.pp-details summary { cursor:pointer; font-size:.8rem; font-weight:700; color:#374151; }
+.pp-ch { display:grid; grid-template-columns: minmax(150px,230px) 1fr 70px; gap:10px; align-items:center; padding:5px 0; cursor:pointer; font-size:.8rem; color:#374151; border-bottom:1px dashed #eef0f2; }
+.pp-ch:hover { background:#f9fafb; }
+.pp-note { margin-top:8px; font-size:.74rem; color:var(--muted); }
+.st-chip { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px; font-size:.72rem; font-weight:800; border:1.5px solid transparent; cursor:pointer; background:#fff; }
+.st-chip:hover { filter:brightness(.97); }
+.st-missing { color:#6b7280; background:#f3f4f6; border-color:#e5e7eb; }
+.st-review  { color:#92400e; background:#fef3c7; border-color:#fde68a; }
+.st-current { color:#065f46; background:#d1fae5; border-color:#a7f3d0; }
+.st-update  { color:#9a3412; background:#ffedd5; border-color:#fed7aa; }
+.st-new     { color:#1e40af; background:#dbeafe; border-color:#bfdbfe; }
+.doc-status-row { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:6px; }
+.doc-hint { font-size:.72rem; color:#92400e; }
+.drive-notice { margin:0 0 10px; padding:9px 12px; border-radius:10px; background:#fffbeb; border:1px solid #fde68a; font-size:.78rem; color:#78350f; line-height:1.5; }
+.f-prog { margin-left:auto; font-size:.68rem; font-weight:800; padding:2px 8px; border-radius:999px; background:#eef0f2; color:#374151; }
+.f-prog.done { background:#d1fae5; color:#065f46; }
+.status-menu { position:fixed; z-index:9999; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,.18); padding:6px; min-width:230px; }
+.status-menu button { display:flex; width:100%; gap:8px; align-items:center; text-align:left; padding:9px 10px; border:none; background:none; border-radius:8px; font-size:.82rem; font-weight:700; color:#1f2937; cursor:pointer; }
+.status-menu button:hover { background:#f3f4f6; }
+.status-menu small { display:block; font-weight:500; color:#6b7280; font-size:.72rem; }
+.viewer-review { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:8px 22px; background:#f0fdf9; border-bottom:1px solid #d1fae5; font-size:.8rem; color:#065f46; font-weight:700; }
+.viewer-review button { padding:6px 13px; border-radius:999px; border:1.5px solid #a7f3d0; background:#fff; font-size:.78rem; font-weight:800; cursor:pointer; color:#065f46; }
+.viewer-review button.warn { border-color:#fed7aa; color:#9a3412; }
+.viewer-review button.add { border-color:#bfdbfe; color:#1e40af; }
+.viewer-review button:hover { filter:brightness(.96); }
 </style>
 <link rel="stylesheet" href="../../seneca_navega/seneca_navega.css">
 </head>
@@ -403,6 +442,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
     <h2>BaseRoom Chapters</h2>
     <p>Select a chapter to browse its folders, then select a folder to view and manage documents.</p>
   </div>
+  <div class="progress-panel" id="progressPanel"></div>
   <div class="workspace">
 
     <!-- CHAPTERS -->
@@ -545,6 +585,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       <button class="action-btn action-btn--teal" id="viewerUpdateBtn" style="font-size:.82rem;padding:8px 14px;">Update</button>
       <button class="viewer-close" id="viewerClose">×</button>
     </div>
+    <div class="viewer-review" id="viewerReview" style="display:none;"></div>
     <div class="viewer-help" id="viewerHelp">Can't see the document? Make sure you are signed in to Google with your <strong>@uniandes.edu.co</strong> account (other accounts in this browser can block it) and use <strong>Open in Drive</strong>.</div>
     <iframe class="viewer-frame" id="viewerFrame" src="" allow="fullscreen; scripts; same-origin; popups" allowfullscreen></iframe>
     <div id="viewerNoUrl" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#6b7280;font-size:.95rem;text-align:center;padding:40px;">
@@ -845,6 +886,7 @@ async function loadFromSheet() {
     }
     Object.keys(docOverrides).forEach(k => delete docOverrides[k]);
     Object.assign(docOverrides, byDoc);
+    await loadStatuses();
     for(const [docId, meta] of Object.entries(byDoc)){
       if(!docId.startsWith("added_")) continue;
       const folderId=docId.replace("added_","").replace(/_\d+$/,"");
@@ -955,7 +997,7 @@ async function syncDriveFolders() {
     if (changed) render();
   } catch (e) {
     console.warn("Drive folder sync skipped:", e.message || e);
-  } finally { driveSyncRunning = false; }
+  } finally { driveSyncRunning = false; prefetchAllFolders(); }
 }
 
 // =====================
@@ -1493,6 +1535,250 @@ function getDoc(id){
 }
 function fmtDate(s){if(!s)return"Not yet uploaded";return new Date(s+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}
 
+
+// =====================
+// ESTADO POR DOCUMENTO Y AVANCE
+// =====================
+// Cada documento tiene un estado: sin documento / por revisar / vigente (último) / por actualizar /
+// falta agregar uno nuevo. Una persona lo marca (en el visor o en la lista) y queda guardado en la
+// pestaña "BR Status" de la hoja de metadatos (un renglón por cambio; gana el último), así que
+// lo ve cualquier computador. Lo automático: sin enlace = sin documento; dashboards/enlaces
+// (se actualizan solos) cuentan como vigentes; y con permiso de Drive se detecta si el archivo
+// cambió después de marcarlo o si hay archivos más nuevos en la carpeta sin vincular.
+const STATUS_SHEET = "BR Status";
+const STATUS_META = {
+  missing:{label:"No document",   cls:"st-missing", icon:"○", color:"#d1d5db"},
+  review: {label:"To review",     cls:"st-review",  icon:"◔", color:"#fbbf24"},
+  current:{label:"Up to date",    cls:"st-current", icon:"✓", color:"#10b981"},
+  update: {label:"Needs update",  cls:"st-update",  icon:"↻", color:"#f97316"},
+  new:    {label:"Add new document", cls:"st-new",  icon:"＋", color:"#3b82f6"}
+};
+const STATUS_ORDER = ["current","review","update","new","missing"];
+const docStatus = {};      // docId -> {status, by, at, note}
+const folderFiles = {};    // id carpeta Drive -> {files:[{id,name,modifiedTime}]}
+let statusTabReady = false;
+
+function hasDoc(doc){ return !!(doc.url && doc.url !== "#"); }
+function isAutomated(doc){ return hasDoc(doc) && (doc.type === "Dashboard" || doc.type === "Link"); }
+function docFileId(doc){ const m = String(doc.viewUrl || doc.url || "").match(/\/file\/d\/([^\/\?#]+)/); return m ? m[1] : null; }
+function driveFileInfo(folder, doc){
+  const ff = folderFiles[DRIVE_FOLDERS[folder.id]]; const id = docFileId(doc);
+  return (ff && id) ? (ff.files.find(f => f.id === id) || null) : null;
+}
+function linkedFileIds(folder){
+  return new Set(folder.documents.map(d => docFileId({...d, ...(docOverrides[d.id] || {})})).filter(Boolean));
+}
+function unlinkedFiles(folder){
+  const ff = folderFiles[DRIVE_FOLDERS[folder.id]]; if (!ff) return [];
+  const linked = linkedFileIds(folder);
+  return ff.files.filter(f => !linked.has(f.id));
+}
+function newerUnlinked(folder, doc){
+  const fi = driveFileInfo(folder, doc); if (!fi) return [];
+  return unlinkedFiles(folder).filter(f => new Date(f.modifiedTime) > new Date(fi.modifiedTime));
+}
+function effStatus(doc, folder){
+  if (!hasDoc(doc)) return { key: "missing" };
+  const st = docStatus[doc.id];
+  if (st && st.status) {
+    if (st.status === "current") {
+      const fi = driveFileInfo(folder, doc);
+      if (fi && st.at && new Date(fi.modifiedTime) > new Date(st.at))
+        return { key: "review", hint: "The file changed in Drive after it was marked as the latest version." };
+    }
+    return { key: st.status, by: st.by, at: st.at, note: st.note };
+  }
+  if (isAutomated(doc)) return { key: "current", auto: true };
+  return { key: "review" };
+}
+function allDocs(){
+  const out = [];
+  DATA.chapters.forEach(ch => ch.folders.forEach(f => f.documents.forEach(d => {
+    out.push({ doc: {...d, ...(docOverrides[d.id] || {})}, folder: f, chapter: ch });
+  })));
+  return out;
+}
+function inScope(item, filter){
+  if (filter === "ALL") return true;
+  return (item.doc.accreditations || item.folder.accreditations || []).includes(filter);
+}
+function computeProgress(filter){
+  const res = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, byChapter: {}, auto: 0, changed: 0 };
+  allDocs().filter(it => inScope(it, filter)).forEach(it => {
+    const e = effStatus(it.doc, it.folder);
+    res.total++; res.counts[e.key]++;
+    if (e.auto) res.auto++;
+    if (e.hint) res.changed++;
+    const c = res.byChapter[it.chapter.id] = res.byChapter[it.chapter.id] || { ch: it.chapter, total: 0, current: 0 };
+    c.total++; if (e.key === "current") c.current++;
+  });
+  return res;
+}
+function pctOf(n, total){ return total ? Math.round(n / total * 1000) / 10 : 0; }
+
+function renderProgress(){
+  const el = document.getElementById("progressPanel"); if (!el) return;
+  const filter = state.activeFilter;
+  const r = computeProgress(filter);
+  const label = filter === "ALL" ? "all accreditations" : filter;
+  const bar = STATUS_ORDER.map(k => r.counts[k] ? `<span style="width:${pctOf(r.counts[k], r.total)}%;background:${STATUS_META[k].color}" title="${STATUS_META[k].label}: ${r.counts[k]}"></span>` : "").join("");
+  const legend = STATUS_ORDER.map(k => `<span><i style="background:${STATUS_META[k].color}"></i>${STATUS_META[k].label} <strong>${r.counts[k]}</strong></span>`).join("");
+  const chapters = DATA.chapters.map(ch => r.byChapter[ch.id]).filter(Boolean).map(c =>
+    `<div class="pp-ch" data-ch="${c.ch.id}"><span>${c.ch.badge}: ${c.ch.title}</span>
+      <div class="pp-bar"><span style="width:${pctOf(c.current, c.total)}%;background:${STATUS_META.current.color}"></span></div>
+      <strong>${c.current}/${c.total}</strong></div>`).join("");
+  const notes = [];
+  if (r.auto) notes.push(`${r.auto} automated item(s) (dashboards / links) count as up to date.`);
+  if (r.changed) notes.push(`${r.changed} document(s) changed in Drive after they were marked as latest and need a new review.`);
+  el.innerHTML = `<div class="pp-head">
+      <div class="pp-pct">${pctOf(r.counts.current, r.total)}%<small>Up to date · ${label}</small></div>
+      <div class="pp-bar-wrap"><div class="pp-bar">${bar}</div><div class="pp-legend">${legend}</div></div>
+      <div class="pp-actions"><button class="pp-btn" id="ppCsv">Download report (CSV)</button></div>
+    </div>
+    <details class="pp-details"><summary>Progress by chapter</summary>${chapters}</details>
+    ${notes.length ? `<div class="pp-note">${notes.join(" ")}</div>` : ""}`;
+  el.querySelectorAll(".pp-ch").forEach(row => row.addEventListener("click", () => {
+    state.selectedChapter = row.dataset.ch; state.selectedFolder = null; state.selectedDoc = null; render();
+  }));
+  const csvBtn = document.getElementById("ppCsv"); if (csvBtn) csvBtn.onclick = exportProgressCsv;
+}
+
+function exportProgressCsv(){
+  const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+  const rows = [["Chapter","Folder","Document","Type","Accreditations","Status","Marked by","Marked at","Note","Drive file"]];
+  allDocs().forEach(it => {
+    const e = effStatus(it.doc, it.folder);
+    rows.push([it.chapter.title, it.folder.title, it.doc.title, it.doc.type || "", (it.doc.accreditations || it.folder.accreditations || []).join("/"),
+      STATUS_META[e.key].label + (e.auto ? " (automated)" : ""), e.by || "", e.at ? e.at.slice(0,10) : "", e.note || e.hint || "", it.doc.viewUrl || it.doc.url || ""]);
+  });
+  const blob = new Blob(["\ufeff" + rows.map(r => r.map(q).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "BaseRoom_progress_" + new Date().toISOString().slice(0,10) + ".csv"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+// ---- marcar estado (con login) ----
+function closeStatusMenu(){ const m = document.getElementById("statusMenu"); if (m) m.remove(); }
+function openStatusMenu(docId, anchor){
+  closeStatusMenu();
+  const menu = document.createElement("div"); menu.className = "status-menu"; menu.id = "statusMenu";
+  const opts = [
+    ["current","✓ This is the latest version","Nothing else is needed for the accreditation"],
+    ["update","↻ Needs an updated version","Keep it for now, but it must be replaced"],
+    ["new","＋ A new document must be added","This one stays; another is still missing"],
+    ["reset","↺ Back to automatic","Remove the manual mark"]
+  ];
+  menu.innerHTML = opts.map(o => `<button data-s="${o[0]}">${o[1]}<small>${o[2]}</small></button>`).join("");
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = Math.min(r.left, window.innerWidth - 250) + "px";
+  menu.style.top = Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 10) + "px";
+  menu.querySelectorAll("button").forEach(b => b.addEventListener("click", (e) => {
+    e.stopPropagation(); closeStatusMenu(); requireLogin(() => setDocStatus(docId, b.dataset.s));
+  }));
+  setTimeout(() => document.addEventListener("click", closeStatusMenu, { once: true }), 0);
+}
+
+async function ensureStatusTab(token){
+  if (statusTabReady) return true;
+  const base = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}`;
+  const h = { Authorization: "Bearer " + token, "Content-Type": "application/json" };
+  const meta = await fetch(`${base}?fields=sheets.properties.title`, { headers: h });
+  if (!meta.ok) return false;
+  const has = ((await meta.json()).sheets || []).some(sh => sh.properties.title === STATUS_SHEET);
+  if (!has) {
+    const add = await fetch(`${base}:batchUpdate`, { method: "POST", headers: h, body: JSON.stringify({ requests: [{ addSheet: { properties: { title: STATUS_SHEET } } }] }) });
+    if (!add.ok) return false;
+    await fetch(`${base}/values/${encodeURIComponent(STATUS_SHEET + "!A1:F1")}?valueInputOption=RAW`, {
+      method: "PUT", headers: h, body: JSON.stringify({ values: [["docId","status","reviewedBy","reviewedAt","note","docTitle"]] }) });
+  }
+  statusTabReady = true; return true;
+}
+async function setDocStatus(docId, status){
+  const res = getDoc(docId); if (!res) return;
+  const token = await getToken();
+  if (!token || !(await ensureStatusTab(token))) { showToast("Could not save the status. Please sign in again."); return; }
+  const at = new Date().toISOString(), by = googleUserEmail || "";
+  try {
+    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(STATUS_SHEET + "!A:F")}:append?valueInputOption=RAW`, {
+      method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [[docId, status === "reset" ? "reset" : status, by, at, "", res.doc.title || ""]] }) });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+  } catch (e) { showToast("The status could not be saved (" + (e.message || e) + ")."); return; }
+  if (status === "reset") delete docStatus[docId]; else docStatus[docId] = { status, by, at, note: "" };
+  showToast(status === "reset" ? "Back to automatic." : "Marked: " + STATUS_META[status].label);
+  renderDocs(); renderFolders(); renderProgress(); renderViewerReview(docId);
+}
+async function loadStatuses(){
+  try {
+    const range = encodeURIComponent(STATUS_SHEET + "!A:F");
+    const base = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`;
+    const tk = await getToken();
+    let res = tk ? await fetch(base, { headers: { Authorization: "Bearer " + tk } }) : null;
+    if (!res || res.status === 401) res = await fetch(`${base}?key=${GOOGLE_API_KEY}`);
+    if (!res.ok) return;                       // la pestaña aún no existe: nadie ha marcado nada
+    const rows = (await res.json()).values || [];
+    if (rows.length < 2) return;
+    const hd = rows[0], ix = n => hd.indexOf(n);
+    Object.keys(docStatus).forEach(k => delete docStatus[k]);
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i], id = r[ix("docId")]; if (!id) continue;
+      const st = r[ix("status")];
+      if (!st || st === "reset") { delete docStatus[id]; continue; }
+      docStatus[id] = { status: st, by: r[ix("reviewedBy")] || "", at: r[ix("reviewedAt")] || "", note: r[ix("note")] || "" };
+    }
+    statusTabReady = true;
+  } catch (e) { console.warn("Could not load statuses", e); }
+}
+
+// ---- revisión automática contra Drive: archivos de cada carpeta ----
+async function loadFolderFiles(driveFolderId){
+  const token = await getToken(); if (!token) return;
+  const q = encodeURIComponent(`'${driveFolderId}' in parents and trashed=false and mimeType!='${DRIVE_FOLDER_MIME}'`);
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&pageSize=200&orderBy=modifiedTime desc&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+    { headers: { Authorization: "Bearer " + token } });
+  if (!r.ok) throw new Error("drive files " + r.status);
+  folderFiles[driveFolderId] = { files: (await r.json()).files || [] };
+}
+let prefetching = false;
+async function prefetchAllFolders(){
+  if (prefetching || !isSignedIn()) return;
+  prefetching = true;
+  try {
+    const ids = [...new Set(Object.values(DRIVE_FOLDERS))];
+    for (let i = 0; i < ids.length; i += 6) {
+      await Promise.all(ids.slice(i, i + 6).map(id => loadFolderFiles(id).catch(() => {})));
+    }
+    renderDocs(); renderFolders(); renderProgress();
+  } finally { prefetching = false; }
+}
+
+function statusChipHtml(docId, e){
+  const m = STATUS_META[e.key];
+  return `<button class="st-chip ${m.cls}" data-status-id="${docId}" title="${e.auto ? "Automatic: this item updates itself" : (e.by ? "Marked by " + e.by + (e.at ? " on " + e.at.slice(0,10) : "") : "Click to mark")}">${m.icon} ${m.label}${e.auto ? " · auto" : ""} ▾</button>`;
+}
+function folderProgressText(folder){
+  const items = folder.documents.map(d => ({ doc: {...d, ...(docOverrides[d.id] || {})}, folder, chapter: null })).filter(it => inScope(it, state.activeFilter));
+  if (!items.length) return "";
+  const cur = items.filter(it => effStatus(it.doc, folder).key === "current").length;
+  return `<span class="f-prog${cur === items.length ? " done" : ""}">${cur}/${items.length}</span>`;
+}
+function renderViewerReview(docId){
+  const el = document.getElementById("viewerReview"); if (!el) return;
+  const res = getDoc(docId);
+  if (!res || !hasDoc(res.doc)) { el.style.display = "none"; return; }
+  const e = effStatus(res.doc, res.folder), m = STATUS_META[e.key];
+  const newer = newerUnlinked(res.folder, res.doc);
+  el.style.display = "flex";
+  el.innerHTML = `<span>Is this the latest version?</span>
+    <button data-s="current">✓ Yes, it is the latest</button>
+    <button class="warn" data-s="update">↻ It needs an update</button>
+    <button class="add" data-s="new">＋ Add a new document</button>
+    <span style="margin-left:auto;font-weight:700;">Now: ${m.icon} ${m.label}${e.auto ? " (auto)" : ""}</span>
+    ${newer.length ? `<span style="flex-basis:100%;color:#92400e;font-weight:600;">⚠ Newer file(s) in this Drive folder not linked to a document: ${newer.map(f => f.name).slice(0,3).join(", ")}</span>` : ""}`;
+  el.querySelectorAll("button").forEach(b => b.addEventListener("click", () => requireLogin(() => setDocStatus(docId, b.dataset.s))));
+}
+
 // =====================
 // RENDER
 // =====================
@@ -1522,7 +1808,7 @@ function renderFolders(){
     btn.className="folder-item"+(state.selectedFolder===f.id?" active":"");
     btn.dataset.folderId=f.id;
     const tags=f.accreditations.map(a=>`<span class="f-tag">${a}</span>`).join("");
-    btn.innerHTML=`<span class="f-badge">${f.badge}</span><span class="f-title">${f.title}</span><div class="f-tags">${tags}</div>`;
+    btn.innerHTML=`<span class="f-badge">${f.badge}</span><span class="f-title">${f.title}</span>${folderProgressText(f)}<div class="f-tags">${tags}</div>`;
     btn.addEventListener("click",()=>{state.selectedFolder=f.id;state.selectedDoc=null;render();});
     el.appendChild(btn);
   });
@@ -1554,35 +1840,51 @@ function renderDocs(){
     return;
   }
   const docs=getDocs();el.innerHTML="";
-  if(!docs.length){el.innerHTML=`<div class="empty-state">No documents in this folder.</div>`;return;}
+  const unl=f?unlinkedFiles(f):[];
+  if(unl.length){
+    const note=document.createElement("div");note.className="drive-notice";
+    note.innerHTML=`📁 ${unl.length} file(s) in this Drive folder are not linked to any document: <strong>${unl.slice(0,4).map(x=>x.name).join(", ")}${unl.length>4?"…":""}</strong>. If one is a new version or a new document, use <strong>Update</strong> or the <strong>+</strong> button. <a href="${f.sharepointUrl}" target="_blank" rel="noopener">Open folder</a>`;
+    el.appendChild(note);
+  }
+  if(!docs.length){el.insertAdjacentHTML("beforeend",`<div class="empty-state">No documents in this folder.</div>`);return;}
   docs.forEach(docBase=>{
     const doc={...docBase,...(docOverrides[docBase.id]||{})};
     const item=document.createElement("div");
     item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");
-    const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:"Not yet uploaded";
-    let alertHtml="";
     const folder=getFolders().find(f=>f.id===state.selectedFolder);
-    if(folder&&folder.periodicidad&&doc.updatedAt){
+    // Fecha de referencia: la registrada al subirlo o, si no hay, la de modificación del archivo en Drive.
+    const fInfo=folder?driveFileInfo(folder,doc):null;
+    const refDate=doc.updatedAt||(fInfo?fInfo.modifiedTime.slice(0,10):null);
+    const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`
+      :(fInfo?`File last modified in Drive: ${fmtDate(refDate)}`:(hasDoc(doc)?"Date not recorded":"Not yet uploaded"));
+    let alertHtml="";
+    if(folder&&folder.periodicidad&&refDate){
       const periodMap={"Cada semestre":180,"Cada año":365,"Cada 5 años":1825};
       const days=periodMap[folder.periodicidad]||null;
       if(days){
-        const diffDays=Math.floor((Date.now()-new Date(doc.updatedAt+"T00:00:00"))/86400000);
+        const diffDays=Math.floor((Date.now()-new Date(refDate+"T00:00:00"))/86400000);
         const pct=diffDays/days;
         if(pct>=1) alertHtml=`<span class="period-alert period-alert--red" title="Overdue: ${folder.periodicidad}">⚠ Overdue</span>`;
         else if(pct>=0.8) alertHtml=`<span class="period-alert period-alert--yellow" title="Due soon: ${folder.periodicidad}">⏰ Due soon</span>`;
       }
-    } else if(!doc.updatedAt){
+    } else if(!hasDoc(doc)){
       alertHtml=`<span class="period-alert period-alert--grey">Not uploaded</span>`;
     }
     const notesHtml=doc.notes?`<div class="doc-notes">${doc.notes}</div>`:"";
     const uploadedHtml=doc.uploadedBy?`<div class="doc-uploaded-by">Uploaded by: ${doc.uploadedBy}</div>`:"";
-    item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type||"PDF"}</div><div class="doc-title">${doc.title} ${alertHtml}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}</div>
+    const eff=effStatus(doc,folder);
+    const newer=newerUnlinked(folder,doc);
+    const hints=[eff.hint, newer.length?`Newer file in Drive not linked: ${newer[0].name}${newer.length>1?` (+${newer.length-1})`:""}`:""].filter(Boolean).map(h=>`<span class="doc-hint">⚠ ${h}</span>`).join("");
+    const statusHtml=`<div class="doc-status-row">${statusChipHtml(doc.id,eff)}${hints}</div>`;
+    item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type||"PDF"}</div><div class="doc-title">${doc.title} ${alertHtml}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}${statusHtml}</div>
       <div class="doc-btn-group">
         <button class="doc-update-btn" data-id="${doc.id}">Update</button>
         ${(doc.url&&doc.url!=="#"&&doc.updatedAt)?`<button class="doc-delete-btn" data-id="${doc.id}" title="Delete document"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>`:""}
       </div></div>`;
+    const chip=item.querySelector(".st-chip");
+    if(chip) chip.addEventListener("click",(e)=>{e.stopPropagation();openStatusMenu(doc.id,chip);});
     item.addEventListener("click",(e)=>{
-      if(e.target.closest(".doc-update-btn")||e.target.closest(".doc-delete-btn")) return;
+      if(e.target.closest(".doc-update-btn")||e.target.closest(".doc-delete-btn")||e.target.closest(".st-chip")) return;
       requireLogin(()=>{state.selectedDoc=doc.id;renderDocs();openViewer(doc.id);});
     });
     item.querySelector(".doc-update-btn").addEventListener("click",(e)=>{
@@ -1598,7 +1900,7 @@ function renderDocs(){
   });
 }
 
-function render(){renderChapters();renderFolders();renderDocs();}
+function render(){renderChapters();renderFolders();renderDocs();renderProgress();}
 
 // FILTER
 document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn=>{
@@ -1607,7 +1909,7 @@ document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn
     btn.classList.add("active");
     state.activeFilter=btn.dataset.filter;
     state.selectedFolder=null;state.selectedDoc=null;
-    renderFolders();renderDocs();
+    renderFolders();renderDocs();renderProgress();
   });
 });
 
@@ -1879,10 +2181,12 @@ function openViewer(docId){
   } else {
     frame.src=embedUrl;frame.style.display="block";noUrl.style.display="none";ext.style.display="none";
   }
+  renderViewerReview(docId);
   document.getElementById("viewerModal").classList.add("open");
 }
 
 function resetViewer(){
+  const rv=document.getElementById("viewerReview");if(rv)rv.style.display="none";
   const frame=document.getElementById("viewerFrame");frame.src="";frame.style.display="block";
   document.getElementById("viewerNoUrl").style.display="none";
   document.getElementById("viewerExternal").style.display="none";
