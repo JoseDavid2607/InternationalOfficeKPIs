@@ -339,6 +339,7 @@ header.hero h1 {
 }
 .viewer-close:hover { background: #f3f4f6; }
 .viewer-frame { flex: 1; border: none; width: 100%; }
+.viewer-help { font-size: .76rem; color: var(--muted); padding: 6px 22px; background: #f8fafb; border-bottom: 1px solid #e5e7eb; }
 
 /* ── TOAST ── */
 .toast {
@@ -544,6 +545,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       <button class="action-btn action-btn--teal" id="viewerUpdateBtn" style="font-size:.82rem;padding:8px 14px;">Update</button>
       <button class="viewer-close" id="viewerClose">×</button>
     </div>
+    <div class="viewer-help" id="viewerHelp">Can't see the document? Make sure you are signed in to Google with your <strong>@uniandes.edu.co</strong> account (other accounts in this browser can block it) and use <strong>Open in Drive</strong>.</div>
     <iframe class="viewer-frame" id="viewerFrame" src="" allow="fullscreen; scripts; same-origin; popups" allowfullscreen></iframe>
     <div id="viewerNoUrl" style="display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#6b7280;font-size:.95rem;text-align:center;padding:40px;">
       <div>This document has not been uploaded yet.</div>
@@ -570,78 +572,193 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 // =====================
 const GOOGLE_CLIENT_ID = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
 const GOOGLE_API_KEY   = "AIzaSyBnvEW4Pn8Vh_rl84q7bE8hhT-IWQ2HmKg";
-const SCOPES = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets";
+const SCOPES = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/spreadsheets";
 const SHEET_ID   = "161GQZ6N143RBz3Ta3ZIDuR3O5WWDud78VkjAU6mpNQw";
 const SHEET_NAME = "BR Metadata";
 const ALLOWED_DOMAIN   = "uniandes.edu.co";
 
+// Carpetas de Drive de cada carpeta del BaseRoom (valores de respaldo; al iniciar sesión se
+// sincronizan con Drive, ver syncDriveFolders()). Raíz: "Gestión documental".
+const DRIVE_ROOT_ID = "1pia7CgKNMfXO_x_iKuPxgRex0rATZo5n";
 const DRIVE_FOLDERS = {
   "f1-1": "1VazMGFtWMVlDbYncFugb5kHrRJpnQCl0",
   "f1-2": "1FcTMxSKsVO_R41U5FjIcknedCl6EVlbq",
   "f1-3": "1dreHtrViFsz4qav866UB11lyin9xGi8Z",
   "f1-4": "18OUUyq1NhSuM4yXhxUMzhBBk3coH6_nY",
   "f1-5": "1Y2N4XvvaMWwMsIs1nbcDL2Dsqm-QL2Zu",
-  "f1-6": "1ygBhTnCIOfx3DIQ-eV3XZ67ahVlnBEro"
+  "f1-6": "1ygBhTnCIOfx3DIQ-eV3XZ67ahVlnBEro",
+  "f1-7": "1NtBK5SYbHYkKbCCPT-R1Os-DH_sUK7xQ",
+  "f1-8": "1fEOur54Io6tCm99Vswtmwh0SE_KXOT8m",
+  "f2-1": "1i43wzUYPBQyq2Fmq6SBiUxOvXN8TrZZP",
+  "f2-2": "14swbDliwqCWEnnWT24upLwpc478bPrbC",
+  "f2-3": "1lyNfWnpr11TvBqxkssi0vDaqeihO6W6M",
+  "f2-4": "1GRdF5D2Rqsa8TlfY2yV7napaMBwWMiBR",
+  "f2-5": "1_Der4xrUgHtXCyIeSHChNXsEwUmBOQ68",
+  "f2-6": "1tlkq3TqW_fC-eyepabZPuZuSXbwlLv6d",
+  "f2-7": "1eE6d43QFLzUWCxV0coKZ-qEFPAVstbfs",
+  "f2b-1": "1bK9EaaknctjpDtlEOKLeJO2XcfaestjF",
+  "f2b-2": "1CMdw4HUmOT5Fw8C53FzUgjq5XqVMIZtz",
+  "f2b-3": "1cf-Q_cF6M1MAsZxrmXINOyQ3Iyvpx19P",
+  "f2b-4": "16r007ip8I3zUDsnEkP8oMO5R-XXilSNC",
+  "f2b-5": "1HZgSemUQ4Xa_MigWg7bebFF20N--oVFN",
+  "f3-1": "14Pi5hGA-M9NBo9hrNGqnXzwjfgw0pE46",
+  "f3-2": "1e0Fh4ps9FBXrDYlDyDwNVk8tuWICMs6n",
+  "f3-3": "1BSDepjU4igz_gVtDK4xVOWodjTg5zoyY",
+  "f3-4": "1OHvfzzbNlXAPfXtuYj7P3EbPTKODI20b",
+  "f3-5": "1JQkk98_b8yC_hXazsW9ergso_Q1VrxEx",
+  "f4-1": "1UOL7mcGXMXgtipNMyas3g3-W3cEhbA55",
+  "f4-2": "1jkNmBJ0rl2OgKej4_TVI2ughlyqtBteq",
+  "f4-3": "1ysypFPTsqmiKZbjpwzTw-rZnLavtgqQq",
+  "f5-1": "1vUuSNIeQCoxLw3B07VTGZrXXBFncxTXY",
+  "f5-2": "1mBdrt_kIVnUPQbxMWLhZKH_C9mKn9Jf4",
+  "f5-3": "1PFHVlx7-o0wB_SUD7asiG4dZf39DN35c",
+  "f6-1": "1nwZTueck27L_1Y3EBliJHMcmlt4WZltB",
+  "f6-2": "10tFPW-oHPlPIe8Wn1vQf8WyDL2HUasuM",
+  "f7-1": "1aEoq6OzD--WTc_SOP1e1JExbdgMMw7lt",
+  "f7-2": "12DZ7ANx2C_3oQ00Pe04jgq_0uNN7z1k6",
+  "f7-3": "1cl4IRuo8zoOObFFEv5ZmeRUD1K5qRrUh",
+  "f8-1": "1k4A12WtLP0WnkXj7o_fpy2ah-6cs66LO",
+  "f8-2": "10Bs5hQsu7R-NDe_ONoxMwSpXOOkpWQsK",
+  "f9-1": "1VumSXRTCfOma-nzBjG5GEo3ijNW7SKlW",
+  "f9-2": "1P9mf5kooJVhuiE5BeCN-p7lfETDwFxQs",
+  "f9-3": "1YuOm8G8HVopSZE2JTl49jjSdQhwOWOHW",
+  "f10-1": "12j3flJfoIWfj5rGe84YpuN4PFB-0Y0UN",
+  "f10-2": "1mwgWiWG6wuY5iNv1LB835qqexyWE9kky",
+  "f10-3": "13ZUUl-KRm1RwkYdiXqSOMtptU7jteUoc",
+  "f10-4": "17LtiwBL4l0CFWEppnVbzOkE2q0hu3umh"
+};
+const DRIVE_CHAPTERS = {
+  "ch1": "12ccQ-O_jzy6aHA8mcGxLOQETM3uck1eP",
+  "ch2": "11pVUMo9o96RUpfAazKtr72jSdujj6giw",
+  "ch2b": "10CiHjetpnuLmHYbhtBIZB-HY0iBlapN4",
+  "ch3": "1aoBPwUCmjNM1Wmm23KAnNVUVAIel2x0E",
+  "ch4": "1FEJpOaGRtLX512_0liZdmroWNlWD14Ec",
+  "ch5": "1hE05YH2ddO57Yl4fdq6WV8WaR4UkoxxN",
+  "ch6": "1IWHmiay8UxtVHOOWxLupmPap_VOZ0PDf",
+  "ch7": "1oETbl2YblAEU5is2xxO9TO8y-SNkJ4iS",
+  "ch8": "1x_1dyICCx3Us7tJLy2ZbRj37l_n2bwik",
+  "ch9": "1WJKpCBfyF3Vm_iaqyjjSHHYKc509k6rK",
+  "ch10": "1B7hMa3nqbytcx8IgbkOOKRI_R5qLFrcW"
 };
 
-let googleAccessToken = sessionStorage.getItem("br_token") || null;
-let googleUserEmail   = sessionStorage.getItem("br_email") || null;
+// Sesión: se guarda en localStorage (sobrevive al cerrar la pestaña). El token de
+// Google dura ~1 h; se RENUEVA en silencio antes de vencer, así que el usuario no
+// tiene que volver a iniciar sesión mientras use la página. Solo se cierra la
+// sesión tras SESSION_IDLE_MS (12 h) sin ninguna actividad.
+const SESSION_IDLE_MS = 12 * 60 * 60 * 1000;
+const REFRESH_MARGIN_MS = 5 * 60 * 1000;   // se renueva 5 min antes de vencer
+let googleUserEmail   = localStorage.getItem("br_email") || null;
+let googleAccessToken = null;
+let tokenExpiresAt    = 0;
 let pendingActionAfterLogin = null;
-let sessionExpiry = parseInt(sessionStorage.getItem("br_expiry") || "0") || null;
+let refreshPromise = null;
+let refreshTimer = null;
 
-function silentTokenRefresh() {
-  if (!googleUserEmail) return;
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
-    hint: googleUserEmail,
-    prompt: "",
-    callback: (resp) => {
-      if (resp.error || !resp.access_token) {
-        googleAccessToken = null;
-        sessionStorage.removeItem("br_token");
-        return;
-      }
-      googleAccessToken = resp.access_token;
-      sessionStorage.setItem("br_token", googleAccessToken);
-      touchSession();
-    }
-  });
-  client.requestAccessToken();
+(function restoreSession(){
+  const last = parseInt(localStorage.getItem("br_last") || "0") || 0;
+  if (googleUserEmail && last && Date.now() - last > SESSION_IDLE_MS) {
+    googleUserEmail = null;
+    ["br_email","br_token","br_exp","br_last"].forEach(k => localStorage.removeItem(k));
+    return;
+  }
+  const tk  = localStorage.getItem("br_token");
+  const exp = parseInt(localStorage.getItem("br_exp") || "0") || 0;
+  if (googleUserEmail && tk && exp > Date.now() + 60000) { googleAccessToken = tk; tokenExpiresAt = exp; }
+})();
+
+function tokenValid(minMs = 60000) {
+  return !!googleAccessToken && tokenExpiresAt > Date.now() + minMs;
 }
-const SESSION_MS = 10 * 60 * 1000;
+function isSignedIn() {
+  return !!googleUserEmail && googleUserEmail.endsWith("@" + ALLOWED_DOMAIN);
+}
+function storeToken(accessToken, expiresInSec) {
+  googleAccessToken = accessToken;
+  tokenExpiresAt = Date.now() + (parseInt(expiresInSec || 3600) * 1000);
+  localStorage.setItem("br_token", googleAccessToken);
+  localStorage.setItem("br_exp", String(tokenExpiresAt));
+  if (googleUserEmail) localStorage.setItem("br_email", googleUserEmail);
+  touchSession(true);
+  scheduleRefresh();
+}
+function clearSession(msg) {
+  googleAccessToken = null; googleUserEmail = null; tokenExpiresAt = 0;
+  ["br_email","br_token","br_exp","br_last"].forEach(k => localStorage.removeItem(k));
+  clearTimeout(refreshTimer);
+  if (msg) showToast(msg);
+}
 
-function touchSession() {
-  if (!googleAccessToken) return;
-  sessionExpiry = Date.now() + SESSION_MS;
-  sessionStorage.setItem("br_expiry", String(sessionExpiry));
+// Renueva el token sin mostrar nada (Google reutiliza la sesión ya iniciada).
+// Devuelve true si se obtuvo un token nuevo; false si hace falta iniciar sesión.
+function refreshToken() {
+  if (!googleUserEmail) return Promise.resolve(false);
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = new Promise((resolve) => {
+    try {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
+        hint: googleUserEmail,
+        prompt: "",
+        callback: (resp) => {
+          if (resp.error || !resp.access_token) { resolve(false); return; }
+          storeToken(resp.access_token, resp.expires_in);
+          resolve(true);
+        },
+        error_callback: () => resolve(false)
+      });
+      client.requestAccessToken();
+    } catch (e) { resolve(false); }
+  }).finally(() => { refreshPromise = null; });
+  return refreshPromise;
+}
+// Token válido (renovándolo si hace falta) o null.
+async function getToken(minMs = 120000) {
+  if (tokenValid(minMs)) return googleAccessToken;
+  const ok = await refreshToken();
+  return ok ? googleAccessToken : null;
+}
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  if (!googleUserEmail || !tokenExpiresAt) return;
+  const wait = Math.max(30000, tokenExpiresAt - Date.now() - REFRESH_MARGIN_MS);
+  refreshTimer = setTimeout(() => { refreshToken().then(ok => { if (!ok) scheduleRefresh(); }); }, wait);
+}
+// Actividad: se anota como mucho una vez por minuto.
+let lastTouch = 0;
+function touchSession(force) {
+  if (!googleUserEmail) return;
+  const now = Date.now();
+  if (!force && now - lastTouch < 60000) return;
+  lastTouch = now;
+  localStorage.setItem("br_last", String(now));
 }
 function checkSession() {
-  if (googleAccessToken && sessionExpiry && Date.now() > sessionExpiry) {
-    googleAccessToken = null;
-    googleUserEmail   = null;
-    sessionExpiry     = null;
-    sessionStorage.removeItem("br_token");
-    sessionStorage.removeItem("br_email");
-    sessionStorage.removeItem("br_expiry");
-    showToast("Session expired. Please sign in again.");
+  const last = parseInt(localStorage.getItem("br_last") || "0") || 0;
+  if (googleUserEmail && last && Date.now() - last > SESSION_IDLE_MS) {
+    clearSession("Session expired after a long period of inactivity. Please sign in again.");
+    render();
   }
 }
 ["click","keydown","mousemove","touchstart"].forEach(ev =>
-  document.addEventListener(ev, () => { if(googleAccessToken) touchSession(); }, {passive:true})
+  document.addEventListener(ev, () => touchSession(false), {passive:true})
 );
-setInterval(checkSession, 15000);
+setInterval(checkSession, 5 * 60 * 1000);
+// Al volver a la pestaña (o recuperar internet) se revisa/renueva el token.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && googleUserEmail && !tokenValid(REFRESH_MARGIN_MS)) refreshToken().then(() => { render(); });
+});
+window.addEventListener("online", () => { if (googleUserEmail && !tokenValid(REFRESH_MARGIN_MS)) refreshToken(); });
 
 // =====================
 // LOGIN GATE
 // =====================
 function requireLogin(action) {
-  if (googleAccessToken && googleUserEmail && googleUserEmail.endsWith("@" + ALLOWED_DOMAIN)) {
-    action();
-  } else {
-    pendingActionAfterLogin = action;
-    document.getElementById("loginModal").classList.add("open");
-  }
+  const showLogin = () => { pendingActionAfterLogin = action; document.getElementById("loginModal").classList.add("open"); };
+  if (!isSignedIn()) { showLogin(); return; }
+  // Con ≥10 min de token se ejecuta ya (alcanza para una subida); si no, se renueva en silencio primero.
+  if (tokenValid(10 * 60 * 1000)) { action(); return; }
+  refreshToken().then(ok => { if (ok) action(); else showLogin(); });
 }
 
 document.getElementById("loginGoogleBtn").addEventListener("click", () => {
@@ -650,7 +767,8 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
     scope: SCOPES + " https://www.googleapis.com/auth/userinfo.email",
     callback: (resp) => {
       if (resp.error) { showToast("Authentication error: " + resp.error); return; }
-      googleAccessToken = resp.access_token;
+      const loginToken = resp.access_token, loginExpires = resp.expires_in;
+      googleAccessToken = loginToken;
       fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
         headers: { Authorization: "Bearer " + googleAccessToken }
       })
@@ -663,12 +781,11 @@ document.getElementById("loginGoogleBtn").addEventListener("click", () => {
           showToast("Access denied. Only @uniandes.edu.co accounts are allowed.");
           return;
         }
-        touchSession();
-        sessionStorage.setItem("br_token", googleAccessToken);
-        sessionStorage.setItem("br_email", googleUserEmail);
+        storeToken(loginToken, loginExpires);
         closeModal("loginModal");
         showToast("Signed in as " + googleUserEmail);
         renderDocs();
+        syncDriveFolders();
         loadFromSheet().then(() => {
           if (pendingActionAfterLogin) {
             const action = pendingActionAfterLogin;
@@ -690,12 +807,14 @@ async function loadFromSheet() {
   try {
     const range = encodeURIComponent(SHEET_NAME + "!A:I");
     let res;
-    if (googleAccessToken) {
+    const tk = await getToken();
+    if (tk) {
       res = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`,
-        { headers: { Authorization: "Bearer " + googleAccessToken } }
+        { headers: { Authorization: "Bearer " + tk } }
       );
-    } else {
+    }
+    if (!res || res.status === 401) {   // sin sesión o token rechazado: lectura pública con la clave de API
       res = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`
       );
@@ -750,15 +869,93 @@ async function loadFromSheet() {
   } catch(e) { console.warn("Could not load from Sheet", e); }
 }
 
-function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes='', type='PDF') {
-  const token = googleAccessToken;
+async function writeToSheet(docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes='', type='PDF') {
+  const token = await getToken();
+  if (!token) { showToast("Your session expired: the change could not be saved. Please sign in again."); return; }
   const range = SHEET_NAME + "!A:I";
   const body = { values: [[docId, title, responsible, updatedAt, driveUrl, previewUrl, uploadedBy, notes, type]] };
-  fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
-    method: "POST",
-    headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  }).catch(e => console.warn("Sheet write error", e));
+  try {
+    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) { console.warn("Sheet write failed", r.status); showToast("The change could not be saved to the sheet (error " + r.status + ")."); }
+  } catch (e) { console.warn("Sheet write error", e); showToast("Network error while saving. Please try again."); }
+}
+
+// =====================
+// CARPETAS = DRIVE
+// =====================
+// La estructura (capítulos > carpetas) se lee de la carpeta "Gestión documental" de Drive:
+//  - cada carpeta de Drive "N. Nombre" se enlaza con la carpeta "Folder N" del capítulo;
+//  - el nombre que se ve en el BaseRoom es el de Drive (sin el número);
+//  - una carpeta nueva creada en Drive aparece sola; una renombrada cambia de nombre.
+// Requiere el permiso de solo lectura de metadatos de Drive; si no está (o falla), se
+// queda con los datos que ya trae la página (DRIVE_FOLDERS), sin romper nada.
+const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
+async function driveListFolders(parentId, token) {
+  const q = encodeURIComponent(`'${parentId}' in parents and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=200&orderBy=name&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+  const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+  if (!r.ok) throw new Error("drive list " + r.status);
+  return (await r.json()).files || [];
+}
+function parseNumberedName(name) {
+  const m = String(name).match(/^\s*(\d+(?:\.\d+)?)\.?\s+(.*)$/);
+  return m ? { num: m[1], title: m[2].trim() } : null;
+}
+let driveSyncRunning = false;
+async function syncDriveFolders() {
+  if (driveSyncRunning) return;
+  const token = await getToken();
+  if (!token) return;
+  driveSyncRunning = true;
+  try {
+    const rootKids = await driveListFolders(DRIVE_ROOT_ID, token);
+    // capítulo del BaseRoom por número de carpeta de Drive ("2.1" = Selected Programme)
+    const chapterByNum = {};
+    DATA.chapters.forEach(ch => {
+      const dId = DRIVE_CHAPTERS[ch.id];
+      const k = rootKids.find(f => f.id === dId) || null;
+      if (k) chapterByNum[ch.id] = k;
+    });
+    rootKids.forEach(k => {           // capítulos que se renombraron/reubicaron: se buscan por número
+      const pn = parseNumberedName(k.name); if (!pn) return;
+      const chNum = { "1":"ch1","2":"ch2","2.1":"ch2b","3":"ch3","4":"ch4","5":"ch5","6":"ch6","7":"ch7","8":"ch8","9":"ch9","10":"ch10" }[pn.num];
+      if (chNum && !chapterByNum[chNum]) chapterByNum[chNum] = k;
+    });
+    const results = await Promise.all(DATA.chapters.map(async ch => {
+      const dk = chapterByNum[ch.id]; if (!dk) return [ch, null];
+      try { return [ch, await driveListFolders(dk.id, token)]; } catch (e) { return [ch, null]; }
+    }));
+    let changed = false;
+    for (const [ch, kids] of results) {
+      if (!kids) continue;
+      const seen = new Set();
+      for (const k of kids) {
+        const pn = parseNumberedName(k.name); if (!pn) continue;
+        const n = pn.num.split(".")[0];
+        seen.add(n);
+        let fo = ch.folders.find(f => String(f.badge).replace(/\D+/g, "") === n);
+        const url = "https://drive.google.com/drive/folders/" + k.id;
+        if (!fo) {   // carpeta nueva en Drive -> aparece en el BaseRoom
+          const idBase = ch.id.replace("ch", "f");
+          fo = { id: `${idBase}-${n}`, badge: "Folder " + n, title: pn.title, desc: "Folder added from Google Drive.",
+                 accreditations: ["AACSB","EQUIS","AMBA"], sharepointUrl: url, periodicidad: "", documents: [], fromDrive: true };
+          ch.folders.push(fo); changed = true;
+        } else {
+          if (fo.sharepointUrl !== url) { fo.sharepointUrl = url; changed = true; }
+          if (pn.title && fo.title !== pn.title) { fo.title = pn.title; changed = true; }
+        }
+        DRIVE_FOLDERS[fo.id] = k.id;
+      }
+      ch.folders.sort((a, b) => parseInt(String(a.badge).replace(/\D+/g, "")) - parseInt(String(b.badge).replace(/\D+/g, "")));
+    }
+    if (changed) render();
+  } catch (e) {
+    console.warn("Drive folder sync skipped:", e.message || e);
+  } finally { driveSyncRunning = false; }
 }
 
 // =====================
@@ -850,12 +1047,12 @@ const DATA = {
             {id:"d1-22",title:"Annual Report 2020",type:"PDF",meta:"Institutional annual report",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"https://drive.google.com/file/d/1Z_PXy7ESLC5F2ng2wdejf3rd2zMEsP_L/preview",viewUrl:"https://drive.google.com/file/d/1Z_PXy7ESLC5F2ng2wdejf3rd2zMEsP_L/view"},
             {id:"d1-23",title:"Annual Report 2021",type:"PDF",meta:"Institutional annual report",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"https://drive.google.com/file/d/1-Bvkfw_cwfZT_fUtu5KbPiG2WMunHVgA/preview",viewUrl:"https://drive.google.com/file/d/1-Bvkfw_cwfZT_fUtu5KbPiG2WMunHVgA/view"},
             {id:"d1-24",title:"Annual Report 2022",type:"PDF",meta:"Institutional annual report",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"https://drive.google.com/file/d/1S2uUg86Cj4cc-FCXVfHjwBmql5CHGgcJ/preview",viewUrl:"https://drive.google.com/file/d/1S2uUg86Cj4cc-FCXVfHjwBmql5CHGgcJ/view"},
-            {id:"d1-25",title:"Annual Report 2025",type:"PDF",meta:"Institutional annual report",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"https://drive.google.com/file/d/1ITgCZS4RgcxbZJ9hXjTitABw9JHNZeRT/preview",viewUrl:"https://drive.google.com/file/d/1ITgCZS4RgcxbZJ9hXjTitABw9JHNZeRT/view"}
+            {id:"d1-25",title:"Annual Report 2025",type:"Link",meta:"Statistical bulletin — Planeación Uniandes (online)",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"https://boletinestadistico.planeacion.uniandes.edu.co/",viewUrl:"https://boletinestadistico.planeacion.uniandes.edu.co/"}
           ]
         },
         { id:"f1-7", badge:"Folder 7", title:"External Examiners' Reports",
           desc:"Peer review reports for EQUIS, AACSB, AMBA and PRME.",
-          accreditations:["AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1NtBK5SYbHYkKbCCPT-R1Os-DH_sUK7xQ", periodicidad:"Cada 5 años",
           documents:[
             {id:"d1-14",title:"Peer Review Report EQUIS",type:"PDF",meta:"EQUIS peer review",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
             {id:"d1-15",title:"Peer Review Report AACSB",type:"PDF",meta:"AACSB peer review",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
@@ -865,7 +1062,7 @@ const DATA = {
         },
         { id:"f1-8", badge:"Folder 8", title:"Committee Meeting Minutes",
           desc:"Minutes of strategic planning, faculty, programme, student-staff and advisory board meetings (last 3 years).",
-          accreditations:["AMBA"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          accreditations:["AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1fEOur54Io6tCm99Vswtmwh0SE_KXOT8m", periodicidad:"Cada semestre",
           documents:[
             {id:"d1-18",title:"School & Programme Committee Minutes",type:"PDF",meta:"Strategic & programme level minutes",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
             {id:"d1-19",title:"Actas Consejo de Facultad",type:"PDF",meta:"Faculty council minutes",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
@@ -881,7 +1078,7 @@ const DATA = {
       folders:[
         { id:"f2-1", badge:"Folder 1", title:"Learning & Teaching Strategy",
           desc:"Formal documents on learning and teaching strategy, performance appraisal and general guidelines.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1i43wzUYPBQyq2Fmq6SBiUxOvXN8TrZZP", periodicidad:"Cada año",
           documents:[
             {id:"d2-1",title:"Faculty Performance Appraisal System",type:"PDF",meta:"Faculty evaluation framework",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
             {id:"d2-2",title:"Assurance of Learning Processes",type:"PDF",meta:"AoL process documentation",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"#"},
@@ -891,7 +1088,7 @@ const DATA = {
         },
         { id:"f2-2", badge:"Folder 2", title:"List of Programmes",
           desc:"Programme catalogue, curriculum structures, course descriptions and intended learning outcomes.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/14swbDliwqCWEnnWT24upLwpc478bPrbC", periodicidad:"Cada semestre",
           documents:[
             {id:"d2-5",title:"UASM Programme Catalogue",type:"Dashboard",meta:"Full list of programmes",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
             {id:"d2-6",title:"Curriculum Structure",type:"Dashboard",meta:"Programme curriculum structures",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
@@ -901,7 +1098,7 @@ const DATA = {
         },
         { id:"f2-3", badge:"Folder 3", title:"Assessment & Grading System",
           desc:"Grading system descriptions, AoL reports and quality assurance of learning documentation.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1lyNfWnpr11TvBqxkssi0vDaqeihO6W6M", periodicidad:"Cada 5 años",
           documents:[
             {id:"d2-9",title:"Uniandes General Grading System",type:"PDF",meta:"Institutional grading framework",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
             {id:"d2-10",title:"ILO Reports — Assurance of Learning",type:"PDF",meta:"AoL results per programme",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
@@ -910,7 +1107,7 @@ const DATA = {
         },
         { id:"f2-4", badge:"Folder 4", title:"Teaching Evaluations",
           desc:"Student teaching evaluation questionnaires, methodology and results per programme.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1GRdF5D2Rqsa8TlfY2yV7napaMBwWMiBR", periodicidad:"Cada año",
           documents:[
             {id:"d2-12",title:"Teaching Evaluation Objectives & Methodology",type:"Dashboard",meta:"Evaluation framework",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
             {id:"d2-13",title:"Student Questionnaires 2018–2022",type:"Dashboard",meta:"Completed student questionnaires",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
@@ -919,7 +1116,7 @@ const DATA = {
         },
         { id:"f2-5", badge:"Folder 5", title:"Programme Reviews",
           desc:"Regular programme review reports and national accreditation documentation.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1_Der4xrUgHtXCyIeSHChNXsEwUmBOQ68", periodicidad:"Cada 5 años",
           documents:[
             {id:"d2-15",title:"CNA National Accreditation Report",type:"PDF",meta:"National accreditation report",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
             {id:"d2-16",title:"CNA Accreditation Resolution",type:"PDF",meta:"National accreditation resolution",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
@@ -928,7 +1125,7 @@ const DATA = {
         },
         { id:"f2-6", badge:"Folder 6", title:"Academic Regulations & Ethics",
           desc:"Codes of ethical conduct and academic regulations for all programme levels.",
-          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1tlkq3TqW_fC-eyepabZPuZuSXbwlLv6d", periodicidad:"Cada 5 años",
           documents:[
             {id:"d2-18",title:"Undergraduate Academic Regulations",type:"PDF",meta:"General undergraduate regulations",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
             {id:"d2-19",title:"Master's Academic Regulations",type:"PDF",meta:"General master's regulations",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
@@ -938,7 +1135,7 @@ const DATA = {
         },
         { id:"f2-7", badge:"Folder 7", title:"Student Evaluations (AMBA)",
           desc:"Student examination papers, marked coursework and project evidences for MBA programmes.",
-          accreditations:["AMBA"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1eE6d43QFLzUWCxV0coKZ-qEFPAVstbfs", periodicidad:"Cada año",
           documents:[
             {id:"d2-22",title:"Marked Coursework Samples",type:"PDF",meta:"Student work corrections",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
             {id:"d2-23",title:"Student Examination Papers",type:"PDF",meta:"High, low and average grade samples",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
@@ -953,7 +1150,7 @@ const DATA = {
       folders:[
         { id:"f2b-1", badge:"Folder 1", title:"Programme Structure — Master in Finance",
           desc:"Study plan, objectives, ILOs, rationale, assessment methods and national quality assurance.",
-          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1bK9EaaknctjpDtlEOKLeJO2XcfaestjF", periodicidad:"Cada 5 años",
           documents:[
             {id:"d2b-1",title:"MF Study Plan",type:"PDF",meta:"Master in Finance study plan",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
             {id:"d2b-2",title:"MF Programme Objectives & ILOs",type:"PDF",meta:"Intended learning outcomes",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
@@ -967,14 +1164,14 @@ const DATA = {
         },
         { id:"f2b-2", badge:"Folder 2", title:"Assessment & Grading — MF",
           desc:"Grading system and AoL documentation for the Selected Programme.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1CMdw4HUmOT5Fw8C53FzUgjq5XqVMIZtz", periodicidad:"Cada 5 años",
           documents:[
             {id:"d2b-9",title:"General Grading System",type:"PDF",meta:"Uniandes grading framework",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
           ]
         },
         { id:"f2b-3", badge:"Folder 3", title:"Teaching Materials — MF",
           desc:"Course evidences, online materials and Bloque Neón access for Master in Finance.",
-          accreditations:["EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1cf-Q_cF6M1MAsZxrmXINOyQ3Iyvpx19P", periodicidad:"Cada 5 años",
           documents:[
             {id:"d2b-10",title:"Six Courses Evidences MF 2022",type:"PDF",meta:"Course teaching evidence",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
             {id:"d2b-11",title:"How to Navigate Bloque Neón",type:"PDF",meta:"LMS access guide",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
@@ -983,14 +1180,14 @@ const DATA = {
         },
         { id:"f2b-4", badge:"Folder 4", title:"Teaching Evaluations — MF",
           desc:"Summary of student teaching evaluations for the Master in Finance 2018–2022.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/16r007ip8I3zUDsnEkP8oMO5R-XXilSNC", periodicidad:"Cada 5 años",
           documents:[
             {id:"d2b-13",title:"Teaching Evaluation MF 2018–2022",type:"Dashboard",meta:"Student evaluation results",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
           ]
         },
         { id:"f2b-5", badge:"Folder 5", title:"Final Dissertations — MF",
           desc:"Sample of 12 graded final dissertations with highest, lowest and mid-level marks.",
-          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1HZgSemUQ4Xa_MigWg7bebFF20N--oVFN", periodicidad:"Cada 5 años",
           documents:[
             {id:"d2b-14",title:"Final Dissertations Sample",type:"PDF",meta:"12 graded dissertations",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
           ]
@@ -1003,14 +1200,14 @@ const DATA = {
       folders:[
         { id:"f3-1", badge:"Folder 1", title:"Admission Policies & Student Handbook",
           desc:"Admission policies, student handbooks and general student information packs.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/14Pi5hGA-M9NBo9hrNGqnXzwjfgw0pE46", periodicidad:"Cada 5 años",
           documents:[
             {id:"d3-1",title:"Student Handbook & Admission Policies",type:"PDF",meta:"General student information and admission policies",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}
           ]
         },
         { id:"f3-2", badge:"Folder 2", title:"Selection Process Documentation",
           desc:"Application forms, interview reports, admission statistics and selection criteria.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1e0Fh4ps9FBXrDYlDyDwNVk8tuWICMs6n", periodicidad:"Cada semestre",
           documents:[
             {id:"d3-2",title:"Undergraduate Programme Guide",type:"Dashboard",meta:"UG programme information",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
             {id:"d3-3",title:"Graduate Programmes Guide",type:"Dashboard",meta:"Graduate programme information",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
@@ -1020,7 +1217,7 @@ const DATA = {
         },
         { id:"f3-3", badge:"Folder 3", title:"International Student Orientation",
           desc:"Documents for incoming international students including handbooks, fact sheets and calendars.",
-          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1BSDepjU4igz_gVtDK4xVOWodjTg5zoyY", periodicidad:"Cada año",
           documents:[
             {id:"d3-6",title:"Application Form for International Students",type:"PDF",meta:"Incoming international student form",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
             {id:"d3-7",title:"International Student Handbook",type:"PDF",meta:"Handbook for exchange students",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
@@ -1030,7 +1227,7 @@ const DATA = {
         },
         { id:"f3-4", badge:"Folder 4", title:"Alumni Association & Career Services",
           desc:"Alumni association activities, directory, placement records and career development services.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1OHvfzzbNlXAPfXtuYj7P3EbPTKODI20b", periodicidad:"Cada semestre",
           documents:[
             {id:"d3-10",title:"Alumni Office Strategy",type:"Dashboard",meta:"Alumni and professional development strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
             {id:"d3-11",title:"Alumni Directory & Placement",type:"Dashboard",meta:"Alumni directory and placement data",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
@@ -1039,7 +1236,7 @@ const DATA = {
         },
         { id:"f3-5", badge:"Folder 5", title:"Student Profile Table",
           desc:"Cohort profile tables including demographics, gender, international percentage and professional experience.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1JQkk98_b8yC_hXazsW9ergso_Q1VrxEx", periodicidad:"Cada semestre",
           documents:[
             {id:"d3-13",title:"Student Profile Table 2018–2022",type:"Dashboard",meta:"Cohort profile by programme",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
           ]
@@ -1052,7 +1249,7 @@ const DATA = {
       folders:[
         { id:"f4-1", badge:"Folder 1", title:"Faculty Management Strategy",
           desc:"Strategic plans for faculty hiring, development, promotion and deployment.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1UOL7mcGXMXgtipNMyas3g3-W3cEhbA55", periodicidad:"Cada 5 años",
           documents:[
             {id:"d4-1",title:"GHDO Strategy",type:"PDF",meta:"Human development and organisation strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
             {id:"d4-2",title:"Recruitment Strategy 2019–2024",type:"PDF",meta:"Faculty recruitment strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
@@ -1063,7 +1260,7 @@ const DATA = {
         },
         { id:"f4-2", badge:"Folder 2", title:"Faculty Handbook & Bylaws",
           desc:"Missions, rights, responsibilities and bylaws for all faculty members.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1jkNmBJ0rl2OgKej4_TVI2ughlyqtBteq", periodicidad:"Cada 5 años",
           documents:[
             {id:"d4-6",title:"Uniandes Faculty Handbook",type:"PDF",meta:"Full faculty handbook",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
             {id:"d4-7",title:"UASM Faculty Bylaws",type:"PDF",meta:"School faculty bylaws",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
@@ -1072,7 +1269,7 @@ const DATA = {
         },
         { id:"f4-3", badge:"Folder 3", title:"Faculty CVs",
           desc:"Curriculum vitae for all core and part-time faculty members in English.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1ysypFPTsqmiKZbjpwzTw-rZnLavtgqQq", periodicidad:"Cada semestre",
           documents:[
             {id:"d4-9",title:"Core Faculty CVs",type:"Dashboard",meta:"CVs of full-time faculty",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
             {id:"d4-10",title:"Part-time Faculty CVs",type:"Dashboard",meta:"CVs of part-time faculty",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
@@ -1087,14 +1284,14 @@ const DATA = {
       folders:[
         { id:"f5-1", badge:"Folder 1", title:"Research Publications",
           desc:"Examples of published materials including articles, books, case studies, conference proceedings and scholarly articles.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada semestre",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1vUuSNIeQCoxLw3B07VTGZrXXBFncxTXY", periodicidad:"Cada semestre",
           documents:[
             {id:"d5-1",title:"Research & Publications Table",type:"Dashboard",meta:"Comprehensive publications dashboard",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"}
           ]
         },
         { id:"f5-2", badge:"Folder 2", title:"Research Strategy & Policy",
           desc:"Documents regarding research strategy, policy and governance processes.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1mBdrt_kIVnUPQbxMWLhZKH_C9mKn9Jf4", periodicidad:"Cada 5 años",
           documents:[
             {id:"d5-2",title:"Research Strategic Plan",type:"PDF",meta:"Institutional research strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
             {id:"d5-3",title:"Research Policy",type:"PDF",meta:"Research policy document",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
@@ -1103,7 +1300,7 @@ const DATA = {
         },
         { id:"f5-3", badge:"Folder 3", title:"Research Centres",
           desc:"Summary examples of work from research centres and collaborative projects.",
-          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1PFHVlx7-o0wB_SUD7asiG4dZf39DN35c", periodicidad:"Cada año",
           documents:[
             {id:"d5-5",title:"Centre for Corporate Governance Studies",type:"PDF",meta:"Research centre summary",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
             {id:"d5-6",title:"CODS — Sustainable Development Goals",type:"PDF",meta:"SDGs research centre",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
@@ -1119,7 +1316,7 @@ const DATA = {
       folders:[
         { id:"f6-1", badge:"Folder 1", title:"ExEd Strategy & Policies",
           desc:"Strategy, policy and process documents for executive education.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1nwZTueck27L_1Y3EBliJHMcmlt4WZltB", periodicidad:"Cada 5 años",
           documents:[
             {id:"d6-1",title:"ExEd Strategy 2021–2025",type:"PDF",meta:"Executive education strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
             {id:"d6-2",title:"ExEd Policies",type:"PDF",meta:"Executive education policies",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
@@ -1128,7 +1325,7 @@ const DATA = {
         },
         { id:"f6-2", badge:"Folder 2", title:"Programmes on Offer",
           desc:"Programme brochures, catalogues and syllabi for customised and open courses.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/10tFPW-oHPlPIe8Wn1vQf8WyDL2HUasuM", periodicidad:"Cada año",
           documents:[
             {id:"d6-4",title:"ExEd Programme Brochures",type:"PDF",meta:"Programme brochures",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
             {id:"d6-5",title:"Open Courses Catalogue",type:"Dashboard",meta:"Public open courses offered",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
@@ -1144,7 +1341,7 @@ const DATA = {
       folders:[
         { id:"f7-1", badge:"Folder 1", title:"HR Strategy & Staff Management",
           desc:"Strategy and policies for management and development of faculty and professional staff.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1aEoq6OzD--WTc_SOP1e1JExbdgMMw7lt", periodicidad:"Cada 5 años",
           documents:[
             {id:"d7-1",title:"Uniandes HR Management Strategy",type:"PDF",meta:"Human resources management strategy",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
             {id:"d7-2",title:"Administrative Staff Distribution",type:"Dashboard",meta:"Staff deployment overview",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"#"},
@@ -1153,7 +1350,7 @@ const DATA = {
         },
         { id:"f7-2", badge:"Folder 2", title:"Risk Management Guidelines",
           desc:"School risk management guidelines, strategic risks and mitigation actions.",
-          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/12DZ7ANx2C_3oQ00Pe04jgq_0uNN7z1k6", periodicidad:"Cada 5 años",
           documents:[
             {id:"d7-4",title:"UASM Main Strategic Risks",type:"PDF",meta:"Key institutional risks",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
             {id:"d7-5",title:"Risk Management Process 2021–2022",type:"PDF",meta:"Risk management process",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
@@ -1162,7 +1359,7 @@ const DATA = {
         },
         { id:"f7-3", badge:"Folder 3", title:"Marketing Strategy",
           desc:"Marketing plans, materials and activities for all programmes.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1cl4IRuo8zoOObFFEv5ZmeRUD1K5qRrUh", periodicidad:"Cada 5 años",
           documents:[
             {id:"d7-7",title:"UASM Strategic Marketing Plan",type:"PDF",meta:"Overall marketing strategy",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
             {id:"d7-8",title:"Faculty Budget",type:"Dashboard",meta:"Faculty financial planning",responsible:"",updatedAt:null,accreditations:["AACSB"],url:"#"},
@@ -1178,7 +1375,7 @@ const DATA = {
       folders:[
         { id:"f8-1", badge:"Folder 1", title:"International Strategy & Policy",
           desc:"Internationalisation strategy and partnership policy documents.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1k4A12WtLP0WnkXj7o_fpy2ah-6cs66LO", periodicidad:"Cada 5 años",
           documents:[
             {id:"d8-1",title:"UASM Internationalisation Strategy",type:"Dashboard",meta:"International strategy dashboard",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
             {id:"d8-2",title:"International Partnership Strategy",type:"PDF",meta:"Partner strategy document",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
@@ -1187,7 +1384,7 @@ const DATA = {
         },
         { id:"f8-2", badge:"Folder 2", title:"Online International Programmes",
           desc:"Documents for online programmes targeting foreign markets.",
-          accreditations:["EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/10Bs5hQsu7R-NDe_ONoxMwSpXOOkpWQsK", periodicidad:"Cada año",
           documents:[
             {id:"d8-4",title:"Senior Executive Program in Digital Transformation",type:"PDF",meta:"Online international programme",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
             {id:"d8-5",title:"MRSD Programme",type:"PDF",meta:"Online programme documentation",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
@@ -1202,7 +1399,7 @@ const DATA = {
       folders:[
         { id:"f9-1", badge:"Folder 1", title:"ERS Educational Materials",
           desc:"Syllabi, teaching materials and assessments related to ERS topics.",
-          accreditations:["EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1VumSXRTCfOma-nzBjG5GEo3ijNW7SKlW", periodicidad:"Cada año",
           documents:[
             {id:"d9-1",title:"Bloque Neón ERS Course Access",type:"Link",meta:"Links to Glocal and EIV courses",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
             {id:"d9-2",title:"ERS Syllabus Examples",type:"Link",meta:"Syllabi for ERS-related courses",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"}
@@ -1210,14 +1407,14 @@ const DATA = {
         },
         { id:"f9-2", badge:"Folder 2", title:"ERS Research Outputs",
           desc:"Published articles and research project reports related to ethics, responsibility and sustainability.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1P9mf5kooJVhuiE5BeCN-p7lfETDwFxQs", periodicidad:"Cada año",
           documents:[
             {id:"d9-3",title:"ERS Research Outcomes",type:"PDF",meta:"Societal impact research selection",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
           ]
         },
         { id:"f9-3", badge:"Folder 3", title:"ERS Policies & Reports",
           desc:"School policies, PRME reports, sustainability projects and research ethics guidelines.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/1YuOm8G8HVopSZE2JTl49jjSdQhwOWOHW", periodicidad:"Cada 5 años",
           documents:[
             {id:"d9-4",title:"PRME Report 2018",type:"PDF",meta:"Principles for Responsible Management Education",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
             {id:"d9-5",title:"PRME Report 2022",type:"PDF",meta:"Updated PRME report",responsible:"",updatedAt:null,accreditations:["EQUIS"],url:"#"},
@@ -1235,14 +1432,14 @@ const DATA = {
       folders:[
         { id:"f10-1", badge:"Folder 1", title:"Strategy & Policy",
           desc:"Strategy and policy documents relating to the school's connections with practice.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada 5 años",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/12j3flJfoIWfj5rGe84YpuN4PFB-0Y0UN", periodicidad:"Cada 5 años",
           documents:[
             {id:"d10-1",title:"Connections with Practice Strategy",type:"PDF",meta:"Impact and connections strategy",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"}
           ]
         },
         { id:"f10-2", badge:"Folder 2", title:"Evidence of Outputs",
           desc:"Evidence of outputs from the school's major connections with practice.",
-          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["AACSB","EQUIS","AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/1mwgWiWG6wuY5iNv1LB835qqexyWE9kky", periodicidad:"Cada año",
           documents:[
             {id:"d10-2",title:"Consultancy & Research Projects",type:"PDF",meta:"List of consultancy projects and income",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS","AMBA"],url:"#"},
             {id:"d10-3",title:"ExEd Partner Videos & Documents",type:"PDF",meta:"Open and customised programme evidence",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
@@ -1253,7 +1450,7 @@ const DATA = {
         },
         { id:"f10-3", badge:"Folder 3", title:"Other Initiatives",
           desc:"Entrepreneurship centre, research observatories, learning lab and other practice-facing projects.",
-          accreditations:["AACSB","EQUIS"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["AACSB","EQUIS"], sharepointUrl:"https://drive.google.com/drive/folders/13ZUUl-KRm1RwkYdiXqSOMtptU7jteUoc", periodicidad:"Cada año",
           documents:[
             {id:"d10-7",title:"UASM Entrepreneurship Centre",type:"PDF",meta:"Entrepreneurship centre documentation",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
             {id:"d10-8",title:"RedEs-CAR",type:"PDF",meta:"RedEs-CAR project",responsible:"",updatedAt:null,accreditations:["AACSB","EQUIS"],url:"#"},
@@ -1263,7 +1460,7 @@ const DATA = {
         },
         { id:"f10-4", badge:"Folder 4", title:"MBA Industry Engagement (AMBA)",
           desc:"How MBA students engage with industries including Retos, Consultandes and Capstone projects.",
-          accreditations:["AMBA"], sharepointUrl:"#", periodicidad:"Cada año",
+          accreditations:["AMBA"], sharepointUrl:"https://drive.google.com/drive/folders/17LtiwBL4l0CFWEppnVbzOkE2q0hu3umh", periodicidad:"Cada año",
           documents:[
             {id:"d10-11",title:"MBA Industry Involvement Document",type:"PDF",meta:"Retos and Consultandes overview",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"},
             {id:"d10-12",title:"Capstone / Integrative Project Examples",type:"PDF",meta:"Course simulation and project examples",responsible:"",updatedAt:null,accreditations:["AMBA"],url:"#"}
@@ -1344,7 +1541,7 @@ function renderDocs(){
   if(addBtn) addBtn.style.visibility="visible";
   const f=getFolders().find(f=>f.id===state.selectedFolder);
   desc.textContent=f?f.title:"";
-  if(!googleAccessToken || !googleUserEmail || !googleUserEmail.endsWith("@"+ALLOWED_DOMAIN)){
+  if(!isSignedIn()){
     el.innerHTML=`<div class="empty-state" style="padding:40px 24px;">
       <div style="font-size:2rem;margin-bottom:12px;">🔐</div>
       <div style="font-weight:800;color:#1f2937;margin-bottom:8px;font-size:.95rem;">Sign in to view documents</div>
@@ -1639,30 +1836,45 @@ function getViewerSrc(url,type){
   return url;
 }
 
+// Si el navegador tiene varias cuentas de Google abiertas, Drive usaba la equivocada y
+// mostraba "no tienes acceso". authuser le indica con cuál abrir el archivo.
+function withAuthUser(url){
+  if(!url||!googleUserEmail||!/drive\.google\.com|docs\.google\.com/i.test(url)) return url;
+  if(/[?&]authuser=/.test(url)) return url;
+  const hashAt=url.indexOf("#");
+  const base=hashAt>=0?url.slice(0,hashAt):url, hash=hashAt>=0?url.slice(hashAt):"";
+  return base+(base.includes("?")?"&":"?")+"authuser="+encodeURIComponent(googleUserEmail)+hash;
+}
+
 function openViewer(docId){
   window.currentViewerDocId=docId;
   const res=getDoc(docId);if(!res)return;
   const{doc,folder}=res;
   const rawUrl=doc.url&&doc.url!=="#"?doc.url:"";
-  const embedUrl=rawUrl?getViewerSrc(rawUrl,doc.type):"";
+  const embedUrl=rawUrl?withAuthUser(getViewerSrc(rawUrl,doc.type)):"";
   document.getElementById("viewerTitle").textContent=doc.title;
   const upd=doc.updatedAt?`Updated ${fmtDate(doc.updatedAt)} · ${doc.responsible}`:(doc.responsible||"");
   document.getElementById("viewerMeta").textContent=`${doc.type} · ${upd}`;
   const cleanUrl=rawUrl.replace(/[?&]embed=true/,"");
-  document.getElementById("viewerOpenBtn").href=doc.viewUrl||cleanUrl||folder.sharepointUrl||"#";
+  document.getElementById("viewerOpenBtn").href=withAuthUser(doc.viewUrl||cleanUrl||folder.sharepointUrl||"#");
   document.getElementById("viewerUpdateBtn").onclick=()=>{closeModal("viewerModal");resetViewer();requireLogin(()=>openUploadModal(docId));};
   const frame=document.getElementById("viewerFrame");
   const noUrl=document.getElementById("viewerNoUrl");
   const ext=document.getElementById("viewerExternal");
   // SharePoint/OneDrive blocks iframe embedding by policy, so we route those to the
   // same "open externally" panel already used for non-embeddable dashboards.
-  const isBlockedEmbed=rawUrl&&/sharepoint\.com|1drv\.ms|onedrive\.live\.com/i.test(rawUrl);
+  const isMsHost=rawUrl&&/sharepoint\.com|1drv\.ms|onedrive\.live\.com/i.test(rawUrl);
+  // Sitios externos que bloquean el iframe (X-Frame-Options): se abren en pestaña nueva.
+  const isExternalHost=rawUrl&&/planeacion\.uniandes\.edu\.co/i.test(rawUrl);
+  const isBlockedEmbed=isMsHost||isExternalHost;
   if(!embedUrl){
     frame.src="";frame.style.display="none";noUrl.style.display="flex";ext.style.display="none";
   } else if(isBlockedEmbed){
     frame.src="";frame.style.display="none";noUrl.style.display="none";ext.style.display="flex";
     document.getElementById("viewerExternalTitle").textContent=doc.title;
-    document.getElementById("viewerExternalDesc").textContent="This file is hosted on SharePoint/OneDrive and cannot be embedded directly due to Microsoft's browser security restrictions.";
+    document.getElementById("viewerExternalDesc").textContent=isMsHost
+      ?"This file is hosted on SharePoint/OneDrive and cannot be embedded directly due to Microsoft's browser security restrictions."
+      :"This resource is hosted on an external website that does not allow being embedded here, so it opens in a new tab.";
     document.getElementById("viewerExternalLink").href=cleanUrl;
   } else {
     frame.src=embedUrl;frame.style.display="block";noUrl.style.display="none";ext.style.display="none";
@@ -1682,8 +1894,15 @@ function showToast(msg){const t=document.getElementById("toast");t.textContent=m
 
 render();
 loadFromSheet().then(()=>{}).catch(()=>{});
+// Si ya había una sesión guardada: se renueva el token en silencio al abrir la página
+// (si ya hay uno vigente solo se programa la próxima renovación).
 if(googleUserEmail){
-  window.addEventListener("load",()=>{setTimeout(silentTokenRefresh,1000);});
+  window.addEventListener("load",()=>{
+    setTimeout(()=>{
+      if(tokenValid(REFRESH_MARGIN_MS)){ scheduleRefresh(); syncDriveFolders(); }
+      else { refreshToken().then(ok=>{ if(ok){ loadFromSheet().then(()=>render()); syncDriveFolders(); } render(); }); }
+    },800);
+  });
 }
 </script>
 
