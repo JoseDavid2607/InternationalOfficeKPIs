@@ -1810,7 +1810,7 @@ function openDriveVerify(){
   ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
   ov.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:88vh;overflow:auto;padding:18px 20px;font-size:.82rem;color:#1f2937;">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><strong style="font-size:1rem;">Drive check</strong>
-    <span id="dvState" style="color:#6b7280;">Reading Drive…</span><button id="dvClose" style="margin-left:auto;border:0;background:#e5e7eb;border-radius:8px;padding:6px 12px;cursor:pointer;">Close</button></div>
+    <span id="dvState" style="color:#6b7280;">Reading Drive…</span><button id="dvCsv" disabled style="margin-left:auto;border:0;background:#1f2937;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;">Download report (CSV)</button><button id="dvClose" style="border:0;background:#e5e7eb;border-radius:8px;padding:6px 12px;cursor:pointer;">Close</button></div>
     <div id="dvBody"></div></div>`;
   document.body.appendChild(ov);
   ov.querySelector("#dvClose").onclick = () => ov.remove();
@@ -1819,7 +1819,7 @@ function openDriveVerify(){
     const ids = [...new Set(Object.values(DRIVE_FOLDERS))];
     for (let i = 0; i < ids.length; i += 6) await Promise.all(ids.slice(i, i + 6).map(id => loadFolderFiles(id).catch(() => { folderFiles[id] = { files: [], subfolders: 0, error: true }; })));
     let total = 0, empty = 0, err = 0;
-    const rows = getFolders().map(f => {
+    const rows = DATA.chapters.map(ch => `<tr><td colspan="6" style="padding:8px 6px 3px;font-weight:800;background:#f3f4f6;">${ch.badge}: ${ch.title}</td></tr>` + ch.folders.map(f => {
       const ff = folderFiles[DRIVE_FOLDERS[f.id]]; if (!ff) return "";
       const n = ff.files.length; total += n;
       const bad = ff.error; if (bad) err++; else if (!n) empty++;
@@ -1831,11 +1831,28 @@ function openDriveVerify(){
         <td style="padding:5px 6px;text-align:center;">${nested}</td>
         <td style="padding:5px 6px;text-align:center;">${unl}</td>
         <td style="padding:5px 6px;">${bad ? "❌ cannot read" : (n ? "✅" : "⬜ empty")}</td></tr>`;
-    }).join("");
+    }).join("")).join("");
     ov.querySelector("#dvState").textContent = `${total} files · ${empty} empty folder(s)${err ? " · " + err + " with errors" : ""}`;
     ov.querySelector("#dvBody").innerHTML = `<table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;color:#6b7280;"><th style="padding:5px 6px;">Folder</th><th>Files (incl. subfolders)</th><th>Subfolders</th><th>In subfolders</th><th>Not linked</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    const dvCsv = ov.querySelector("#dvCsv"); dvCsv.disabled = false; dvCsv.onclick = exportDriveCsv;
     renderDocs(); renderFolders(); renderProgress();
   })();
+}
+function exportDriveCsv(){
+  const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+  const rows = [["Chapter","Folder","File","Subfolder","Modified","Linked to a document","Link"]];
+  DATA.chapters.forEach(ch => ch.folders.forEach(f => {
+    const ff = folderFiles[DRIVE_FOLDERS[f.id]]; if (!ff) return;
+    if (ff.error) { rows.push([ch.title, f.title, "(could not read folder)", "", "", "", ""]); return; }
+    if (!ff.files.length) { rows.push([ch.title, f.title, "(empty)", "", "", "", ""]); return; }
+    const linked = linkedFileIds(f);
+    ff.files.forEach(x => rows.push([ch.title, f.title, x.name, x.path || "", (x.modifiedTime || "").slice(0,10), linked.has(x.id) ? "Yes" : "No",
+      x.webViewLink || ("https://drive.google.com/file/d/" + x.id + "/view")]));
+  }));
+  const blob = new Blob(["\ufeff" + rows.map(r => r.map(q).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "BaseRoom_Drive_report_" + new Date().toISOString().slice(0,10) + ".csv"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 let prefetching = false;
 async function prefetchAllFolders(){
