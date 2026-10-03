@@ -1819,7 +1819,7 @@ function openDriveVerify(){
     const ids = [...new Set(Object.values(DRIVE_FOLDERS))];
     for (let i = 0; i < ids.length; i += 6) await Promise.all(ids.slice(i, i + 6).map(id => loadFolderFiles(id).catch(() => { folderFiles[id] = { files: [], subfolders: 0, error: true }; })));
     let total = 0, empty = 0, err = 0;
-    const rows = getFolders().map(f => {
+    const rows = DATA.chapters.map(ch => `<tr><td colspan="6" style="padding:8px 6px 3px;font-weight:800;background:#f3f4f6;">${ch.badge}: ${ch.title}</td></tr>` + ch.folders.map(f => {
       const ff = folderFiles[DRIVE_FOLDERS[f.id]]; if (!ff) return "";
       const n = ff.files.length; total += n;
       const bad = ff.error; if (bad) err++; else if (!n) empty++;
@@ -1831,7 +1831,7 @@ function openDriveVerify(){
         <td style="padding:5px 6px;text-align:center;">${nested}</td>
         <td style="padding:5px 6px;text-align:center;">${unl}</td>
         <td style="padding:5px 6px;">${bad ? "❌ cannot read" : (n ? "✅" : "⬜ empty")}</td></tr>`;
-    }).join("");
+    }).join("")).join("");
     ov.querySelector("#dvState").textContent = `${total} files · ${empty} empty folder(s)${err ? " · " + err + " with errors" : ""}`;
     ov.querySelector("#dvBody").innerHTML = `<table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;color:#6b7280;"><th style="padding:5px 6px;">Folder</th><th>Files (incl. subfolders)</th><th>Subfolders</th><th>In subfolders</th><th>Not linked</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
     renderDocs(); renderFolders(); renderProgress();
