@@ -1669,7 +1669,7 @@ function renderProgress(){
   el.innerHTML = `<div class="pp-head">
       <div class="pp-pct">${pctOf(r.counts.current, r.total)}%<small>Up to date · ${label}</small></div>
       <div class="pp-bar-wrap"><div class="pp-bar">${bar}</div><div class="pp-legend">${legend}</div></div>
-      <div class="pp-actions"><button class="pp-btn" id="ppCsv">Download report (CSV)</button></div>
+      <div class="pp-actions"><button class="pp-btn" id="ppCsv">Download report (CSV)</button> <button class="pp-btn" id="ppVerify" title="Check which files each Drive folder has">Verify Drive</button></div>
     </div>
     <details class="pp-details"><summary>Progress by chapter</summary>${chapters}</details>
     ${notes.length ? `<div class="pp-note">${notes.join(" ")}</div>` : ""}
@@ -1679,6 +1679,7 @@ function renderProgress(){
     state.selectedChapter = row.dataset.ch; state.selectedFolder = null; state.selectedDoc = null; render();
   }));
   const csvBtn = document.getElementById("ppCsv"); if (csvBtn) csvBtn.onclick = exportProgressCsv;
+  const vBtn = document.getElementById("ppVerify"); if (vBtn) vBtn.onclick = () => requireLogin(openDriveVerify);
 }
 
 function exportProgressCsv(){
@@ -1774,13 +1775,67 @@ async function loadStatuses(){
 }
 
 // ---- revisión automática contra Drive: archivos de cada carpeta ----
+// Lista una carpeta y todas sus subcarpetas (hasta 4 niveles): los archivos que estén en
+// subcarpetas también cuentan para la carpeta numerada, con la ruta de la subcarpeta como etiqueta.
+async function listDriveChildren(parentId, token){
+  const out = []; let pageToken = "";
+  do {
+    const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true${pageToken ? "&pageToken=" + encodeURIComponent(pageToken) : ""}`,
+      { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) throw new Error("drive files " + r.status);
+    const j = await r.json(); out.push(...(j.files || [])); pageToken = j.nextPageToken || "";
+  } while (pageToken);
+  return out;
+}
 async function loadFolderFiles(driveFolderId){
   const token = await getToken(); if (!token) return;
-  const q = encodeURIComponent(`'${driveFolderId}' in parents and trashed=false and mimeType!='${DRIVE_FOLDER_MIME}'`);
-  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&pageSize=200&orderBy=modifiedTime desc&supportsAllDrives=true&includeItemsFromAllDrives=true`,
-    { headers: { Authorization: "Bearer " + token } });
-  if (!r.ok) throw new Error("drive files " + r.status);
-  folderFiles[driveFolderId] = { files: (await r.json()).files || [] };
+  const files = []; let subfolders = 0;
+  const walk = async (id, path, depth) => {
+    const items = await listDriveChildren(id, token);
+    const subs = [];
+    items.forEach(it => {
+      if (it.mimeType === DRIVE_FOLDER_MIME) { subfolders++; subs.push(it); }
+      else files.push({ id: it.id, name: it.name, modifiedTime: it.modifiedTime, webViewLink: it.webViewLink, path });
+    });
+    if (depth < 4) await Promise.all(subs.map(s => walk(s.id, path ? path + " / " + s.name : s.name, depth + 1)));
+  };
+  await walk(driveFolderId, "", 1);
+  files.sort((a, b) => String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
+  folderFiles[driveFolderId] = { files, subfolders };
+}
+function openDriveVerify(){
+  const old = document.getElementById("driveVerify"); if (old) old.remove();
+  const ov = document.createElement("div"); ov.id = "driveVerify";
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
+  ov.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:88vh;overflow:auto;padding:18px 20px;font-size:.82rem;color:#1f2937;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><strong style="font-size:1rem;">Drive check</strong>
+    <span id="dvState" style="color:#6b7280;">Reading Drive…</span><button id="dvClose" style="margin-left:auto;border:0;background:#e5e7eb;border-radius:8px;padding:6px 12px;cursor:pointer;">Close</button></div>
+    <div id="dvBody"></div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelector("#dvClose").onclick = () => ov.remove();
+  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+  (async () => {
+    const ids = [...new Set(Object.values(DRIVE_FOLDERS))];
+    for (let i = 0; i < ids.length; i += 6) await Promise.all(ids.slice(i, i + 6).map(id => loadFolderFiles(id).catch(() => { folderFiles[id] = { files: [], subfolders: 0, error: true }; })));
+    let total = 0, empty = 0, err = 0;
+    const rows = getFolders().map(f => {
+      const ff = folderFiles[DRIVE_FOLDERS[f.id]]; if (!ff) return "";
+      const n = ff.files.length; total += n;
+      const bad = ff.error; if (bad) err++; else if (!n) empty++;
+      const nested = ff.files.filter(x => x.path).length;
+      const unl = unlinkedFiles(f).length;
+      return `<tr style="border-top:1px solid #e5e7eb;"><td style="padding:5px 6px;">${f.title}</td>
+        <td style="padding:5px 6px;text-align:center;">${bad ? "⚠ error" : n}</td>
+        <td style="padding:5px 6px;text-align:center;">${ff.subfolders || 0}</td>
+        <td style="padding:5px 6px;text-align:center;">${nested}</td>
+        <td style="padding:5px 6px;text-align:center;">${unl}</td>
+        <td style="padding:5px 6px;">${bad ? "❌ cannot read" : (n ? "✅" : "⬜ empty")}</td></tr>`;
+    }).join("");
+    ov.querySelector("#dvState").textContent = `${total} files · ${empty} empty folder(s)${err ? " · " + err + " with errors" : ""}`;
+    ov.querySelector("#dvBody").innerHTML = `<table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;color:#6b7280;"><th style="padding:5px 6px;">Folder</th><th>Files (incl. subfolders)</th><th>Subfolders</th><th>In subfolders</th><th>Not linked</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    renderDocs(); renderFolders(); renderProgress();
+  })();
 }
 let prefetching = false;
 async function prefetchAllFolders(){
@@ -2032,7 +2087,9 @@ function renderDocs(){
   const unl=f?unlinkedFiles(f):[];
   if(unl.length){
     const note=document.createElement("div");note.className="drive-notice";
-    note.innerHTML=`📁 ${unl.length} file(s) in this Drive folder are not linked to any document: <strong>${unl.slice(0,4).map(x=>x.name).join(", ")}${unl.length>4?"…":""}</strong>. If one is a new version or a new document, use <strong>Update</strong> or the <strong>+</strong> button. <a href="${f.sharepointUrl}" target="_blank" rel="noopener">Open folder</a>`;
+    const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    const list=unl.map(x=>`<li><a href="${esc(x.webViewLink||("https://drive.google.com/file/d/"+x.id+"/view"))}" target="_blank" rel="noopener">${esc(x.name)}</a>${x.path?` <span style="color:#92400e;">· ${esc(x.path)}</span>`:""}</li>`).join("");
+    note.innerHTML=`<details><summary>📁 <strong>${unl.length}</strong> file(s) in this Drive folder${unl.some(x=>x.path)?" (some inside subfolders)":""} are not linked to any document. Click to see them.</summary><ul style="margin:6px 0 4px 18px;padding:0;">${list}</ul>If one is a new version or a new document, use <strong>Update</strong> or the <strong>+</strong> button. <a href="${f.sharepointUrl}" target="_blank" rel="noopener">Open folder</a></details>`;
     el.appendChild(note);
   }
   if(!docs.length){el.insertAdjacentHTML("beforeend",`<div class="empty-state">No documents in this folder.</div>`);return;}
