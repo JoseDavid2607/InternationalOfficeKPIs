@@ -1612,11 +1612,13 @@ function linkedFileIds(folder){
   return new Set(folder.documents.map(d => docFileId({...d, ...(docOverrides[d.id] || {})})).filter(Boolean));
 }
 function unlinkedFiles(folder){
+  if (folder.fromDrive) return [];   // la vista es el espejo de Drive: no hay archivos "sin vincular"
   const ff = folderFiles[DRIVE_FOLDERS[folder.id]]; if (!ff) return [];
   const linked = linkedFileIds(folder);
   return ff.files.filter(f => !linked.has(f.id));
 }
 function newerUnlinked(folder, doc){
+  if (folder.fromDrive) return [];
   const fi = driveFileInfo(folder, doc); if (!fi) return [];
   return unlinkedFiles(folder).filter(f => new Date(f.modifiedTime) > new Date(fi.modifiedTime));
 }
@@ -2111,7 +2113,7 @@ function renderFolders(){
   });
 }
 
-const loadingFolders=new Set();
+const loadingFolders=new Set(), openGroups=new Set();
 function renderDocs(){
   const el=document.getElementById("docList");
   const desc=document.getElementById("docColDesc");
@@ -2154,10 +2156,21 @@ function renderDocs(){
   }
   if(!docs.length){el.insertAdjacentHTML("beforeend",`<div class="empty-state">No documents in this folder.</div>`);return;}
   let lastGroup="";
+  const grpCount={};docs.forEach(d=>{if(d.group)grpCount[d.group]=(grpCount[d.group]||0)+1;});
   docs.forEach(docBase=>{
     const doc={...docBase,...(docOverrides[docBase.id]||{})};
-    if(doc.group&&doc.group!==lastGroup){const gh=document.createElement("div");gh.style.cssText="padding:8px 4px 2px;font-weight:800;font-size:.78rem;color:#374151;";gh.textContent="📂 "+doc.group;el.appendChild(gh);}
-    lastGroup=doc.group||"";
+    if(doc.group){
+      const gk=state.selectedFolder+"|"+doc.group, open=openGroups.has(gk);
+      if(doc.group!==lastGroup){
+        const gh=document.createElement("div");gh.className="doc-group";
+        gh.style.cssText="padding:8px 8px;margin-top:4px;font-weight:800;font-size:.8rem;color:#374151;cursor:pointer;background:#f3f4f6;border-radius:8px;user-select:none;";
+        gh.textContent=(open?"▾ 📂 ":"▸ 📁 ")+doc.group+"  ("+grpCount[doc.group]+")";
+        gh.addEventListener("click",()=>{open?openGroups.delete(gk):openGroups.add(gk);renderDocs();});
+        el.appendChild(gh);
+      }
+      lastGroup=doc.group;
+      if(!open) return;
+    } else lastGroup="";
     const item=document.createElement("div");
     item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");
     const folder=getFolders().find(f=>f.id===state.selectedFolder);
