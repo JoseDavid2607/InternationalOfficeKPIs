@@ -935,7 +935,7 @@ async function loadFromSheet() {
       }
       if(!found){
         for(const ch of DATA.chapters){
-          const fo=ch.folders.find(f=>f.id===folderId);
+          const fo=ch.folders.find(f=>f.id===folderId||f._legacyId===folderId);
           if(fo){
             fo.documents.push({id:docId,title:meta.title||"Added document",type:meta.type||"PDF",meta:meta.title||"",responsible:meta.responsible||"",updatedAt:meta.updatedAt||null,accreditations:fo.accreditations,url:meta.url||"#"});
             break;
@@ -983,7 +983,7 @@ function parseNumberedName(name) {
   const m = String(name).match(/^\s*(\d+(?:\.\d+)?)\.?\s+(.*)$/);
   return m ? { num: m[1], title: m[2].trim() } : null;
 }
-let driveSyncRunning = false;
+let driveSyncRunning = false, lastDriveSync = 0;
 async function syncDriveFolders() {
   if (driveSyncRunning) return;
   const token = await getToken();
@@ -1005,31 +1005,38 @@ async function syncDriveFolders() {
     });
     const results = await Promise.all(DATA.chapters.map(async ch => {
       const dk = chapterByNum[ch.id]; if (!dk) return [ch, null];
-      try { return [ch, await driveListFolders(dk.id, token)]; } catch (e) { return [ch, null]; }
+      try { return [ch, await driveListFolders(dk.id, token), dk]; } catch (e) { return [ch, null]; }
     }));
+    // La vista es un espejo de Drive: cada subcarpeta de Drive es una carpeta del BaseRoom, con su
+    // nombre exacto y en el mismo orden. Los datos del código (acreditaciones, periodicidad) solo se
+    // reutilizan, por número de carpeta, como metadatos; los nombres de los archivos vienen de Drive.
+    const nat = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
     let changed = false;
-    for (const [ch, kids] of results) {
+    for (const [ch, kids, dk] of results) {
       if (!kids) continue;
-      const seen = new Set();
-      for (const k of kids) {
-        const pn = parseNumberedName(k.name); if (!pn) continue;
-        const n = pn.num.split(".")[0];
-        seen.add(n);
-        let fo = ch.folders.find(f => String(f.badge).replace(/\D+/g, "") === n);
-        const url = "https://drive.google.com/drive/folders/" + k.id;
-        if (!fo) {   // carpeta nueva en Drive -> aparece en el BaseRoom
-          const idBase = ch.id.replace("ch", "f");
-          fo = { id: `${idBase}-${n}`, badge: "Folder " + n, title: pn.title, desc: "Folder added from Google Drive.",
-                 accreditations: ["AACSB","EQUIS","AMBA"], sharepointUrl: url, periodicidad: "", documents: [], fromDrive: true };
-          ch.folders.push(fo); changed = true;
-        } else {
-          if (fo.sharepointUrl !== url) { fo.sharepointUrl = url; changed = true; }
-          if (pn.title && fo.title !== pn.title) { fo.title = pn.title; changed = true; }
-        }
-        DRIVE_FOLDERS[fo.id] = k.id;
-      }
-      ch.folders.sort((a, b) => parseInt(String(a.badge).replace(/\D+/g, "")) - parseInt(String(b.badge).replace(/\D+/g, "")));
+      if (dk && dk.name && ch.title !== dk.name) { ch.title = dk.name; changed = true; }
+      if (!ch._legacy) ch._legacy = ch.folders.slice();
+      const prev = new Map(ch.folders.map(f => [f.id, f])), claimed = new Set(), next = [];
+      [...kids].sort(nat).forEach(k => {
+        const pn = parseNumberedName(k.name), n = pn ? pn.num.split(".")[0] : null;
+        const old = n ? ch._legacy.find(f => !claimed.has(f.id) && String(f.badge).replace(/\D+/g, "") === n) : null;
+        if (old) claimed.add(old.id);
+        const id = "dv_" + k.id, url = "https://drive.google.com/drive/folders/" + k.id;
+        let fo = prev.get(id);
+        if (!fo) {
+          fo = { id, badge: "📁", title: k.name, desc: "", accreditations: old ? old.accreditations : ["AACSB","EQUIS","AMBA"],
+                 sharepointUrl: url, periodicidad: old ? old.periodicidad : "", documents: old ? old.documents.slice() : [],
+                 fromDrive: true, _legacyDocs: old ? old.documents : [], _legacyId: old ? old.id : null };
+          changed = true;
+        } else if (fo.title !== k.name) { fo.title = k.name; changed = true; }
+        DRIVE_FOLDERS[id] = k.id;
+        next.push(fo);
+      });
+      if (next.length !== ch.folders.length || next.some((f, i) => ch.folders[i] !== f)) changed = true;
+      ch.folders = next;
     }
+    if (state.selectedFolder && !getFolders().some(f => f.id === state.selectedFolder)) { state.selectedFolder = null; state.selectedDoc = null; }
+    lastDriveSync = Date.now();
     if (changed) render();
   } catch (e) {
     console.warn("Drive folder sync skipped:", e.message || e);
@@ -1669,7 +1676,7 @@ function renderProgress(){
   el.innerHTML = `<div class="pp-head">
       <div class="pp-pct">${pctOf(r.counts.current, r.total)}%<small>Up to date · ${label}</small></div>
       <div class="pp-bar-wrap"><div class="pp-bar">${bar}</div><div class="pp-legend">${legend}</div></div>
-      <div class="pp-actions"><button class="pp-btn" id="ppCsv">Download report (CSV)</button> <button class="pp-btn" id="ppVerify" title="Check which files each Drive folder has">Verify Drive</button></div>
+      <div class="pp-actions"><button class="pp-btn" id="ppCsv">Download report (CSV)</button> <button class="pp-btn" id="ppVerify" title="Check which files each Drive folder has">Verify Drive</button> <button class="pp-btn" id="ppRefresh" title="Reload folders and files from Google Drive">↻ Refresh from Drive</button></div>
     </div>
     <details class="pp-details"><summary>Progress by chapter</summary>${chapters}</details>
     ${notes.length ? `<div class="pp-note">${notes.join(" ")}</div>` : ""}
@@ -1679,6 +1686,7 @@ function renderProgress(){
     state.selectedChapter = row.dataset.ch; state.selectedFolder = null; state.selectedDoc = null; render();
   }));
   const csvBtn = document.getElementById("ppCsv"); if (csvBtn) csvBtn.onclick = exportProgressCsv;
+  const rBtn = document.getElementById("ppRefresh"); if (rBtn) rBtn.onclick = () => { showToast("Refreshing from Drive…"); syncDriveFolders(); };
   const vBtn = document.getElementById("ppVerify"); if (vBtn) vBtn.onclick = () => requireLogin(openDriveVerify);
 }
 
@@ -1771,6 +1779,7 @@ async function loadStatuses(){
       docStatus[id] = { status: st, by: r[ix("reviewedBy")] || "", at: r[ix("reviewedAt")] || "", note: r[ix("note")] || "" };
     }
     statusTabReady = true;
+    DATA.chapters.forEach(ch => ch.folders.forEach(applyDriveDocs));
   } catch (e) { console.warn("Could not load statuses", e); }
 }
 
@@ -1803,6 +1812,33 @@ async function loadFolderFiles(driveFolderId){
   await walk(driveFolderId, "", 1);
   files.sort((a, b) => String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
   folderFiles[driveFolderId] = { files, subfolders };
+  DATA.chapters.forEach(ch => ch.folders.forEach(fo => { if (DRIVE_FOLDERS[fo.id] === driveFolderId) applyDriveDocs(fo); }));
+}
+// Los documentos de una carpeta son sus archivos de Drive, con el nombre exacto y el orden de Drive
+// (subcarpetas primero, orden natural). Se conservan los enlaces/dashboards que no son archivos de Drive.
+const driveFileIdOf = u => (String(u || "").match(/\/file\/d\/([^\/\?#]+)/) || [])[1];
+const driveExt = n => { const m = String(n).match(/\.([A-Za-z0-9]{2,5})$/); return m ? m[1].toUpperCase() : "FILE"; };
+function applyDriveDocs(fo){
+  const ff = folderFiles[DRIVE_FOLDERS[fo.id]]; if (!ff || ff.error) return;
+  const ids = new Set(ff.files.map(x => x.id));
+  const legacy = fo._legacyDocs || [];
+  legacy.forEach(d => {                       // el estado marcado antes en la tarjeta vieja se conserva
+    const fid = driveFileIdOf({...d, ...(docOverrides[d.id] || {})}.url);
+    if (fid && ids.has(fid) && docStatus[d.id] && !docStatus["drv_" + fid]) docStatus["drv_" + fid] = docStatus[d.id];
+  });
+  const base = [...legacy, ...fo.documents.filter(d => !d.driveFile && !legacy.includes(d))].filter(d => {
+    const o = {...d, ...(docOverrides[d.id] || {})}; if (!hasDoc(o)) return false;
+    const fid = driveFileIdOf(o.url); return !fid || !ids.has(fid);
+  });
+  const nat = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+  const files = [...ff.files].sort((a, b) => (a.path ? 0 : 1) - (b.path ? 0 : 1) || nat(a.path || "", b.path || "") || nat(a.name, b.name));
+  fo.documents = [...base, ...files.map(x => ({ id: "drv_" + x.id, title: x.name, type: driveExt(x.name), meta: "", responsible: "", updatedAt: null,
+    accreditations: fo.accreditations, url: `https://drive.google.com/file/d/${x.id}/preview`, viewUrl: x.webViewLink || `https://drive.google.com/file/d/${x.id}/view`,
+    driveFile: true, group: x.path || "" }))];
+}
+function refreshFolder(fo){
+  const id = DRIVE_FOLDERS[fo.id]; if (!id || !isSignedIn()) return;
+  loadFolderFiles(id).then(() => { renderDocs(); renderFolders(); renderProgress(); }).catch(() => {});
 }
 function openDriveVerify(){
   const old = document.getElementById("driveVerify"); if (old) old.remove();
@@ -1810,107 +1846,41 @@ function openDriveVerify(){
   ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
   ov.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:88vh;overflow:auto;padding:18px 20px;font-size:.82rem;color:#1f2937;">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><strong style="font-size:1rem;">Drive check</strong>
-    <span id="dvState" style="color:#6b7280;">Reading Drive…</span><button id="dvLink" disabled style="margin-left:auto;border:0;background:#2563eb;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;">Link documents automatically</button><button id="dvCsv" disabled style="border:0;background:#1f2937;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;">Download report (CSV)</button><button id="dvClose" style="border:0;background:#e5e7eb;border-radius:8px;padding:6px 12px;cursor:pointer;">Close</button></div>
+    <span id="dvState" style="color:#6b7280;">Reading Drive…</span><button id="dvCsv" disabled style="margin-left:auto;border:0;background:#1f2937;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;">Download report (CSV)</button><button id="dvClose" style="border:0;background:#e5e7eb;border-radius:8px;padding:6px 12px;cursor:pointer;">Close</button></div>
     <div id="dvBody"></div></div>`;
   document.body.appendChild(ov);
   ov.querySelector("#dvClose").onclick = () => ov.remove();
   ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
   (async () => {
-    const ids = [...new Set(Object.values(DRIVE_FOLDERS))];
+    const ids = currentDriveIds();
     for (let i = 0; i < ids.length; i += 6) await Promise.all(ids.slice(i, i + 6).map(id => loadFolderFiles(id).catch(() => { folderFiles[id] = { files: [], subfolders: 0, error: true }; })));
     let total = 0, empty = 0, err = 0;
-    const rows = DATA.chapters.map(ch => `<tr><td colspan="6" style="padding:8px 6px 3px;font-weight:800;background:#f3f4f6;">${ch.badge}: ${ch.title}</td></tr>` + ch.folders.map(f => {
+    const rows = DATA.chapters.map(ch => `<tr><td colspan="5" style="padding:8px 6px 3px;font-weight:800;background:#f3f4f6;">${ch.title}</td></tr>` + ch.folders.map(f => {
       const ff = folderFiles[DRIVE_FOLDERS[f.id]]; if (!ff) return "";
       const n = ff.files.length; total += n;
       const bad = ff.error; if (bad) err++; else if (!n) empty++;
       const nested = ff.files.filter(x => x.path).length;
-      const unl = unlinkedFiles(f).length;
       return `<tr style="border-top:1px solid #e5e7eb;"><td style="padding:5px 6px;">${f.title}</td>
         <td style="padding:5px 6px;text-align:center;">${bad ? "⚠ error" : n}</td>
         <td style="padding:5px 6px;text-align:center;">${ff.subfolders || 0}</td>
         <td style="padding:5px 6px;text-align:center;">${nested}</td>
-        <td style="padding:5px 6px;text-align:center;">${unl}</td>
         <td style="padding:5px 6px;">${bad ? "❌ cannot read" : (n ? "✅" : "⬜ empty")}</td></tr>`;
     }).join("")).join("");
     ov.querySelector("#dvState").textContent = `${total} files · ${empty} empty folder(s)${err ? " · " + err + " with errors" : ""}`;
-    ov.querySelector("#dvBody").innerHTML = `<table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;color:#6b7280;"><th style="padding:5px 6px;">Folder</th><th>Files (incl. subfolders)</th><th>Subfolders</th><th>In subfolders</th><th>Not linked</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    ov.querySelector("#dvBody").innerHTML = `<table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;color:#6b7280;"><th style="padding:5px 6px;">Folder</th><th>Files (incl. subfolders)</th><th>Subfolders</th><th>In subfolders</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
     const dvCsv = ov.querySelector("#dvCsv"); dvCsv.disabled = false; dvCsv.onclick = exportDriveCsv;
-    const dvLink = ov.querySelector("#dvLink"); dvLink.disabled = false; dvLink.onclick = () => openAutoLink(ov);
     renderDocs(); renderFolders(); renderProgress();
   })();
 }
 
-// ---- vincular documentos con archivos de Drive por nombre ----
-const AL_STOP = new Set(["the","of","and","for","uasm","uniandes","de","la","el","y","pdf","docx","xlsx","pptx","document","documents"]);
-function alTokens(str){
-  return String(str).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
-    .replace(/\.(pdf|docx?|xlsx?|pptx?|csv|png|jpe?g)$/i, "").replace(/^\s*\d+(\.\d+)*[.)]?\s+/, "")
-    .split(/[^a-z0-9]+/).filter(t => t && !AL_STOP.has(t));
-}
-function alSame(a, b){
-  if (a === b) return true;
-  if (a.length < 6 || b.length < 6 || Math.abs(a.length - b.length) > 1) return false;
-  let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  return a.slice(i + 1) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i) || a.slice(i) === b.slice(i + 1);
-}
-function alScore(docTitle, fileName){
-  const A = alTokens(docTitle), B = alTokens(fileName); if (!A.length || !B.length) return 0;
-  const used = new Set(); let hit = 0;
-  A.forEach(a => { const j = B.findIndex((b, k) => !used.has(k) && alSame(a, b)); if (j >= 0) { used.add(j); hit++; } });
-  if (hit < Math.min(2, A.length, B.length)) return 0;
-  return hit / Math.max(A.length, B.length) * 0.5 + hit / Math.min(A.length, B.length) * 0.5;
-}
-function computeAutoLinks(){
-  const links = [];
-  DATA.chapters.forEach(ch => ch.folders.forEach(f => {
-    const ff = folderFiles[DRIVE_FOLDERS[f.id]]; if (!ff || !ff.files.length) return;
-    const free = f.documents.filter(d => !hasDoc({...d, ...(docOverrides[d.id] || {})}));
-    if (!free.length) return;
-    const taken = linkedFileIds(f), cand = [];
-    free.forEach(d => ff.files.forEach(x => { if (taken.has(x.id)) return; const sc = alScore(d.title, x.name); if (sc >= 0.6) cand.push({ d, x, sc }); }));
-    cand.sort((a, b) => b.sc - a.sc);
-    const dUsed = new Set(), fUsed = new Set();
-    cand.forEach(c => { if (dUsed.has(c.d.id) || fUsed.has(c.x.id)) return; dUsed.add(c.d.id); fUsed.add(c.x.id); links.push({ ch, f, d: c.d, x: c.x, sc: c.sc }); });
-  }));
-  return links;
-}
-function openAutoLink(ov){
-  const links = computeAutoLinks();
-  const body = ov.querySelector("#dvBody");
-  const pending = DATA.chapters.reduce((n, ch) => n + ch.folders.reduce((m, f) => m + f.documents.filter(d => !hasDoc({...d, ...(docOverrides[d.id] || {})})).length, 0), 0);
-  if (!links.length) { body.innerHTML = `<p>No confident matches found. ${pending} document(s) are still without a file; they will be linked by hand with <strong>Update</strong>.</p>`; return; }
-  body.innerHTML = `<p><strong>${links.length}</strong> of ${pending} unlinked documents have a matching file in their Drive folder (by name). Uncheck any that look wrong and apply.</p>
-    <table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;color:#6b7280;"><th></th><th style="padding:4px 6px;">Document</th><th>Drive file</th><th>Match</th></tr></thead><tbody>${links.map((l, i) =>
-      `<tr style="border-top:1px solid #e5e7eb;"><td style="padding:4px 6px;"><input type="checkbox" data-i="${i}" checked></td><td style="padding:4px 6px;">${l.d.title}<div style="color:#9ca3af;">${l.f.title}</div></td><td style="padding:4px 6px;">${l.x.name}${l.x.path ? `<div style="color:#9ca3af;">${l.x.path}</div>` : ""}</td><td style="padding:4px 6px;">${Math.round(l.sc * 100)}%</td></tr>`).join("")}</tbody></table>
-    <div style="margin-top:12px;"><button id="alApply" style="border:0;background:#16a34a;color:#fff;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:700;">Apply selected links</button> <span id="alMsg" style="color:#6b7280;"></span></div>`;
-  body.querySelector("#alApply").onclick = async () => {
-    const chosen = [...body.querySelectorAll("input[data-i]:checked")].map(c => links[+c.dataset.i]);
-    if (!chosen.length) return;
-    const token = await getToken(); if (!token) { showToast("Your session expired. Please sign in again."); return; }
-    const today = new Date().toISOString().slice(0, 10);
-    const rowsOut = chosen.map(l => [l.d.id, l.d.title, l.d.responsible || "", (l.x.modifiedTime || today).slice(0, 10),
-      `https://drive.google.com/file/d/${l.x.id}/view`, `https://drive.google.com/file/d/${l.x.id}/preview`, "auto-link", "", l.d.type || "PDF"]);
-    body.querySelector("#alMsg").textContent = "Saving…";
-    try {
-      const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(SHEET_NAME + "!A:I")}:append?valueInputOption=USER_ENTERED`,
-        { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ values: rowsOut }) });
-      if (!r.ok) throw new Error(r.status);
-      chosen.forEach((l, i) => { docOverrides[l.d.id] = { title: l.d.title, responsible: l.d.responsible || "", updatedAt: rowsOut[i][3], url: rowsOut[i][5], viewUrl: rowsOut[i][4], uploadedBy: "auto-link", notes: "", type: l.d.type || "PDF" }; });
-      body.querySelector("#alMsg").textContent = `✅ ${chosen.length} document(s) linked.`;
-      renderDocs(); renderFolders(); renderProgress();
-    } catch (e) { body.querySelector("#alMsg").textContent = "Could not save (error " + e.message + ")."; }
-  };
-}
-
 function exportDriveCsv(){
   const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
-  const rows = [["Chapter","Folder","File","Subfolder","Modified","Linked to a document","Link"]];
+  const rows = [["Chapter","Folder","File","Subfolder","Modified","Link"]];
   DATA.chapters.forEach(ch => ch.folders.forEach(f => {
     const ff = folderFiles[DRIVE_FOLDERS[f.id]]; if (!ff) return;
-    if (ff.error) { rows.push([ch.title, f.title, "(could not read folder)", "", "", "", ""]); return; }
-    if (!ff.files.length) { rows.push([ch.title, f.title, "(empty)", "", "", "", ""]); return; }
-    const linked = linkedFileIds(f);
-    ff.files.forEach(x => rows.push([ch.title, f.title, x.name, x.path || "", (x.modifiedTime || "").slice(0,10), linked.has(x.id) ? "Yes" : "No",
+    if (ff.error) { rows.push([ch.title, f.title, "(could not read folder)", "", "", ""]); return; }
+    if (!ff.files.length) { rows.push([ch.title, f.title, "(empty)", "", "", ""]); return; }
+    ff.files.forEach(x => rows.push([ch.title, f.title, x.name, x.path || "", (x.modifiedTime || "").slice(0,10),
       x.webViewLink || ("https://drive.google.com/file/d/" + x.id + "/view")]));
   }));
   const blob = new Blob(["\ufeff" + rows.map(r => r.map(q).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
@@ -1918,12 +1888,14 @@ function exportDriveCsv(){
   a.download = "BaseRoom_Drive_report_" + new Date().toISOString().slice(0,10) + ".csv"; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
+document.addEventListener("visibilitychange", () => { if (!document.hidden && isSignedIn() && Date.now() - lastDriveSync > 60000) syncDriveFolders(); });
+function currentDriveIds(){ return [...new Set(DATA.chapters.flatMap(ch => ch.folders.map(f => DRIVE_FOLDERS[f.id]).filter(Boolean)))]; }
 let prefetching = false;
 async function prefetchAllFolders(){
   if (prefetching || !isSignedIn()) return;
   prefetching = true;
   try {
-    const ids = [...new Set(Object.values(DRIVE_FOLDERS))];
+    const ids = currentDriveIds();
     for (let i = 0; i < ids.length; i += 6) {
       await Promise.all(ids.slice(i, i + 6).map(id => loadFolderFiles(id).catch(() => {})));
     }
@@ -2134,11 +2106,12 @@ function renderFolders(){
     btn.dataset.folderId=f.id;
     const tags=f.accreditations.map(a=>`<span class="f-tag">${a}</span>`).join("");
     btn.innerHTML=`<span class="f-badge">${f.badge}</span><span class="f-title">${f.title}</span>${folderProgressText(f)}<div class="f-tags">${tags}</div>`;
-    btn.addEventListener("click",()=>{state.selectedFolder=f.id;state.selectedDoc=null;render();});
+    btn.addEventListener("click",()=>{state.selectedFolder=f.id;state.selectedDoc=null;render();refreshFolder(f);});
     el.appendChild(btn);
   });
 }
 
+const loadingFolders=new Set();
 function renderDocs(){
   const el=document.getElementById("docList");
   const desc=document.getElementById("docColDesc");
@@ -2165,6 +2138,12 @@ function renderDocs(){
     return;
   }
   const docs=getDocs();el.innerHTML="";
+  const dId=f?DRIVE_FOLDERS[f.id]:null;
+  if(dId&&!folderFiles[dId]){
+    el.innerHTML=`<div class="empty-state">Loading files from Drive…</div>`;
+    if(!loadingFolders.has(dId)){loadingFolders.add(dId);loadFolderFiles(dId).catch(()=>{folderFiles[dId]={files:[],subfolders:0,error:true};}).finally(()=>{loadingFolders.delete(dId);renderDocs();renderFolders();renderProgress();});}
+    return;
+  }
   const unl=f?unlinkedFiles(f):[];
   if(unl.length){
     const note=document.createElement("div");note.className="drive-notice";
@@ -2174,8 +2153,11 @@ function renderDocs(){
     el.appendChild(note);
   }
   if(!docs.length){el.insertAdjacentHTML("beforeend",`<div class="empty-state">No documents in this folder.</div>`);return;}
+  let lastGroup="";
   docs.forEach(docBase=>{
     const doc={...docBase,...(docOverrides[docBase.id]||{})};
+    if(doc.group&&doc.group!==lastGroup){const gh=document.createElement("div");gh.style.cssText="padding:8px 4px 2px;font-weight:800;font-size:.78rem;color:#374151;";gh.textContent="📂 "+doc.group;el.appendChild(gh);}
+    lastGroup=doc.group||"";
     const item=document.createElement("div");
     item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");
     const folder=getFolders().find(f=>f.id===state.selectedFolder);
@@ -2205,7 +2187,7 @@ function renderDocs(){
     const statusHtml=`<div class="doc-status-row">${statusChipHtml(doc.id,eff)}${hints}</div>`;
     item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type||"PDF"}</div><div class="doc-title">${doc.title} ${alertHtml}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}${statusHtml}</div>
       <div class="doc-btn-group">
-        <button class="doc-update-btn" data-id="${doc.id}">Update</button>
+        <button class="doc-update-btn" data-id="${doc.id}">${doc.driveFile?"Open in Drive":"Update"}</button>
         ${(doc.url&&doc.url!=="#"&&doc.updatedAt)?`<button class="doc-delete-btn" data-id="${doc.id}" title="Delete document"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>`:""}
       </div></div>`;
     const chip=item.querySelector(".st-chip");
@@ -2216,6 +2198,7 @@ function renderDocs(){
     });
     item.querySelector(".doc-update-btn").addEventListener("click",(e)=>{
       e.stopPropagation();
+      if(doc.driveFile){window.open(doc.viewUrl,"_blank","noopener");return;}
       requireLogin(()=>openUploadModal(doc.id));
     });
     const delBtn=item.querySelector(".doc-delete-btn");
