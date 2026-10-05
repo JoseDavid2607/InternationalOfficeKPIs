@@ -183,6 +183,10 @@ header.hero h1 {
 .doc-add-slot::before { content:""; position:absolute; left:0; right:0; top:50%; border-top:1px dashed transparent; transition:border-color .15s; }
 .doc-add-slot span { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:#fff; padding:0 10px; font-size:.7rem; font-weight:700; color:#1d9e75; opacity:0; transition:opacity .15s; white-space:nowrap; }
 .doc-add-slot:hover::before { border-top-color:#a7d9c8; } .doc-add-slot:hover span { opacity:1; }
+.folder-upd-btn { padding:6px 12px; border-radius:999px; border:1.5px solid var(--border); background:#fff; color:var(--slate-mid); font-size:.76rem; font-weight:800; cursor:pointer; white-space:nowrap; flex-shrink:0; transition:all .15s; }
+.folder-upd-btn:hover { background:#1f2937; color:#fff; border-color:#1f2937; }
+.grp-upd { border:0; background:transparent; color:#9ca3af; cursor:pointer; font-size:.85rem; padding:0 4px; border-radius:6px; }
+.grp-upd:hover { color:#1f2937; background:#e5e7eb; }
 .doc-add-bar { display:flex; gap:10px; margin:10px 18px 16px; }
 .doc-add-bar .doc-add-row { flex:1; margin:0; }
 .doc-add-row { display:flex; align-items:center; justify-content:center; gap:8px; margin:10px 18px 16px; padding:10px; border:1.5px dashed #d1d5db; border-radius:12px; color:#6b7280; font-size:.8rem; font-weight:700; cursor:pointer; transition:border-color .15s,color .15s,background .15s; }
@@ -422,6 +426,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 .doc-hint { font-size:.72rem; color:#92400e; }
 .drive-notice { margin:0 0 10px; padding:9px 12px; border-radius:10px; background:#fffbeb; border:1px solid #fde68a; font-size:.78rem; color:#78350f; line-height:1.5; }
 .f-prog { margin-left:auto; font-size:.68rem; font-weight:800; padding:2px 8px; border-radius:999px; background:#eef0f2; color:#374151; }
+.f-prog.empty { opacity:.55; }
 .f-prog.done { background:#d1fae5; color:#065f46; }
 .status-menu { position:fixed; z-index:9999; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,.18); padding:6px; min-width:230px; }
 .status-menu button { display:flex; width:100%; gap:8px; align-items:center; text-align:left; padding:9px 10px; border:none; background:none; border-radius:8px; font-size:.82rem; font-weight:700; color:#1f2937; cursor:pointer; }
@@ -535,6 +540,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
           <h3>Documents</h3>
           <p id="docColDesc">Select a folder to view its documents</p>
         </div>
+        <button class="folder-upd-btn" id="folderUpdBtn" style="visibility:hidden;" title="Replace the contents of this folder with an updated version">↻ Update folder</button>
       </div>
       <div class="doc-scroll" id="docList"></div>
     </div>
@@ -619,6 +625,38 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       <button class="btn-cancel" id="modalCancelBtn">Cancel</button>
       <button class="btn-save" id="modalSaveBtn">Save to Drive</button>
     </div>
+  </div>
+</div>
+
+<!-- UPDATE FOLDER MODAL -->
+<div class="modal-overlay" id="folderUpdModal">
+  <div class="modal-box">
+    <button class="modal-close" id="fuClose">×</button>
+    <div class="modal-title">Update folder</div>
+    <div class="modal-sub" id="fuSub"></div>
+    <div class="type-toggle">
+      <button class="active" id="fuModeUpload">Upload updated folder</button>
+      <button id="fuModeMark">Already in Drive</button>
+    </div>
+    <div id="fuUploadSec">
+      <div class="form-group">
+        <label class="form-label">Updated folder from your computer</label>
+        <div class="file-drop" id="fuDrop"><strong>Click to choose the folder</strong><p>Subfolders are kept · max 50 MB per file</p>
+          <input type="file" id="fuDirInput" webkitdirectory multiple></div>
+        <a href="#" id="fuPickFiles" style="font-size:.75rem;color:#0f6e56;font-weight:700;">or choose individual files</a>
+        <input type="file" id="fuFilesInput" multiple style="display:none">
+      </div>
+      <div id="fuPreview" class="modal-sub" style="margin-bottom:10px;"></div>
+      <label class="form-label" style="display:flex;gap:8px;align-items:center;cursor:pointer;text-transform:none;letter-spacing:0;margin-bottom:8px;"><input type="checkbox" id="fuHidePrev" checked> Hide the previous versions in the folders being updated (renamed "ELIMINAR - …" in Drive)</label>
+    </div>
+    <div id="fuMarkSec" style="display:none;">
+      <div class="modal-sub" style="margin-bottom:12px;">Use this when the updated files are already in the Drive folder. Everything currently in this folder (and its subfolders) will be marked as the latest version.</div>
+    </div>
+    <div class="form-group"><label class="form-label" for="fuResp">Responsible</label><input class="form-input" type="text" id="fuResp" placeholder="Full name"></div>
+    <div class="form-group"><label class="form-label" for="fuNotes">Comments (optional)</label><input class="form-input" type="text" id="fuNotes" placeholder="e.g. CVs updated for the 2026 review"></div>
+    <label class="form-label" id="fuMarkRow" style="display:flex;gap:8px;align-items:center;cursor:pointer;text-transform:none;letter-spacing:0;margin-bottom:12px;"><input type="checkbox" id="fuMarkCurrent" checked> Mark the new documents as up to date</label>
+    <div class="upload-progress" id="fuProgress"><div class="upload-progress-bar"><div class="upload-progress-fill" id="fuFill"></div></div><div class="upload-progress-label" id="fuLabel"></div></div>
+    <div class="modal-actions"><button class="btn-cancel" id="fuCancel">Cancel</button><button class="btn-save" id="fuSave">Update folder</button></div>
   </div>
 </div>
 
@@ -1702,33 +1740,21 @@ function inScope(item){
   return accs.some(a => state.accSel.has(a));
 }
 // Un elemento por documento (con su estado) y uno por carpeta vacía de Drive (cuenta como "sin documento").
-const MISSING_CH = { id: "_missing", title: "Requested by the accreditations, not in Drive yet" };
-function progressItems(accs){
-  const out = [];
-  DATA.chapters.forEach(ch => ch.folders.forEach(f => {
-    const fa = f.accreditations || [];
-    f.documents.forEach(d0 => {
-      const d = {...d0, ...(docOverrides[d0.id] || {})};
-      if (!hasDoc(d)) return;      // tarjetas sin archivo: las cubren los requisitos sin documento
-      if (!(d.accreditations || fa).some(a => accs.includes(a))) return;
-      out.push({ ch, f, e: effStatus(d, f), auto: docAuto(d) });
-    });
-  }));
-  // Lo que cada acreditación pide (Excel) y todavía no tiene documento cuenta como "sin documento"
-  const M = reqMatches();
-  REQS.forEach(q => { if (accs.includes(q.acc) && !(M[q.id] || []).length) out.push({ ch: MISSING_CH, f: null, e: { key: "missing" }, auto: !!q.auto }); });
-  return out;
-}
+// % de actualización y de automatización = por requisito de cada acreditación (Excel), con el estado
+// que sale de los documentos de sus carpetas: una carpeta con muchos archivos cuenta como una sola cosa.
+// El avance por capítulo cuenta carpetas (una carpeta está al día cuando todos sus documentos lo están).
 function computeProgress(accs){
-  const res = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, byChapter: {}, auto: 0, autoItems: 0, changed: 0 };
-  progressItems(accs).forEach(it => {
-    res.total++; res.counts[it.e.key]++;
-    if (it.e.auto) res.auto++;
-    if (it.auto) res.autoItems++;
-    if (it.e.hint) res.changed++;
-    const c = res.byChapter[it.ch.id] = res.byChapter[it.ch.id] || { ch: it.ch, total: 0, current: 0 };
-    c.total++; if (it.e.key === "current") c.current++;
-  });
+  const res = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, byChapter: {}, autoReqs: 0, changed: 0 };
+  const M = reqMatches();
+  accs.forEach(a => { const m = reqMetrics(a, M); res.total += m.total; res.autoReqs += m.auto; STATUS_ORDER.forEach(k => { res.counts[k] += m.counts[k]; }); });
+  DATA.chapters.forEach(ch => ch.folders.forEach(f => {
+    if (!(f.accreditations || []).some(a => accs.includes(a))) return;
+    const docs = f.documents.map(d => ({...d, ...(docOverrides[d.id] || {})})).filter(hasDoc);
+    const keys = docs.map(d => effStatus(d, f));
+    keys.forEach(e => { if (e.hint) res.changed++; });
+    const c = res.byChapter[ch.id] = res.byChapter[ch.id] || { ch, total: 0, current: 0 };
+    c.total++; if (docs.length && keys.every(e => e.key === "current")) c.current++;
+  }));
   return res;
 }
 function pctOf(n, total){ return total ? Math.round(n / total * 1000) / 10 : 0; }
@@ -1746,20 +1772,20 @@ function renderProgress(){
   const label = sel.length === ACCS.length ? "BaseRoom" : sel.length ? sel.join(" + ") : "no accreditation selected";
   const bar = STATUS_ORDER.map(k => r.counts[k] ? `<span style="width:${pctOf(r.counts[k], r.total)}%;background:${STATUS_META[k].color}" title="${STATUS_META[k].label}: ${r.counts[k]}"></span>` : "").join("");
   const legend = STATUS_ORDER.map(k => `<span><i style="background:${STATUS_META[k].color}"></i>${STATUS_META[k].label} <strong>${r.counts[k]}</strong></span>`).join("");
-  const chapters = [...DATA.chapters.map(ch => r.byChapter[ch.id]), r.byChapter._missing].filter(Boolean).map(c =>
+  const chapters = DATA.chapters.map(ch => r.byChapter[ch.id]).filter(Boolean).map(c =>
     `<div class="pp-ch" data-ch="${c.ch.id}"><span>${c.ch.title}</span>
       <div class="pp-bar"><span style="width:${pctOf(c.current, c.total)}%;background:${STATUS_META.current.color}"></span></div>
       <strong>${c.current}/${c.total}</strong></div>`).join("");
   const notes = [];
   if (r.changed) notes.push(`${r.changed} document(s) changed in Drive after they were marked as latest and need a new review.`);
-  const autoAvg = r.total ? Math.round(r.autoItems / r.total * 1000) / 10 : 0;
+  const autoAvg = r.total ? Math.round(r.autoReqs / r.total * 1000) / 10 : 0;
   const mark = sel.length ? `<div class="pp-mark" style="left:${autoAvg}%" title="${autoAvg}% of the requirements can be automated"><span>⚡ ${autoAvg}%</span></div>` : "";
   el.innerHTML = `<div class="pp-head">
       <div class="pp-pct">${pctOf(r.counts.current, r.total)}%<small>Up to date · ${label}</small></div>
-      <div class="pp-auto" title="Share of the documents (and still-missing requirements) that can be automated">⚡ ${autoAvg}% automatable<small>${r.autoItems} of ${r.total} documents &amp; requirements · ${label}</small></div>
+      <div class="pp-auto" title="Share of the requirements that can be automated">⚡ ${autoAvg}% automatable<small>${r.autoReqs} of ${r.total} requirements · ${label}</small></div>
       <div class="pp-bar-wrap"><div class="pp-barbox"><div class="pp-bar">${bar}</div>${mark}</div><div class="pp-legend">${legend}</div></div>
     </div>
-    <details class="pp-details" id="chDetails"${state.chOpen ? " open" : ""}><summary>Progress by chapter</summary>${chapters}</details>
+    <details class="pp-details" id="chDetails"${state.chOpen ? " open" : ""}><summary>Progress by chapter <span style="font-weight:500;color:#9ca3af;">(folders up to date)</span></summary>${chapters}</details>
     ${notes.length ? `<div class="pp-note">${notes.join(" ")}</div>` : ""}
     ${renderChecklist(sel)}`;
   el.querySelectorAll(".pp-ch").forEach(row => row.addEventListener("click", () => {
@@ -1888,7 +1914,7 @@ function driveMeta(desc){
   return { responsible: g("Responsible"), notes: g("Comments"), autoFlag: /^yes$/i.test(a) ? true : /^no$/i.test(a) ? false : null };
 }
 function driveDescription(m){
-  return ["Responsible: " + (m.resp || ""), "Comments: " + (m.notes || ""), "Automatable: " + (m.auto ? "Yes" : "No"),
+  return ["Responsible: " + (m.resp || ""), "Comments: " + (m.notes || ""), ...(m.auto == null ? [] : ["Automatable: " + (m.auto ? "Yes" : "No")]),
     "Updated by: " + (m.by || googleUserEmail || "") + " · " + new Date().toISOString().slice(0, 10)].join("\n");
 }
 async function saveDriveMeta(fileId, m){
@@ -1954,10 +1980,9 @@ function statusChipHtml(docId, e){
   return `<button class="st-chip ${m.cls}" data-status-id="${docId}" title="${e.auto ? "Automatic: this item updates itself" : (e.by ? "Marked by " + e.by + (e.at ? " on " + e.at.slice(0,10) : "") : "Click to mark")}">${m.icon} ${m.label}${e.auto ? " · auto" : ""} ▾</button>`;
 }
 function folderProgressText(folder){
-  const items = folder.documents.map(d => ({ doc: {...d, ...(docOverrides[d.id] || {})}, folder, chapter: null })).filter(it => inScope(it));
-  if (!items.length) return "";
-  const cur = items.filter(it => effStatus(it.doc, folder).key === "current").length;
-  return `<span class="f-prog${cur === items.length ? " done" : ""}">${cur}/${items.length}</span>`;
+  const docs = folder.documents.map(d => ({...d, ...(docOverrides[d.id] || {})})).filter(hasDoc);
+  const cur = docs.filter(d => effStatus(d, folder).key === "current").length;
+  return `<span class="f-prog${docs.length && cur === docs.length ? " done" : ""}${docs.length ? "" : " empty"}" title="Documents up to date">${cur}/${docs.length}</span>`;
 }
 
 
@@ -2033,27 +2058,32 @@ function reqMatches(){
   map._autoDocs = new Set(REQS.filter(q => q.auto).flatMap(q => (map[q.id] || []).map(x => x.d.id)));
   reqMatchSig = sig; reqMatchMap = map; return map;
 }
-function docAuto(doc){
+function docAutoOwn(doc){   // lo que el propio documento dice: marca explícita, dashboards/links y todos los Excel
   if (doc.autoFlag === true || doc.autoFlag === false) return doc.autoFlag;
   if (isAutomated(doc)) return true;
-  return reqMatches()._autoDocs.has(doc.id);
+  return /^(XLSX?|XLSM|CSV|ODS)$/.test(String(doc.type || "").toUpperCase());
+}
+function docAuto(doc){
+  return docAutoOwn(doc) || (doc.autoFlag == null && reqMatches()._autoDocs.has(doc.id));
 }
 function reqState(q, M){
   const ms = M[q.id] || [];
-  if (!ms.length) return { key: "missing", cur: 0, tot: 0, ms };
-  const cur = ms.filter(x => effStatus(x.d, x.f).key === "current").length;
-  return { key: cur === ms.length ? "current" : "review", cur, tot: ms.length, ms };
+  const auto = !!q.auto || ms.some(x => docAutoOwn(x.d));   // una carpeta con muchos archivos automatizables cuenta una sola vez
+  if (!ms.length) return { key: "missing", cur: 0, tot: 0, ms, auto };
+  const keys = ms.map(x => effStatus(x.d, x.f).key), cur = keys.filter(k => k === "current").length;
+  const key = keys.includes("update") ? "update" : keys.includes("new") ? "new" : cur === ms.length ? "current" : "review";
+  return { key, cur, tot: ms.length, ms, auto };
 }
 function reqMetrics(acc, M){
   const m = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, auto: 0 };
-  REQS.filter(q => q.acc === acc).forEach(q => { m.total++; m.counts[reqState(q, M).key]++; if (q.auto) m.auto++; });
+  REQS.filter(q => q.acc === acc).forEach(q => { const st = reqState(q, M); m.total++; m.counts[st.key]++; if (st.auto) m.auto++; });
   return m;
 }
 // Checklist = requisitos de cada acreditación (según el Excel de seguimiento), con el nombre corto,
 // responsable, si es automatizable y el estado según los documentos reales de las carpetas de Drive.
 function renderAccTable(a, M){
   const chip = st => st.key === "missing" ? '<span class="st-chip st-missing">○ No document</span>'
-    : st.key === "current" ? `<span class="st-chip st-current">✓ ${st.cur}/${st.tot}</span>` : `<span class="st-chip st-review">◔ ${st.cur}/${st.tot}</span>`;
+    : `<span class="st-chip ${STATUS_META[st.key].cls}">${STATUS_META[st.key].icon} ${st.cur}/${st.tot}</span>`;
   let body = "", lastG = null;
   REQS.filter(q => q.acc === a).forEach(q => {
     if (q.group !== lastG) { lastG = q.group; body += `<tr class="rq-ch"><td colspan="4">${esc(q.group)}</td></tr>`; }
@@ -2062,7 +2092,7 @@ function renderAccTable(a, M){
     body += `<tr class="${first ? "rq-frow" : ""}"${first ? ` data-ch="${first.ch.id}" data-fo="${esc(first.f.id)}"` : ""}>
       <td title="${esc(q.text)}">${esc(q.short || q.text)}${where ? `<div class="rq-where">${esc(where)}</div>` : ""}</td>
       <td class="rq-resp" title="${esc(q.resp)}">${esc(String(q.resp || "").split("\n").join(" · ")) || "—"}</td>
-      <td class="rq-auto-cell" title="${q.auto ? "Can be automated" : ""}">${q.auto ? "⚡" : ""}</td><td>${chip(st)}</td></tr>`;
+      <td class="rq-auto-cell" title="${st.auto ? "Can be automated" : ""}">${st.auto ? "⚡" : ""}</td><td>${chip(st)}</td></tr>`;
   });
   return `<table class="rq-table"><thead><tr><th style="width:48%">Requested by ${a}</th><th>Responsible</th><th style="width:34px">⚡</th><th>Status</th></tr></thead><tbody>${body}</tbody></table>`;
 }
@@ -2080,8 +2110,7 @@ function renderChecklist(sel){
   }).join("");
   return `<details class="pp-details pp-req" id="rqDetails"${state.reqOpen ? " open" : ""}>
     <summary><span class="pp-req-title">Requirements checklist (what each accreditation asks for)</span><span class="rq-chks">${chk}</span></summary>
-    ${rows || '<div class="pp-note">Select at least one accreditation.</div>'}
-    <div class="pp-note">Each checklist follows the accreditation's own tracking Excel (EQUIS ${REQS.filter(q => q.acc === "EQUIS").length}, AACSB ${REQS.filter(q => q.acc === "AACSB").length}, AMBA ${REQS.filter(q => q.acc === "AMBA").length} requirements). Status comes from the documents found in the Drive folders shown under each requirement; "No document" means nothing matches it yet. Hover a requirement to read it in full. ⚡ = can be automated.</div></details>`;
+    ${rows || '<div class="pp-note">Select at least one accreditation.</div>'}</details>`;
 }
 function bindChecklist(root){
   const d = root.querySelector("#rqDetails"); if (!d) return;
@@ -2192,6 +2221,7 @@ function docTypeClass(doc){
 }
 function renderDocs(){
   const el=document.getElementById("docList");
+  { const fub0=document.getElementById("folderUpdBtn"); if(fub0&&!state.selectedFolder) fub0.style.visibility="hidden"; }
   const desc=document.getElementById("docColDesc");
     if(!state.selectedFolder){
     desc.textContent="Select a folder to view its documents";
@@ -2214,6 +2244,7 @@ function renderDocs(){
   }
   const docs=getDocs();el.innerHTML="";
   const dId=f?DRIVE_FOLDERS[f.id]:null;
+  const fub=document.getElementById("folderUpdBtn");if(fub)fub.style.visibility=(dId&&isSignedIn())?"visible":"hidden";
   const makeAddSlot=(targetId,big)=>{
     const d=document.createElement("div");
     if(big){
@@ -2276,7 +2307,7 @@ function renderDocs(){
     const newer=newerUnlinked(folder,doc);
     const hints=[eff.hint, newer.length?`Newer file in Drive not linked: ${newer[0].name}${newer.length>1?` (+${newer.length-1})`:""}`:""].filter(Boolean).map(h=>`<span class="doc-hint">⚠ ${h}</span>`).join("");
     const isAuto=docAuto(doc),canToggle=!!doc.driveFile;
-    const autoPill=`<button class="auto-pill${isAuto?" on":""}" data-auto-id="${doc.id}" title="${canToggle?"Click to change":"Updates itself"}"${canToggle?"":" disabled"}>${isAuto?"⚡ Automatable":"Manual"}</button>`;
+    const autoPill=`<button class="auto-pill${isAuto?" on":""}" data-auto-id="${doc.id}" title="${canToggle?"Click to change":"Updates itself"}"${canToggle?"":" disabled"}>${isAuto?"⚡ Automatable":"Manual"} ▾</button>`;
     const statusHtml=`<div class="doc-status-row">${statusChipHtml(doc.id,eff)}${autoPill}${hints}</div>`;
     item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type||"PDF"}</div><div class="doc-title">${esc(doc.title)} ${alertHtml}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}${statusHtml}</div>
       <div class="doc-btn-group">
@@ -2284,12 +2315,23 @@ function renderDocs(){
         ${(doc.url&&doc.url!=="#"&&(doc.updatedAt||doc.driveFile))?`<button class="doc-delete-btn" data-id="${doc.id}" title="Delete document"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>`:""}
       </div></div>`;
     const ap=item.querySelector(".auto-pill");
-    if(ap&&canToggle) ap.addEventListener("click",(e)=>{e.stopPropagation();requireLogin(async()=>{
-      const next=!isAuto, fid=doc.id.replace("drv_","");
-      const ok=await saveDriveMeta(fid,{resp:doc.responsible,notes:doc.notes,auto:next});
-      if(!ok){showToast("Could not save to Drive. Sign in again if the problem persists.");return;}
-      doc.autoFlag=next; const live=f&&f.documents.find(x=>x.id===doc.id); if(live)live.autoFlag=next;
-      renderDocs();renderProgress();});});
+    if(ap&&canToggle) ap.addEventListener("click",(e)=>{e.stopPropagation();
+      closeStatusMenu();
+      const menu=document.createElement("div");menu.className="status-menu";menu.id="statusMenu";
+      menu.innerHTML=`<button data-v="1">⚡ Automatable<small>Can be refreshed automatically</small></button><button data-v="0">✋ Manual<small>Needs a person to update it</small></button><button data-v="auto">↺ Back to default<small>Excel files and requirements marked ⚡ are automatable</small></button>`;
+      document.body.appendChild(menu);
+      const r=ap.getBoundingClientRect();
+      menu.style.left=Math.min(r.left,window.innerWidth-250)+"px";
+      menu.style.top=Math.min(r.bottom+6,window.innerHeight-menu.offsetHeight-10)+"px";
+      menu.querySelectorAll("button").forEach(b=>b.addEventListener("click",(ev)=>{ev.stopPropagation();closeStatusMenu();
+        requireLogin(async()=>{
+          const next=b.dataset.v==="auto"?null:b.dataset.v==="1";
+          const ok=await saveDriveMeta(doc.id.replace("drv_",""),{resp:doc.responsible,notes:doc.notes,auto:next});
+          if(!ok){showToast("Could not save to Drive. Sign in again if the problem persists.");return;}
+          doc.autoFlag=next;const live=f&&f.documents.find(x=>x.id===doc.id);if(live)live.autoFlag=next;
+          renderDocs();renderProgress();});}));
+      setTimeout(()=>document.addEventListener("click",closeStatusMenu,{once:true}),0);
+    });
     const chip=item.querySelector(".st-chip");
     if(chip) chip.addEventListener("click",(e)=>{e.stopPropagation();openStatusMenu(doc.id,chip);});
     item.addEventListener("click",(e)=>{
@@ -2322,8 +2364,12 @@ function renderDocs(){
       const key=state.selectedFolder+"|"+dp.join("/"), open=openGroups.has(key), n=driveDocs.filter(d=>under(dp,d)).length;
       const gh=document.createElement("div");gh.className="doc-group";
       gh.style.cssText="padding:8px 8px;margin-top:4px;font-weight:800;font-size:.8rem;color:#374151;cursor:pointer;background:#f3f4f6;border-radius:8px;user-select:none;";
-      gh.textContent=(open?"▾ 📂 ":"▸ 📁 ")+dp[dp.length-1]+"  ("+n+")";
+      gh.style.display="flex";gh.style.alignItems="center";gh.style.justifyContent="space-between";
+      gh.innerHTML=`<span>${open?"▾ 📂 ":"▸ 📁 "}${esc(dp[dp.length-1])}  (${n})</span><button class="grp-upd" title="Update this folder">↻</button>`;
       gh.addEventListener("click",()=>{open?openGroups.delete(key):openGroups.add(key);renderDocs();});
+      gh.querySelector(".grp-upd").addEventListener("click",(e)=>{e.stopPropagation();
+        const tid=(ffd.dirIds||{})[dp.join("/")]; if(!tid){showToast("No Drive folder configured for this folder yet.");return;}
+        requireLogin(()=>openFolderUpdate(tid,dp[dp.length-1],dp));});
       parent.appendChild(gh);
       if(open){
         const box=document.createElement("div");box.style.cssText="margin:0 0 10px 14px;padding:0 0 10px 10px;border-left:2px solid #e5e7eb;border-bottom:1px solid #d1d5db;";
@@ -2518,6 +2564,141 @@ async function hidePreviousDoc(doc){
   deletedDocIds.add(doc.id);
   DATA.chapters.forEach(ch=>ch.folders.forEach(fo=>{const k=fo.documents.findIndex(d=>d.id===doc.id);if(k!==-1)fo.documents.splice(k,1);}));
 }
+
+
+// =====================
+// ACTUALIZAR UNA CARPETA COMPLETA
+// =====================
+// Sube una carpeta del computador (con sus subcarpetas) y oculta las versiones anteriores de las carpetas
+// que se actualizan, o, si los archivos nuevos ya están en Drive, marca todo como última versión.
+let fuCtx = null, fuMode = "upload", fuFiles = [];
+async function poolRun(items, n, fn){
+  let k = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (k < items.length) { const i = k++; await fn(items[i], i); } }));
+}
+async function appendSheetRows(range, rows){
+  if (!rows.length) return;
+  const token = await getToken(); if (!token) return;
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW`,
+    { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ values: rows }) });
+  if (!r.ok) throw new Error("sheet " + r.status);
+}
+function fuScopeDocs(){   // documentos de Drive que hoy están en la carpeta (y subcarpetas) a actualizar
+  const fo = getFolders().find(x => x.id === state.selectedFolder); if (!fo) return [];
+  const path = fuCtx.path;
+  return fo.documents.filter(d => d.driveFile && path.every((p, i) => (d.gpath || [])[i] === p));
+}
+function fuOldDocs(){     // solo las carpetas que realmente se van a actualizar
+  const touched = new Set(fuFiles.map(x => x.dirs.join("/")));
+  return fuScopeDocs().filter(d => touched.has((d.gpath || []).slice(fuCtx.path.length).join("/")));
+}
+function fuRefreshPreview(){
+  const el = document.getElementById("fuPreview"), drop = document.getElementById("fuDrop");
+  if (!fuFiles.length) { el.textContent = ""; drop.classList.remove("has-file"); drop.querySelector("strong").textContent = "Click to choose the folder"; drop.querySelector("p").textContent = "Subfolders are kept · max 50 MB per file"; return; }
+  const dirs = new Set(fuFiles.map(x => x.dirs.join("/"))), old = fuOldDocs().length;
+  drop.classList.add("has-file");
+  drop.querySelector("strong").textContent = fuFiles.length + " file" + (fuFiles.length === 1 ? "" : "s") + " selected";
+  drop.querySelector("p").textContent = (fuFiles.reduce((n, f) => n + f.file.size, 0) / 1024 / 1024).toFixed(1) + " MB · " + dirs.size + " folder" + (dirs.size === 1 ? "" : "s");
+  el.textContent = old ? `${old} existing document${old === 1 ? "" : "s"} in the folders being updated will be replaced.` : "No existing documents in those folders: the files will simply be added.";
+}
+function fuPick(files, withDirs){
+  fuFiles = [...files].filter(f => !/^(\.DS_Store|Thumbs\.db|~\$.*)$/i.test(f.name)).map(f => ({ file: f, dirs: withDirs ? String(f.webkitRelativePath || "").split("/").slice(1, -1) : [] }));
+  fuRefreshPreview();
+}
+function openFolderUpdate(parentId, label, path){
+  fuCtx = { parentId, label, path: path || [] }; fuFiles = [];
+  ["fuResp", "fuNotes"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("fuDirInput").value = ""; document.getElementById("fuFilesInput").value = "";
+  document.getElementById("fuProgress").style.display = "none"; document.getElementById("fuFill").style.width = "0%";
+  document.getElementById("fuSave").disabled = false; document.getElementById("fuSave").textContent = "Update folder";
+  document.getElementById("fuSub").textContent = label;
+  fuSetMode("upload"); fuRefreshPreview();
+  document.getElementById("folderUpdModal").classList.add("open");
+}
+function fuSetMode(m){
+  fuMode = m;
+  document.getElementById("fuModeUpload").classList.toggle("active", m === "upload");
+  document.getElementById("fuModeMark").classList.toggle("active", m === "mark");
+  document.getElementById("fuUploadSec").style.display = m === "upload" ? "block" : "none";
+  document.getElementById("fuMarkSec").style.display = m === "mark" ? "block" : "none";
+  document.getElementById("fuMarkRow").style.display = m === "upload" ? "flex" : "none";
+}
+document.getElementById("fuModeUpload").addEventListener("click", () => fuSetMode("upload"));
+document.getElementById("fuModeMark").addEventListener("click", () => fuSetMode("mark"));
+document.getElementById("fuClose").addEventListener("click", () => closeModal("folderUpdModal"));
+document.getElementById("fuCancel").addEventListener("click", () => closeModal("folderUpdModal"));
+document.getElementById("fuDirInput").addEventListener("change", e => fuPick(e.target.files, true));
+document.getElementById("fuFilesInput").addEventListener("change", e => fuPick(e.target.files, false));
+document.getElementById("fuPickFiles").addEventListener("click", e => { e.preventDefault(); document.getElementById("fuFilesInput").click(); });
+document.getElementById("fuDrop").addEventListener("click", () => document.getElementById("fuDirInput").click());
+document.getElementById("folderUpdBtn").addEventListener("click", () => {
+  const f = getFolders().find(x => x.id === state.selectedFolder), id = f && DRIVE_FOLDERS[f.id];
+  if (!id) { showToast("No Drive folder configured for this folder yet."); return; }
+  requireLogin(() => openFolderUpdate(id, f.title, []));
+});
+document.getElementById("fuSave").addEventListener("click", async () => {
+  const resp = document.getElementById("fuResp").value.trim(), notes = document.getElementById("fuNotes").value.trim();
+  const btn = document.getElementById("fuSave"), lbl = document.getElementById("fuLabel"), fill = document.getElementById("fuFill");
+  const by = googleUserEmail || "", at = new Date().toISOString();
+  const fo = getFolders().find(x => x.id === state.selectedFolder);
+  const step = (t, pct) => { lbl.textContent = t; fill.style.width = (pct || 0) + "%"; };
+  const markCurrent = async (docs) => {
+    if (!docs.length) return;
+    const token = await getToken(); if (!token || !(await ensureStatusTab(token))) throw new Error("status");
+    await appendSheetRows(STATUS_SHEET + "!A:F", docs.map(d => [d.id, "current", by, at, "", d.title || ""]));
+    docs.forEach(d => { docStatus[d.id] = { status: "current", by, at, note: "" }; });
+  };
+  try {
+    if (fuMode === "mark") {
+      const docs = fuScopeDocs();
+      if (!docs.length) { showToast("There are no documents in this folder to mark."); return; }
+      btn.disabled = true; document.getElementById("fuProgress").style.display = "block"; step("Marking " + docs.length + " documents…", 10);
+      await markCurrent(docs);
+      if (resp || notes) { let n = 0; await poolRun(docs, 5, async d => { await saveDriveMeta(d.id.replace("drv_", ""), { resp: resp || d.responsible, notes: notes || d.notes, auto: d.autoFlag }); step(`Saving details ${++n} of ${docs.length}…`, 10 + 85 * n / docs.length); }); }
+      closeModal("folderUpdModal"); showToast(docs.length + " documents marked as up to date.");
+    } else {
+      if (!fuFiles.length) { showToast("Please choose the updated folder (or files)."); return; }
+      if (!resp) { showToast("Please enter who is responsible."); return; }
+      const big = fuFiles.find(x => x.file.size > 50 * 1024 * 1024); if (big) { showToast(`"${big.file.name}" is larger than 50 MB.`); return; }
+      btn.disabled = true; document.getElementById("fuProgress").style.display = "block";
+      const oldDocs = document.getElementById("fuHidePrev").checked ? fuOldDocs() : [];
+      // subcarpetas: se reutilizan las que ya existen y se crean las que falten
+      const dirP = new Map(); dirP.set("", Promise.resolve(fuCtx.parentId));
+      const token0 = await getToken();
+      const ensureDir = (parts) => {
+        const key = parts.join("/"); if (dirP.has(key)) return dirP.get(key);
+        const pr = (async () => {
+          const parent = await ensureDir(parts.slice(0, -1)), name = parts[parts.length - 1];
+          const hit = (await listDriveChildren(parent, token0)).find(x => x.mimeType === DRIVE_FOLDER_MIME && x.name === name);
+          return hit ? hit.id : (await createDriveFolder(parent, name)).id;
+        })();
+        dirP.set(key, pr); return pr;
+      };
+      const newDocs = [], failed = []; let done = 0;
+      await poolRun(fuFiles, 3, async (x) => {
+        try {
+          const dirId = await ensureDir(x.dirs);
+          const r = await new Promise((res, rej) => uploadToDrive(x.file, x.file.name, dirId, () => {}, res, rej));
+          await saveDriveMeta(r.fileId, { resp, notes, auto: null });
+          newDocs.push({ id: "drv_" + r.fileId, title: x.file.name });
+        } catch (e) { failed.push(x.file.name); }
+        step(`Uploading ${++done} of ${fuFiles.length}…`, 5 + 80 * done / fuFiles.length);
+      });
+      if (newDocs.length && oldDocs.length && !failed.length) {
+        step("Hiding the previous versions…", 88);
+        await poolRun(oldDocs, 5, async d => { try { await fetch(`https://www.googleapis.com/drive/v3/files/${d.id.replace("drv_", "")}?supportsAllDrives=true`, { method: "PATCH", headers: { Authorization: "Bearer " + (await getToken()), "Content-Type": "application/json" }, body: JSON.stringify({ name: "ELIMINAR - " + (d.title || "document") }) }); } catch (e) {} });
+        await appendSheetRows(SHEET_NAME + "!A:I", oldDocs.map(d => [d.id, "__DELETED__", "", "", "", "", by, "Replaced on " + at.slice(0, 10), ""]));
+        oldDocs.forEach(d => deletedDocIds.add(d.id));
+      }
+      if (document.getElementById("fuMarkCurrent").checked && newDocs.length) { step("Marking as up to date…", 95); await markCurrent(newDocs); }
+      closeModal("folderUpdModal");
+      showToast(failed.length ? `${newDocs.length} uploaded, ${failed.length} failed (${failed.slice(0, 2).join(", ")}${failed.length > 2 ? "…" : ""}). Previous versions were kept.` : `${newDocs.length} files uploaded to Drive.`);
+    }
+    if (fo && DRIVE_FOLDERS[fo.id]) loadFolderFiles(DRIVE_FOLDERS[fo.id]).then(() => { renderDocs(); renderFolders(); renderProgress(); }).catch(() => {});
+  } catch (e) {
+    showToast("Could not update the folder" + (/404|403/.test(String(e.message || e)) ? " — sign out and sign in again to grant access to Drive." : "."));
+  } finally { btn.disabled = false; }
+});
 
 // ---- agregar carpeta (se crea en Drive) ----
 let folderTarget=null;
