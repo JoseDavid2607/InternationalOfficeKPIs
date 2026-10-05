@@ -1556,6 +1556,7 @@ const DATA = {
 // =====================
 // STATE & HELPERS
 // =====================
+let driveReady = false, statusesLoaded = false;
 let state = {accSel:new Set(["EQUIS","AACSB","AMBA"]), reqOpen:false, openAcc:new Set(), chOpen:false, selectedChapter:null, selectedFolder:null, selectedDoc:null};
 const docOverrides = {};
 
@@ -1676,6 +1677,12 @@ function pctOf(n, total){ return total ? Math.round(n / total * 1000) / 10 : 0; 
 
 function renderProgress(){
   const el = document.getElementById("progressPanel"); if (!el) return;
+  // No se muestra ningún porcentaje hasta tener los documentos de Drive y los estados guardados:
+  // con los datos incompletos el número saltaría de un valor falso al real.
+  if (!isSignedIn() || !driveReady || !statusesLoaded) {
+    el.innerHTML = `<div class="pp-head"><div class="pp-pct">…<small>${isSignedIn() ? "Loading progress from Drive…" : "Sign in to see progress"}</small></div></div>`;
+    return;
+  }
   const sel = ACCS.filter(a => state.accSel.has(a));
   const r = computeProgress(sel);
   const label = sel.length === ACCS.length ? "BaseRoom" : sel.length ? sel.join(" + ") : "no accreditation selected";
@@ -1780,6 +1787,7 @@ async function loadStatuses(){
     statusTabReady = true;
     DATA.chapters.forEach(ch => ch.folders.forEach(applyDriveDocs));
   } catch (e) { console.warn("Could not load statuses", e); }
+  finally { statusesLoaded = true; }
 }
 
 // ---- revisión automática contra Drive: archivos de cada carpeta ----
@@ -1842,6 +1850,8 @@ function refreshFolder(fo){
 document.addEventListener("visibilitychange", () => { if (!document.hidden && isSignedIn() && Date.now() - lastDriveSync > 60000) syncDriveFolders(); });
 function currentDriveIds(){ return [...new Set(DATA.chapters.flatMap(ch => ch.folders.map(f => DRIVE_FOLDERS[f.id]).filter(Boolean)))]; }
 let prefetching = false;
+// Si Drive o la hoja tardan demasiado, se muestra lo que haya en lugar de dejar el panel cargando.
+setTimeout(() => { if (!driveReady || !statusesLoaded) { driveReady = statusesLoaded = true; renderProgress(); } }, 25000);
 async function prefetchAllFolders(){
   if (prefetching || !isSignedIn()) return;
   prefetching = true;
@@ -1851,7 +1861,7 @@ async function prefetchAllFolders(){
       await Promise.all(ids.slice(i, i + 6).map(id => loadFolderFiles(id).catch(() => {})));
     }
     renderDocs(); renderFolders(); renderProgress();
-  } finally { prefetching = false; }
+  } finally { prefetching = false; driveReady = true; renderProgress(); }
 }
 
 function statusChipHtml(docId, e){
