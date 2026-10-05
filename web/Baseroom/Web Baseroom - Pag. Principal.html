@@ -405,6 +405,10 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 .pp-req > summary:hover::before { color:#6b7280; }
 .pp-bar { display:flex; height:14px; border-radius:999px; overflow:hidden; background:#eef0f2; }
 .pp-bar span { display:block; height:100%; }
+.pp-lead { font-size:.66rem; font-weight:800; color:#9ca3af; text-transform:uppercase; letter-spacing:.04em; margin-right:2px; }
+.pp-docs { margin-top:6px; font-size:.76rem; color:#4b5563; display:flex; flex-wrap:wrap; gap:0 6px; align-items:baseline; }
+.pp-docauto { color:#b45309; font-weight:700; }
+.pp-details summary + .pp-ch { margin-top:10px; }
 .pp-legend { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:8px; font-size:.76rem; color:#4b5563; }
 .pp-legend i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
 .pp-actions { display:flex; gap:8px; align-items:center; }
@@ -425,10 +429,13 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 .doc-status-row { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:6px; }
 .doc-hint { font-size:.72rem; color:#92400e; }
 .drive-notice { margin:0 0 10px; padding:9px 12px; border-radius:10px; background:#fffbeb; border:1px solid #fde68a; font-size:.78rem; color:#78350f; line-height:1.5; }
+.f-stat { margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex-shrink:0; }
+.f-auto { font-size:.66rem; color:#b45309; opacity:.8; font-weight:700; }
+.folder-item.active .f-auto { color:#fcd9a8; }
 .f-prog { margin-left:auto; font-size:.68rem; font-weight:800; padding:2px 8px; border-radius:999px; background:#eef0f2; color:#374151; }
 .f-prog.empty { opacity:.55; }
 .f-prog.done { background:#d1fae5; color:#065f46; }
-.status-menu { position:fixed; z-index:9999; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,.18); padding:6px; min-width:230px; }
+.status-menu { position:fixed; z-index:9999; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,.18); padding:5px; min-width:150px; }
 .status-menu button { display:flex; width:100%; gap:8px; align-items:center; text-align:left; padding:9px 10px; border:none; background:none; border-radius:8px; font-size:.82rem; font-weight:700; color:#1f2937; cursor:pointer; }
 .status-menu button:hover { background:#f3f4f6; }
 .status-menu small { display:block; font-weight:500; color:#6b7280; font-size:.72rem; }
@@ -1145,7 +1152,7 @@ function uploadToDrive(file, fileName, folderId, onProgress, onSuccess, onError)
   form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
   form.append("file", file);
   const xhr = new XMLHttpRequest();
-  xhr.open("POST", "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink");
+  xhr.open("POST", "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,md5Checksum");
   xhr.setRequestHeader("Authorization", "Bearer " + token);
   xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
   xhr.onload = () => {
@@ -1155,7 +1162,7 @@ function uploadToDrive(file, fileName, folderId, onProgress, onSuccess, onError)
       xhr2.open("POST", `https://www.googleapis.com/drive/v3/files/${data.id}/permissions`);
       xhr2.setRequestHeader("Authorization", "Bearer " + token);
       xhr2.setRequestHeader("Content-Type", "application/json");
-      xhr2.onload = () => onSuccess({ fileId: data.id, previewUrl: `https://drive.google.com/file/d/${data.id}/preview`, viewUrl: `https://drive.google.com/file/d/${data.id}/view`, name: data.name, originalName: fileName });
+      xhr2.onload = () => onSuccess({ fileId: data.id, md5: data.md5Checksum || "", previewUrl: `https://drive.google.com/file/d/${data.id}/preview`, viewUrl: `https://drive.google.com/file/d/${data.id}/view`, name: data.name, originalName: fileName });
       xhr2.send(JSON.stringify({ role: "reader", type: "anyone" }));
     } else { onError("Upload failed: " + xhr.statusText); }
   };
@@ -1719,8 +1726,9 @@ function effStatus(doc, folder){
   const st = docStatus[doc.id];
   if (st && st.status) {
     if (st.status === "current") {
-      const fi = driveFileInfo(folder, doc);
-      if (fi && st.at && new Date(fi.modifiedTime) > new Date(st.at))
+      // se compara el contenido (md5) con el que tenía al marcarlo; editar la descripción o renombrar no cuenta
+      const fi = driveFileInfo(folder, doc), m = /^md5:(.+)$/.exec(st.note || "");
+      if (fi && m && fi.md5 && fi.md5 !== m[1])
         return { key: "review", hint: "The file changed in Drive after it was marked as the latest version." };
     }
     return { key: st.status, by: st.by, at: st.at, note: st.note };
@@ -1744,16 +1752,18 @@ function inScope(item){
 // que sale de los documentos de sus carpetas: una carpeta con muchos archivos cuenta como una sola cosa.
 // El avance por capítulo cuenta carpetas (una carpeta está al día cuando todos sus documentos lo están).
 function computeProgress(accs){
-  const res = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, byChapter: {}, autoReqs: 0, changed: 0, frac: 0 };
+  const res = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, byChapter: {}, autoReqs: 0, changed: 0, frac: 0,
+    docs: 0, docCounts: {review:0,current:0,update:0,new:0}, docAuto: 0 };
   const M = reqMatches();
   accs.forEach(a => { const m = reqMetrics(a, M); res.total += m.total; res.autoReqs += m.auto; res.frac += m.frac; STATUS_ORDER.forEach(k => { res.counts[k] += m.counts[k]; }); });
   DATA.chapters.forEach(ch => ch.folders.forEach(f => {
     if (!folderInScope(f)) return;
-    const docs = f.documents.map(d => ({...d, ...(docOverrides[d.id] || {})})).filter(hasDoc).filter(d => docInScope(d, f));
-    const keys = docs.map(d => effStatus(d, f));
-    keys.forEach(e => { if (e.hint) res.changed++; });
-    const c = res.byChapter[ch.id] = res.byChapter[ch.id] || { ch, total: 0, current: 0 };
-    c.total++; if (docs.length && keys.every(e => e.key === "current")) c.current++;
+    f.documents.map(d => ({...d, ...(docOverrides[d.id] || {})})).filter(hasDoc).filter(d => docInScope(d, f)).forEach(d => {
+      const e = effStatus(d, f);
+      res.docs++; res.docCounts[e.key] = (res.docCounts[e.key] || 0) + 1; if (e.hint) res.changed++; if (docAuto(d)) res.docAuto++;
+      const c = res.byChapter[ch.id] = res.byChapter[ch.id] || { ch, total: 0, current: 0 };
+      c.total++; if (e.key === "current") c.current++;
+    });
   }));
   return res;
 }
@@ -1783,9 +1793,10 @@ function renderProgress(){
   el.innerHTML = `<div class="pp-head">
       <div class="pp-pct">${pctOf(r.frac, r.total)}%<small>Up to date · ${label}</small></div>
       <div class="pp-auto" title="Share of the requirements that can be automated">⚡ ${autoAvg}% automatable<small>${r.autoReqs} of ${r.total} requirements · ${label}</small></div>
-      <div class="pp-bar-wrap"><div class="pp-barbox"><div class="pp-bar">${bar}</div>${mark}</div><div class="pp-legend">${legend}</div></div>
+      <div class="pp-bar-wrap"><div class="pp-barbox"><div class="pp-bar">${bar}</div>${mark}</div><div class="pp-legend"><span class="pp-lead">Requirements</span>${legend}</div>
+        <div class="pp-docs"><span class="pp-lead">Documents</span><strong>${r.docs}</strong> in total · ${r.docCounts.current} up to date · ${r.docCounts.review} to review${r.docCounts.update + r.docCounts.new ? ` · ${r.docCounts.update + r.docCounts.new} to update` : ""} · <span class="pp-docauto">⚡ ${r.docAuto} automatable</span></div></div>
     </div>
-    <details class="pp-details" id="chDetails"${state.chOpen ? " open" : ""}><summary>Progress by chapter <span style="font-weight:500;color:#9ca3af;">(folders up to date)</span></summary>${chapters}</details>
+    <details class="pp-details" id="chDetails"${state.chOpen ? " open" : ""}><summary>Progress by chapter</summary>${chapters}</details>
     ${notes.length ? `<div class="pp-note">${notes.join(" ")}</div>` : ""}
     ${renderChecklist(sel)}`;
   el.querySelectorAll(".pp-ch").forEach(row => row.addEventListener("click", () => {
@@ -1802,12 +1813,12 @@ function openStatusMenu(docId, anchor){
   closeStatusMenu();
   const menu = document.createElement("div"); menu.className = "status-menu"; menu.id = "statusMenu";
   const opts = [
-    ["current","✓ This is the latest version","Nothing else is needed for the accreditation"],
-    ["update","↻ Needs an updated version","Keep it for now, but it must be replaced"],
-    ["new","＋ A new document must be added","This one stays; another is still missing"],
-    ["reset","↺ Back to automatic","Remove the manual mark"]
+    ["current","✓ Up to date"],
+    ["update","↻ Needs update"],
+    ["new","＋ New document needed"],
+    ["reset","↺ Automatic"]
   ];
-  menu.innerHTML = opts.map(o => `<button data-s="${o[0]}">${o[1]}<small>${o[2]}</small></button>`).join("");
+  menu.innerHTML = opts.map(o => `<button data-s="${o[0]}">${o[1]}</button>`).join("");
   document.body.appendChild(menu);
   const r = anchor.getBoundingClientRect();
   menu.style.left = Math.min(r.left, window.innerWidth - 250) + "px";
@@ -1839,13 +1850,14 @@ async function setDocStatus(docId, status){
   const token = await getToken();
   if (!token || !(await ensureStatusTab(token))) { showToast("Could not save the status. Please sign in again."); return; }
   const at = new Date().toISOString(), by = googleUserEmail || "";
+  const note = res.doc.md5 ? "md5:" + res.doc.md5 : "";
   try {
     const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(STATUS_SHEET + "!A:F")}:append?valueInputOption=RAW`, {
       method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-      body: JSON.stringify({ values: [[docId, status === "reset" ? "reset" : status, by, at, "", res.doc.title || ""]] }) });
+      body: JSON.stringify({ values: [[docId, status === "reset" ? "reset" : status, by, at, note, res.doc.title || ""]] }) });
     if (!r.ok) throw new Error("HTTP " + r.status);
   } catch (e) { showToast("The status could not be saved (" + (e.message || e) + ")."); return; }
-  if (status === "reset") delete docStatus[docId]; else docStatus[docId] = { status, by, at, note: "" };
+  if (status === "reset") delete docStatus[docId]; else docStatus[docId] = { status, by, at, note };
   showToast(status === "reset" ? "Back to automatic." : "Marked: " + STATUS_META[status].label);
   renderDocs(); renderFolders(); renderProgress();
 }
@@ -1880,7 +1892,7 @@ async function listDriveChildren(parentId, token){
   const out = []; let pageToken = "";
   do {
     const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,mimeType,modifiedTime,createdTime,webViewLink,description)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true${pageToken ? "&pageToken=" + encodeURIComponent(pageToken) : ""}`,
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,mimeType,modifiedTime,createdTime,webViewLink,description,md5Checksum)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true${pageToken ? "&pageToken=" + encodeURIComponent(pageToken) : ""}`,
       { headers: { Authorization: "Bearer " + token } });
     if (!r.ok) throw new Error("drive files " + r.status);
     const j = await r.json(); out.push(...(j.files || [])); pageToken = j.nextPageToken || "";
@@ -1895,7 +1907,7 @@ async function loadFolderFiles(driveFolderId){
     const subs = [];
     items.forEach(it => {
       if (it.mimeType === DRIVE_FOLDER_MIME) { subfolders++; subs.push(it); dirs.push([...parts, it.name]); dirIds[[...parts, it.name].join("/")] = it.id; }
-      else files.push({ id: it.id, name: it.name, modifiedTime: it.modifiedTime, createdTime: it.createdTime, webViewLink: it.webViewLink, description: it.description || "", path, parts, parentId: id });
+      else files.push({ id: it.id, name: it.name, modifiedTime: it.modifiedTime, createdTime: it.createdTime, webViewLink: it.webViewLink, description: it.description || "", md5: it.md5Checksum || "", path, parts, parentId: id });
     });
     if (depth < 4) await Promise.all(subs.map(s => walk(s.id, path ? path + " / " + s.name : s.name, depth + 1, [...parts, s.name])));
   };
@@ -1952,7 +1964,7 @@ function applyDriveDocs(fo){
   const files = ff.files.filter(x => !deletedDocIds.has("drv_" + x.id) && !/^ELIMINAR - /.test(x.name)).sort((a, b) => String(a.createdTime || "").localeCompare(String(b.createdTime || "")) || nat(a.name, b.name));
   fo.documents = [...base, ...files.map(x => ({ id: "drv_" + x.id, title: x.name, type: driveExt(x.name), meta: "", responsible: "", updatedAt: null,
     accreditations: fo.accreditations, url: `https://drive.google.com/file/d/${x.id}/preview`, viewUrl: x.webViewLink || `https://drive.google.com/file/d/${x.id}/view`,
-    driveFile: true, gpath: x.parts || [], parentId: x.parentId, createdTime: x.createdTime, ...driveMeta(x.description) }))];
+    driveFile: true, gpath: x.parts || [], parentId: x.parentId, createdTime: x.createdTime, md5: x.md5 || "", ...driveMeta(x.description) }))];
 }
 function refreshFolder(fo){
   const id = DRIVE_FOLDERS[fo.id]; if (!id || !isSignedIn()) return;
@@ -1981,8 +1993,8 @@ function statusChipHtml(docId, e){
 }
 function folderProgressText(folder){
   const docs = folder.documents.map(d => ({...d, ...(docOverrides[d.id] || {})})).filter(hasDoc).filter(d => docInScope(d, folder));
-  const cur = docs.filter(d => effStatus(d, folder).key === "current").length;
-  return `<span class="f-prog${docs.length && cur === docs.length ? " done" : ""}${docs.length ? "" : " empty"}" title="Documents up to date">${cur}/${docs.length}</span>`;
+  const cur = docs.filter(d => effStatus(d, folder).key === "current").length, auto = docs.filter(docAuto).length;
+  return `<span class="f-stat"><span class="f-prog${docs.length && cur === docs.length ? " done" : ""}${docs.length ? "" : " empty"}" title="Documents up to date">${cur}/${docs.length}</span><span class="f-auto" title="Automatable documents">⚡ ${auto}</span></span>`;
 }
 
 
@@ -2347,7 +2359,7 @@ function renderDocs(){
     if(ap&&canToggle) ap.addEventListener("click",(e)=>{e.stopPropagation();
       closeStatusMenu();
       const menu=document.createElement("div");menu.className="status-menu";menu.id="statusMenu";
-      menu.innerHTML=`<button data-v="1">⚡ Automatable<small>Can be refreshed automatically</small></button><button data-v="0">✋ Manual<small>Needs a person to update it</small></button><button data-v="auto">↺ Back to default<small>Excel files and requirements marked ⚡ are automatable</small></button>`;
+      menu.innerHTML=`<button data-v="1">⚡ Automatable</button><button data-v="0">Manual</button><button data-v="auto">↺ Default</button>`;
       document.body.appendChild(menu);
       const r=ap.getBoundingClientRect();
       menu.style.left=Math.min(r.left,window.innerWidth-250)+"px";
@@ -2674,8 +2686,9 @@ document.getElementById("fuSave").addEventListener("click", async () => {
   const markCurrent = async (docs) => {
     if (!docs.length) return;
     const token = await getToken(); if (!token || !(await ensureStatusTab(token))) throw new Error("status");
-    await appendSheetRows(STATUS_SHEET + "!A:F", docs.map(d => [d.id, "current", by, at, "", d.title || ""]));
-    docs.forEach(d => { docStatus[d.id] = { status: "current", by, at, note: "" }; });
+    const nt = d => d.md5 ? "md5:" + d.md5 : "";
+    await appendSheetRows(STATUS_SHEET + "!A:F", docs.map(d => [d.id, "current", by, at, nt(d), d.title || ""]));
+    docs.forEach(d => { docStatus[d.id] = { status: "current", by, at, note: nt(d) }; });
   };
   try {
     if (fuMode === "mark") {
@@ -2709,7 +2722,7 @@ document.getElementById("fuSave").addEventListener("click", async () => {
           const dirId = await ensureDir(x.dirs);
           const r = await new Promise((res, rej) => uploadToDrive(x.file, x.file.name, dirId, () => {}, res, rej));
           await saveDriveMeta(r.fileId, { resp, notes, auto: null });
-          newDocs.push({ id: "drv_" + r.fileId, title: x.file.name });
+          newDocs.push({ id: "drv_" + r.fileId, title: x.file.name, md5: r.md5 });
         } catch (e) { failed.push(x.file.name); }
         step(`Uploading ${++done} of ${fuFiles.length}…`, 5 + 80 * done / fuFiles.length);
       });
