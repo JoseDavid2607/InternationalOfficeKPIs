@@ -2073,8 +2073,6 @@ function reqMatches(){
     });
     map[q.id] = [...hit.values()];
   });
-  // documentos que cubren un requisito marcado como automatizable en el Excel: automatizables por defecto
-  map._autoDocs = new Set(REQS.filter(q => q.auto).flatMap(q => (map[q.id] || []).map(x => x.d.id)));
   reqMatchSig = sig; reqMatchMap = map; return map;
 }
 // ---- filtro por acreditación: qué carpetas y documentos pertenecen a cada una ----
@@ -2103,9 +2101,7 @@ function docAutoOwn(doc){   // lo que el propio documento dice: marca explícita
   if (isAutomated(doc)) return true;
   return /^(XLSX?|XLSM|CSV|ODS)$/.test(String(doc.type || "").toUpperCase());
 }
-function docAuto(doc){
-  return docAutoOwn(doc) || (doc.autoFlag == null && reqMatches()._autoDocs.has(doc.id));
-}
+function docAuto(doc){ return docAutoOwn(doc); }   // por naturaleza: Excel/CSV, dashboards y links; PDF, Word, PPT e imágenes son manuales salvo que se marquen a mano
 function reqState(q, M){
   const ms = M[q.id] || [];
   const auto = !!q.auto || ms.some(x => docAutoOwn(x.d));   // una carpeta con muchos archivos automatizables cuenta una sola vez
