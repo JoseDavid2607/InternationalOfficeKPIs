@@ -137,14 +137,19 @@ header.hero h1 {
 .folder-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
 
 .folder-item {
-  display: flex; flex-direction: column; gap: 4px; padding: 14px 18px;
+  display: flex; flex-direction: row; align-items: flex-start; gap: 11px; padding: 13px 18px;
   cursor: pointer; border: none; background: transparent; text-align: left;
   border-bottom: 1px solid var(--border); width: 100%; transition: background .15s;
 }
 .folder-item:last-child { border-bottom: none; }
 .folder-item:hover { background: #f9fafb; }
 .folder-item.active { background: #1f2937; border-left: 3px solid var(--teal-brand); }
-.folder-item.active .f-badge { background: rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
+.folder-item.active .f-ico { color:#9ca3af; flex-shrink:0; margin-top:1px; display:inline-flex; }
+.folder-item:hover .f-ico { color:#6b7280; }
+.folder-item.active .f-ico { color:rgba(255,255,255,.75); }
+.f-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+.f-top { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+.f-badge { background: rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
 .folder-item.active .f-title { color: #fff; }
 .folder-item.active .f-tag { background: rgba(255,255,255,.1); color: rgba(255,255,255,.8); }
 .f-badge { display: inline-block; padding: 2px 7px; border-radius: 999px; background: #eef2f7; color: var(--slate-mid); font-size: .72rem; font-weight: 700; }
@@ -167,6 +172,16 @@ header.hero h1 {
 .doc-item.active { background: #f0faf7; border-left: 3px solid #1d9e75; }
 .doc-item-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .doc-item-main { flex: 1; }
+.t-pdf{--tc:#dc2626;--tb:#fef2f2} .t-doc{--tc:#2563eb;--tb:#eff6ff} .t-xls{--tc:#16a34a;--tb:#f0fdf4} .t-ppt{--tc:#ea580c;--tb:#fff7ed}
+.t-dash{--tc:#7c3aed;--tb:#f5f3ff} .t-link{--tc:#0891b2;--tb:#ecfeff} .t-img{--tc:#db2777;--tb:#fdf2f8} .t-other{--tc:#6b7280;--tb:#f3f4f6}
+.doc-item[class*="t-"] { border-left:3px solid var(--tc); }
+.doc-item[class*="t-"] .doc-type { background:var(--tb); color:var(--tc); }
+.doc-add-slot { position:relative; height:16px; cursor:pointer; margin:0 18px; }
+.doc-add-slot::before { content:""; position:absolute; left:0; right:0; top:50%; border-top:1px dashed transparent; transition:border-color .15s; }
+.doc-add-slot span { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:#fff; padding:0 10px; font-size:.7rem; font-weight:700; color:#1d9e75; opacity:0; transition:opacity .15s; white-space:nowrap; }
+.doc-add-slot:hover::before { border-top-color:#a7d9c8; } .doc-add-slot:hover span { opacity:1; }
+.doc-add-row { display:flex; align-items:center; justify-content:center; gap:8px; margin:10px 18px 16px; padding:10px; border:1.5px dashed #d1d5db; border-radius:12px; color:#6b7280; font-size:.8rem; font-weight:700; cursor:pointer; transition:border-color .15s,color .15s,background .15s; }
+.doc-add-row:hover { border-color:#1d9e75; color:#0f6e56; background:#f0faf7; }
 .doc-type { display: inline-block; margin-bottom: 4px; padding: 2px 7px; border-radius: 999px; background: #f3f4f6; color: var(--slate-mid); font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
 .doc-title { font-size: .87rem; font-weight: 800; color: var(--slate-dark); line-height: 1.3; margin-bottom: 2px; }
 .doc-meta { color: var(--muted); font-size: .76rem; line-height: 1.4; }
@@ -369,6 +384,14 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 .pp-pct { font-size:2rem; font-weight:900; color:#0f6e56; line-height:1; }
 .pp-pct small { display:block; font-size:.72rem; font-weight:700; color:var(--muted); letter-spacing:.02em; margin-top:4px; text-transform:uppercase; }
 .pp-bar-wrap { flex:1; min-width:240px; }
+.pp-barbox { position:relative; }
+.pp-bar-wrap .pp-barbox { padding-top:15px; }
+.pp-mark { position:absolute; top:12px; bottom:-3px; width:0; border-left:2px dashed #b45309; pointer-events:auto; }
+.pp-mark span { position:absolute; top:-14px; left:-4px; font-size:.66rem; font-weight:800; color:#b45309; white-space:nowrap; }
+.pp-mark-sm { top:-3px; }
+.pp-req > summary::before { content:"▸"; color:#9ca3af; font-size:.85rem; transition:transform .15s; display:inline-block; }
+.pp-req[open] > summary::before { transform:rotate(90deg); }
+.pp-req > summary:hover::before { color:#6b7280; }
 .pp-bar { display:flex; height:14px; border-radius:999px; overflow:hidden; background:#eef0f2; }
 .pp-bar span { display:block; height:100%; }
 .pp-legend { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:8px; font-size:.76rem; color:#4b5563; }
@@ -505,7 +528,6 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
           <h3>Documents</h3>
           <p id="docColDesc">Select a folder to view its documents</p>
         </div>
-        <button class="doc-add-btn" id="docAddBtn" title="Add document" style="visibility:hidden;">+</button>
       </div>
       <div class="doc-scroll" id="docList"></div>
     </div>
@@ -540,7 +562,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
     <div class="modal-sub" id="modalSub">The file will be saved to the corresponding Google Drive folder.</div>
 
     <div class="type-toggle" id="typeToggle">
-      <button data-type="file" class="active" id="typeFileBtn">PDF File</button>
+      <button data-type="file" class="active" id="typeFileBtn">Files</button>
       <button data-type="dashboard" id="typeDashBtn">Dashboard / Link</button>
     </div>
 
@@ -555,11 +577,11 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 
     <!-- FILE SECTION -->
     <div id="fileSection" class="form-group">
-      <label class="form-label">Upload file</label>
+      <label class="form-label">Upload files</label>
       <div class="file-drop" id="fileDrop">
         <strong>Click to browse or drag and drop</strong>
-        <p>PDF only — max 50 MB</p>
-        <input type="file" id="fileInput" accept=".pdf,application/pdf">
+        <p>PDF, Word, Excel, PowerPoint, images… — several at once, max 50 MB each</p>
+        <input type="file" id="fileInput" multiple>
       </div>
     </div>
 
@@ -640,7 +662,9 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 // =====================
 const GOOGLE_CLIENT_ID = "580497870928-nadfonrjbt6kce2glg5irafstjlvs6td.apps.googleusercontent.com";
 const GOOGLE_API_KEY   = "AIzaSyBnvEW4Pn8Vh_rl84q7bE8hhT-IWQ2HmKg";
-const SCOPES = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/spreadsheets";
+// "drive" (no solo drive.file): el BaseRoom ahora sube/oculta archivos en carpetas que ya existían en Drive.
+const SCOPES = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets";
+const SCOPE_VER = "drive-v2";
 const SHEET_ID   = "161GQZ6N143RBz3Ta3ZIDuR3O5WWDud78VkjAU6mpNQw";
 const SHEET_NAME = "BR Metadata";
 const ALLOWED_DOMAIN   = "uniandes.edu.co";
@@ -731,6 +755,8 @@ let refreshTimer = null;
   }
   const tk  = localStorage.getItem("br_token");
   const exp = parseInt(localStorage.getItem("br_exp") || "0") || 0;
+  // un token guardado con los permisos anteriores no sirve para escribir en Drive: se pide de nuevo
+  if (localStorage.getItem("br_scope") !== SCOPE_VER) { if (googleUserEmail) { googleUserEmail = null; ["br_email","br_token","br_exp","br_last"].forEach(k => localStorage.removeItem(k)); } return; }
   if (googleUserEmail && tk && exp > Date.now() + 60000) { googleAccessToken = tk; tokenExpiresAt = exp; }
 })();
 
@@ -744,6 +770,7 @@ function storeToken(accessToken, expiresInSec) {
   googleAccessToken = accessToken;
   tokenExpiresAt = Date.now() + (parseInt(expiresInSec || 3600) * 1000);
   localStorage.setItem("br_token", googleAccessToken);
+  localStorage.setItem("br_scope", SCOPE_VER);
   localStorage.setItem("br_exp", String(tokenExpiresAt));
   if (googleUserEmail) localStorage.setItem("br_email", googleUserEmail);
   touchSession(true);
@@ -905,7 +932,7 @@ async function loadFromSheet() {
       const docId = r[idx("docId")];
       if (!docId) continue;
       const titleVal = r[idx("title")] || "";
-      if (titleVal === "__DELETED__") { delete byDoc[docId]; continue; }
+      if (titleVal === "__DELETED__") { delete byDoc[docId]; deletedDocIds.add(docId); continue; }
       byDoc[docId] = {
         title:       r[idx("title")]       || "",
         responsible: r[idx("responsible")] || "",
@@ -1556,8 +1583,9 @@ const DATA = {
 // =====================
 // STATE & HELPERS
 // =====================
+let driveReady = false, statusesLoaded = false;
 let state = {accSel:new Set(["EQUIS","AACSB","AMBA"]), reqOpen:false, openAcc:new Set(), chOpen:false, selectedChapter:null, selectedFolder:null, selectedDoc:null};
-const docOverrides = {};
+const docOverrides = {}, deletedDocIds = new Set();
 
 function getChapter(id){return DATA.chapters.find(c=>c.id===id);}
 function getFolders(){const ch=getChapter(state.selectedChapter);return ch?ch.folders:[];}
@@ -1652,6 +1680,7 @@ function progressItems(accs){
     const fa = f.accreditations || [];
     f.documents.forEach(d0 => {
       const d = {...d0, ...(docOverrides[d0.id] || {})};
+      if (!hasDoc(d)) return;      // tarjetas sin archivo: las cubren los requisitos sin documento
       if (!(d.accreditations || fa).some(a => accs.includes(a))) return;
       out.push({ ch, f, e: effStatus(d, f) });
     });
@@ -1676,6 +1705,12 @@ function pctOf(n, total){ return total ? Math.round(n / total * 1000) / 10 : 0; 
 
 function renderProgress(){
   const el = document.getElementById("progressPanel"); if (!el) return;
+  // No se muestra ningún porcentaje hasta tener los documentos de Drive y los estados guardados:
+  // con los datos incompletos el número saltaría de un valor falso al real.
+  if (!isSignedIn() || !driveReady || !statusesLoaded) {
+    el.innerHTML = `<div class="pp-head"><div class="pp-pct">…<small>${isSignedIn() ? "Loading progress from Drive…" : "Sign in to see progress"}</small></div></div>`;
+    return;
+  }
   const sel = ACCS.filter(a => state.accSel.has(a));
   const r = computeProgress(sel);
   const label = sel.length === ACCS.length ? "BaseRoom" : sel.length ? sel.join(" + ") : "no accreditation selected";
@@ -1686,13 +1721,14 @@ function renderProgress(){
       <div class="pp-bar"><span style="width:${pctOf(c.current, c.total)}%;background:${STATUS_META.current.color}"></span></div>
       <strong>${c.current}/${c.total}</strong></div>`).join("");
   const notes = [];
-  if (r.auto) notes.push(`${r.auto} automated item(s) (dashboards / links) count as up to date.`);
   if (r.changed) notes.push(`${r.changed} document(s) changed in Drive after they were marked as latest and need a new review.`);
-  const autoAvg = sel.length ? Math.round(sel.reduce((n, a) => n + reqAutoPct(a), 0) / sel.length * 10) / 10 : 0;
+  const reqsSel = REQS.filter(q => sel.includes(q.acc));
+  const autoAvg = reqsSel.length ? Math.round(reqsSel.filter(q => q.auto).length / reqsSel.length * 1000) / 10 : 0;
+  const mark = sel.length ? `<div class="pp-mark" style="left:${autoAvg}%" title="${autoAvg}% of the requirements can be automated"><span>⚡ ${autoAvg}%</span></div>` : "";
   el.innerHTML = `<div class="pp-head">
       <div class="pp-pct">${pctOf(r.counts.current, r.total)}%<small>Up to date · ${label}</small></div>
-      <div class="pp-auto" title="Share of the accreditation requirements that can be automated, averaged over the selected accreditations">⚡ ${autoAvg}% automatable<small>average · ${label}</small></div>
-      <div class="pp-bar-wrap"><div class="pp-bar">${bar}</div><div class="pp-legend">${legend}</div></div>
+      <div class="pp-auto" title="Share of the accreditation requirements that can be automated, averaged over the selected accreditations">⚡ ${autoAvg}% automatable<small>${reqsSel.length} requirements · ${label}</small></div>
+      <div class="pp-bar-wrap"><div class="pp-barbox"><div class="pp-bar">${bar}</div>${mark}</div><div class="pp-legend">${legend}</div></div>
     </div>
     <details class="pp-details" id="chDetails"${state.chOpen ? " open" : ""}><summary>Progress by chapter</summary>${chapters}</details>
     ${notes.length ? `<div class="pp-note">${notes.join(" ")}</div>` : ""}
@@ -1780,6 +1816,7 @@ async function loadStatuses(){
     statusTabReady = true;
     DATA.chapters.forEach(ch => ch.folders.forEach(applyDriveDocs));
   } catch (e) { console.warn("Could not load statuses", e); }
+  finally { statusesLoaded = true; }
 }
 
 // ---- revisión automática contra Drive: archivos de cada carpeta ----
@@ -1789,7 +1826,7 @@ async function listDriveChildren(parentId, token){
   const out = []; let pageToken = "";
   do {
     const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true${pageToken ? "&pageToken=" + encodeURIComponent(pageToken) : ""}`,
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,mimeType,modifiedTime,createdTime,webViewLink)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true${pageToken ? "&pageToken=" + encodeURIComponent(pageToken) : ""}`,
       { headers: { Authorization: "Bearer " + token } });
     if (!r.ok) throw new Error("drive files " + r.status);
     const j = await r.json(); out.push(...(j.files || [])); pageToken = j.nextPageToken || "";
@@ -1798,19 +1835,19 @@ async function listDriveChildren(parentId, token){
 }
 async function loadFolderFiles(driveFolderId){
   const token = await getToken(); if (!token) return;
-  const files = [], dirs = []; let subfolders = 0;
+  const files = [], dirs = [], dirIds = {}; let subfolders = 0;
   const walk = async (id, path, depth, parts) => {
     const items = await listDriveChildren(id, token);
     const subs = [];
     items.forEach(it => {
-      if (it.mimeType === DRIVE_FOLDER_MIME) { subfolders++; subs.push(it); dirs.push([...parts, it.name]); }
-      else files.push({ id: it.id, name: it.name, modifiedTime: it.modifiedTime, webViewLink: it.webViewLink, path, parts });
+      if (it.mimeType === DRIVE_FOLDER_MIME) { subfolders++; subs.push(it); dirs.push([...parts, it.name]); dirIds[[...parts, it.name].join("/")] = it.id; }
+      else files.push({ id: it.id, name: it.name, modifiedTime: it.modifiedTime, createdTime: it.createdTime, webViewLink: it.webViewLink, path, parts, parentId: id });
     });
     if (depth < 4) await Promise.all(subs.map(s => walk(s.id, path ? path + " / " + s.name : s.name, depth + 1, [...parts, s.name])));
   };
   await walk(driveFolderId, "", 1, []);
   files.sort((a, b) => String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
-  folderFiles[driveFolderId] = { files, dirs, subfolders };
+  folderFiles[driveFolderId] = { files, dirs, dirIds, subfolders };
   DATA.chapters.forEach(ch => ch.folders.forEach(fo => { if (DRIVE_FOLDERS[fo.id] === driveFolderId) applyDriveDocs(fo); }));
 }
 // Los documentos de una carpeta son sus archivos de Drive, con el nombre exacto y el orden de Drive
@@ -1830,10 +1867,11 @@ function applyDriveDocs(fo){
     const fid = driveFileIdOf(o.url); return !fid || !ids.has(fid);
   });
   const nat = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-  const files = [...ff.files].sort((a, b) => nat(a.name, b.name));
+  // los más recientes van abajo (orden de subida); a igual fecha, orden natural del nombre
+  const files = ff.files.filter(x => !deletedDocIds.has("drv_" + x.id) && !/^ELIMINAR - /.test(x.name)).sort((a, b) => String(a.createdTime || "").localeCompare(String(b.createdTime || "")) || nat(a.name, b.name));
   fo.documents = [...base, ...files.map(x => ({ id: "drv_" + x.id, title: x.name, type: driveExt(x.name), meta: "", responsible: "", updatedAt: null,
     accreditations: fo.accreditations, url: `https://drive.google.com/file/d/${x.id}/preview`, viewUrl: x.webViewLink || `https://drive.google.com/file/d/${x.id}/view`,
-    driveFile: true, gpath: x.parts || [] }))];
+    driveFile: true, gpath: x.parts || [], parentId: x.parentId, createdTime: x.createdTime }))];
 }
 function refreshFolder(fo){
   const id = DRIVE_FOLDERS[fo.id]; if (!id || !isSignedIn()) return;
@@ -1842,6 +1880,8 @@ function refreshFolder(fo){
 document.addEventListener("visibilitychange", () => { if (!document.hidden && isSignedIn() && Date.now() - lastDriveSync > 60000) syncDriveFolders(); });
 function currentDriveIds(){ return [...new Set(DATA.chapters.flatMap(ch => ch.folders.map(f => DRIVE_FOLDERS[f.id]).filter(Boolean)))]; }
 let prefetching = false;
+// Si Drive o la hoja tardan demasiado, se muestra lo que haya en lugar de dejar el panel cargando.
+setTimeout(() => { if (!driveReady || !statusesLoaded) { driveReady = statusesLoaded = true; renderProgress(); } }, 25000);
 async function prefetchAllFolders(){
   if (prefetching || !isSignedIn()) return;
   prefetching = true;
@@ -1851,7 +1891,7 @@ async function prefetchAllFolders(){
       await Promise.all(ids.slice(i, i + 6).map(id => loadFolderFiles(id).catch(() => {})));
     }
     renderDocs(); renderFolders(); renderProgress();
-  } finally { prefetching = false; }
+  } finally { prefetching = false; driveReady = true; renderProgress(); }
 }
 
 function statusChipHtml(docId, e){
@@ -1986,7 +2026,7 @@ function renderChecklist(sel){
     const m = reqMetrics(a, M), auto = m.total ? m.auto / m.total * 100 : 0, open = state.openAcc.has(a);
     const bar = STATUS_ORDER.map(k => m.counts[k] ? `<span style="width:${pctOf(m.counts[k], m.total)}%;background:${STATUS_META[k].color}" title="${STATUS_META[k].label}: ${m.counts[k]}"></span>` : "").join("");
     return `<div class="rq-row"><span class="rq-acc ${a}">${a}</span>
-      <div><div class="rq-bar">${bar}</div></div>
+      <div><div class="pp-barbox"><div class="rq-bar">${bar}</div><div class="pp-mark pp-mark-sm" style="left:${Math.round(auto * 10) / 10}%" title="${Math.round(auto * 10) / 10}% automatable"></div></div></div>
       <button class="pp-btn" data-open-acc="${a}">${open ? "Close checklist" : "Open checklist"}</button>
       <div class="rq-meta"><b>${pctOf(m.counts.current, m.total)}%</b> up to date (${m.counts.current}/${m.total}) · ${m.counts.missing} without document <span class="rq-auto">⚡ ${Math.round(auto * 10) / 10}% automatable</span></div>
       ${open ? `<div class="rq-panel">${renderAccTable(a, M)}</div>` : ""}</div>`;
@@ -2081,24 +2121,28 @@ function renderFolders(){
     btn.className="folder-item"+(state.selectedFolder===f.id?" active":"");
     btn.dataset.folderId=f.id;
     const tags=f.accreditations.map(a=>`<span class="f-tag">${a}</span>`).join("");
-    btn.innerHTML=`<span class="f-badge">${f.badge}</span><span class="f-title">${f.title}</span>${folderProgressText(f)}<div class="f-tags">${tags}</div>`;
+    btn.innerHTML=`<span class="f-ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><div class="f-body"><div class="f-top"><span class="f-title">${f.title}</span>${folderProgressText(f)}</div><div class="f-tags">${tags}</div></div>`;
     btn.addEventListener("click",()=>{state.selectedFolder=f.id;state.selectedDoc=null;render();refreshFolder(f);});
     el.appendChild(btn);
   });
 }
 
 const loadingFolders=new Set(), openGroups=new Set();
+function docTypeClass(doc){
+  const t=String(doc.type||"").toUpperCase();
+  if(t==="DASHBOARD")return"t-dash"; if(t==="LINK")return"t-link"; if(t==="PDF")return"t-pdf";
+  if(/^(DOCX?|RTF|TXT|ODT)$/.test(t))return"t-doc"; if(/^(XLSX?|XLSM|CSV|ODS)$/.test(t))return"t-xls";
+  if(/^(PPTX?|PPSX|ODP|KEY)$/.test(t))return"t-ppt"; if(/^(PNG|JPE?G|GIF|SVG|WEBP|MP4|MOV)$/.test(t))return"t-img";
+  return"t-other";
+}
 function renderDocs(){
   const el=document.getElementById("docList");
   const desc=document.getElementById("docColDesc");
-  const addBtn=document.getElementById("docAddBtn");
-  if(!state.selectedFolder){
+    if(!state.selectedFolder){
     desc.textContent="Select a folder to view its documents";
     el.innerHTML=`<div class="empty-state">Click a folder to see its documents.</div>`;
-    if(addBtn) addBtn.style.visibility="hidden";
     return;
   }
-  if(addBtn) addBtn.style.visibility="visible";
   const f=getFolders().find(f=>f.id===state.selectedFolder);
   desc.textContent=f?f.title:"";
   if(!isSignedIn()){
@@ -2115,6 +2159,15 @@ function renderDocs(){
   }
   const docs=getDocs();el.innerHTML="";
   const dId=f?DRIVE_FOLDERS[f.id]:null;
+  const makeAddSlot=(targetId,big)=>{
+    const d=document.createElement("div");
+    if(big){d.className="doc-add-row";d.innerHTML="<span>＋</span> Add document";}
+    else{d.className="doc-add-slot";d.title="Add a document below";d.innerHTML="<span>＋ Add a document here</span>";}
+    d.addEventListener("click",(e)=>{e.stopPropagation();
+      if(!targetId){showToast("No Drive folder configured for this folder yet.");return;}
+      requireLogin(()=>openAddModal(targetId,f.title,f.id));});
+    return d;
+  };
   if(dId&&!folderFiles[dId]){
     el.innerHTML=`<div class="empty-state">Loading files from Drive…</div>`;
     if(!loadingFolders.has(dId)){loadingFolders.add(dId);loadFolderFiles(dId).catch(()=>{folderFiles[dId]={files:[],subfolders:0,error:true};}).finally(()=>{loadingFolders.delete(dId);renderDocs();renderFolders();renderProgress();});}
@@ -2128,11 +2181,11 @@ function renderDocs(){
     note.innerHTML=`<details><summary>📁 <strong>${unl.length}</strong> file(s) in this Drive folder${unl.some(x=>x.path)?" (some inside subfolders)":""} are not linked to any document. Click to see them.</summary><ul style="margin:6px 0 4px 18px;padding:0;">${list}</ul>If one is a new version or a new document, use <strong>Update</strong> or the <strong>+</strong> button. <a href="${f.sharepointUrl}" target="_blank" rel="noopener">Open folder</a></details>`;
     el.appendChild(note);
   }
-  if(!docs.length&&!((folderFiles[dId]||{}).dirs||[]).length){el.insertAdjacentHTML("beforeend",`<div class="empty-state">No documents in this folder.</div>`);return;}
+  if(!docs.length&&!((folderFiles[dId]||{}).dirs||[]).length){el.insertAdjacentHTML("beforeend",`<div class="empty-state">No documents in this folder.</div>`);el.appendChild(makeAddSlot(dId,true));return;}
   const addDoc=(docBase,parent)=>{
     const doc={...docBase,...(docOverrides[docBase.id]||{})};
     const item=document.createElement("div");
-    item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");
+    item.className="doc-item "+docTypeClass(doc)+(state.selectedDoc===doc.id?" active":"");
     const folder=getFolders().find(f=>f.id===state.selectedFolder);
     // Fecha de referencia: la registrada al subirlo o, si no hay, la de modificación del archivo en Drive.
     const fInfo=folder?driveFileInfo(folder,doc):null;
@@ -2161,7 +2214,7 @@ function renderDocs(){
     item.innerHTML=`<div class="doc-item-row"><div class="doc-item-main"><div class="doc-type">${doc.type||"PDF"}</div><div class="doc-title">${doc.title} ${alertHtml}</div><div class="doc-meta">${doc.meta}</div><div class="doc-updated">${upd}</div>${uploadedHtml}${notesHtml}${statusHtml}</div>
       <div class="doc-btn-group">
         <button class="doc-update-btn" data-id="${doc.id}">${doc.driveFile?"Open in Drive":"Update"}</button>
-        ${(doc.url&&doc.url!=="#"&&doc.updatedAt)?`<button class="doc-delete-btn" data-id="${doc.id}" title="Delete document"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>`:""}
+        ${(doc.url&&doc.url!=="#"&&(doc.updatedAt||doc.driveFile))?`<button class="doc-delete-btn" data-id="${doc.id}" title="Delete document"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>`:""}
       </div></div>`;
     const chip=item.querySelector(".st-chip");
     if(chip) chip.addEventListener("click",(e)=>{e.stopPropagation();openStatusMenu(doc.id,chip);});
@@ -2180,7 +2233,9 @@ function renderDocs(){
       requireLogin(()=>openDeleteModal(doc.id));
     });
     parent.appendChild(item);
+    parent.appendChild(makeAddSlot(doc.parentId||dId,false));
   };
+
   // Árbol de Drive: archivos sueltos de la carpeta + subcarpetas que se despliegan nivel a nivel.
   const nat=(a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:"base"});
   const driveDocs=docs.filter(d=>d.driveFile);
@@ -2201,11 +2256,13 @@ function renderDocs(){
         const box=document.createElement("div");box.style.cssText="margin:0 0 10px 14px;padding:0 0 10px 10px;border-left:2px solid #e5e7eb;border-bottom:1px solid #d1d5db;";
         parent.appendChild(box);
         renderLevel(dp,box,depth+1);
+        box.appendChild(makeAddSlot((ffd.dirIds||{})[dp.join("/")],true));
       }
     });
     driveDocs.filter(d=>(d.gpath||[]).length===path.length&&under(path,d)).forEach(d=>addDoc(d,parent));
   };
   renderLevel([],el,0);
+  el.appendChild(makeAddSlot(dId,true));
 }
 
 function render(){renderChapters();renderFolders();renderDocs();renderProgress();}
@@ -2225,6 +2282,7 @@ function setUploadType(t){
   document.getElementById("typeDashBtn").classList.toggle("active",t==="dashboard");
   document.getElementById("fileSection").style.display=t==="file"?"block":"none";
   document.getElementById("dashSection").style.display=t==="dashboard"?"block":"none";
+  ["docNameInput","docResponsibleInput","docNotesInput"].forEach(id=>{document.getElementById(id).parentElement.style.display=t==="dashboard"?"block":"none";});
 }
 
 function resetModal(){
@@ -2236,7 +2294,7 @@ function resetModal(){
   const fd=document.getElementById("fileDrop");
   fd.classList.remove("has-file");
   fd.querySelector("strong").textContent="Click to browse or drag and drop";
-  fd.querySelector("p").textContent="PDF only — max 50 MB";
+  fd.querySelector("p").textContent="PDF, Word, Excel, PowerPoint, images… — several at once, max 50 MB each";
   document.getElementById("fileInput").value="";
   document.getElementById("uploadProgress").style.display="none";
   document.getElementById("uploadProgressFill").style.width="0%";
@@ -2279,15 +2337,6 @@ function openAddModal(folderId,folderTitle,folderDataId){
   document.getElementById("uploadModal").classList.add("open");
 }
 
-document.getElementById("docAddBtn").addEventListener("click",()=>{
-  if(!state.selectedFolder){showToast("Select a folder first.");return;}
-  const f=getFolders().find(f=>f.id===state.selectedFolder);
-  if(!f) return;
-  const fid=DRIVE_FOLDERS[f.id]||null;
-  if(!fid){showToast("No Drive folder configured for this folder yet.");return;}
-  requireLogin(()=>openAddModal(fid,f.title,f.id));
-});
-
 document.getElementById("dashUrlInput").addEventListener("input",(e)=>{
   const v=e.target.value.trim();
   const btn=document.getElementById("dashOpenBtn");
@@ -2296,21 +2345,33 @@ document.getElementById("dashUrlInput").addEventListener("input",(e)=>{
 });
 
 document.getElementById("fileDrop").addEventListener("click",()=>document.getElementById("fileInput").click());
-document.getElementById("fileInput").addEventListener("change",(e)=>{
-  const file=e.target.files[0];if(!file)return;
+function showPickedFiles(){
+  const files=[...document.getElementById("fileInput").files];
   const fd=document.getElementById("fileDrop");
+  if(!files.length){resetModalFileLabel();return;}
   fd.classList.add("has-file");
-  fd.querySelector("strong").textContent=file.name;
-  fd.querySelector("p").textContent=(file.size/1024/1024).toFixed(2)+" MB";
+  fd.querySelector("strong").textContent=files.length===1?files[0].name:files.length+" files selected";
+  const mb=files.reduce((n,f)=>n+f.size,0)/1024/1024;
+  fd.querySelector("p").textContent=(files.length>1?files.slice(0,3).map(f=>f.name).join(", ")+(files.length>3?"…":"")+" · ":"")+mb.toFixed(2)+" MB";
+}
+function resetModalFileLabel(){
+  const fd=document.getElementById("fileDrop");fd.classList.remove("has-file");
+  fd.querySelector("strong").textContent="Click to browse or drag and drop";
+  fd.querySelector("p").textContent="PDF, Word, Excel, PowerPoint, images… — several at once, max 50 MB each";
+}
+document.getElementById("fileInput").addEventListener("change",showPickedFiles);
+["dragover","dragenter"].forEach(ev=>document.getElementById("fileDrop").addEventListener(ev,(e)=>{e.preventDefault();}));
+document.getElementById("fileDrop").addEventListener("drop",(e)=>{
+  e.preventDefault();
+  if(e.dataTransfer&&e.dataTransfer.files.length){document.getElementById("fileInput").files=e.dataTransfer.files;showPickedFiles();}
 });
 
 document.getElementById("modalSaveBtn").addEventListener("click",()=>{
   const name=document.getElementById("docNameInput").value.trim();
   const responsible=document.getElementById("docResponsibleInput").value.trim();
   const notes=document.getElementById("docNotesInput").value.trim();
-  if(!name||!responsible){showToast("Please fill in the document name and responsible person.");return;}
-
   if(uploadType==="dashboard"){
+    if(!name||!responsible){showToast("Please fill in the document name and responsible person.");return;}
     const dashUrl=document.getElementById("dashUrlInput").value.trim();
     if(!dashUrl){showToast("Please enter a dashboard URL.");return;}
     const today=new Date().toISOString().split("T")[0];
@@ -2331,47 +2392,33 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
     return;
   }
 
-  const file=document.getElementById("fileInput").files[0];
-  if(!file){showToast("Please select a file.");return;}
+  const files=[...document.getElementById("fileInput").files];
+  if(!files.length){showToast("Please select at least one file.");return;}
   if(!currentFolderId){showToast("No Drive folder configured for this folder yet.");return;}
-
-  const docType="PDF";
-  document.getElementById("modalSaveBtn").disabled=true;
-  document.getElementById("modalSaveBtn").textContent="Uploading...";
+  const big=files.find(f=>f.size>50*1024*1024);
+  if(big){showToast(`"${big.name}" is larger than 50 MB.`);return;}
+  const saveBtn=document.getElementById("modalSaveBtn"),lbl=document.getElementById("uploadProgressLabel"),fill=document.getElementById("uploadProgressFill");
+  saveBtn.disabled=true;saveBtn.textContent="Uploading...";
   document.getElementById("uploadProgress").style.display="block";
-
-  uploadToDrive(file,file.name,currentFolderId,
-    (pct)=>{
-      document.getElementById("uploadProgressFill").style.width=pct+"%";
-      document.getElementById("uploadProgressLabel").textContent=`Uploading... ${pct}%`;
-    },
-    (result)=>{
-      const today=new Date().toISOString().split("T")[0];
-      if(currentModalMode==="add"||!currentUploadDocId){
-        currentUploadDocId="added_"+state.selectedFolder+"_"+Date.now();
-        const folder=getFolders().find(fo=>fo.id===state.selectedFolder);
-        if(folder) folder.documents.push({id:currentUploadDocId,title:name,type:"PDF",meta:name,responsible,updatedAt:today,accreditations:folder.accreditations,url:result.previewUrl});
-      }
-      docOverrides[currentUploadDocId]={title:name,responsible,type:docType,updatedAt:today,url:result.previewUrl,viewUrl:result.viewUrl,uploadedBy:googleUserEmail,notes};
-      writeToSheet(currentUploadDocId,name,responsible,today,result.viewUrl,result.previewUrl,googleUserEmail,notes,'PDF');
-      if(result.fileId){
-        fetch(`https://www.googleapis.com/drive/v3/files/${result.fileId}`,{
-          method:"PATCH",
-          headers:{"Authorization":"Bearer "+googleAccessToken,"Content-Type":"application/json"},
-          body:JSON.stringify({name:name.toLowerCase().endsWith(".pdf")?name:name+".pdf"})
-        }).catch(e=>console.warn("Drive rename error",e));
-      }
-      closeModal("uploadModal");
-      showToast("Saved to Google Drive successfully.");
-      state.selectedDoc=currentUploadDocId;
-      loadFromSheet().then(()=>{renderDocs();setTimeout(()=>openViewer(currentUploadDocId),300);});
-    },
-    (err)=>{
-      showToast("Error: "+err);
-      document.getElementById("modalSaveBtn").disabled=false;
-      document.getElementById("modalSaveBtn").textContent="Save to Drive";
+  const folderRef=getFolders().find(fo=>fo.id===state.selectedFolder);
+  (async()=>{
+    let done=0,failed=null;
+    for(let i=0;i<files.length&&!failed;i++){
+      await new Promise(res=>uploadToDrive(files[i],files[i].name,currentFolderId,
+        (pct)=>{fill.style.width=pct+"%";lbl.textContent=`Uploading ${i+1} of ${files.length}… ${pct}%`;},
+        ()=>{done++;res();},
+        (err)=>{failed=err;res();}));
     }
-  );
+    saveBtn.disabled=false;saveBtn.textContent="Save to Drive";
+    if(failed){
+      showToast(`Error: ${failed}${/404|403/.test(failed)?" — sign out and sign in again to grant access to Drive.":""}`);
+    }
+    if(done){
+      closeModal("uploadModal");
+      showToast(done===1?"File saved to Google Drive.":`${done} files saved to Google Drive.`);
+      if(folderRef&&DRIVE_FOLDERS[folderRef.id]) loadFolderFiles(DRIVE_FOLDERS[folderRef.id]).then(()=>{renderDocs();renderFolders();renderProgress();}).catch(()=>{});
+    }
+  })();
 });
 
 function closeModal(id){document.getElementById(id).classList.remove("open");}
