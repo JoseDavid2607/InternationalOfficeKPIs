@@ -2086,25 +2086,30 @@ function reqMatches(){
   reqMatchSig = sig; reqMatchMap = map; return map;
 }
 // ---- filtro por acreditación: qué carpetas y documentos pertenecen a cada una ----
+// Etiquetas de acreditación de cada carpeta: las originales del BaseRoom (carpeta enlazada por número) y,
+// para carpetas nuevas de Drive sin etiquetas, las de los requisitos que cubren; si no hay ninguna, valen
+// para las tres (se ven con cualquier filtro). Una carpeta etiquetada con las tres se ve con cualquier acreditación.
 let accIdxSig = "", accIdx = null;
 function accIndex(){
   const M = reqMatches(), sig = reqMatchSig + "|" + Object.keys(M).length;
   if (accIdx && sig === accIdxSig) return accIdx;
-  const docA = new Map(), foA = new Map(), add = (m, k, a) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(a); };
-  REQS.forEach(q => (M[q.id] || []).forEach(x => { add(docA, x.d.id, q.acc); add(foA, x.f.id, q.acc); }));
-  DATA.chapters.forEach(ch => ch.folders.forEach(f => { if (!f.fromDrive || f._legacyId) (f.accreditations || []).forEach(a => add(foA, f.id, a)); }));
-  accIdxSig = sig; accIdx = { docA, foA }; return accIdx;
+  const foA = new Map();
+  REQS.forEach(q => (M[q.id] || []).forEach(x => { if (!foA.has(x.f.id)) foA.set(x.f.id, new Set()); foA.get(x.f.id).add(q.acc); }));
+  accIdxSig = sig; accIdx = { foA }; return accIdx;
+}
+function folderAccs(f){
+  if (!f.fromDrive || f._legacyId) return (f.accreditations && f.accreditations.length) ? f.accreditations : ACCS;
+  const A = accIndex().foA.get(f.id); return A && A.size ? [...A] : ACCS;
 }
 function filtering(accs){ return (accs || [...state.accSel]).length < ACCS.length; }
 function folderInScope(f, accs){
   const sel = accs || [...state.accSel]; if (sel.length >= ACCS.length) return true;
-  const A = accIndex().foA.get(f.id); return !!A && [...A].some(a => sel.includes(a));
+  return folderAccs(f).some(a => sel.includes(a));
 }
 function docInScope(d, f, accs){
   const sel = accs || [...state.accSel]; if (sel.length >= ACCS.length) return true;
-  const A = accIndex().docA.get(d.id);
-  if (A) return [...A].some(a => sel.includes(a));
-  return (!f.fromDrive || !!f._legacyId) && (f.accreditations || []).some(a => sel.includes(a));   // sin requisito asociado: etiquetas originales de la carpeta
+  const own = !d.driveFile && (!f.fromDrive || f._legacyId) && d.accreditations && d.accreditations.length ? d.accreditations : folderAccs(f);
+  return own.some(a => sel.includes(a));
 }
 function docAutoOwn(doc){   // lo que el propio documento dice: marca explícita, dashboards/links y todos los Excel
   if (doc.autoFlag === true || doc.autoFlag === false) return doc.autoFlag;
