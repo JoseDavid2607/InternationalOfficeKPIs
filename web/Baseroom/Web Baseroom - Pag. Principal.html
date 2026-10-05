@@ -1824,8 +1824,7 @@ function openStatusMenu(docId, anchor){
   const opts = [
     ["current","✓ Up to date"],
     ["update","↻ Needs update"],
-    ["new","＋ New document needed"],
-    ["reset","↺ Automatic"]
+    ["new","＋ New document needed"]
   ];
   menu.innerHTML = opts.map(o => `<button data-s="${o[0]}">${o[1]}</button>`).join("");
   document.body.appendChild(menu);
@@ -2356,7 +2355,7 @@ function renderDocs(){
     if(ap&&canToggle) ap.addEventListener("click",(e)=>{e.stopPropagation();
       closeStatusMenu();
       const menu=document.createElement("div");menu.className="status-menu";menu.id="statusMenu";
-      menu.innerHTML=`<button data-v="1">⚡ Automatable</button><button data-v="0">Manual</button><button data-v="auto">↺ Default</button>`;
+      menu.innerHTML=`<button data-v="1">⚡ Automatable</button><button data-v="0">Manual</button>`;
       document.body.appendChild(menu);
       const r=ap.getBoundingClientRect();
       menu.style.left=Math.min(r.left,window.innerWidth-250)+"px";
