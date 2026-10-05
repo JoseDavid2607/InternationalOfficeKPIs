@@ -2224,7 +2224,7 @@ function renderDocs(){
       gh.addEventListener("click",()=>{open?openGroups.delete(key):openGroups.add(key);renderDocs();});
       parent.appendChild(gh);
       if(open){
-        const box=document.createElement("div");box.style.cssText="margin-left:14px;padding-left:10px;border-left:2px solid #e5e7eb;";
+        const box=document.createElement("div");box.style.cssText="margin:0 0 10px 14px;padding:0 0 10px 10px;border-left:2px solid #e5e7eb;border-bottom:1px solid #d1d5db;";
         parent.appendChild(box);
         renderLevel(dp,box,depth+1);
       }
