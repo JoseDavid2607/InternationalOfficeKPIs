@@ -1756,7 +1756,7 @@ function inScope(item){
 // carpeta cuentan como uno solo: una carpeta con muchos Excel no sube el porcentaje.
 function computeProgress(accs){
   const res = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, byChapter: {}, changed: 0,
-    docs: 0, docAuto: 0, units: 0, unitsAuto: 0 };
+    docs: 0, docAuto: 0, reqTotal: 0, reqAuto: 0 };
   DATA.chapters.forEach(ch => ch.folders.forEach(f => {
     if (!folderInScope(f, accs)) return;
     let nAuto = 0, nPlain = 0;
@@ -1767,10 +1767,12 @@ function computeProgress(accs){
       const c = res.byChapter[ch.id] = res.byChapter[ch.id] || { ch, total: 0, current: 0 };
       c.total++; if (e.key === "current") c.current++;
     });
-    res.units += nPlain + (nAuto ? 1 : 0); res.unitsAuto += nAuto ? 1 : 0;
   }));
   const M = reqMatches();
-  REQS.forEach(q => { if (accs.includes(q.acc) && !(M[q.id] || []).length) { res.total++; res.counts.missing++; res.units++; if (q.auto) res.unitsAuto++; } });
+  REQS.forEach(q => { if (accs.includes(q.acc) && !(M[q.id] || []).length) { res.total++; res.counts.missing++; } });
+  // % automatizable = por requisito (como el Excel): lo marca el Excel o lo cubre un documento automatizable;
+  // una carpeta con muchos archivos automatizables cuenta una sola vez porque el conteo es por requisito
+  accs.forEach(a => REQS.filter(q => q.acc === a).forEach(q => { res.reqTotal++; if (reqState(q, M).auto) res.reqAuto++; }));
   res.missing = res.counts.missing;
   return res;
 }
@@ -1795,11 +1797,11 @@ function renderProgress(){
       <strong>${c.current}/${c.total}</strong></div>`).join("");
   const notes = [];
   if (r.changed) notes.push(`${r.changed} document(s) changed in Drive after they were marked as latest and need a new review.`);
-  const autoAvg = r.units ? Math.round(r.unitsAuto / r.units * 1000) / 10 : 0;
+  const autoAvg = r.reqTotal ? Math.round(r.reqAuto / r.reqTotal * 1000) / 10 : 0;
   const mark = sel.length ? `<div class="pp-mark" style="left:${autoAvg}%" title="${autoAvg}% of the requirements can be automated"><span>⚡ ${autoAvg}%</span></div>` : "";
   el.innerHTML = `<div class="pp-head">
       <div class="pp-pct">${pctOf(r.counts.current, r.total)}%<small>Up to date · ${label}</small></div>
-      <div class="pp-auto" title="Share of automatable documents; the automatable documents of one folder count as one">⚡ ${autoAvg}% automatable<small>${r.docAuto} automatable documents · ${label}</small></div>
+      <div class="pp-auto" title="Share of the accreditation requirements that can be automated (Excel flag or an automatable document)">⚡ ${autoAvg}% automatable<small>${r.reqAuto} of ${r.reqTotal} requirements · ${label}</small></div>
       <div class="pp-bar-wrap"><div class="pp-barbox"><div class="pp-bar">${bar}</div>${mark}</div><div class="pp-legend">${legend}</div>
         <div class="pp-docs"><strong>${r.docs}</strong> documents in total${r.missing ? ` · ${r.missing} still missing` : ""} · <span class="pp-docauto">⚡ ${r.docAuto} automatable</span></div></div>
     </div>
@@ -2131,7 +2133,7 @@ function renderChecklist(sel){
   const M = reqMatches();
   const chk = ACCS.map(a => `<label class="rq-chk ${a}"><input type="checkbox" data-acc="${a}"${state.accSel.has(a) ? " checked" : ""}> ${a}</label>`).join("");
   const rows = sel.map(a => {
-    const m = computeProgress([a]), auto = m.units ? m.unitsAuto / m.units * 100 : 0, open = state.openAcc.has(a);
+    const m = computeProgress([a]), auto = m.reqTotal ? m.reqAuto / m.reqTotal * 100 : 0, open = state.openAcc.has(a);
     const bar = STATUS_ORDER.map(k => m.counts[k] ? `<span style="width:${pctOf(m.counts[k], m.total)}%;background:${STATUS_META[k].color}" title="${STATUS_META[k].label}: ${m.counts[k]}"></span>` : "").join("");
     return `<div class="rq-row"><span class="rq-acc ${a}">${a}</span>
       <div><div class="pp-barbox"><div class="rq-bar">${bar}</div><div class="pp-mark pp-mark-sm" style="left:${Math.round(auto * 10) / 10}%" title="${Math.round(auto * 10) / 10}% automatable"></div></div></div>
