@@ -404,7 +404,13 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 .viewer-review button:hover { filter:brightness(.96); }
 /* ===== Checklist de requisitos por acreditación ===== */
 .pp-req { margin-top:12px; border-top:1px solid #eef0f2; padding-top:10px; }
-.pp-req-title { font-size:.74rem; font-weight:800; color:#6b7280; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
+.pp-req-title { font-size:.8rem; font-weight:800; color:#6b7280; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
+.pp-pct-auto { color:#a16207; }
+.pp-req > summary { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.rq-chks { display:inline-flex; gap:8px; }
+.rq-chk { font-size:.74rem; font-weight:800; padding:3px 10px; border-radius:999px; border:1.5px solid var(--border); cursor:pointer; background:#fff; }
+.rq-chk.EQUIS { color:#2f8b85; } .rq-chk.AACSB { color:#1a6fa8; } .rq-chk.AMBA { color:#7c5cbf; }
+.rq-frow { cursor:pointer; } .rq-frow:hover td { background:#f9fafb; }
 .rq-row { display:grid; grid-template-columns: 70px minmax(160px,1fr) minmax(220px,2fr) auto; gap:12px; align-items:center; padding:6px 0; font-size:.8rem; color:#374151; }
 .rq-acc { font-weight:900; padding:3px 10px; border-radius:999px; color:#fff; text-align:center; font-size:.74rem; }
 .rq-acc.EQUIS { background:#2f8b85; } .rq-acc.AACSB { background:#1a6fa8; } .rq-acc.AMBA { background:#7c5cbf; }
@@ -414,9 +420,6 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 .rq-meta { font-size:.76rem; color:#4b5563; line-height:1.45; }
 .rq-meta b { color:#111827; }
 .rq-auto-pill { background:#fef9c3; color:#854d0e; border:1px solid #fde047; border-radius:999px; padding:1px 8px; font-weight:800; font-size:.7rem; white-space:nowrap; }
-#reqModal .modal-box { max-width:1100px; width:96vw; max-height:92vh; overflow:auto; }
-.rq-tabs { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; align-items:center; }
-.rq-sum { padding:10px 14px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; font-size:.84rem; color:#374151; margin-bottom:10px; line-height:1.6; }
 .rq-table { width:100%; border-collapse:collapse; font-size:.8rem; }
 .rq-table th { text-align:left; background:#f3f4f6; padding:8px 10px; position:sticky; top:0; font-size:.72rem; text-transform:uppercase; color:#6b7280; letter-spacing:.03em; z-index:1; }
 .rq-table td { padding:9px 10px; border-bottom:1px solid #eef0f2; vertical-align:top; }
@@ -482,12 +485,6 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
         <h3>Folders</h3>
         <p id="folderColDesc">Select a chapter first</p>
       </div>
-      <div class="filter-bar" id="filterBar">
-        <button class="filter-btn active" data-filter="ALL">All</button>
-        <button class="filter-btn" data-filter="AACSB">AACSB</button>
-        <button class="filter-btn" data-filter="EQUIS">EQUIS</button>
-        <button class="filter-btn" data-filter="AMBA">AMBA</button>
-      </div>
       <div class="folder-col-inner">
         <div class="folder-scroll" id="folderList"></div>
       </div>
@@ -509,14 +506,6 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 </section>
 
 <footer>International Office · School of Management · Internal use only</footer>
-
-<!-- REQUIREMENTS MODAL -->
-<div class="modal-overlay" id="reqModal">
-  <div class="modal-box">
-    <button class="modal-close" onclick="closeModal('reqModal')">×</button>
-    <div id="reqModalBody"></div>
-  </div>
-</div>
 
 <!-- LOGIN MODAL -->
 <div class="modal-overlay" id="loginModal">
@@ -1559,7 +1548,7 @@ const DATA = {
 // =====================
 // STATE & HELPERS
 // =====================
-let state = {activeFilter:"ALL", selectedChapter:null, selectedFolder:null, selectedDoc:null};
+let state = {accSel:new Set(["EQUIS","AACSB","AMBA"]), reqOpen:false, selectedChapter:null, selectedFolder:null, selectedDoc:null};
 const docOverrides = {};
 
 function getChapter(id){return DATA.chapters.find(c=>c.id===id);}
@@ -1643,19 +1632,33 @@ function allDocs(){
   })));
   return out;
 }
-function inScope(item, filter){
-  if (filter === "ALL") return true;
-  return (item.doc.accreditations || item.folder.accreditations || []).includes(filter);
+function inScope(item){
+  const accs = item.doc.accreditations || item.folder.accreditations || [];
+  return accs.some(a => state.accSel.has(a));
 }
-function computeProgress(filter){
+// Un elemento por documento (con su estado) y uno por carpeta vacía de Drive (cuenta como "sin documento").
+function progressItems(accs){
+  const out = [];
+  DATA.chapters.forEach(ch => ch.folders.forEach(f => {
+    const fa = f.accreditations || [];
+    let n = 0;
+    f.documents.forEach(d0 => {
+      const d = {...d0, ...(docOverrides[d0.id] || {})};
+      if (!(d.accreditations || fa).some(a => accs.includes(a))) return;
+      out.push({ ch, f, e: effStatus(d, f) }); n++;
+    });
+    if (!f.documents.length && f.fromDrive && folderFiles[DRIVE_FOLDERS[f.id]] && fa.some(a => accs.includes(a))) out.push({ ch, f, e: { key: "missing" } });
+  }));
+  return out;
+}
+function computeProgress(accs){
   const res = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, byChapter: {}, auto: 0, changed: 0 };
-  allDocs().filter(it => inScope(it, filter)).forEach(it => {
-    const e = effStatus(it.doc, it.folder);
-    res.total++; res.counts[e.key]++;
-    if (e.auto) res.auto++;
-    if (e.hint) res.changed++;
-    const c = res.byChapter[it.chapter.id] = res.byChapter[it.chapter.id] || { ch: it.chapter, total: 0, current: 0 };
-    c.total++; if (e.key === "current") c.current++;
+  progressItems(accs).forEach(it => {
+    res.total++; res.counts[it.e.key]++;
+    if (it.e.auto) res.auto++;
+    if (it.e.hint) res.changed++;
+    const c = res.byChapter[it.ch.id] = res.byChapter[it.ch.id] || { ch: it.ch, total: 0, current: 0 };
+    c.total++; if (it.e.key === "current") c.current++;
   });
   return res;
 }
@@ -1663,47 +1666,31 @@ function pctOf(n, total){ return total ? Math.round(n / total * 1000) / 10 : 0; 
 
 function renderProgress(){
   const el = document.getElementById("progressPanel"); if (!el) return;
-  const filter = state.activeFilter;
-  const r = computeProgress(filter);
-  const label = filter === "ALL" ? "all accreditations" : filter;
+  const sel = ACCS.filter(a => state.accSel.has(a));
+  const r = computeProgress(sel);
+  const label = sel.length ? sel.join(" + ") : "no accreditation selected";
   const bar = STATUS_ORDER.map(k => r.counts[k] ? `<span style="width:${pctOf(r.counts[k], r.total)}%;background:${STATUS_META[k].color}" title="${STATUS_META[k].label}: ${r.counts[k]}"></span>` : "").join("");
   const legend = STATUS_ORDER.map(k => `<span><i style="background:${STATUS_META[k].color}"></i>${STATUS_META[k].label} <strong>${r.counts[k]}</strong></span>`).join("");
   const chapters = DATA.chapters.map(ch => r.byChapter[ch.id]).filter(Boolean).map(c =>
-    `<div class="pp-ch" data-ch="${c.ch.id}"><span>${c.ch.badge}: ${c.ch.title}</span>
+    `<div class="pp-ch" data-ch="${c.ch.id}"><span>${c.ch.title}</span>
       <div class="pp-bar"><span style="width:${pctOf(c.current, c.total)}%;background:${STATUS_META.current.color}"></span></div>
       <strong>${c.current}/${c.total}</strong></div>`).join("");
   const notes = [];
   if (r.auto) notes.push(`${r.auto} automated item(s) (dashboards / links) count as up to date.`);
   if (r.changed) notes.push(`${r.changed} document(s) changed in Drive after they were marked as latest and need a new review.`);
+  const autoAvg = sel.length ? Math.round(sel.reduce((n, a) => n + reqAutoPct(a), 0) / sel.length * 10) / 10 : 0;
   el.innerHTML = `<div class="pp-head">
       <div class="pp-pct">${pctOf(r.counts.current, r.total)}%<small>Up to date · ${label}</small></div>
+      <div class="pp-pct pp-pct-auto" title="Share of the accreditation requirements that can be automated, averaged over the selected accreditations">⚡ ${autoAvg}%<small>Automatable · average</small></div>
       <div class="pp-bar-wrap"><div class="pp-bar">${bar}</div><div class="pp-legend">${legend}</div></div>
-      <div class="pp-actions"><button class="pp-btn" id="ppCsv">Download report (CSV)</button> <button class="pp-btn" id="ppVerify" title="Check which files each Drive folder has">Verify Drive</button> <button class="pp-btn" id="ppRefresh" title="Reload folders and files from Google Drive">↻ Refresh from Drive</button></div>
     </div>
     <details class="pp-details"><summary>Progress by chapter</summary>${chapters}</details>
     ${notes.length ? `<div class="pp-note">${notes.join(" ")}</div>` : ""}
-    ${renderRequirementsSummary()}`;
-  bindRequirementsSummary(el);
+    ${renderChecklist(sel)}`;
   el.querySelectorAll(".pp-ch").forEach(row => row.addEventListener("click", () => {
     state.selectedChapter = row.dataset.ch; state.selectedFolder = null; state.selectedDoc = null; render();
   }));
-  const csvBtn = document.getElementById("ppCsv"); if (csvBtn) csvBtn.onclick = exportProgressCsv;
-  const rBtn = document.getElementById("ppRefresh"); if (rBtn) rBtn.onclick = () => { showToast("Refreshing from Drive…"); syncDriveFolders(); };
-  const vBtn = document.getElementById("ppVerify"); if (vBtn) vBtn.onclick = () => requireLogin(openDriveVerify);
-}
-
-function exportProgressCsv(){
-  const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
-  const rows = [["Chapter","Folder","Document","Type","Accreditations","Status","Marked by","Marked at","Note","Drive file"]];
-  allDocs().forEach(it => {
-    const e = effStatus(it.doc, it.folder);
-    rows.push([it.chapter.title, it.folder.title, it.doc.title, it.doc.type || "", (it.doc.accreditations || it.folder.accreditations || []).join("/"),
-      STATUS_META[e.key].label + (e.auto ? " (automated)" : ""), e.by || "", e.at ? e.at.slice(0,10) : "", e.note || e.hint || "", it.doc.viewUrl || it.doc.url || ""]);
-  });
-  const blob = new Blob(["\ufeff" + rows.map(r => r.map(q).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "BaseRoom_progress_" + new Date().toISOString().slice(0,10) + ".csv"; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  bindChecklist(el);
 }
 
 // ---- marcar estado (con login) ----
@@ -1744,8 +1731,7 @@ async function ensureStatusTab(token){
   statusTabReady = true; return true;
 }
 async function setDocStatus(docId, status){
-  const isReq = String(docId).startsWith("req:");
-  const res = isReq ? { doc: { title: (REQS.find(q => reqKey(q.id) === docId) || {}).text || docId } } : getDoc(docId);
+  const res = getDoc(docId);
   if (!res) return;
   const token = await getToken();
   if (!token || !(await ensureStatusTab(token))) { showToast("Could not save the status. Please sign in again."); return; }
@@ -1759,8 +1745,7 @@ async function setDocStatus(docId, status){
   if (status === "reset") delete docStatus[docId]; else docStatus[docId] = { status, by, at, note: "" };
   showToast(status === "reset" ? "Back to automatic." : "Marked: " + STATUS_META[status].label);
   renderDocs(); renderFolders(); renderProgress();
-  if (!isReq) renderViewerReview(docId);
-  if (document.getElementById("reqModal").classList.contains("open")) renderReqModal();
+  renderViewerReview(docId);
 }
 async function loadStatuses(){
   try {
@@ -1842,54 +1827,6 @@ function refreshFolder(fo){
   const id = DRIVE_FOLDERS[fo.id]; if (!id || !isSignedIn()) return;
   loadFolderFiles(id).then(() => { renderDocs(); renderFolders(); renderProgress(); }).catch(() => {});
 }
-function openDriveVerify(){
-  const old = document.getElementById("driveVerify"); if (old) old.remove();
-  const ov = document.createElement("div"); ov.id = "driveVerify";
-  ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
-  ov.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:88vh;overflow:auto;padding:18px 20px;font-size:.82rem;color:#1f2937;">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><strong style="font-size:1rem;">Drive check</strong>
-    <span id="dvState" style="color:#6b7280;">Reading Drive…</span><button id="dvCsv" disabled style="margin-left:auto;border:0;background:#1f2937;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;">Download report (CSV)</button><button id="dvClose" style="border:0;background:#e5e7eb;border-radius:8px;padding:6px 12px;cursor:pointer;">Close</button></div>
-    <div id="dvBody"></div></div>`;
-  document.body.appendChild(ov);
-  ov.querySelector("#dvClose").onclick = () => ov.remove();
-  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
-  (async () => {
-    const ids = currentDriveIds();
-    for (let i = 0; i < ids.length; i += 6) await Promise.all(ids.slice(i, i + 6).map(id => loadFolderFiles(id).catch(() => { folderFiles[id] = { files: [], subfolders: 0, error: true }; })));
-    let total = 0, empty = 0, err = 0;
-    const rows = DATA.chapters.map(ch => `<tr><td colspan="5" style="padding:8px 6px 3px;font-weight:800;background:#f3f4f6;">${ch.title}</td></tr>` + ch.folders.map(f => {
-      const ff = folderFiles[DRIVE_FOLDERS[f.id]]; if (!ff) return "";
-      const n = ff.files.length; total += n;
-      const bad = ff.error; if (bad) err++; else if (!n) empty++;
-      const nested = ff.files.filter(x => x.path).length;
-      return `<tr style="border-top:1px solid #e5e7eb;"><td style="padding:5px 6px;">${f.title}</td>
-        <td style="padding:5px 6px;text-align:center;">${bad ? "⚠ error" : n}</td>
-        <td style="padding:5px 6px;text-align:center;">${ff.subfolders || 0}</td>
-        <td style="padding:5px 6px;text-align:center;">${nested}</td>
-        <td style="padding:5px 6px;">${bad ? "❌ cannot read" : (n ? "✅" : "⬜ empty")}</td></tr>`;
-    }).join("")).join("");
-    ov.querySelector("#dvState").textContent = `${total} files · ${empty} empty folder(s)${err ? " · " + err + " with errors" : ""}`;
-    ov.querySelector("#dvBody").innerHTML = `<table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;color:#6b7280;"><th style="padding:5px 6px;">Folder</th><th>Files (incl. subfolders)</th><th>Subfolders</th><th>In subfolders</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
-    const dvCsv = ov.querySelector("#dvCsv"); dvCsv.disabled = false; dvCsv.onclick = exportDriveCsv;
-    renderDocs(); renderFolders(); renderProgress();
-  })();
-}
-
-function exportDriveCsv(){
-  const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
-  const rows = [["Chapter","Folder","File","Subfolder","Modified","Link"]];
-  DATA.chapters.forEach(ch => ch.folders.forEach(f => {
-    const ff = folderFiles[DRIVE_FOLDERS[f.id]]; if (!ff) return;
-    if (ff.error) { rows.push([ch.title, f.title, "(could not read folder)", "", "", ""]); return; }
-    if (!ff.files.length) { rows.push([ch.title, f.title, "(empty)", "", "", ""]); return; }
-    ff.files.forEach(x => rows.push([ch.title, f.title, x.name, x.path || "", (x.modifiedTime || "").slice(0,10),
-      x.webViewLink || ("https://drive.google.com/file/d/" + x.id + "/view")]));
-  }));
-  const blob = new Blob(["\ufeff" + rows.map(r => r.map(q).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "BaseRoom_Drive_report_" + new Date().toISOString().slice(0,10) + ".csv"; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-}
 document.addEventListener("visibilitychange", () => { if (!document.hidden && isSignedIn() && Date.now() - lastDriveSync > 60000) syncDriveFolders(); });
 function currentDriveIds(){ return [...new Set(DATA.chapters.flatMap(ch => ch.folders.map(f => DRIVE_FOLDERS[f.id]).filter(Boolean)))]; }
 let prefetching = false;
@@ -1910,7 +1847,7 @@ function statusChipHtml(docId, e){
   return `<button class="st-chip ${m.cls}" data-status-id="${docId}" title="${e.auto ? "Automatic: this item updates itself" : (e.by ? "Marked by " + e.by + (e.at ? " on " + e.at.slice(0,10) : "") : "Click to mark")}">${m.icon} ${m.label}${e.auto ? " · auto" : ""} ▾</button>`;
 }
 function folderProgressText(folder){
-  const items = folder.documents.map(d => ({ doc: {...d, ...(docOverrides[d.id] || {})}, folder, chapter: null })).filter(it => inScope(it, state.activeFilter));
+  const items = folder.documents.map(d => ({ doc: {...d, ...(docOverrides[d.id] || {})}, folder, chapter: null })).filter(it => inScope(it));
   if (!items.length) return "";
   const cur = items.filter(it => effStatus(it.doc, folder).key === "current").length;
   return `<span class="f-prog${cur === items.length ? " done" : ""}">${cur}/${items.length}</span>`;
@@ -1947,95 +1884,61 @@ const REQ_COLUMNS = ["reqId","accreditation","chapter","topic","requirement","re
 const ACCS = ["EQUIS","AACSB","AMBA"];
 let REQS = REQUIREMENTS_SEED.map(r => ({ id:r[0], acc:r[1], chapter:r[2], topic:r[3], text:r[4], resp:r[5], auto:!!r[6], inPrev:r[7], docs:r[8], folder:r[9], notes:r[10], notFound:!!r[11] }));
 let reqTabChecked = false;
-let reqModalAcc = "EQUIS", reqModalFilter = "all";
 
-function reqKey(id){ return "req:" + id; }
-function reqBaseStatus(q){
-  const prev = String(q.inPrev || "").trim().toUpperCase();
-  return (prev === "OK" || prev === "SI" || prev === "SÍ") ? "review" : "missing";
+function reqAutoPct(acc){ const l = REQS.filter(q => q.acc === acc); return l.length ? l.filter(q => q.auto).length / l.length * 100 : 0; }
+// Número de carpeta del BaseRoom anterior ("2.1", "3.4", "2.7.3") al que apuntan los requisitos EQUIS.
+function folderReqKey(ch, fo){
+  const m = String(fo.title).match(/^\s*(\d+)/); if (!m) return null;
+  return (ch.id === "ch2b" ? "2.7" : ch.id.replace("ch", "")) + "." + m[1];
 }
-function reqStatus(q){
-  const st = docStatus[reqKey(q.id)];
-  if (st && st.status) return { key: st.status, by: st.by, at: st.at, manual: true };
-  return { key: reqBaseStatus(q), manual: false };
+function folderReqs(ch, fo){
+  const key = folderReqKey(ch, fo); if (!key) return [];
+  return REQS.filter(q => q.acc === "EQUIS" && String(q.folder || "").split("\n").some(t => { t = t.trim().split(/\s+/)[0]; return t === key || t.startsWith(key + "."); }));
 }
-function reqMetrics(acc){
-  const list = REQS.filter(q => q.acc === acc);
-  const m = { acc, total: list.length, counts: {missing:0,review:0,current:0,update:0,new:0}, auto: 0, autoDone: 0 };
-  list.forEach(q => {
-    const e = reqStatus(q); m.counts[e.key]++;
-    if (q.auto) { m.auto++; if (e.key === "current") m.autoDone++; }
-  });
-  return m;
-}
-function renderRequirementsSummary(){
-  const accs = state.activeFilter === "ALL" ? ACCS : [state.activeFilter];
-  const rows = accs.map(acc => {
-    const m = reqMetrics(acc); if (!m.total) return "";
-    const bar = STATUS_ORDER.map(k => m.counts[k] ? `<span style="width:${pctOf(m.counts[k], m.total)}%;background:${STATUS_META[k].color}" title="${STATUS_META[k].label}: ${m.counts[k]}"></span>` : "").join("");
-    const autoW = pctOf(m.auto, m.total);
-    return `<div class="rq-row">
-      <span class="rq-acc ${acc}">${acc}</span>
-      <div><div class="rq-bar">${bar}<div class="rq-auto-mark" style="width:${autoW}%" title="Automatable: ${m.auto} of ${m.total} (${autoW}%)"></div></div></div>
-      <div class="rq-meta"><b>${pctOf(m.counts.current, m.total)}%</b> up to date (${m.counts.current}/${m.total}) ·
-        <span class="rq-auto-pill">⚡ ${autoW}% automatable</span> ${m.auto} of ${m.total}${m.auto ? ` · <b>${m.autoDone}</b> already automated/up to date (${pctOf(m.autoDone, m.auto)}%)` : ""}</div>
-      <button class="pp-btn" data-req-acc="${acc}">Open checklist</button></div>`;
+const esc = v => String(v == null ? "" : v).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+// Checklist = las carpetas reales de Drive (mismo nombre y orden), con acreditaciones, responsable,
+// si es automatizable y el avance según lo marcado en sus documentos.
+function renderChecklist(sel){
+  const items = progressItems(sel), byFolder = {};
+  items.forEach(it => { (byFolder[it.f.id] = byFolder[it.f.id] || []).push(it.e.key); });
+  const chk = ACCS.map(a => `<label class="rq-chk ${a}"><input type="checkbox" data-acc="${a}"${state.accSel.has(a) ? " checked" : ""}> ${a}</label>`).join("");
+  const accRows = sel.map(a => {
+    const r = computeProgress([a]), auto = reqAutoPct(a), n = REQS.filter(q => q.acc === a).length;
+    return `<div class="rq-row"><span class="rq-acc ${a}">${a}</span>
+      <div><div class="rq-bar">${STATUS_ORDER.map(k => r.counts[k] ? `<span style="width:${pctOf(r.counts[k], r.total)}%;background:${STATUS_META[k].color}"></span>` : "").join("")}<div class="rq-auto-mark" style="width:${Math.round(auto)}%"></div></div></div>
+      <div class="rq-meta"><b>${pctOf(r.counts.current, r.total)}%</b> up to date (${r.counts.current}/${r.total}) · <span class="rq-auto-pill">⚡ ${Math.round(auto * 10) / 10}% automatable</span> ${Math.round(auto * n / 100)} of ${n} requirements</div></div>`;
   }).join("");
-  return `<div class="pp-req"><div class="pp-req-title">Requirements checklist (what each accreditation asks for)</div>${rows}
-    <div class="pp-note">The hatched part of each bar is what can be automated. "Up to date" counts requirements that a person marked as the latest version or that update themselves.</div></div>`;
-}
-function bindRequirementsSummary(root){
-  root.querySelectorAll("[data-req-acc]").forEach(b => b.addEventListener("click", () => openReqModal(b.dataset.reqAcc)));
-}
-
-function openReqModal(acc){
-  reqModalAcc = acc || reqModalAcc; renderReqModal();
-  document.getElementById("reqModal").classList.add("open");
-  if (isSignedIn()) seedRequirementsIfMissing();
-}
-function renderReqModal(){
-  const el = document.getElementById("reqModalBody"); if (!el) return;
-  const m = reqMetrics(reqModalAcc);
-  let list = REQS.filter(q => q.acc === reqModalAcc);
-  if (reqModalFilter === "auto") list = list.filter(q => q.auto);
-  if (reqModalFilter === "pending") list = list.filter(q => reqStatus(q).key !== "current");
-  let lastCh = null, body = "";
-  list.forEach(q => {
-    const chKey = q.chapter + "|" + q.topic;
-    if (chKey !== lastCh) { lastCh = chKey; body += `<tr class="rq-ch"><td colspan="5">${q.chapter ? q.chapter + " · " : ""}${q.topic || ""}</td></tr>`; }
-    const e = reqStatus(q), meta = STATUS_META[e.key];
-    const prev = q.inPrev ? `Previous edition: ${q.inPrev}${q.docs ? " — " + q.docs : ""}` : "";
-    body += `<tr class="${q.auto ? "rq-auto" : ""}">
-      <td>${q.text.replace(/\n/g, "<br>")}${prev ? `<div class="rq-prev">${prev}</div>` : ""}${q.notes ? `<div class="rq-note">${q.notes}</div>` : ""}</td>
-      <td>${q.resp || "—"}</td>
-      <td>${q.auto ? '<span class="rq-auto-pill">⚡ Automatable</span>' : ""}${q.notFound ? '<div class="rq-prev">Not found in the previous BaseRoom</div>' : ""}</td>
-      <td><button class="st-chip ${meta.cls}" data-req-id="${q.id}" title="${e.manual ? "Marked by " + (e.by || "") + (e.at ? " on " + e.at.slice(0,10) : "") : "Click to mark"}">${meta.icon} ${meta.label} ▾</button></td>
-      <td style="white-space:nowrap;font-size:.72rem;color:#6b7280">${e.manual && e.by ? e.by.split("@")[0] : ""}</td></tr>`;
+  let body = "";
+  DATA.chapters.forEach(ch => {
+    const rows = ch.folders.filter(f => (f.accreditations || []).some(a => state.accSel.has(a))).map(f => {
+      const ks = byFolder[f.id] || [], cur = ks.filter(k => k === "current").length, tot = ks.length;
+      const reqs = folderReqs(ch, f), auto = reqs.filter(q => q.auto).length;
+      const resp = [...new Set(reqs.flatMap(q => String(q.resp || "").split("\n")).map(x => x.trim()).filter(Boolean))].join(" · ");
+      const state_ = !tot ? '<span class="st-chip st-missing">○ No document</span>' : cur === tot ? `<span class="st-chip st-current">✓ ${cur}/${tot}</span>` : `<span class="st-chip st-review">◔ ${cur}/${tot}</span>`;
+      return `<tr class="rq-frow" data-ch="${ch.id}" data-fo="${esc(f.id)}"><td>${esc(f.title)}</td>
+        <td>${(f.accreditations || []).filter(a => state.accSel.has(a)).map(a => `<span class="rq-acc ${a}">${a}</span>`).join(" ")}</td>
+        <td>${esc(resp) || "—"}</td>
+        <td>${auto ? `<span class="rq-auto-pill">⚡ ${auto}/${reqs.length}</span>` : (reqs.length ? "—" : "")}</td><td>${state_}</td></tr>`;
+    }).join("");
+    if (rows) body += `<tr class="rq-ch"><td colspan="5">${esc(ch.title)}</td></tr>` + rows;
   });
-  const tabs = ACCS.map(a => `<button class="filter-btn${a === reqModalAcc ? " active" : ""}" data-filter="${a}" data-rq-tab="${a}">${a}</button>`).join("");
-  const fl = [["all","All"],["auto","⚡ Automatable only"],["pending","Not up to date yet"]]
-    .map(f => `<button class="pp-btn" style="${reqModalFilter === f[0] ? "background:#1f2937;color:#fff;border-color:#1f2937" : ""}" data-rq-filter="${f[0]}">${f[1]}</button>`).join("");
-  el.innerHTML = `<h3 style="margin-bottom:4px;">Requirements checklist — ${reqModalAcc}</h3>
-    <div class="rq-tabs">${tabs}<span style="flex:1"></span>${fl}<button class="pp-btn" id="rqCsv">Download CSV</button></div>
-    <div class="rq-sum"><b>${pctOf(m.counts.current, m.total)}%</b> up to date (${m.counts.current} of ${m.total}) ·
-      ${STATUS_ORDER.map(k => `${STATUS_META[k].icon} ${STATUS_META[k].label}: <b>${m.counts[k]}</b>`).join(" · ")}<br>
-      ⚡ <b>${pctOf(m.auto, m.total)}%</b> of the requirements can be automated (${m.auto} of ${m.total}); ${m.autoDone} already up to date.
-      Click a status to mark it. Responsible, text and the <i>automatable</i> flag can be edited in the "${REQ_SHEET}" tab of the BaseRoom Metadata sheet.</div>
-    <table class="rq-table"><thead><tr><th style="width:44%">Requirement</th><th>Responsible</th><th>Automation</th><th>Status</th><th>Marked by</th></tr></thead><tbody>${body || '<tr><td colspan="5">No requirements match this filter.</td></tr>'}</tbody></table>`;
-  el.querySelectorAll("[data-rq-tab]").forEach(b => b.addEventListener("click", () => { reqModalAcc = b.dataset.rqTab; renderReqModal(); }));
-  el.querySelectorAll("[data-rq-filter]").forEach(b => b.addEventListener("click", () => { reqModalFilter = b.dataset.rqFilter; renderReqModal(); }));
-  el.querySelectorAll("[data-req-id]").forEach(b => b.addEventListener("click", (ev) => { ev.stopPropagation(); openStatusMenu(reqKey(b.dataset.reqId), b); }));
-  const csv = document.getElementById("rqCsv"); if (csv) csv.onclick = exportRequirementsCsv;
+  return `<details class="pp-details pp-req" id="rqDetails"${state.reqOpen ? " open" : ""}>
+    <summary><span class="pp-req-title">Requirements checklist</span><span class="rq-chks">${chk}</span></summary>
+    ${accRows}
+    <table class="rq-table"><thead><tr><th style="width:38%">Folder</th><th>Accreditation</th><th>Responsible</th><th>Automatable</th><th>Up to date</th></tr></thead><tbody>${body || '<tr><td colspan="5">Select at least one accreditation.</td></tr>'}</tbody></table>
+    <div class="pp-note">Folders and names are the ones in Drive. "Up to date" counts the documents marked as the latest version (or that update themselves). Responsible and automatable come from the accreditation requirements matched to each folder.</div></details>`;
 }
-function exportRequirementsCsv(){
-  const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
-  const rows = [["Accreditation","Chapter/Section","Topic","Requirement","Responsible","Automatable","Previous edition","Previous documents","Status","Marked by","Marked at","Notes"]];
-  REQS.forEach(r => { const e = reqStatus(r);
-    rows.push([r.acc, r.chapter, r.topic, r.text, r.resp, r.auto ? "YES" : "", r.inPrev, r.docs, STATUS_META[e.key].label, e.by || "", e.at ? e.at.slice(0,10) : "", r.notes]); });
-  const blob = new Blob(["\ufeff" + rows.map(r => r.map(q).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "BaseRoom_requirements_" + new Date().toISOString().slice(0,10) + ".csv"; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+function bindChecklist(root){
+  const d = root.querySelector("#rqDetails"); if (!d) return;
+  d.addEventListener("toggle", () => { state.reqOpen = d.open; });
+  d.querySelectorAll("input[data-acc]").forEach(i => i.addEventListener("change", () => {
+    i.checked ? state.accSel.add(i.dataset.acc) : state.accSel.delete(i.dataset.acc);
+    state.reqOpen = d.open; renderFolders(); renderProgress();
+  }));
+  d.querySelectorAll(".rq-frow").forEach(tr => tr.addEventListener("click", () => {
+    state.selectedChapter = tr.dataset.ch; state.selectedFolder = tr.dataset.fo; state.selectedDoc = null; render();
+    const f = document.getElementById("folderList"); if (f) f.scrollIntoView({ behavior: "smooth", block: "center" });
+  }));
 }
 
 // ---- hoja: leer y (si falta) sembrar la pestaña de requisitos ----
@@ -2099,7 +2002,6 @@ function renderFolders(){
   if(!state.selectedChapter){desc.textContent="Select a chapter first";el.innerHTML=`<div class="empty-state">Click a chapter to see its folders.</div>`;return;}
   desc.textContent=getChapter(state.selectedChapter)?.title||"";
   let folders=getFolders();
-  if(state.activeFilter!=="ALL") folders=folders.filter(f=>f.accreditations.includes(state.activeFilter));
   el.innerHTML="";
   if(!folders.length){el.innerHTML=`<div class="empty-state">No folders match this accreditation.</div>`;return;}
   folders.forEach(f=>{
@@ -2235,17 +2137,6 @@ function renderDocs(){
 }
 
 function render(){renderChapters();renderFolders();renderDocs();renderProgress();}
-
-// FILTER
-document.getElementById("filterBar").querySelectorAll(".filter-btn").forEach(btn=>{
-  btn.addEventListener("click",()=>{
-    document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));
-    btn.classList.add("active");
-    state.activeFilter=btn.dataset.filter;
-    state.selectedFolder=null;state.selectedDoc=null;
-    renderFolders();renderDocs();renderProgress();
-  });
-});
 
 // =====================
 // UPLOAD / ADD MODAL
@@ -2573,9 +2464,9 @@ if(googleUserEmail){
   // highlights it, while she talks from her fixed speech bubble.
   var SenecaAdapterBaseroom = {
     goTo: function(target){
-      state.activeFilter = "ALL";
       state.selectedChapter = target.chapterId;
-      state.selectedFolder = target.folderId || null;
+      const realFo = target.folderId ? (getChapter(target.chapterId)?.folders || []).find(f => f.id === target.folderId || f._legacyId === target.folderId) : null;
+      state.selectedFolder = realFo ? realFo.id : (target.folderId || null);
       state.selectedDoc = null;
       render();
       setTimeout(function(){
