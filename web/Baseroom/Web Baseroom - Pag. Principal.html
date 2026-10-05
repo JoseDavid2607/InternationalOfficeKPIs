@@ -406,8 +406,6 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 .pp-bar { display:flex; height:14px; border-radius:999px; overflow:hidden; background:#eef0f2; }
 .pp-bar span { display:block; height:100%; }
 .pp-lead { font-size:.66rem; font-weight:800; color:#9ca3af; text-transform:uppercase; letter-spacing:.04em; margin-right:2px; }
-.pp-docs { margin-top:6px; font-size:.76rem; color:#4b5563; display:flex; flex-wrap:wrap; gap:0 6px; align-items:baseline; }
-.pp-docauto { color:#b45309; font-weight:700; }
 .pp-details summary + .pp-ch { margin-top:10px; }
 .pp-legend { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:8px; font-size:.76rem; color:#4b5563; }
 .pp-legend i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
@@ -1802,8 +1800,7 @@ function renderProgress(){
   el.innerHTML = `<div class="pp-head">
       <div class="pp-pct">${pctOf(r.counts.current, r.total)}%<small>Up to date · ${label}</small></div>
       <div class="pp-auto" title="Share of the accreditation requirements that can be automated (Excel flag or an automatable document)">⚡ ${autoAvg}% automatable<small>${r.reqAuto} of ${r.reqTotal} requirements · ${label}</small></div>
-      <div class="pp-bar-wrap"><div class="pp-barbox"><div class="pp-bar">${bar}</div>${mark}</div><div class="pp-legend">${legend}</div>
-        <div class="pp-docs"><strong>${r.docs}</strong> documents in total${r.missing ? ` · ${r.missing} still missing` : ""} · <span class="pp-docauto">⚡ ${r.docAuto} automatable</span></div></div>
+      <div class="pp-bar-wrap"><div class="pp-barbox"><div class="pp-bar">${bar}</div>${mark}</div><div class="pp-legend">${legend}</div></div>
     </div>
     <details class="pp-details" id="chDetails"${state.chOpen ? " open" : ""}><summary>Progress by chapter</summary>${chapters}</details>
     ${notes.length ? `<div class="pp-note">${notes.join(" ")}</div>` : ""}
