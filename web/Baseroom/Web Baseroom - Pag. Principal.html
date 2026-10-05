@@ -183,6 +183,10 @@ header.hero h1 {
 .doc-add-slot::before { content:""; position:absolute; left:0; right:0; top:50%; border-top:1px dashed transparent; transition:border-color .15s; }
 .doc-add-slot span { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:#fff; padding:0 10px; font-size:.7rem; font-weight:700; color:#1d9e75; opacity:0; transition:opacity .15s; white-space:nowrap; }
 .doc-add-slot:hover::before { border-top-color:#a7d9c8; } .doc-add-slot:hover span { opacity:1; }
+.folder-upd-btn { padding:6px 12px; border-radius:999px; border:1.5px solid var(--border); background:#fff; color:var(--slate-mid); font-size:.76rem; font-weight:800; cursor:pointer; white-space:nowrap; flex-shrink:0; transition:all .15s; }
+.folder-upd-btn:hover { background:#1f2937; color:#fff; border-color:#1f2937; }
+.grp-upd { border:0; background:transparent; color:#9ca3af; cursor:pointer; font-size:.85rem; padding:0 4px; border-radius:6px; }
+.grp-upd:hover { color:#1f2937; background:#e5e7eb; }
 .doc-add-bar { display:flex; gap:10px; margin:10px 18px 16px; }
 .doc-add-bar .doc-add-row { flex:1; margin:0; }
 .doc-add-row { display:flex; align-items:center; justify-content:center; gap:8px; margin:10px 18px 16px; padding:10px; border:1.5px dashed #d1d5db; border-radius:12px; color:#6b7280; font-size:.8rem; font-weight:700; cursor:pointer; transition:border-color .15s,color .15s,background .15s; }
@@ -535,6 +539,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
           <h3>Documents</h3>
           <p id="docColDesc">Select a folder to view its documents</p>
         </div>
+        <button class="folder-upd-btn" id="folderUpdBtn" style="visibility:hidden;" title="Replace the contents of this folder with an updated version">↻ Update folder</button>
       </div>
       <div class="doc-scroll" id="docList"></div>
     </div>
@@ -619,6 +624,38 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
       <button class="btn-cancel" id="modalCancelBtn">Cancel</button>
       <button class="btn-save" id="modalSaveBtn">Save to Drive</button>
     </div>
+  </div>
+</div>
+
+<!-- UPDATE FOLDER MODAL -->
+<div class="modal-overlay" id="folderUpdModal">
+  <div class="modal-box">
+    <button class="modal-close" id="fuClose">×</button>
+    <div class="modal-title">Update folder</div>
+    <div class="modal-sub" id="fuSub"></div>
+    <div class="type-toggle">
+      <button class="active" id="fuModeUpload">Upload updated folder</button>
+      <button id="fuModeMark">Already in Drive</button>
+    </div>
+    <div id="fuUploadSec">
+      <div class="form-group">
+        <label class="form-label">Updated folder from your computer</label>
+        <div class="file-drop" id="fuDrop"><strong>Click to choose the folder</strong><p>Subfolders are kept · max 50 MB per file</p>
+          <input type="file" id="fuDirInput" webkitdirectory multiple></div>
+        <a href="#" id="fuPickFiles" style="font-size:.75rem;color:#0f6e56;font-weight:700;">or choose individual files</a>
+        <input type="file" id="fuFilesInput" multiple style="display:none">
+      </div>
+      <div id="fuPreview" class="modal-sub" style="margin-bottom:10px;"></div>
+      <label class="form-label" style="display:flex;gap:8px;align-items:center;cursor:pointer;text-transform:none;letter-spacing:0;margin-bottom:8px;"><input type="checkbox" id="fuHidePrev" checked> Hide the previous versions in the folders being updated (renamed "ELIMINAR - …" in Drive)</label>
+    </div>
+    <div id="fuMarkSec" style="display:none;">
+      <div class="modal-sub" style="margin-bottom:12px;">Use this when the updated files are already in the Drive folder. Everything currently in this folder (and its subfolders) will be marked as the latest version.</div>
+    </div>
+    <div class="form-group"><label class="form-label" for="fuResp">Responsible</label><input class="form-input" type="text" id="fuResp" placeholder="Full name"></div>
+    <div class="form-group"><label class="form-label" for="fuNotes">Comments (optional)</label><input class="form-input" type="text" id="fuNotes" placeholder="e.g. CVs updated for the 2026 review"></div>
+    <label class="form-label" id="fuMarkRow" style="display:flex;gap:8px;align-items:center;cursor:pointer;text-transform:none;letter-spacing:0;margin-bottom:12px;"><input type="checkbox" id="fuMarkCurrent" checked> Mark the new documents as up to date</label>
+    <div class="upload-progress" id="fuProgress"><div class="upload-progress-bar"><div class="upload-progress-fill" id="fuFill"></div></div><div class="upload-progress-label" id="fuLabel"></div></div>
+    <div class="modal-actions"><button class="btn-cancel" id="fuCancel">Cancel</button><button class="btn-save" id="fuSave">Update folder</button></div>
   </div>
 </div>
 
@@ -1888,7 +1925,7 @@ function driveMeta(desc){
   return { responsible: g("Responsible"), notes: g("Comments"), autoFlag: /^yes$/i.test(a) ? true : /^no$/i.test(a) ? false : null };
 }
 function driveDescription(m){
-  return ["Responsible: " + (m.resp || ""), "Comments: " + (m.notes || ""), "Automatable: " + (m.auto ? "Yes" : "No"),
+  return ["Responsible: " + (m.resp || ""), "Comments: " + (m.notes || ""), ...(m.auto == null ? [] : ["Automatable: " + (m.auto ? "Yes" : "No")]),
     "Updated by: " + (m.by || googleUserEmail || "") + " · " + new Date().toISOString().slice(0, 10)].join("\n");
 }
 async function saveDriveMeta(fileId, m){
@@ -2192,6 +2229,7 @@ function docTypeClass(doc){
 }
 function renderDocs(){
   const el=document.getElementById("docList");
+  { const fub0=document.getElementById("folderUpdBtn"); if(fub0&&!state.selectedFolder) fub0.style.visibility="hidden"; }
   const desc=document.getElementById("docColDesc");
     if(!state.selectedFolder){
     desc.textContent="Select a folder to view its documents";
@@ -2214,6 +2252,7 @@ function renderDocs(){
   }
   const docs=getDocs();el.innerHTML="";
   const dId=f?DRIVE_FOLDERS[f.id]:null;
+  const fub=document.getElementById("folderUpdBtn");if(fub)fub.style.visibility=(dId&&isSignedIn())?"visible":"hidden";
   const makeAddSlot=(targetId,big)=>{
     const d=document.createElement("div");
     if(big){
@@ -2322,8 +2361,12 @@ function renderDocs(){
       const key=state.selectedFolder+"|"+dp.join("/"), open=openGroups.has(key), n=driveDocs.filter(d=>under(dp,d)).length;
       const gh=document.createElement("div");gh.className="doc-group";
       gh.style.cssText="padding:8px 8px;margin-top:4px;font-weight:800;font-size:.8rem;color:#374151;cursor:pointer;background:#f3f4f6;border-radius:8px;user-select:none;";
-      gh.textContent=(open?"▾ 📂 ":"▸ 📁 ")+dp[dp.length-1]+"  ("+n+")";
+      gh.style.display="flex";gh.style.alignItems="center";gh.style.justifyContent="space-between";
+      gh.innerHTML=`<span>${open?"▾ 📂 ":"▸ 📁 "}${esc(dp[dp.length-1])}  (${n})</span><button class="grp-upd" title="Update this folder">↻</button>`;
       gh.addEventListener("click",()=>{open?openGroups.delete(key):openGroups.add(key);renderDocs();});
+      gh.querySelector(".grp-upd").addEventListener("click",(e)=>{e.stopPropagation();
+        const tid=(ffd.dirIds||{})[dp.join("/")]; if(!tid){showToast("No Drive folder configured for this folder yet.");return;}
+        requireLogin(()=>openFolderUpdate(tid,dp[dp.length-1],dp));});
       parent.appendChild(gh);
       if(open){
         const box=document.createElement("div");box.style.cssText="margin:0 0 10px 14px;padding:0 0 10px 10px;border-left:2px solid #e5e7eb;border-bottom:1px solid #d1d5db;";
@@ -2518,6 +2561,141 @@ async function hidePreviousDoc(doc){
   deletedDocIds.add(doc.id);
   DATA.chapters.forEach(ch=>ch.folders.forEach(fo=>{const k=fo.documents.findIndex(d=>d.id===doc.id);if(k!==-1)fo.documents.splice(k,1);}));
 }
+
+
+// =====================
+// ACTUALIZAR UNA CARPETA COMPLETA
+// =====================
+// Sube una carpeta del computador (con sus subcarpetas) y oculta las versiones anteriores de las carpetas
+// que se actualizan, o, si los archivos nuevos ya están en Drive, marca todo como última versión.
+let fuCtx = null, fuMode = "upload", fuFiles = [];
+async function poolRun(items, n, fn){
+  let k = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (k < items.length) { const i = k++; await fn(items[i], i); } }));
+}
+async function appendSheetRows(range, rows){
+  if (!rows.length) return;
+  const token = await getToken(); if (!token) return;
+  const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW`,
+    { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ values: rows }) });
+  if (!r.ok) throw new Error("sheet " + r.status);
+}
+function fuScopeDocs(){   // documentos de Drive que hoy están en la carpeta (y subcarpetas) a actualizar
+  const fo = getFolders().find(x => x.id === state.selectedFolder); if (!fo) return [];
+  const path = fuCtx.path;
+  return fo.documents.filter(d => d.driveFile && path.every((p, i) => (d.gpath || [])[i] === p));
+}
+function fuOldDocs(){     // solo las carpetas que realmente se van a actualizar
+  const touched = new Set(fuFiles.map(x => x.dirs.join("/")));
+  return fuScopeDocs().filter(d => touched.has((d.gpath || []).slice(fuCtx.path.length).join("/")));
+}
+function fuRefreshPreview(){
+  const el = document.getElementById("fuPreview"), drop = document.getElementById("fuDrop");
+  if (!fuFiles.length) { el.textContent = ""; drop.classList.remove("has-file"); drop.querySelector("strong").textContent = "Click to choose the folder"; drop.querySelector("p").textContent = "Subfolders are kept · max 50 MB per file"; return; }
+  const dirs = new Set(fuFiles.map(x => x.dirs.join("/"))), old = fuOldDocs().length;
+  drop.classList.add("has-file");
+  drop.querySelector("strong").textContent = fuFiles.length + " file" + (fuFiles.length === 1 ? "" : "s") + " selected";
+  drop.querySelector("p").textContent = (fuFiles.reduce((n, f) => n + f.file.size, 0) / 1024 / 1024).toFixed(1) + " MB · " + dirs.size + " folder" + (dirs.size === 1 ? "" : "s");
+  el.textContent = old ? `${old} existing document${old === 1 ? "" : "s"} in the folders being updated will be replaced.` : "No existing documents in those folders: the files will simply be added.";
+}
+function fuPick(files, withDirs){
+  fuFiles = [...files].filter(f => !/^(\.DS_Store|Thumbs\.db|~\$.*)$/i.test(f.name)).map(f => ({ file: f, dirs: withDirs ? String(f.webkitRelativePath || "").split("/").slice(1, -1) : [] }));
+  fuRefreshPreview();
+}
+function openFolderUpdate(parentId, label, path){
+  fuCtx = { parentId, label, path: path || [] }; fuFiles = [];
+  ["fuResp", "fuNotes"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("fuDirInput").value = ""; document.getElementById("fuFilesInput").value = "";
+  document.getElementById("fuProgress").style.display = "none"; document.getElementById("fuFill").style.width = "0%";
+  document.getElementById("fuSave").disabled = false; document.getElementById("fuSave").textContent = "Update folder";
+  document.getElementById("fuSub").textContent = label;
+  fuSetMode("upload"); fuRefreshPreview();
+  document.getElementById("folderUpdModal").classList.add("open");
+}
+function fuSetMode(m){
+  fuMode = m;
+  document.getElementById("fuModeUpload").classList.toggle("active", m === "upload");
+  document.getElementById("fuModeMark").classList.toggle("active", m === "mark");
+  document.getElementById("fuUploadSec").style.display = m === "upload" ? "block" : "none";
+  document.getElementById("fuMarkSec").style.display = m === "mark" ? "block" : "none";
+  document.getElementById("fuMarkRow").style.display = m === "upload" ? "flex" : "none";
+}
+document.getElementById("fuModeUpload").addEventListener("click", () => fuSetMode("upload"));
+document.getElementById("fuModeMark").addEventListener("click", () => fuSetMode("mark"));
+document.getElementById("fuClose").addEventListener("click", () => closeModal("folderUpdModal"));
+document.getElementById("fuCancel").addEventListener("click", () => closeModal("folderUpdModal"));
+document.getElementById("fuDirInput").addEventListener("change", e => fuPick(e.target.files, true));
+document.getElementById("fuFilesInput").addEventListener("change", e => fuPick(e.target.files, false));
+document.getElementById("fuPickFiles").addEventListener("click", e => { e.preventDefault(); document.getElementById("fuFilesInput").click(); });
+document.getElementById("fuDrop").addEventListener("click", () => document.getElementById("fuDirInput").click());
+document.getElementById("folderUpdBtn").addEventListener("click", () => {
+  const f = getFolders().find(x => x.id === state.selectedFolder), id = f && DRIVE_FOLDERS[f.id];
+  if (!id) { showToast("No Drive folder configured for this folder yet."); return; }
+  requireLogin(() => openFolderUpdate(id, f.title, []));
+});
+document.getElementById("fuSave").addEventListener("click", async () => {
+  const resp = document.getElementById("fuResp").value.trim(), notes = document.getElementById("fuNotes").value.trim();
+  const btn = document.getElementById("fuSave"), lbl = document.getElementById("fuLabel"), fill = document.getElementById("fuFill");
+  const by = googleUserEmail || "", at = new Date().toISOString();
+  const fo = getFolders().find(x => x.id === state.selectedFolder);
+  const step = (t, pct) => { lbl.textContent = t; fill.style.width = (pct || 0) + "%"; };
+  const markCurrent = async (docs) => {
+    if (!docs.length) return;
+    const token = await getToken(); if (!token || !(await ensureStatusTab(token))) throw new Error("status");
+    await appendSheetRows(STATUS_SHEET + "!A:F", docs.map(d => [d.id, "current", by, at, "", d.title || ""]));
+    docs.forEach(d => { docStatus[d.id] = { status: "current", by, at, note: "" }; });
+  };
+  try {
+    if (fuMode === "mark") {
+      const docs = fuScopeDocs();
+      if (!docs.length) { showToast("There are no documents in this folder to mark."); return; }
+      btn.disabled = true; document.getElementById("fuProgress").style.display = "block"; step("Marking " + docs.length + " documents…", 10);
+      await markCurrent(docs);
+      if (resp || notes) { let n = 0; await poolRun(docs, 5, async d => { await saveDriveMeta(d.id.replace("drv_", ""), { resp: resp || d.responsible, notes: notes || d.notes, auto: d.autoFlag }); step(`Saving details ${++n} of ${docs.length}…`, 10 + 85 * n / docs.length); }); }
+      closeModal("folderUpdModal"); showToast(docs.length + " documents marked as up to date.");
+    } else {
+      if (!fuFiles.length) { showToast("Please choose the updated folder (or files)."); return; }
+      if (!resp) { showToast("Please enter who is responsible."); return; }
+      const big = fuFiles.find(x => x.file.size > 50 * 1024 * 1024); if (big) { showToast(`"${big.file.name}" is larger than 50 MB.`); return; }
+      btn.disabled = true; document.getElementById("fuProgress").style.display = "block";
+      const oldDocs = document.getElementById("fuHidePrev").checked ? fuOldDocs() : [];
+      // subcarpetas: se reutilizan las que ya existen y se crean las que falten
+      const dirP = new Map(); dirP.set("", Promise.resolve(fuCtx.parentId));
+      const token0 = await getToken();
+      const ensureDir = (parts) => {
+        const key = parts.join("/"); if (dirP.has(key)) return dirP.get(key);
+        const pr = (async () => {
+          const parent = await ensureDir(parts.slice(0, -1)), name = parts[parts.length - 1];
+          const hit = (await listDriveChildren(parent, token0)).find(x => x.mimeType === DRIVE_FOLDER_MIME && x.name === name);
+          return hit ? hit.id : (await createDriveFolder(parent, name)).id;
+        })();
+        dirP.set(key, pr); return pr;
+      };
+      const newDocs = [], failed = []; let done = 0;
+      await poolRun(fuFiles, 3, async (x) => {
+        try {
+          const dirId = await ensureDir(x.dirs);
+          const r = await new Promise((res, rej) => uploadToDrive(x.file, x.file.name, dirId, () => {}, res, rej));
+          await saveDriveMeta(r.fileId, { resp, notes, auto: null });
+          newDocs.push({ id: "drv_" + r.fileId, title: x.file.name });
+        } catch (e) { failed.push(x.file.name); }
+        step(`Uploading ${++done} of ${fuFiles.length}…`, 5 + 80 * done / fuFiles.length);
+      });
+      if (newDocs.length && oldDocs.length && !failed.length) {
+        step("Hiding the previous versions…", 88);
+        await poolRun(oldDocs, 5, async d => { try { await fetch(`https://www.googleapis.com/drive/v3/files/${d.id.replace("drv_", "")}?supportsAllDrives=true`, { method: "PATCH", headers: { Authorization: "Bearer " + (await getToken()), "Content-Type": "application/json" }, body: JSON.stringify({ name: "ELIMINAR - " + (d.title || "document") }) }); } catch (e) {} });
+        await appendSheetRows(SHEET_NAME + "!A:I", oldDocs.map(d => [d.id, "__DELETED__", "", "", "", "", by, "Replaced on " + at.slice(0, 10), ""]));
+        oldDocs.forEach(d => deletedDocIds.add(d.id));
+      }
+      if (document.getElementById("fuMarkCurrent").checked && newDocs.length) { step("Marking as up to date…", 95); await markCurrent(newDocs); }
+      closeModal("folderUpdModal");
+      showToast(failed.length ? `${newDocs.length} uploaded, ${failed.length} failed (${failed.slice(0, 2).join(", ")}${failed.length > 2 ? "…" : ""}). Previous versions were kept.` : `${newDocs.length} files uploaded to Drive.`);
+    }
+    if (fo && DRIVE_FOLDERS[fo.id]) loadFolderFiles(DRIVE_FOLDERS[fo.id]).then(() => { renderDocs(); renderFolders(); renderProgress(); }).catch(() => {});
+  } catch (e) {
+    showToast("Could not update the folder" + (/404|403/.test(String(e.message || e)) ? " — sign out and sign in again to grant access to Drive." : "."));
+  } finally { btn.disabled = false; }
+});
 
 // ---- agregar carpeta (se crea en Drive) ----
 let folderTarget=null;
