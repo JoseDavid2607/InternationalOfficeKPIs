@@ -1744,12 +1744,12 @@ function inScope(item){
 // que sale de los documentos de sus carpetas: una carpeta con muchos archivos cuenta como una sola cosa.
 // El avance por capítulo cuenta carpetas (una carpeta está al día cuando todos sus documentos lo están).
 function computeProgress(accs){
-  const res = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, byChapter: {}, autoReqs: 0, changed: 0 };
+  const res = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, byChapter: {}, autoReqs: 0, changed: 0, frac: 0 };
   const M = reqMatches();
-  accs.forEach(a => { const m = reqMetrics(a, M); res.total += m.total; res.autoReqs += m.auto; STATUS_ORDER.forEach(k => { res.counts[k] += m.counts[k]; }); });
+  accs.forEach(a => { const m = reqMetrics(a, M); res.total += m.total; res.autoReqs += m.auto; res.frac += m.frac; STATUS_ORDER.forEach(k => { res.counts[k] += m.counts[k]; }); });
   DATA.chapters.forEach(ch => ch.folders.forEach(f => {
-    if (!(f.accreditations || []).some(a => accs.includes(a))) return;
-    const docs = f.documents.map(d => ({...d, ...(docOverrides[d.id] || {})})).filter(hasDoc);
+    if (!folderInScope(f)) return;
+    const docs = f.documents.map(d => ({...d, ...(docOverrides[d.id] || {})})).filter(hasDoc).filter(d => docInScope(d, f));
     const keys = docs.map(d => effStatus(d, f));
     keys.forEach(e => { if (e.hint) res.changed++; });
     const c = res.byChapter[ch.id] = res.byChapter[ch.id] || { ch, total: 0, current: 0 };
@@ -1781,7 +1781,7 @@ function renderProgress(){
   const autoAvg = r.total ? Math.round(r.autoReqs / r.total * 1000) / 10 : 0;
   const mark = sel.length ? `<div class="pp-mark" style="left:${autoAvg}%" title="${autoAvg}% of the requirements can be automated"><span>⚡ ${autoAvg}%</span></div>` : "";
   el.innerHTML = `<div class="pp-head">
-      <div class="pp-pct">${pctOf(r.counts.current, r.total)}%<small>Up to date · ${label}</small></div>
+      <div class="pp-pct">${pctOf(r.frac, r.total)}%<small>Up to date · ${label}</small></div>
       <div class="pp-auto" title="Share of the requirements that can be automated">⚡ ${autoAvg}% automatable<small>${r.autoReqs} of ${r.total} requirements · ${label}</small></div>
       <div class="pp-bar-wrap"><div class="pp-barbox"><div class="pp-bar">${bar}</div>${mark}</div><div class="pp-legend">${legend}</div></div>
     </div>
@@ -1980,7 +1980,7 @@ function statusChipHtml(docId, e){
   return `<button class="st-chip ${m.cls}" data-status-id="${docId}" title="${e.auto ? "Automatic: this item updates itself" : (e.by ? "Marked by " + e.by + (e.at ? " on " + e.at.slice(0,10) : "") : "Click to mark")}">${m.icon} ${m.label}${e.auto ? " · auto" : ""} ▾</button>`;
 }
 function folderProgressText(folder){
-  const docs = folder.documents.map(d => ({...d, ...(docOverrides[d.id] || {})})).filter(hasDoc);
+  const docs = folder.documents.map(d => ({...d, ...(docOverrides[d.id] || {})})).filter(hasDoc).filter(d => docInScope(d, folder));
   const cur = docs.filter(d => effStatus(d, folder).key === "current").length;
   return `<span class="f-prog${docs.length && cur === docs.length ? " done" : ""}${docs.length ? "" : " empty"}" title="Documents up to date">${cur}/${docs.length}</span>`;
 }
@@ -2058,6 +2058,27 @@ function reqMatches(){
   map._autoDocs = new Set(REQS.filter(q => q.auto).flatMap(q => (map[q.id] || []).map(x => x.d.id)));
   reqMatchSig = sig; reqMatchMap = map; return map;
 }
+// ---- filtro por acreditación: qué carpetas y documentos pertenecen a cada una ----
+let accIdxSig = "", accIdx = null;
+function accIndex(){
+  const M = reqMatches(), sig = reqMatchSig + "|" + Object.keys(M).length;
+  if (accIdx && sig === accIdxSig) return accIdx;
+  const docA = new Map(), foA = new Map(), add = (m, k, a) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(a); };
+  REQS.forEach(q => (M[q.id] || []).forEach(x => { add(docA, x.d.id, q.acc); add(foA, x.f.id, q.acc); }));
+  DATA.chapters.forEach(ch => ch.folders.forEach(f => { if (!f.fromDrive || f._legacyId) (f.accreditations || []).forEach(a => add(foA, f.id, a)); }));
+  accIdxSig = sig; accIdx = { docA, foA }; return accIdx;
+}
+function filtering(){ return state.accSel.size < ACCS.length; }
+function folderInScope(f){
+  if (!filtering()) return true;
+  const A = accIndex().foA.get(f.id); return !!A && [...A].some(a => state.accSel.has(a));
+}
+function docInScope(d, f){
+  if (!filtering()) return true;
+  const A = accIndex().docA.get(d.id);
+  if (A) return [...A].some(a => state.accSel.has(a));
+  return (!f.fromDrive || !!f._legacyId) && (f.accreditations || []).some(a => state.accSel.has(a));   // sin requisito asociado: etiquetas originales de la carpeta
+}
 function docAutoOwn(doc){   // lo que el propio documento dice: marca explícita, dashboards/links y todos los Excel
   if (doc.autoFlag === true || doc.autoFlag === false) return doc.autoFlag;
   if (isAutomated(doc)) return true;
@@ -2069,14 +2090,17 @@ function docAuto(doc){
 function reqState(q, M){
   const ms = M[q.id] || [];
   const auto = !!q.auto || ms.some(x => docAutoOwn(x.d));   // una carpeta con muchos archivos automatizables cuenta una sola vez
-  if (!ms.length) return { key: "missing", cur: 0, tot: 0, ms, auto };
+  if (!ms.length) return { key: "missing", cur: 0, tot: 0, ms, auto, frac: 0 };
   const keys = ms.map(x => effStatus(x.d, x.f).key), cur = keys.filter(k => k === "current").length;
+  // avance: cada carpeta aporta su propia fracción (documentos al día / documentos), sin importar cuántos archivos tenga
+  const byF = new Map(); ms.forEach((x, i) => { const g = byF.get(x.f.id) || { c: 0, n: 0 }; g.n++; if (keys[i] === "current") g.c++; byF.set(x.f.id, g); });
+  const frac = [...byF.values()].reduce((n, g) => n + g.c / g.n, 0) / byF.size;
   const key = keys.includes("update") ? "update" : keys.includes("new") ? "new" : cur === ms.length ? "current" : "review";
-  return { key, cur, tot: ms.length, ms, auto };
+  return { key, cur, tot: ms.length, ms, auto, frac };
 }
 function reqMetrics(acc, M){
-  const m = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, auto: 0 };
-  REQS.filter(q => q.acc === acc).forEach(q => { const st = reqState(q, M); m.total++; m.counts[st.key]++; if (st.auto) m.auto++; });
+  const m = { total: 0, counts: {missing:0,review:0,current:0,update:0,new:0}, auto: 0, frac: 0 };
+  REQS.filter(q => q.acc === acc).forEach(q => { const st = reqState(q, M); m.total++; m.counts[st.key]++; m.frac += st.frac; if (st.auto) m.auto++; });
   return m;
 }
 // Checklist = requisitos de cada acreditación (según el Excel de seguimiento), con el nombre corto,
@@ -2105,7 +2129,7 @@ function renderChecklist(sel){
     return `<div class="rq-row"><span class="rq-acc ${a}">${a}</span>
       <div><div class="pp-barbox"><div class="rq-bar">${bar}</div><div class="pp-mark pp-mark-sm" style="left:${Math.round(auto * 10) / 10}%" title="${Math.round(auto * 10) / 10}% automatable"></div></div></div>
       <button class="pp-btn" data-open-acc="${a}">${open ? "Close checklist" : "Open checklist"}</button>
-      <div class="rq-meta"><b>${pctOf(m.counts.current, m.total)}%</b> up to date (${m.counts.current}/${m.total}) · ${m.counts.missing} without document <span class="rq-auto">⚡ ${Math.round(auto * 10) / 10}% automatable</span></div>
+      <div class="rq-meta"><b>${pctOf(m.frac, m.total)}%</b> up to date · ${m.counts.current} complete · ${m.counts.review + m.counts.update + m.counts.new} in progress · ${m.counts.missing} without document <span class="rq-auto">⚡ ${Math.round(auto * 10) / 10}% automatable</span></div>
       ${open ? `<div class="rq-panel">${renderAccTable(a, M)}</div>` : ""}</div>`;
   }).join("");
   return `<details class="pp-details pp-req" id="rqDetails"${state.reqOpen ? " open" : ""}>
@@ -2117,7 +2141,12 @@ function bindChecklist(root){
   d.addEventListener("toggle", () => { state.reqOpen = d.open; });
   d.querySelectorAll("input[data-acc]").forEach(i => i.addEventListener("change", () => {
     i.checked ? state.accSel.add(i.dataset.acc) : state.accSel.delete(i.dataset.acc);
-    state.reqOpen = d.open; renderFolders(); renderProgress();
+    state.reqOpen = d.open;
+    // lo que queda fuera del filtro deja de mostrarse: capítulos, carpetas y documentos
+    const ch = getChapter(state.selectedChapter);
+    if (!ch || (filtering() && !ch.folders.some(folderInScope))) { state.selectedChapter = null; state.selectedFolder = null; state.selectedDoc = null; }
+    else if (state.selectedFolder) { const f = ch.folders.find(x => x.id === state.selectedFolder); if (!f || !folderInScope(f)) { state.selectedFolder = null; state.selectedDoc = null; } }
+    render();
   }));
   d.querySelectorAll("[data-open-acc]").forEach(b => b.addEventListener("click", () => {
     const a = b.dataset.openAcc, was = state.openAcc.has(a); state.openAcc.clear(); if (!was) state.openAcc.add(a);
@@ -2176,7 +2205,7 @@ async function seedRequirementsIfMissing(){
 // =====================
 function renderChapters(){
   const el=document.getElementById("chapterList");el.innerHTML="";
-  DATA.chapters.forEach(ch=>{
+  DATA.chapters.filter(ch=>!filtering()||ch.folders.some(folderInScope)).forEach(ch=>{
     const btn=document.createElement("button");
     btn.className="chapter-item"+(state.selectedChapter===ch.id?" active":"");
     btn.dataset.chapterId=ch.id;
@@ -2191,9 +2220,9 @@ function renderFolders(){
   const desc=document.getElementById("folderColDesc");
   if(!state.selectedChapter){desc.textContent="Select a chapter first";el.innerHTML=`<div class="empty-state">Click a chapter to see its folders.</div>`;return;}
   desc.textContent=getChapter(state.selectedChapter)?.title||"";
-  let folders=getFolders();
+  let folders=getFolders().filter(folderInScope);
   el.innerHTML="";
-  if(!folders.length){el.innerHTML=`<div class="empty-state">No folders match this accreditation.</div>`;return;}
+  if(!folders.length){el.innerHTML=`<div class="empty-state">No folders for the selected accreditation in this chapter.</div>`;return;}
   folders.forEach(f=>{
     const btn=document.createElement("button");
     btn.className="folder-item"+(state.selectedFolder===f.id?" active":"");
@@ -2242,7 +2271,7 @@ function renderDocs(){
     </div>`;
     return;
   }
-  const docs=getDocs();el.innerHTML="";
+  const docs=getDocs().filter(d=>docInScope({...d,...(docOverrides[d.id]||{})},f));el.innerHTML="";
   const dId=f?DRIVE_FOLDERS[f.id]:null;
   const fub=document.getElementById("folderUpdBtn");if(fub)fub.style.visibility=(dId&&isSignedIn())?"visible":"hidden";
   const makeAddSlot=(targetId,big)=>{
@@ -2359,7 +2388,7 @@ function renderDocs(){
   const dirs=[...ffd.dirs||[]];
   const under=(path,d)=>(d.gpath||[]).length>=path.length&&path.every((p,i)=>d.gpath[i]===p);
   const renderLevel=(path,parent,depth)=>{
-    const subs=dirs.filter(d=>d.length===path.length+1&&path.every((p,i)=>d[i]===p)).sort((x,y)=>nat(x[x.length-1],y[y.length-1]));
+    const subs=dirs.filter(d=>d.length===path.length+1&&path.every((p,i)=>d[i]===p)&&(!filtering()||driveDocs.some(x=>under(d,x)))).sort((x,y)=>nat(x[x.length-1],y[y.length-1]));
     subs.forEach(dp=>{
       const key=state.selectedFolder+"|"+dp.join("/"), open=openGroups.has(key), n=driveDocs.filter(d=>under(dp,d)).length;
       const gh=document.createElement("div");gh.className="doc-group";
