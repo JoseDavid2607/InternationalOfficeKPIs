@@ -410,6 +410,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 .rq-auto { color:#b45309; font-weight:700; margin-left:6px; white-space:nowrap; }
 .rq-table tr.rq-sub td { background:#f3f4f6; font-weight:800; font-size:.74rem; color:#374151; }
 .rq-table tr.rq-ch-miss td { background:#7c2d12; }
+.rq-panel { grid-column:1 / -1; margin:6px 0 10px; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; }
 .rq-where { font-size:.7rem; color:#9ca3af; margin-top:2px; }
 .rq-resp { max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.76rem; color:#4b5563; }
 .rq-auto-cell { text-align:center; color:#b45309; }
@@ -421,7 +422,7 @@ footer { text-align: center; color: var(--muted); padding: 10px 20px 36px; font-
 .rq-chk { font-size:.74rem; font-weight:800; padding:3px 10px; border-radius:999px; border:1.5px solid var(--border); cursor:pointer; background:#fff; }
 .rq-chk.EQUIS { color:#2f8b85; } .rq-chk.AACSB { color:#1a6fa8; } .rq-chk.AMBA { color:#7c5cbf; }
 .rq-frow { cursor:pointer; } .rq-frow:hover td { background:#f9fafb; }
-.rq-row { display:grid; grid-template-columns: 62px 1fr; gap:3px 10px; align-items:center; padding:6px 0; font-size:.8rem; color:#374151; }
+.rq-row { display:grid; grid-template-columns: 62px 1fr auto; gap:3px 12px; align-items:center; padding:6px 0; font-size:.8rem; color:#374151; }
 .rq-acc { font-weight:900; padding:3px 10px; border-radius:999px; color:#fff; text-align:center; font-size:.74rem; }
 .rq-acc.EQUIS { background:#2f8b85; } .rq-acc.AACSB { background:#1a6fa8; } .rq-acc.AMBA { background:#7c5cbf; }
 .rq-bar { position:relative; display:flex; height:14px; border-radius:999px; overflow:hidden; background:#eef0f2; }
@@ -1555,7 +1556,7 @@ const DATA = {
 // =====================
 // STATE & HELPERS
 // =====================
-let state = {accSel:new Set(["EQUIS","AACSB","AMBA"]), reqOpen:false, chOpen:false, selectedChapter:null, selectedFolder:null, selectedDoc:null};
+let state = {accSel:new Set(["EQUIS","AACSB","AMBA"]), reqOpen:false, openAcc:new Set(), chOpen:false, selectedChapter:null, selectedFolder:null, selectedDoc:null};
 const docOverrides = {};
 
 function getChapter(id){return DATA.chapters.find(c=>c.id===id);}
@@ -1960,56 +1961,37 @@ function reqMetrics(acc, M){
 }
 // Checklist = requisitos de cada acreditación (según el Excel de seguimiento), con el nombre corto,
 // responsable, si es automatizable y el estado según los documentos reales de las carpetas de Drive.
-function renderCoverage(sel){
+function renderAccTable(a, M){
+  const chip = st => st.key === "missing" ? '<span class="st-chip st-missing">○ No document</span>'
+    : st.key === "current" ? `<span class="st-chip st-current">✓ ${st.cur}/${st.tot}</span>` : `<span class="st-chip st-review">◔ ${st.cur}/${st.tot}</span>`;
+  let body = "", lastG = null;
+  REQS.filter(q => q.acc === a).forEach(q => {
+    if (q.group !== lastG) { lastG = q.group; body += `<tr class="rq-ch"><td colspan="4">${esc(q.group)}</td></tr>`; }
+    const st = reqState(q, M), first = st.ms[0];
+    const where = [...new Set(st.ms.map(x => x.f.title))].slice(0, 2).join(" · ");
+    body += `<tr class="${first ? "rq-frow" : ""}"${first ? ` data-ch="${first.ch.id}" data-fo="${esc(first.f.id)}"` : ""}>
+      <td title="${esc(q.text)}">${esc(q.short || q.text)}${where ? `<div class="rq-where">${esc(where)}</div>` : ""}</td>
+      <td class="rq-resp" title="${esc(q.resp)}">${esc(String(q.resp || "").split("\n").join(" · ")) || "—"}</td>
+      <td class="rq-auto-cell" title="${q.auto ? "Can be automated" : ""}">${q.auto ? "⚡" : ""}</td><td>${chip(st)}</td></tr>`;
+  });
+  return `<table class="rq-table"><thead><tr><th style="width:48%">Requested by ${a}</th><th>Responsible</th><th style="width:34px">⚡</th><th>Status</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+function renderChecklist(sel){
   const M = reqMatches();
-  return sel.map(a => {
-    const m = reqMetrics(a, M), auto = m.total ? m.auto / m.total * 100 : 0;
+  const chk = ACCS.map(a => `<label class="rq-chk ${a}"><input type="checkbox" data-acc="${a}"${state.accSel.has(a) ? " checked" : ""}> ${a}</label>`).join("");
+  const rows = sel.map(a => {
+    const m = reqMetrics(a, M), auto = m.total ? m.auto / m.total * 100 : 0, open = state.openAcc.has(a);
     const bar = STATUS_ORDER.map(k => m.counts[k] ? `<span style="width:${pctOf(m.counts[k], m.total)}%;background:${STATUS_META[k].color}" title="${STATUS_META[k].label}: ${m.counts[k]}"></span>` : "").join("");
     return `<div class="rq-row"><span class="rq-acc ${a}">${a}</span>
       <div><div class="rq-bar">${bar}</div></div>
-      <div class="rq-meta"><b>${pctOf(m.counts.current, m.total)}%</b> up to date (${m.counts.current}/${m.total}) · ${m.counts.missing} without document <span class="rq-auto">⚡ ${Math.round(auto * 10) / 10}% automatable</span></div></div>`;
+      <button class="pp-btn" data-open-acc="${a}">${open ? "Close checklist" : "Open checklist"}</button>
+      <div class="rq-meta"><b>${pctOf(m.counts.current, m.total)}%</b> up to date (${m.counts.current}/${m.total}) · ${m.counts.missing} without document <span class="rq-auto">⚡ ${Math.round(auto * 10) / 10}% automatable</span></div>
+      ${open ? `<div class="rq-panel">${renderAccTable(a, M)}</div>` : ""}</div>`;
   }).join("");
-}
-// Responsable y automatizable de una carpeta: salen de los requisitos EQUIS que apuntan a ella.
-function folderReqs(ch, fo){ return REQS.filter(q => q.acc === "EQUIS" && folderHasReq(ch, fo, q)); }
-function renderChecklist(sel){
-  const M = reqMatches(), items = progressItems(sel), byFolder = {};
-  items.forEach(it => { (byFolder[it.f.id] = byFolder[it.f.id] || []).push(it.e.key); });
-  const chk = ACCS.map(a => `<label class="rq-chk ${a}"><input type="checkbox" data-acc="${a}"${state.accSel.has(a) ? " checked" : ""}> ${a}</label>`).join("");
-  const chip = (cur, tot) => !tot ? '<span class="st-chip st-missing">○ No document</span>' : cur === tot ? `<span class="st-chip st-current">✓ ${cur}/${tot}</span>` : `<span class="st-chip st-review">◔ ${cur}/${tot}</span>`;
-  let body = "";
-  DATA.chapters.forEach(ch => {
-    const rows = ch.folders.filter(f => (f.accreditations || []).some(a => state.accSel.has(a))).map(f => {
-      const ks = byFolder[f.id] || [], cur = ks.filter(k => k === "current").length;
-      const reqs = folderReqs(ch, f), auto = reqs.filter(q => q.auto).length;
-      const resp = [...new Set(reqs.flatMap(q => String(q.resp || "").split("\n")).map(x => x.trim()).filter(Boolean))].join(" · ");
-      return `<tr class="rq-frow" data-ch="${ch.id}" data-fo="${esc(f.id)}"><td>${esc(f.title)}</td>
-        <td>${(f.accreditations || []).filter(a => state.accSel.has(a)).map(a => `<span class="rq-acc ${a}">${a}</span>`).join(" ")}</td>
-        <td class="rq-resp" title="${esc(resp)}">${esc(resp) || "—"}</td>
-        <td class="rq-auto-cell">${auto ? `⚡ ${auto}/${reqs.length}` : ""}</td><td>${chip(cur, ks.length)}</td></tr>`;
-    }).join("");
-    if (rows) body += `<tr class="rq-ch"><td colspan="5">${esc(ch.title)}</td></tr>` + rows;
-  });
-  // Documentos que pide cada acreditación (Excel de seguimiento) y que todavía no están en ninguna carpeta
-  let miss = "";
-  sel.forEach(a => {
-    const lack = REQS.filter(q => q.acc === a && !(M[q.id] || []).length);
-    if (!lack.length) return;
-    miss += `<tr class="rq-acch ${a}"><td colspan="5">${a} <span>· ${lack.length} requirement${lack.length === 1 ? "" : "s"} without a document yet</span></td></tr>`;
-    let lastG = null;
-    lack.forEach(q => {
-      if (q.group !== lastG) { lastG = q.group; miss += `<tr class="rq-sub"><td colspan="5">${esc(q.group)}</td></tr>`; }
-      miss += `<tr><td title="${esc(q.text)}">${esc(q.short || q.text)}</td><td><span class="rq-acc ${a}">${a}</span></td>
-        <td class="rq-resp" title="${esc(q.resp)}">${esc(String(q.resp || "").split("\n").join(" · ")) || "—"}</td>
-        <td class="rq-auto-cell">${q.auto ? "⚡" : ""}</td><td>${chip(0, 0)}</td></tr>`;
-    });
-  });
-  if (miss) body += `<tr class="rq-ch rq-ch-miss"><td colspan="5">Documents still missing (from the accreditation Excel)</td></tr>` + miss;
   return `<details class="pp-details pp-req" id="rqDetails"${state.reqOpen ? " open" : ""}>
     <summary><span class="pp-req-title">Requirements checklist (what each accreditation asks for)</span><span class="rq-chks">${chk}</span></summary>
-    ${renderCoverage(sel)}
-    <table class="rq-table"><thead><tr><th style="width:38%">Folder</th><th>Accreditation</th><th>Responsible</th><th>Automatable</th><th>Up to date</th></tr></thead><tbody>${body || '<tr><td colspan="5">Select at least one accreditation.</td></tr>'}</tbody></table>
-    <div class="pp-note">Folders are the ones in Drive. "Up to date" counts the documents marked as the latest version (or that update themselves). The last block lists what the tracking Excel asks for (EQUIS ${REQS.filter(q => q.acc === "EQUIS").length}, AACSB ${REQS.filter(q => q.acc === "AACSB").length}, AMBA ${REQS.filter(q => q.acc === "AMBA").length}) and no folder has yet; hover a requirement to read it in full.</div></details>`;
+    ${rows || '<div class="pp-note">Select at least one accreditation.</div>'}
+    <div class="pp-note">Each checklist follows the accreditation's own tracking Excel (EQUIS ${REQS.filter(q => q.acc === "EQUIS").length}, AACSB ${REQS.filter(q => q.acc === "AACSB").length}, AMBA ${REQS.filter(q => q.acc === "AMBA").length} requirements). Status comes from the documents found in the Drive folders shown under each requirement; "No document" means nothing matches it yet. Hover a requirement to read it in full. ⚡ = can be automated.</div></details>`;
 }
 function bindChecklist(root){
   const d = root.querySelector("#rqDetails"); if (!d) return;
@@ -2017,6 +1999,10 @@ function bindChecklist(root){
   d.querySelectorAll("input[data-acc]").forEach(i => i.addEventListener("change", () => {
     i.checked ? state.accSel.add(i.dataset.acc) : state.accSel.delete(i.dataset.acc);
     state.reqOpen = d.open; renderFolders(); renderProgress();
+  }));
+  d.querySelectorAll("[data-open-acc]").forEach(b => b.addEventListener("click", () => {
+    const a = b.dataset.openAcc; state.openAcc.has(a) ? state.openAcc.delete(a) : state.openAcc.add(a);
+    state.reqOpen = d.open; renderProgress();
   }));
   d.querySelectorAll(".rq-frow").forEach(tr => tr.addEventListener("click", () => {
     state.selectedChapter = tr.dataset.ch; state.selectedFolder = tr.dataset.fo; state.selectedDoc = null; render();
