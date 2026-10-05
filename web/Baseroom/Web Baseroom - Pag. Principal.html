@@ -1932,10 +1932,10 @@ async function loadFolderFiles(driveFolderId){
 function driveMeta(desc){
   const g = k => { const m = String(desc || "").match(new RegExp("^" + k + ":[ \\t]*(.*)$", "mi")); return m ? m[1].trim() : ""; };
   const a = g("Automatable");
-  return { responsible: g("Responsible"), notes: g("Comments"), autoFlag: /^yes$/i.test(a) ? true : /^no$/i.test(a) ? false : null };
+  return { responsible: g("Responsible"), notes: g("Comments"), autoFlag: /^yes$/i.test(a) ? true : /^no$/i.test(a) ? false : null, link: g("Link"), ltype: g("Type") };
 }
 function driveDescription(m){
-  return ["Responsible: " + (m.resp || ""), "Comments: " + (m.notes || ""), ...(m.auto == null ? [] : ["Automatable: " + (m.auto ? "Yes" : "No")]),
+  return ["Responsible: " + (m.resp || ""), "Comments: " + (m.notes || ""), ...(m.auto == null ? [] : ["Automatable: " + (m.auto ? "Yes" : "No")]), ...(m.link ? ["Link: " + m.link, "Type: " + (m.ltype || "Dashboard")] : []),
     "Updated by: " + (m.by || googleUserEmail || "") + " · " + new Date().toISOString().slice(0, 10)].join("\n");
 }
 async function saveDriveMeta(fileId, m){
@@ -1954,6 +1954,8 @@ async function createDriveFolder(parentId, name){
   if (!r.ok) throw new Error(r.status);
   return r.json();
 }
+const embedLink = u => (u.includes("streamlit.app") && !u.includes("embed=true")) ? u + (u.includes("?") ? "&" : "?") + "embed=true" : u;
+const metaOf = (doc, over) => ({ resp: doc.responsible, notes: doc.notes, auto: doc.autoFlag, link: doc.link, ltype: doc.ltype, ...(over || {}) });
 const driveFileIdOf = u => (String(u || "").match(/\/file\/d\/([^\/\?#]+)/) || [])[1];
 const driveExt = n => { const m = String(n).match(/\.([A-Za-z0-9]{2,5})$/); return m ? m[1].toUpperCase() : "FILE"; };
 function applyDriveDocs(fo){
@@ -1979,9 +1981,17 @@ function applyDriveDocs(fo){
   const nat = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
   // los más recientes van abajo (orden de subida); a igual fecha, orden natural del nombre
   const files = ff.files.filter(x => !deletedDocIds.has("drv_" + x.id) && !/^ELIMINAR - /.test(x.name)).sort((a, b) => String(a.createdTime || "").localeCompare(String(b.createdTime || "")) || nat(a.name, b.name));
-  fo.documents = [...base, ...files.map(x => ({ id: "drv_" + x.id, title: x.name, type: driveExt(x.name), meta: "", responsible: "", updatedAt: null,
-    accreditations: fo.accreditations, url: `https://drive.google.com/file/d/${x.id}/preview`, viewUrl: x.webViewLink || `https://drive.google.com/file/d/${x.id}/view`,
-    driveFile: true, gpath: x.parts || [], parentId: x.parentId, createdTime: x.createdTime, md5: x.md5 || "", ...driveMeta(x.description) }))];
+  // Los dashboards y links son archivos ".url" en Drive con "Link:" en la descripción: se ven en Drive
+  // como cualquier otro archivo y de ahí los lee el BaseRoom
+  fo.documents = [...base, ...files.map(x => {
+    const mt = driveMeta(x.description), isLink = !!mt.link;
+    return { id: "drv_" + x.id, title: isLink ? x.name.replace(/\.url$/i, "") : x.name, type: isLink ? (/^link$/i.test(mt.ltype) ? "Link" : "Dashboard") : driveExt(x.name),
+      meta: "", responsible: "", updatedAt: isLink ? String(x.modifiedTime || x.createdTime || "").slice(0, 10) || null : null,
+      accreditations: fo.accreditations,
+      url: isLink ? embedLink(mt.link) : `https://drive.google.com/file/d/${x.id}/preview`,
+      viewUrl: isLink ? mt.link : (x.webViewLink || `https://drive.google.com/file/d/${x.id}/view`),
+      driveFile: true, gpath: x.parts || [], parentId: x.parentId, createdTime: x.createdTime, md5: x.md5 || "", ...mt };
+  })];
 }
 function refreshFolder(fo){
   const id = DRIVE_FOLDERS[fo.id]; if (!id || !isSignedIn()) return;
@@ -2377,7 +2387,7 @@ function renderDocs(){
       menu.querySelectorAll("button").forEach(b=>b.addEventListener("click",(ev)=>{ev.stopPropagation();closeStatusMenu();
         requireLogin(async()=>{
           const next=b.dataset.v==="auto"?null:b.dataset.v==="1";
-          const ok=await saveDriveMeta(doc.id.replace("drv_",""),{resp:doc.responsible,notes:doc.notes,auto:next});
+          const ok=await saveDriveMeta(doc.id.replace("drv_",""),metaOf(doc,{auto:next}));
           if(!ok){showToast("Could not save to Drive. Sign in again if the problem persists.");return;}
           doc.autoFlag=next;const live=f&&f.documents.find(x=>x.id===doc.id);if(live)live.autoFlag=next;
           renderDocs();renderProgress();});}));
@@ -2498,7 +2508,7 @@ function openUploadModal(docId){
   document.getElementById("docResponsibleInput").value=doc.responsible||"";
   if(doc.type==="Dashboard"||doc.type==="Link"){
     setUploadType("dashboard");
-    document.getElementById("dashUrlInput").value=doc.url||"";
+    document.getElementById("dashUrlInput").value=(doc.driveFile&&doc.viewUrl)?doc.viewUrl:(doc.url||"");
     if(doc.url&&doc.url!=="#"){
       document.getElementById("dashOpenBtn").href=doc.url.replace(/[?&]embed=true/,"");
       document.getElementById("dashOpenBtn").style.display="inline-flex";
@@ -2556,21 +2566,35 @@ document.getElementById("modalSaveBtn").addEventListener("click",()=>{
     if(!name||!responsible){showToast("Please fill in the document name and responsible person.");return;}
     const dashUrl=document.getElementById("dashUrlInput").value.trim();
     if(!dashUrl){showToast("Please enter a dashboard URL.");return;}
-    const today=new Date().toISOString().split("T")[0];
-    const embedUrl=dashUrl.includes("streamlit.app")&&!dashUrl.includes("embed=true")
-      ? dashUrl+(dashUrl.includes("?")?"&":"?")+"embed=true"
-      : dashUrl;
-    if(currentModalMode==="add"||!currentUploadDocId){
-      currentUploadDocId="added_"+state.selectedFolder+"_"+Date.now();
-      const folder=getFolders().find(fo=>fo.id===state.selectedFolder);
-      if(folder) folder.documents.push({id:currentUploadDocId,title:name,type:"Dashboard",meta:name,responsible,updatedAt:today,accreditations:folder.accreditations,url:embedUrl});
+    const editing=currentModalMode!=="add"&&currentDriveDoc&&currentDriveDoc.driveFile?currentDriveDoc:null;
+    const parentId=currentFolderId;
+    if(!editing&&!parentId){showToast("No Drive folder configured for this folder yet.");return;}
+    const saveBtn=document.getElementById("modalSaveBtn");saveBtn.disabled=true;saveBtn.textContent="Saving...";
+    const folderRef=getFolders().find(fo=>fo.id===state.selectedFolder);
+    const meta={resp:responsible,notes,auto:null,link:dashUrl,ltype:(editing&&editing.type==="Link")?"Link":"Dashboard"};
+    const done=(fileId)=>{
+      closeModal("uploadModal");showToast("Dashboard saved to Google Drive.");
+      saveBtn.disabled=false;saveBtn.textContent="Save to Drive";
+      if(folderRef&&DRIVE_FOLDERS[folderRef.id]) loadFolderFiles(DRIVE_FOLDERS[folderRef.id]).then(()=>{state.selectedDoc="drv_"+fileId;renderDocs();renderFolders();renderProgress();}).catch(()=>{});
+    };
+    const fail=(e)=>{saveBtn.disabled=false;saveBtn.textContent="Save to Drive";showToast("Could not save to Drive"+(/404|403/.test(String(e))?" — sign out and sign in again to grant access.":"."));};
+    const body=`[InternetShortcut]\r\nURL=${dashUrl}\r\n`;
+    if(editing){
+      (async()=>{
+        try{
+          const fid=editing.id.replace("drv_",""), tk=await getToken();
+          const r1=await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fid}?uploadType=media&supportsAllDrives=true`,{method:"PATCH",headers:{Authorization:"Bearer "+tk,"Content-Type":"text/plain"},body});
+          const r2=await fetch(`https://www.googleapis.com/drive/v3/files/${fid}?supportsAllDrives=true`,{method:"PATCH",headers:{Authorization:"Bearer "+tk,"Content-Type":"application/json"},body:JSON.stringify({name:name+".url"})});
+          if(!r1.ok||!r2.ok) throw new Error((r1.ok?r2:r1).status);
+          if(!(await saveDriveMeta(fid,{...meta,auto:editing.autoFlag}))) throw new Error("meta");
+          done(fid);
+        }catch(e){fail(e.message||e);}
+      })();
+    } else {
+      uploadToDrive(new File([body],name+".url",{type:"text/plain"}),name+".url",parentId,()=>{},
+        async(r)=>{ if(!(await saveDriveMeta(r.fileId,meta))){fail("meta");return;} done(r.fileId); },
+        (err)=>fail(err));
     }
-    docOverrides[currentUploadDocId]={title:name,responsible,type:"Dashboard",updatedAt:today,url:embedUrl,viewUrl:dashUrl,uploadedBy:googleUserEmail,notes};
-    writeToSheet(currentUploadDocId,name,responsible,today,dashUrl,embedUrl,googleUserEmail,notes,'Dashboard');
-    closeModal("uploadModal");
-    showToast("Dashboard saved.");
-    state.selectedDoc=currentUploadDocId;
-    loadFromSheet().then(()=>{renderDocs();setTimeout(()=>openViewer(currentUploadDocId),300);});
     return;
   }
 
@@ -2706,7 +2730,7 @@ document.getElementById("fuSave").addEventListener("click", async () => {
       if (!docs.length) { showToast("There are no documents in this folder to mark."); return; }
       btn.disabled = true; document.getElementById("fuProgress").style.display = "block"; step("Marking " + docs.length + " documents…", 10);
       await markCurrent(docs);
-      if (resp || notes) { let n = 0; await poolRun(docs, 5, async d => { await saveDriveMeta(d.id.replace("drv_", ""), { resp: resp || d.responsible, notes: notes || d.notes, auto: d.autoFlag }); step(`Saving details ${++n} of ${docs.length}…`, 10 + 85 * n / docs.length); }); }
+      if (resp || notes) { let n = 0; await poolRun(docs, 5, async d => { await saveDriveMeta(d.id.replace("drv_", ""), metaOf(d, { resp: resp || d.responsible, notes: notes || d.notes })); step(`Saving details ${++n} of ${docs.length}…`, 10 + 85 * n / docs.length); }); }
       closeModal("folderUpdModal"); showToast(docs.length + " documents marked as up to date.");
     } else {
       if (!fuFiles.length) { showToast("Please choose the updated folder (or files)."); return; }
@@ -2802,8 +2826,9 @@ function openDeleteModal(docId){
 document.getElementById("deleteConfirmBtn").addEventListener("click",()=>{
   const res=getDoc(currentDeleteDocId);if(!res)return;
   const{doc}=res;
-  if(doc.viewUrl&&doc.viewUrl.includes("drive.google.com/file/d/")){
-    const match=doc.viewUrl.match(/\/file\/d\/([^\/\?]+)/);
+  const drvId=String(doc.id).startsWith("drv_")?doc.id.slice(4):null;
+  if(drvId||(doc.viewUrl&&doc.viewUrl.includes("drive.google.com/file/d/"))){
+    const match=drvId?[null,drvId]:doc.viewUrl.match(/\/file\/d\/([^\/\?]+)/);
     if(match){
       const fileId=match[1];
       fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`,{
