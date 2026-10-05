@@ -1645,18 +1645,20 @@ function inScope(item){
   return accs.some(a => state.accSel.has(a));
 }
 // Un elemento por documento (con su estado) y uno por carpeta vacía de Drive (cuenta como "sin documento").
+const MISSING_CH = { id: "_missing", title: "Requested by the accreditations, not in Drive yet" };
 function progressItems(accs){
   const out = [];
   DATA.chapters.forEach(ch => ch.folders.forEach(f => {
     const fa = f.accreditations || [];
-    let n = 0;
     f.documents.forEach(d0 => {
       const d = {...d0, ...(docOverrides[d0.id] || {})};
       if (!(d.accreditations || fa).some(a => accs.includes(a))) return;
-      out.push({ ch, f, e: effStatus(d, f) }); n++;
+      out.push({ ch, f, e: effStatus(d, f) });
     });
-    if (!f.documents.length && f.fromDrive && folderFiles[DRIVE_FOLDERS[f.id]] && fa.some(a => accs.includes(a))) out.push({ ch, f, e: { key: "missing" } });
   }));
+  // Lo que cada acreditación pide (Excel) y todavía no tiene documento cuenta como "sin documento"
+  const M = reqMatches();
+  REQS.forEach(q => { if (accs.includes(q.acc) && !(M[q.id] || []).length) out.push({ ch: MISSING_CH, f: null, e: { key: "missing" } }); });
   return out;
 }
 function computeProgress(accs){
@@ -1676,10 +1678,10 @@ function renderProgress(){
   const el = document.getElementById("progressPanel"); if (!el) return;
   const sel = ACCS.filter(a => state.accSel.has(a));
   const r = computeProgress(sel);
-  const label = sel.length ? sel.join(" + ") : "no accreditation selected";
+  const label = sel.length === ACCS.length ? "BaseRoom" : sel.length ? sel.join(" + ") : "no accreditation selected";
   const bar = STATUS_ORDER.map(k => r.counts[k] ? `<span style="width:${pctOf(r.counts[k], r.total)}%;background:${STATUS_META[k].color}" title="${STATUS_META[k].label}: ${r.counts[k]}"></span>` : "").join("");
   const legend = STATUS_ORDER.map(k => `<span><i style="background:${STATUS_META[k].color}"></i>${STATUS_META[k].label} <strong>${r.counts[k]}</strong></span>`).join("");
-  const chapters = DATA.chapters.map(ch => r.byChapter[ch.id]).filter(Boolean).map(c =>
+  const chapters = [...DATA.chapters.map(ch => r.byChapter[ch.id]), r.byChapter._missing].filter(Boolean).map(c =>
     `<div class="pp-ch" data-ch="${c.ch.id}"><span>${c.ch.title}</span>
       <div class="pp-bar"><span style="width:${pctOf(c.current, c.total)}%;background:${STATUS_META.current.color}"></span></div>
       <strong>${c.current}/${c.total}</strong></div>`).join("");
@@ -1689,13 +1691,14 @@ function renderProgress(){
   const autoAvg = sel.length ? Math.round(sel.reduce((n, a) => n + reqAutoPct(a), 0) / sel.length * 10) / 10 : 0;
   el.innerHTML = `<div class="pp-head">
       <div class="pp-pct">${pctOf(r.counts.current, r.total)}%<small>Up to date · ${label}</small></div>
-      <div class="pp-auto" title="Share of the accreditation requirements that can be automated, averaged over the selected accreditations">⚡ ${autoAvg}% automatable<small>average · ${sel.join(" + ") || "—"}</small></div>
+      <div class="pp-auto" title="Share of the accreditation requirements that can be automated, averaged over the selected accreditations">⚡ ${autoAvg}% automatable<small>average · ${label}</small></div>
       <div class="pp-bar-wrap"><div class="pp-bar">${bar}</div><div class="pp-legend">${legend}</div></div>
     </div>
     <details class="pp-details" id="chDetails"${state.chOpen ? " open" : ""}><summary>Progress by chapter</summary>${chapters}</details>
     ${notes.length ? `<div class="pp-note">${notes.join(" ")}</div>` : ""}
     ${renderChecklist(sel)}`;
   el.querySelectorAll(".pp-ch").forEach(row => row.addEventListener("click", () => {
+    if (row.dataset.ch === "_missing") return;
     state.selectedChapter = row.dataset.ch; state.selectedFolder = null; state.selectedDoc = null; render();
   }));
   const cd = el.querySelector("#chDetails"); if (cd) cd.addEventListener("toggle", () => { state.chOpen = cd.open; });
@@ -2001,7 +2004,7 @@ function bindChecklist(root){
     state.reqOpen = d.open; renderFolders(); renderProgress();
   }));
   d.querySelectorAll("[data-open-acc]").forEach(b => b.addEventListener("click", () => {
-    const a = b.dataset.openAcc; state.openAcc.has(a) ? state.openAcc.delete(a) : state.openAcc.add(a);
+    const a = b.dataset.openAcc, was = state.openAcc.has(a); state.openAcc.clear(); if (!was) state.openAcc.add(a);
     state.reqOpen = d.open; renderProgress();
   }));
   d.querySelectorAll(".rq-frow").forEach(tr => tr.addEventListener("click", () => {
