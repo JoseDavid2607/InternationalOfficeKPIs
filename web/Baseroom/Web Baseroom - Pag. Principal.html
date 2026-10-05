@@ -1801,19 +1801,19 @@ async function listDriveChildren(parentId, token){
 }
 async function loadFolderFiles(driveFolderId){
   const token = await getToken(); if (!token) return;
-  const files = []; let subfolders = 0;
-  const walk = async (id, path, depth) => {
+  const files = [], dirs = []; let subfolders = 0;
+  const walk = async (id, path, depth, parts) => {
     const items = await listDriveChildren(id, token);
     const subs = [];
     items.forEach(it => {
-      if (it.mimeType === DRIVE_FOLDER_MIME) { subfolders++; subs.push(it); }
-      else files.push({ id: it.id, name: it.name, modifiedTime: it.modifiedTime, webViewLink: it.webViewLink, path });
+      if (it.mimeType === DRIVE_FOLDER_MIME) { subfolders++; subs.push(it); dirs.push([...parts, it.name]); }
+      else files.push({ id: it.id, name: it.name, modifiedTime: it.modifiedTime, webViewLink: it.webViewLink, path, parts });
     });
-    if (depth < 4) await Promise.all(subs.map(s => walk(s.id, path ? path + " / " + s.name : s.name, depth + 1)));
+    if (depth < 4) await Promise.all(subs.map(s => walk(s.id, path ? path + " / " + s.name : s.name, depth + 1, [...parts, s.name])));
   };
-  await walk(driveFolderId, "", 1);
+  await walk(driveFolderId, "", 1, []);
   files.sort((a, b) => String(b.modifiedTime).localeCompare(String(a.modifiedTime)));
-  folderFiles[driveFolderId] = { files, subfolders };
+  folderFiles[driveFolderId] = { files, dirs, subfolders };
   DATA.chapters.forEach(ch => ch.folders.forEach(fo => { if (DRIVE_FOLDERS[fo.id] === driveFolderId) applyDriveDocs(fo); }));
 }
 // Los documentos de una carpeta son sus archivos de Drive, con el nombre exacto y el orden de Drive
@@ -1833,10 +1833,10 @@ function applyDriveDocs(fo){
     const fid = driveFileIdOf(o.url); return !fid || !ids.has(fid);
   });
   const nat = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-  const files = [...ff.files].sort((a, b) => (a.path ? 0 : 1) - (b.path ? 0 : 1) || nat(a.path || "", b.path || "") || nat(a.name, b.name));
+  const files = [...ff.files].sort((a, b) => nat(a.name, b.name));
   fo.documents = [...base, ...files.map(x => ({ id: "drv_" + x.id, title: x.name, type: driveExt(x.name), meta: "", responsible: "", updatedAt: null,
     accreditations: fo.accreditations, url: `https://drive.google.com/file/d/${x.id}/preview`, viewUrl: x.webViewLink || `https://drive.google.com/file/d/${x.id}/view`,
-    driveFile: true, group: x.path || "" }))];
+    driveFile: true, gpath: x.parts || [] }))];
 }
 function refreshFolder(fo){
   const id = DRIVE_FOLDERS[fo.id]; if (!id || !isSignedIn()) return;
@@ -2154,23 +2154,9 @@ function renderDocs(){
     note.innerHTML=`<details><summary>📁 <strong>${unl.length}</strong> file(s) in this Drive folder${unl.some(x=>x.path)?" (some inside subfolders)":""} are not linked to any document. Click to see them.</summary><ul style="margin:6px 0 4px 18px;padding:0;">${list}</ul>If one is a new version or a new document, use <strong>Update</strong> or the <strong>+</strong> button. <a href="${f.sharepointUrl}" target="_blank" rel="noopener">Open folder</a></details>`;
     el.appendChild(note);
   }
-  if(!docs.length){el.insertAdjacentHTML("beforeend",`<div class="empty-state">No documents in this folder.</div>`);return;}
-  let lastGroup="";
-  const grpCount={};docs.forEach(d=>{if(d.group)grpCount[d.group]=(grpCount[d.group]||0)+1;});
-  docs.forEach(docBase=>{
+  if(!docs.length&&!((folderFiles[dId]||{}).dirs||[]).length){el.insertAdjacentHTML("beforeend",`<div class="empty-state">No documents in this folder.</div>`);return;}
+  const addDoc=(docBase,parent)=>{
     const doc={...docBase,...(docOverrides[docBase.id]||{})};
-    if(doc.group){
-      const gk=state.selectedFolder+"|"+doc.group, open=openGroups.has(gk);
-      if(doc.group!==lastGroup){
-        const gh=document.createElement("div");gh.className="doc-group";
-        gh.style.cssText="padding:8px 8px;margin-top:4px;font-weight:800;font-size:.8rem;color:#374151;cursor:pointer;background:#f3f4f6;border-radius:8px;user-select:none;";
-        gh.textContent=(open?"▾ 📂 ":"▸ 📁 ")+doc.group+"  ("+grpCount[doc.group]+")";
-        gh.addEventListener("click",()=>{open?openGroups.delete(gk):openGroups.add(gk);renderDocs();});
-        el.appendChild(gh);
-      }
-      lastGroup=doc.group;
-      if(!open) return;
-    } else lastGroup="";
     const item=document.createElement("div");
     item.className="doc-item"+(state.selectedDoc===doc.id?" active":"");
     const folder=getFolders().find(f=>f.id===state.selectedFolder);
@@ -2219,8 +2205,33 @@ function renderDocs(){
       e.stopPropagation();
       requireLogin(()=>openDeleteModal(doc.id));
     });
-    el.appendChild(item);
-  });
+    parent.appendChild(item);
+  };
+  // Árbol de Drive: archivos sueltos de la carpeta + subcarpetas que se despliegan nivel a nivel.
+  const nat=(a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:"base"});
+  const driveDocs=docs.filter(d=>d.driveFile);
+  docs.filter(d=>!d.driveFile).forEach(d=>addDoc(d,el));
+  const ffd=folderFiles[dId]||{dirs:[]};
+  const dirs=[...ffd.dirs||[]];
+  const under=(path,d)=>(d.gpath||[]).length>=path.length&&path.every((p,i)=>d.gpath[i]===p);
+  const renderLevel=(path,parent,depth)=>{
+    const subs=dirs.filter(d=>d.length===path.length+1&&path.every((p,i)=>d[i]===p)).sort((x,y)=>nat(x[x.length-1],y[y.length-1]));
+    subs.forEach(dp=>{
+      const key=state.selectedFolder+"|"+dp.join("/"), open=openGroups.has(key), n=driveDocs.filter(d=>under(dp,d)).length;
+      const gh=document.createElement("div");gh.className="doc-group";
+      gh.style.cssText="padding:8px 8px;margin-top:4px;font-weight:800;font-size:.8rem;color:#374151;cursor:pointer;background:#f3f4f6;border-radius:8px;user-select:none;";
+      gh.textContent=(open?"▾ 📂 ":"▸ 📁 ")+dp[dp.length-1]+"  ("+n+")";
+      gh.addEventListener("click",()=>{open?openGroups.delete(key):openGroups.add(key);renderDocs();});
+      parent.appendChild(gh);
+      if(open){
+        const box=document.createElement("div");box.style.cssText="margin-left:14px;padding-left:10px;border-left:2px solid #e5e7eb;";
+        parent.appendChild(box);
+        renderLevel(dp,box,depth+1);
+      }
+    });
+    driveDocs.filter(d=>(d.gpath||[]).length===path.length&&under(path,d)).forEach(d=>addDoc(d,parent));
+  };
+  renderLevel([],el,0);
 }
 
 function render(){renderChapters();renderFolders();renderDocs();renderProgress();}
