@@ -2408,8 +2408,10 @@ function renderDocs(){
       e.stopPropagation();
       requireLogin(()=>openDeleteModal(doc.id));
     });
-    parent.appendChild(item);
+    // la ranura de "agregar documento" va ANTES de cada documento: así hay una desde el principio de la lista;
+    // el final lo cubre el botón "Add document" de abajo
     parent.appendChild(makeAddSlot(doc.parentId||dId,false));
+    parent.appendChild(item);
   };
 
   // Árbol de Drive: archivos sueltos de la carpeta + subcarpetas que se despliegan nivel a nivel.
