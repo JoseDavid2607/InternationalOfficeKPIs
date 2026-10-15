@@ -21,9 +21,9 @@ from __future__ import annotations
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
 import plotly.graph_objects as go
 import io
+import math
 import time
 import re
 import unicodedata
@@ -494,6 +494,11 @@ def load_cursos() -> pd.DataFrame:
     raw = io.BytesIO(_download_drive_file_bytes(CURSOS_FILE_ID))
     df = pd.read_excel(raw, sheet_name="cursos")
     df.columns = df.columns.str.strip()
+    # Un ciclo o una capacidad en blanco no deben tumbar el reporte ni volver NaN los totales.
+    if "Ciclo" in df.columns:
+        df["Ciclo"] = df["Ciclo"].where(df["Ciclo"].notna(), "Sin ciclo")
+    if "Capacidad" in df.columns:
+        df["Capacidad"] = pd.to_numeric(df["Capacidad"], errors="coerce").fillna(0)
     return df
 
 
@@ -517,10 +522,6 @@ def professor_language_map() -> Dict[str, str]:
         val = str(r.get(idioma_col) or "").strip().casefold()
         out[_norm_name(prof)] = "es" if val.startswith(("esp", "spa")) else "en"
     return out
-
-
-def _prof_lang(prof_name: str) -> str:
-    return professor_language_map().get(str(prof_name).strip(), "en")
 
 
 @st.cache_data(ttl=300)
@@ -575,7 +576,7 @@ def profesor_to_curso_map(df_cursos: pd.DataFrame) -> Dict[str, str]:
     m = {}
     for _, r in df_cursos.iterrows():
         if pd.notna(r.get("Profesor")):
-            m[str(r["Profesor"]).strip().upper()] = r["Curso"]
+            m.setdefault(str(r["Profesor"]).strip().upper(), r["Curso"])   # el primer curso, igual que la ficha del profesor
     return m
 
 
@@ -598,7 +599,7 @@ def cursos_unicos_map(df_cursos: pd.DataFrame) -> Dict[str, dict]:
         if nombre not in m:
             m[nombre] = {
                 "curso": nombre, "ciclo": r.get("Ciclo"), "fechas": r.get("Fechas curso"),
-                "modalidad": r.get("Modalidad"), "capacidad": r.get("Capacidad") or 0,
+                "modalidad": r.get("Modalidad"), "capacidad": (0 if pd.isna(r.get("Capacidad")) else r.get("Capacidad")),
                 "area": str(r.get("Area curso") or "").strip(),
                 "profesores": [r.get("Profesor")],
             }
@@ -679,7 +680,12 @@ def compute_all():
         m = meta["modalidad"] or "Unspecified"
         modalidad_counts[m] = modalidad_counts.get(m, 0) + 1
 
-    bloques = sorted(set(meta["ciclo"] for meta in cmap.values()))
+    def _bloque_key(b):
+        try:
+            return (0, float(b), "")
+        except (TypeError, ValueError):
+            return (1, 0.0, str(b))
+    bloques = sorted({meta["ciclo"] for meta in cmap.values() if pd.notna(meta["ciclo"])}, key=_bloque_key)
 
     # Notas (grades) — joined via professor -> course
     notas = df_listas.dropna(subset=["_curso"]).copy()
@@ -904,7 +910,10 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
     prof_norm_key = _norm_name(prof_name)
     match_row = df_cursos_all[df_cursos_all["Profesor"].astype(str).apply(_norm_name) == prof_norm_key]
     course = match_row["Curso"].iloc[0] if not match_row.empty else next(iter(q["courses"]), None)
-    row = d["df_listas"][d["df_listas"]["_curso"] == course] if course else pd.DataFrame()
+    # Inscritos = estudiantes de ESTE profesor (en cualquiera de sus cursos o en un curso co-dictado), el mismo
+    # universo que sus respuestas; contar solo un curso dejaba 0 inscritos y tasas de respuesta sobre 100%.
+    _lp = d["df_listas"]["Profesor(es)"].fillna("").astype(str)
+    row = d["df_listas"][_lp.apply(lambda v: prof_norm_key in {_norm_name(x) for x in v.split("|") if x.strip()})]
     inscritos = len(row)
 
     # ---- División por periodo real de matrícula (columna periodo_EIV en
@@ -982,7 +991,7 @@ def build_professor_eval_data(prof_name: str) -> Optional[dict]:
 # ── 8) PÁGINA — Cover (portada, sin sidebar ni nav) ──────────────────────
 # ── 8) PÁGINA — Cover (portada, funciona como Data Center — sin sidebar) ──
 def page_cover():
-    st.markdown(f"<div style='height:0.2vh;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:0.2vh;'></div>", unsafe_allow_html=True)
     with st.container(key="cover_banner"):
         try:
             _show_eiv_banner(width=777)
@@ -1026,10 +1035,16 @@ def page_cover():
                     unsafe_allow_html=True,
                 )
             with fc2:
-                st.download_button(
-                    "⇩", data=_download_drive_file_bytes(fid), file_name=fname,
-                    key=f"cover_dl_{fname}", use_container_width=True,
-                )
+                # Descarga bajo demanda: antes se bajaban los 5 archivos de Drive en cada carga de la portada.
+                _flag = f"cover_prep_{fname}"
+                if st.session_state.get(_flag):
+                    st.download_button(
+                        "⇩", data=_download_drive_file_bytes(fid), file_name=fname,
+                        key=f"cover_dl_{fname}", use_container_width=True,
+                    )
+                elif st.button("Get", key=f"cover_get_{fname}", use_container_width=True):
+                    st.session_state[_flag] = True
+                    st.rerun()
 
 
 # ── 9) PÁGINA — Overview (Historical Evolution) ──────────────────────────
@@ -1041,7 +1056,7 @@ def page_overview():
     )
 
     serie = [dict(p) for p in HIST_PARTICIPANTS]
-    serie.append({"year": 2026, "val": d["total_inscritos"], "seats": d["total_capacidad"], "live": True})
+    serie.append({"year": 2026, "val": d["total_inscritos"], "seats": d["total_capacidad"] or None, "live": True})
 
     st.markdown("### Participants & Available Capacity")
     fig = go.Figure()
@@ -1202,11 +1217,14 @@ def page_summary():
                             showocean=True, oceancolor="#FAF8FA", bgcolor="rgba(0,0,0,0)", projection_type="natural earth")
         fig_map.update_layout(margin=dict(t=6, r=6, b=6, l=6), height=420, showlegend=False, paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig_map, use_container_width=True, on_select="rerun", selection_mode="points", key="summary_map")
+        _no_geo = sorted(c for c in by_country if c not in COUNTRY_GEO)
+        if _no_geo:
+            st.caption("Not drawn on the map (no coordinates yet): " + ", ".join(_no_geo) + ".")
         if focus:
             st.caption("Double click the map to view all countries again.")
 
     st.markdown("### Courses by Block")
-    tabla_f = tabla[tabla["pais"].str.contains(focus, case=False, na=False)] if focus else tabla
+    tabla_f = tabla[tabla["pais"].apply(lambda v: focus in [c.strip() for c in str(v).split(",")])] if focus else tabla
     total_profs = tabla_f["profesor"].nunique()
     gender_counts = tabla_f.drop_duplicates(subset=["profesor"])["genero"].value_counts()
     gtotal = gender_counts.sum() or 1
@@ -1252,9 +1270,9 @@ def page_summary():
 
 
 # ── 11) PÁGINA — Dashboard (Enrollment Composition) ──────────────────────
-GRADE_BUCKETS = [
-    ("< 3.0", 0, 3.0), ("3.1 – 3.5", 3.0, 3.6), ("3.6 – 4.0", 3.6, 4.1),
-    ("4.1 – 4.5", 4.1, 4.6), ("4.6 – 5.0", 4.6, 5.01),
+GRADE_BUCKETS = [   # rangos semiabiertos [lo, hi): cada nota (con 2 decimales) cae en la etiqueta que dice
+    ("< 3.0", 0, 3.0), ("3.0 – 3.4", 3.0, 3.5), ("3.5 – 3.9", 3.5, 4.0),
+    ("4.0 – 4.4", 4.0, 4.5), ("4.5 – 5.0", 4.5, 5.01),
 ]
 
 
@@ -1419,8 +1437,11 @@ def page_financial():
     df = load_gastos()
     _render_header("Financial Balance", "Budget vs. actual spend, from BD_gastos.xlsx.")
 
-    budget_col = next((c for c in df.columns if "Valor COP" in c), None)
+    budget_col = next((c for c in df.columns if "Valor COP" in c or "ValorCOP" in c), None)
     actual_col = next((c for c in df.columns if "Total Ra" in c), None)
+    if budget_col is None or actual_col is None:
+        st.error("BD_gastos.xlsx: no encuentro las columnas de presupuesto ('Valor COP…') y/o gasto real ('Total Ra…').")
+        return
 
     df["_budget"] = pd.to_numeric(df[budget_col], errors="coerce")
     df["_actual"] = pd.to_numeric(df[actual_col], errors="coerce")
@@ -1429,7 +1450,11 @@ def page_financial():
     total_budget = df["_budget"].fillna(0).sum()
     reconciled = df.dropna(subset=["_actual"])
     total_executed = reconciled["_actual"].sum()
-    diff = total_executed - total_budget
+    # La diferencia se calcula contra el presupuesto de los MISMOS ítems ya ejecutados; comparar lo ejecutado
+    # contra el presupuesto total (con ítems aún pendientes) daba una cifra engañosa.
+    budget_executed = reconciled["_budget"].fillna(0).sum()
+    pending_budget = total_budget - budget_executed
+    diff = total_executed - budget_executed
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -1437,7 +1462,11 @@ def page_financial():
     with c2:
         _kpi("Total Executed", _fmt_cop(total_executed), "accent")
     with c3:
-        _kpi("Difference", ("+" if diff >= 0 else "") + _fmt_cop(diff), "accent")
+        _kpi("Difference (executed items)", ("+" if diff >= 0 else "") + _fmt_cop(diff), "accent")
+    st.caption(
+        f"{len(reconciled)} of {len(df)} items executed. Difference = actual spend − budget of those same items; "
+        f"budget still pending: {_fmt_cop(pending_budget)}."
+    )
 
     st.markdown("##### Budget by Concept")
     by_concept = df.groupby("_concepto")["_budget"].sum().sort_values(ascending=False)
@@ -1560,12 +1589,12 @@ def page_visiting():
         _kpi("Response Rate", f"{resp_total/insc_total*100:.1f}%" if insc_total else "—", "accent")
     with c_btn:
         st.caption(f"One PDF per faculty member ({len(prof_names)}), as a ZIP.")
-        # Se genera de una sola vez (con caché por alcance) y se muestra
-        # directo el botón de descarga -- antes había que darle click a
-        # "Generate" y LUEGO a "Download" (dos pasos); ahora es un solo click.
+        # Se genera bajo demanda (un click) y queda en caché por alcance; antes se construían todos los PDF
+        # en cada carga de la página, antes de mostrar el resto.
         scope_key = f"{bloque}|{'|'.join(sorted(prof_names))}"
         cache = st.session_state.get("_eiv_bulk_pdf_cache", {})
-        if cache.get("key") != scope_key:
+        if cache.get("key") != scope_key and st.button(
+                "Prepare PDF reports (ZIP)", key="prep_bulk_pdf", use_container_width=True):
             try:
                 import zipfile
                 zbuf = io.BytesIO()
@@ -1585,7 +1614,7 @@ def page_visiting():
             except ModuleNotFoundError:
                 st.session_state["_eiv_bulk_pdf_cache"] = {"key": scope_key, "data": None}
         cache = st.session_state.get("_eiv_bulk_pdf_cache", {})
-        if cache.get("data"):
+        if cache.get("key") == scope_key and cache.get("data"):
             with st.container(key="bulk_pdf_download"):
                 st.download_button(
                     "Download PDF Reports (ZIP)", data=cache["data"],
@@ -1611,7 +1640,7 @@ def page_visiting():
                 marker=dict(color=[color_scale((c["avg"] - 4) / 1 * 100) for c in ranked]),
                 text=[f'{c["avg"]:.2f}' for c in ranked], textposition="outside",
             ))
-            fig.update_layout(margin=dict(t=6, r=36, b=26, l=240), xaxis=dict(range=[4, 5]),
+            fig.update_layout(margin=dict(t=6, r=36, b=26, l=240), xaxis=dict(range=[min(4, math.floor(min(c["avg"] for c in ranked) * 10) / 10 - 0.1), 5]),
                                yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
                                paper_bgcolor="rgba(0,0,0,0)", height=max(200, 28 * len(ranked)))
             st.plotly_chart(fig, use_container_width=True)
@@ -1625,7 +1654,7 @@ def page_visiting():
                 marker=dict(color=[color_scale((c["nps"] - 7) / 3 * 100) for c in ranked_n]),
                 text=[f'{c["nps"]:.1f}' for c in ranked_n], textposition="outside",
             ))
-            fig.update_layout(margin=dict(t=6, r=36, b=26, l=240), xaxis=dict(range=[7, 10]),
+            fig.update_layout(margin=dict(t=6, r=36, b=26, l=240), xaxis=dict(range=[min(7, math.floor(min(c["nps"] for c in ranked_n)) - 0.5), 10]),
                                yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
                                paper_bgcolor="rgba(0,0,0,0)", height=max(200, 28 * len(ranked_n)))
             st.plotly_chart(fig, use_container_width=True)
@@ -2258,7 +2287,6 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     from reportlab.lib import colors as rl_colors
     from reportlab.pdfgen import canvas as rl_canvas
     from reportlab.lib.utils import ImageReader
-    import textwrap
 
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
@@ -2411,7 +2439,6 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         c.drawRightString((PW - 12) * mm, 4 * mm, str(page_num))
 
     page_num = 1
-    PERIOD_LABELS = {"202613": "GR", "202618": "UG"}
     PERIOD_TOTAL_LABELS = {"202613": "GR — 202613", "202618": "UG — 202618"}
 
     # ---- Página 1: banda + título de curso centrado + matrícula por
@@ -2645,7 +2672,6 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
         col_w = (cW - col_gap) / 2
         col_x = [mg, mg + col_w + col_gap]
         col_title = ["Period 202613 (GR)", "Period 202618 (UG)"]
-        col_data = [p13, p18]
 
         def _count_legend_rows(options, order, w):
             """Cuenta las filas EXACTAS que ocupará la leyenda en un ancho
@@ -2968,6 +2994,7 @@ def page_faculty():
         "Historical enrollment, graduate program mix, PRE mobility, and the international-exposure gap analysis.",
     )
 
+    st.caption("The figures on this page come from fixed reference data kept in the report code (they are not read from the Drive files); update them there each year.")
     S = SCHOOL_ENROLLMENT
     years = [r["year"] for r in S["historicalEnrollment"]]
     st.markdown("### Historical Enrollment")
