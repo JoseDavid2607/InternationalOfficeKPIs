@@ -3175,17 +3175,19 @@ def page_faculty():
 # ── Videos testimoniales de la EIV ───────────────────────────────────────
 # Carpeta de Drive con los videos testimoniales (se define cuando se suban). Mientras esté vacía, la página
 # muestra un aviso. Opcional: EIV_TESTIMONIAL_VIDEOS = [{"title": "...", "id": "<id del archivo>"}] para fijarlos a mano.
-EIV_TESTIMONIAL_FOLDER_ID = ""
-EIV_TESTIMONIAL_VIDEOS: List[dict] = []
+EIV_TESTIMONIAL_FOLDER_ID = "1m2z0V4tOQWpi_b2aJnKJJualcbGmuia6"
+EIV_TESTIMONIAL_VIDEOS: List[dict] = [   # respaldo: se muestran aunque la service account no pueda listar la carpeta
+    {"title": "International Summer School 2027 - Testimonials", "id": "1oUb_AfKF1kehgZF_uWGjEQwj__jw22-z"},
+]
 
 
 @st.cache_data(ttl=600)
 def _testimonial_videos() -> List[dict]:
     vids = [dict(v) for v in EIV_TESTIMONIAL_VIDEOS]
     if EIV_TESTIMONIAL_FOLDER_ID:
-        token = _get_gspread_access_token()
-        if token:
-            try:
+        try:
+            token = _get_gspread_access_token()
+            if token:
                 r = requests.get(
                     "https://www.googleapis.com/drive/v3/files",
                     headers={"Authorization": f"Bearer {token}"}, timeout=30,
@@ -3194,9 +3196,11 @@ def _testimonial_videos() -> List[dict]:
                             "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"},
                 )
                 if r.ok:
-                    vids += [{"title": re.sub(r"\.[A-Za-z0-9]{2,4}$", "", f["name"]), "id": f["id"]} for f in r.json().get("files", [])]
-            except Exception:
-                pass
+                    known = {v["id"] for v in vids}
+                    vids += [{"title": re.sub(r"\.[A-Za-z0-9]{2,4}$", "", f["name"]), "id": f["id"]}
+                             for f in r.json().get("files", []) if f["id"] not in known]
+        except Exception:
+            pass
     return vids
 
 
@@ -3226,6 +3230,27 @@ def page_conclusions():
             unsafe_allow_html=True,
         )
 
+    # ---- Testimonial videos ----
+    st.markdown("---")
+    st.markdown(f'<div style="font-size:30px;font-weight:700;color:{GREEN_H};margin:8px 0 18px;">EIV Testimonials</div>', unsafe_allow_html=True)
+    videos = _testimonial_videos()
+    if not videos:
+        _pending_card(
+            "Testimonial videos",
+            "The EIV testimonial videos will appear here once they are uploaded to the Drive folder "
+            "(set <code>EIV_TESTIMONIAL_FOLDER_ID</code> in the report code).",
+        )
+    else:
+        vcols = st.columns(2 if len(videos) > 1 else 1)
+        for i, v in enumerate(videos):
+            with vcols[i % len(vcols)]:
+                st.markdown(f"**{v['title']}**")
+                components.html(
+                    f'<iframe src="https://drive.google.com/file/d/{v["id"]}/preview" width="100%" height="360" '
+                    'style="border:0;border-radius:12px;" allow="autoplay; fullscreen" allowfullscreen></iframe>',
+                    height=372,
+                )
+
     st.markdown("---")
     st.markdown(f'<div style="font-size:30px;font-weight:700;color:{GREEN_H};margin:8px 0 18px;">Challenges</div>', unsafe_allow_html=True)
     challenges = [
@@ -3250,27 +3275,6 @@ def page_conclusions():
             f'<div style="margin-bottom:22px;"><div style="font-size:17px;font-weight:700;color:{INK};">{title}</div>{sub_html}</div>',
             unsafe_allow_html=True,
         )
-
-    # ---- Testimonial videos ----
-    st.markdown("---")
-    st.markdown(f'<div style="font-size:30px;font-weight:700;color:{GREEN_H};margin:8px 0 18px;">EIV Testimonials</div>', unsafe_allow_html=True)
-    videos = _testimonial_videos()
-    if not videos:
-        _pending_card(
-            "Testimonial videos",
-            "The EIV testimonial videos will appear here once they are uploaded to the Drive folder "
-            "(set <code>EIV_TESTIMONIAL_FOLDER_ID</code> in the report code).",
-        )
-    else:
-        vcols = st.columns(2 if len(videos) > 1 else 1)
-        for i, v in enumerate(videos):
-            with vcols[i % len(vcols)]:
-                st.markdown(f"**{v['title']}**")
-                components.html(
-                    f'<iframe src="https://drive.google.com/file/d/{v["id"]}/preview" width="100%" height="360" '
-                    'style="border:0;border-radius:12px;" allow="autoplay; fullscreen" allowfullscreen></iframe>',
-                    height=372,
-                )
 
 
 # ── 17) NAVEGACIÓN ────────────────────────────────────────────────────────
