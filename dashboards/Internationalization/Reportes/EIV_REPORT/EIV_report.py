@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -284,6 +285,14 @@ def _show_eiv_banner(width: Optional[int] = None, use_container_width: bool = Fa
     )
 
 
+def _axis_titles(fig, x: str = "", y: str = ""):
+    """Títulos de ejes en inglés para todas las gráficas."""
+    if x:
+        fig.update_xaxes(title_text=x, title_font=dict(size=12, color=MUTED))
+    if y:
+        fig.update_yaxes(title_text=y, title_font=dict(size=12, color=MUTED))
+
+
 def color_scale(pct: float) -> str:
     """Rojo -> ámbar -> verde, 0-100 (idéntico a EIV.Colors.scale)."""
     stops = [(209, 70, 69), (232, 178, 70), (76, 138, 63)]
@@ -361,11 +370,11 @@ def _download_drive_file_bytes(file_id: str) -> bytes:
     token = _get_gspread_access_token()
     if not token:
         if not _GSPREAD_OK:
-            st.error(f"📦 Falta instalar `google-auth` en el entorno (import falló: `{_GSPREAD_IMPORT_ERR}`).")
+            st.error(f"📦 `google-auth` is not installed in this environment (import failed: `{_GSPREAD_IMPORT_ERR}`).")
         elif "gcp_service_account" not in st.secrets:
-            st.error("🔑 No encuentro `st.secrets['gcp_service_account']`. Revisa Settings → Secrets.")
+            st.error("🔑 `st.secrets['gcp_service_account']` was not found. Check Settings → Secrets.")
         else:
-            st.error("🔑 Las credenciales de `gcp_service_account` no se pudieron usar para autenticar.")
+            st.error("🔑 The `gcp_service_account` credentials could not be used to authenticate.")
         st.stop()
 
     url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
@@ -381,8 +390,8 @@ def _download_drive_file_bytes(file_id: str) -> bytes:
             last_err = e
         time.sleep(2)
     st.error(
-        f"🌐 No se pudo descargar el archivo de Drive ({file_id}) tras varios intentos: {last_err}\n\n"
-        "Verifica que el archivo esté compartido con el correo de la service account, con permiso de Editor."
+        f"🌐 The Drive file ({file_id}) could not be downloaded after several attempts: {last_err}\n\n"
+        "Make sure the file is shared with the service-account email with Editor permission."
     )
     st.stop()
 
@@ -413,34 +422,34 @@ SCHOOL_ENROLLMENT = {
         {"year": 2026, "PRE": 2019, "POS": 1441},
     ],
     "posProgramDistribution": [
-        {"program": "Maestría en Finanzas", "count": 217},
-        {"program": "Especialización en Administración Financiera", "count": 172},
-        {"program": "Maestría en Administración", "count": 167},
-        {"program": "Maestría en Administración (MBA)", "count": 158},
-        {"program": "Maestría en Regeneración y Desarrollo Sostenible", "count": 146},
-        {"program": "Maestría en Gerencia para la Práctica del Desarrollo", "count": 80},
-        {"program": "Maestría en Analítica y Gestión Financiera", "count": 71},
-        {"program": "Maestría en Mercadeo", "count": 68},
-        {"program": "Maestría en Administración Ejecutiva (EMBA)", "count": 67},
-        {"program": "Maestría en Gerencia Estratégica", "count": 59},
-        {"program": "Maestría en Gestión de la Cadena de Suministro", "count": 58},
-        {"program": "Maestría en Gerencia Ambiental", "count": 55},
-        {"program": "Especialización en Negociación", "count": 46},
-        {"program": "Especialización en Inteligencia de Mercados", "count": 34},
-        {"program": "Doctorado en Administración", "count": 31},
-        {"program": "Maestría en Gerencia Internacional", "count": 10},
-        {"program": "Maestría Internacional en Finanzas", "count": 1},
-        {"program": "Maestría en Investigación en Administración", "count": 1},
+        {"program": "Master in Finance", "count": 217},
+        {"program": "Specialization in Financial Management", "count": 172},
+        {"program": "Master in Management", "count": 167},
+        {"program": "MBA", "count": 158},
+        {"program": "Master in Regeneration and Sustainable Development", "count": 146},
+        {"program": "Master in Management and Development Practice", "count": 80},
+        {"program": "Master in Financial Analytics and Management", "count": 71},
+        {"program": "Master in Marketing", "count": 68},
+        {"program": "Executive MBA (EMBA)", "count": 67},
+        {"program": "Master in Strategic Management", "count": 59},
+        {"program": "Master in Supply Chain Management", "count": 58},
+        {"program": "Master in Environmental Management", "count": 55},
+        {"program": "Specialization in Negotiation", "count": 46},
+        {"program": "Specialization in Market Intelligence", "count": 34},
+        {"program": "PhD in Management", "count": 31},
+        {"program": "Master in International Management", "count": 10},
+        {"program": "Master in International Finance", "count": 1},
+        {"program": "Master in Management Research", "count": 1},
     ],
 }
 MOBILITY_DATA = {
     "preUniqueLast5": 533, "posUniqueLast5": 34,
     "byYear": [
-        {"year": 2021, "types": {"Intercambio Internacional": 49, "Doble Titulación": 5, "Pasantía de Investigación": 8}},
-        {"year": 2022, "types": {"Intercambio Internacional": 96, "Doble Titulación": 12, "Pasantía de Investigación": 3}},
-        {"year": 2023, "types": {"Intercambio Internacional": 143, "Doble Titulación": 12, "Pasantía de Investigación": 9}},
-        {"year": 2024, "types": {"Intercambio Internacional": 94, "Doble Titulación": 8, "Pasantía de Investigación": 3}},
-        {"year": 2025, "types": {"Intercambio Internacional": 125, "Doble Titulación": 8, "Pasantía de Investigación": 6}},
+        {"year": 2021, "types": {"International Exchange": 49, "Double Degree": 5, "Research Internship": 8}},
+        {"year": 2022, "types": {"International Exchange": 96, "Double Degree": 12, "Research Internship": 3}},
+        {"year": 2023, "types": {"International Exchange": 143, "Double Degree": 12, "Research Internship": 9}},
+        {"year": 2024, "types": {"International Exchange": 94, "Double Degree": 8, "Research Internship": 3}},
+        {"year": 2025, "types": {"International Exchange": 125, "Double Degree": 8, "Research Internship": 6}},
     ],
 }
 WEEKS_DATA = {"byWeek": [
@@ -496,7 +505,7 @@ def load_cursos() -> pd.DataFrame:
     df.columns = df.columns.str.strip()
     # Un ciclo o una capacidad en blanco no deben tumbar el reporte ni volver NaN los totales.
     if "Ciclo" in df.columns:
-        df["Ciclo"] = df["Ciclo"].where(df["Ciclo"].notna(), "Sin ciclo")
+        df["Ciclo"] = df["Ciclo"].where(df["Ciclo"].notna(), "No block")
     if "Capacidad" in df.columns:
         df["Capacidad"] = pd.to_numeric(df["Capacidad"], errors="coerce").fillna(0)
     return df
@@ -622,8 +631,31 @@ CATEGORY_LABELS = {
 }
 PROGRAM_TYPE_LABELS = {
     "Pregrado": "Undergraduate", "Otros Pre y Posgrados": "Other Undergraduate/Graduate",
-    "Especializaciones": "Specializations",
+    "Especializaciones": "Specializations", "Especialización": "Specialization", "Maestría": "Master's",
+    "Maestrías": "Master's", "Doctorado": "PhD", "Posgrado": "Graduate", "Extensión": "External",
+    "Unspecified": "Unspecified",
 }
+
+
+def _en(t):
+    """Etiqueta en inglés para un tipo de programa que viene en español de BD_listas."""
+    return PROGRAM_TYPE_LABELS.get(t, t)
+
+
+CONCEPT_EN = [   # (prefijo normalizado en español, etiqueta en inglés) — se compara sin tildes y en minúsculas
+    ("fotocopias", "Photocopies & Materials"), ("tiquete", "Airfare"), ("gastos de representaci", "Representation expenses (welcome lunch & monitors' breakfast)"),
+    ("contratos monitor", "Teaching-assistant contracts"), ("contratos/factura", "Contracts / Invoices"), ("contrato", "Contracts"),
+    ("poliza", "Insurance policy"), ("alojamiento", "Accommodation"), ("hospedaje", "Accommodation"), ("transporte", "Transportation"),
+    ("alimentaci", "Meals"), ("publicidad", "Advertising"), ("material", "Materials"), ("imprevisto", "Contingencies"), ("otros", "Other"),
+]
+
+
+def _concept_en(c) -> str:
+    key = unicodedata.normalize("NFKD", str(c)).encode("ascii", "ignore").decode().strip().lower()
+    for pref, en in CONCEPT_EN:
+        if key.startswith(pref):
+            return en
+    return str(c)
 
 
 @st.cache_data(ttl=300)
@@ -759,7 +791,7 @@ def evaluation_by_professor() -> Dict[str, dict]:
         qid = r.get("id_pregunta")
         if pd.isna(qid):
             continue
-        lang = lang_map.get(prof, "en")
+        lang = "en"   # todo se muestra en inglés: siempre las columnas en inglés (las de español solo como respaldo)
         # BD_evaluacion_curso.xlsx trae pregunta/aspecto/respuesta en
         # español Y en inglés en la misma fila (columnas H/I, E/F, L/M) —
         # se elige la columna según el idioma real del profesor (Idioma en
@@ -809,7 +841,7 @@ def comments_by_professor() -> Dict[str, dict]:
         qid = r.get("id_pregunta")
         if pd.isna(qid):
             continue
-        lang = lang_map.get(prof, "en")
+        lang = "en"
         candidates = respuesta_candidates_en if lang == "en" else respuesta_candidates_es
         ans = None
         for c in candidates:
@@ -1022,7 +1054,7 @@ def page_cover():
         files = [
             ("BD_cursos.xlsx", "Courses & 2026 capacity", CURSOS_FILE_ID),
             ("BD_listas.xlsx", "Enrollment, program catalog & final grades", LISTAS_FILE_ID),
-            ("BD_evaluacion_curso.xlsx", "Course evaluation — frequencies & comments", EVALUACION_FILE_ID),
+            ("BD_evaluacion_curso.xlsx", "Course evaluation — frequencies & student responses", EVALUACION_FILE_ID),
             ("BD_satisfaccionEIV.xlsx", "Faculty satisfaction survey", SATISFACCION_FILE_ID),
             ("BD_gastos.xlsx", "Expenses & actual spend", GASTOS_FILE_ID),
         ]
@@ -1084,6 +1116,7 @@ def page_overview():
         yaxis=dict(range=[0, 800], gridcolor="#EFEBEE"), xaxis=dict(dtick=1),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=380,
     )
+    _axis_titles(fig, "Year", "Participants / seats")
     st.plotly_chart(fig, use_container_width=True)
 
     hist_df = pd.DataFrame([{
@@ -1117,6 +1150,7 @@ def page_overview():
         yaxis=dict(ticksuffix="%", range=[0, 76], gridcolor="#EFEBEE"), xaxis=dict(type="category"),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=360,
     )
+    _axis_titles(fig2, "Year", "% of participants")
     st.plotly_chart(fig2, use_container_width=True)
 
     # Total de participantes por año (para convertir % -> # de inscritos por
@@ -1309,7 +1343,7 @@ def page_dashboard():
         if profs:
             st.markdown(f"**{profs}** — {curso}")
 
-    col_chart, col_kpi = st.columns([2, 1], vertical_alignment="center")
+    col_chart, col_grade, col_kpi = st.columns([5, 4, 2], vertical_alignment="center")
     with col_kpi:
         st.markdown(
             f'<div style="display:flex;flex-direction:column;justify-content:center;height:100%;gap:22px;">'
@@ -1323,7 +1357,7 @@ def page_dashboard():
         st.markdown("##### Program Type Distribution")
         total = len(f_listas) or 1
         counts = f_listas["_tipo"].fillna("Unspecified").value_counts()
-        labels = [PROGRAM_TYPE_LABELS.get(l, l) for l in counts.index]
+        labels = [_en(l) for l in counts.index]
         values = (counts / total * 100)
         fig = go.Figure(go.Bar(
             x=values.values, y=labels, orientation="h",
@@ -1331,25 +1365,27 @@ def page_dashboard():
                                 for l in counts.index]),
             text=[f"{v:.1f}%" for v in values.values], textposition="outside",
         ))
-        fig.update_layout(margin=dict(t=6, r=36, b=36, l=160), xaxis=dict(ticksuffix="%", gridcolor="#EFEBEE"),
+        fig.update_layout(margin=dict(t=6, r=36, b=44, l=150), xaxis=dict(ticksuffix="%", gridcolor="#EFEBEE"),
                            yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
                            paper_bgcolor="rgba(0,0,0,0)", height=340)
+        _axis_titles(fig, "% of enrolled seats", "Program type")
         st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown(f"##### Grade Dispersion — {'All Courses' if curso=='all' and bloque=='all' else (curso if curso!='all' else f'Block {bloque}')}")
-    total_n = len(f_notas) or 1
-    counts_g = []
-    for label, lo, hi in GRADE_BUCKETS:
-        n = f_notas[(f_notas["_nota"] >= lo) & (f_notas["_nota"] < hi)].shape[0]
-        counts_g.append(n)
-    fig3 = go.Figure(go.Bar(
-        x=[b[0] for b in GRADE_BUCKETS], y=[c / total_n * 100 for c in counts_g],
-        marker=dict(color=[color_scale(i / (len(GRADE_BUCKETS) - 1) * 100) for i in range(len(GRADE_BUCKETS))]),
-        text=[f"{c} students" for c in counts_g], textposition="outside",
-    ))
-    fig3.update_layout(margin=dict(t=6, r=16, b=30, l=46), yaxis=dict(ticksuffix="%", gridcolor="#EFEBEE"),
-                        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=280)
-    st.plotly_chart(fig3, use_container_width=True)
+    with col_grade:
+        st.markdown(f"##### Grade Dispersion — {'All Courses' if curso=='all' and bloque=='all' else (curso if curso!='all' else f'Block {bloque}')}")
+        total_n = len(f_notas) or 1
+        counts_g = []
+        for label, lo, hi in GRADE_BUCKETS:
+            n = f_notas[(f_notas["_nota"] >= lo) & (f_notas["_nota"] < hi)].shape[0]
+            counts_g.append(n)
+        fig3 = go.Figure(go.Bar(
+            x=[b[0] for b in GRADE_BUCKETS], y=[c / total_n * 100 for c in counts_g],
+            marker=dict(color=[color_scale(i / (len(GRADE_BUCKETS) - 1) * 100) for i in range(len(GRADE_BUCKETS))]),
+            text=[f"{c} students" for c in counts_g], textposition="outside",
+        ))
+        fig3.update_layout(margin=dict(t=6, r=16, b=44, l=52), yaxis=dict(ticksuffix="%", gridcolor="#EFEBEE"),
+                            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=340)
+        _axis_titles(fig3, "Final grade range", "% of students")
+        st.plotly_chart(fig3, use_container_width=True)
 
     st.markdown("### Enrollment Composition Table")
     rows = d["tabla_cursos"]
@@ -1357,11 +1393,11 @@ def page_dashboard():
         ((bloque == "all") | (rows["bloque"].astype(str) == str(bloque)))
         & ((curso == "all") | (rows["curso"] == curso))
     ]
-    tipos = sorted(d["df_listas"]["_tipo"].dropna().unique().tolist())
+    tipos = sorted({_en(t) for t in d["df_listas"]["_tipo"].dropna().unique().tolist()})
     grid: Dict[str, Dict[str, int]] = {}
     for _, r in d["df_listas"].dropna(subset=["_curso"]).iterrows():
         gc = grid.setdefault(r["_curso"], {})
-        t = r["_tipo"] or "Unspecified"
+        t = _en(r["_tipo"]) if pd.notna(r["_tipo"]) and r["_tipo"] else "Unspecified"
         gc[t] = gc.get(t, 0) + 1
 
     table_rows = []
@@ -1414,12 +1450,15 @@ def page_dashboard():
         if b not in pivot.columns:
             pivot[b] = 0
     pivot = pivot[[1, 2, 3]].sort_index()
+    pivot.index = [_en(t) for t in pivot.index]
+    pivot = pivot.groupby(level=0).sum()
     fig2 = go.Figure()
     for b, color, name in [(1, BLUE, "1 course"), (2, GREEN, "2 courses"), (3, PINK, "3 courses")]:
         fig2.add_trace(go.Bar(x=pivot.index, y=pivot[b], name=name, marker=dict(color=color)))
     fig2.update_layout(margin=dict(t=6, r=16, b=70, l=46), barmode="stack",
                         legend=dict(orientation="h", x=0, y=1.14), plot_bgcolor="rgba(0,0,0,0)",
                         paper_bgcolor="rgba(0,0,0,0)", height=280)
+    _axis_titles(fig2, "Program type", "Students")
     st.plotly_chart(fig2, use_container_width=True)
 
 
@@ -1440,12 +1479,12 @@ def page_financial():
     budget_col = next((c for c in df.columns if "Valor COP" in c or "ValorCOP" in c), None)
     actual_col = next((c for c in df.columns if "Total Ra" in c), None)
     if budget_col is None or actual_col is None:
-        st.error("BD_gastos.xlsx: no encuentro las columnas de presupuesto ('Valor COP…') y/o gasto real ('Total Ra…').")
+        st.error("BD_gastos.xlsx: the budget ('Valor COP…') and/or actual-spend ('Total Ra…') columns were not found.")
         return
 
     df["_budget"] = pd.to_numeric(df[budget_col], errors="coerce")
     df["_actual"] = pd.to_numeric(df[actual_col], errors="coerce")
-    df["_concepto"] = df["Concepto"].astype(str).str.replace(r"\r?\n", " ", regex=True).str.strip()
+    df["_concepto"] = df["Concepto"].astype(str).str.replace(r"\r?\n", " ", regex=True).str.strip().apply(_concept_en)
 
     total_budget = df["_budget"].fillna(0).sum()
     reconciled = df.dropna(subset=["_actual"])
@@ -1478,6 +1517,7 @@ def page_financial():
     fig.update_layout(margin=dict(t=6, r=100, b=36, l=230), xaxis=dict(type="log", gridcolor="#EFEBEE"),
                        yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
                        paper_bgcolor="rgba(0,0,0,0)", height=max(300, 26 * len(by_concept)))
+    _axis_titles(fig, "Budget (COP, log scale)", "Concept")
     st.plotly_chart(fig, use_container_width=True)
 
     if not reconciled.empty:
@@ -1491,6 +1531,7 @@ def page_financial():
                             legend=dict(orientation="h", x=0, y=1.14),
                             yaxis=dict(type="log", gridcolor="#EFEBEE"),
                             plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=340)
+        _axis_titles(fig2, "Concept", "Amount (COP, log scale)")
         st.plotly_chart(fig2, use_container_width=True)
     else:
         st.info("Budget vs. Actual — no items executed yet.")
@@ -1598,7 +1639,7 @@ def page_visiting():
             try:
                 import zipfile
                 zbuf = io.BytesIO()
-                with st.spinner(f"Preparando {len(prof_names)} reportes…"), zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
+                with st.spinner(f"Preparing {len(prof_names)} reports…"), zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
                     for name in prof_names:
                         ed_name = build_professor_eval_data(name)
                         if not ed_name:
@@ -1643,6 +1684,7 @@ def page_visiting():
             fig.update_layout(margin=dict(t=6, r=36, b=26, l=240), xaxis=dict(range=[min(4, math.floor(min(c["avg"] for c in ranked) * 10) / 10 - 0.1), 5]),
                                yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
                                paper_bgcolor="rgba(0,0,0,0)", height=max(200, 28 * len(ranked)))
+            _axis_titles(fig, "Average satisfaction (1–5)", "Faculty — course")
             st.plotly_chart(fig, use_container_width=True)
     with col_b:
         st.markdown("##### Ranked by Recommendation (NPS)")
@@ -1657,6 +1699,7 @@ def page_visiting():
             fig.update_layout(margin=dict(t=6, r=36, b=26, l=240), xaxis=dict(range=[min(7, math.floor(min(c["nps"] for c in ranked_n)) - 0.5), 10]),
                                yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
                                paper_bgcolor="rgba(0,0,0,0)", height=max(200, 28 * len(ranked_n)))
+            _axis_titles(fig, "Average recommendation (0–10)", "Faculty — course")
             st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
@@ -1697,7 +1740,7 @@ def page_visiting():
                     textfont=dict(size=11, color=INK),
                 ))
                 fig.update_layout(margin=dict(t=20, r=50, b=20, l=50),
-                                   polar=dict(radialaxis=dict(visible=True, range=[0, 5], tickfont=dict(size=9))),
+                                   polar=dict(radialaxis=dict(visible=True, range=[0, 5], tickfont=dict(size=9), title=dict(text="Rating (1–5)", font=dict(size=10)))),
                                    showlegend=False, paper_bgcolor="rgba(0,0,0,0)", height=340)
                 st.plotly_chart(fig, use_container_width=True)
             else:
@@ -1715,6 +1758,7 @@ def page_visiting():
                 fig_b.update_layout(margin=dict(t=10, r=36, b=26, l=140), xaxis=dict(range=[1, 5.5]),
                                      yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
                                      paper_bgcolor="rgba(0,0,0,0)", height=320)
+                _axis_titles(fig_b, "Average rating (1–5)", "Item")
                 st.plotly_chart(fig_b, use_container_width=True)
 
         st.markdown("##### Important Insights")
@@ -1725,7 +1769,7 @@ def page_visiting():
         ]
         _render_insight_cards(cards)
 
-        st.markdown("##### Comments")
+        st.markdown("##### Comments by Faculty")
         prof_col_for_sat = next((c for c in df_sat.columns if re.sub(r"\s+", " ", str(c)).strip().casefold() == "full name"), None)
         title_col_for_sat = next((c for c in df_sat.columns if re.sub(r"\s+", " ", str(c)).strip().casefold() == "course title"), None)
         comment_fields = [
@@ -1756,7 +1800,7 @@ def page_visiting():
                                 unsafe_allow_html=True,
                             )
                 else:
-                    st.caption("No comments for this question in this scope.")
+                    st.caption("No faculty comments for this question in this scope.")
 
 
 def _fcol(row: dict, target: str, default=None):
@@ -2001,9 +2045,10 @@ def _render_professor_detail(entry: dict, entries: List[dict], siblings: Optiona
             fig.update_layout(margin=dict(t=10, r=50, b=26, l=270), xaxis=dict(range=[1, 5.5]),
                                yaxis=dict(autorange="reversed"), plot_bgcolor="rgba(0,0,0,0)",
                                paper_bgcolor="rgba(0,0,0,0)", height=280)
+            _axis_titles(fig, "Average rating (1–5)", "Aspect")
             st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("##### Comments")
+        st.markdown("##### Responses from students")
         com_by_prof = comments_by_professor()
         prof_comments = com_by_prof.get(_resolve_alias(profesor), {})
         ccols = st.columns(2)
@@ -2020,7 +2065,7 @@ def _render_professor_detail(entry: dict, entries: List[dict], siblings: Optiona
                             tag = f'<strong style="color:{PINK};">[{item["periodo"]}]</strong> ' if item.get("periodo") else ""
                             st.markdown(f'<div class="prof-quote">{tag}“{item["text"]}”</div>', unsafe_allow_html=True)
                 else:
-                    st.caption("No comments for this question.")
+                    st.caption("No responses for this question.")
 
     st.markdown("---")
     st.markdown("### Faculty Satisfaction Survey")
@@ -2057,7 +2102,7 @@ def _render_professor_detail(entry: dict, entries: List[dict], siblings: Optiona
                     textfont=dict(size=11, color=INK),
                 ))
                 fig.update_layout(margin=dict(t=20, r=50, b=20, l=50),
-                                   polar=dict(radialaxis=dict(visible=True, range=[0, 5], tickfont=dict(size=9))),
+                                   polar=dict(radialaxis=dict(visible=True, range=[0, 5], tickfont=dict(size=9), title=dict(text="Rating (1–5)", font=dict(size=10)))),
                                    showlegend=False, paper_bgcolor="rgba(0,0,0,0)", height=340)
                 st.plotly_chart(fig, use_container_width=True)
             else:
@@ -2069,7 +2114,7 @@ def _render_professor_detail(entry: dict, entries: List[dict], siblings: Optiona
             st.markdown(f"**Materials uploaded on time?** {_fcol(row, 'Was all course material uploaded in a timely manner?','—')}")
             st.markdown(f"**UG vs. Grad differences?** {_fcol(row, 'Did you perceive any differences between undergraduate and graduate students performance  in the different  course activities?','—')}")
 
-        st.markdown("##### Comments & Open-Ended Responses")
+        st.markdown("##### Comments by Faculty")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             st.markdown(_quote("What they valued most", _fcol(row, "Please mention two aspects that you valued the most about your course delivery")), unsafe_allow_html=True)
@@ -2926,14 +2971,14 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
     ensure_space(10)
     c.setFillColor(ink)
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(mg * mm, top_pt(y), "STUDENT COMMENTS")
+    c.drawString(mg * mm, top_pt(y), "RESPONSES FROM STUDENTS")
     y += 7
 
     with_items = [g for g in comment_groups if g["items"]]
     if not with_items:
         c.setFont("Helvetica", 8)
         c.setFillColor(rl_colors.HexColor("#50484E"))
-        c.drawString(mg * mm, top_pt(y), "No comments collected for this faculty member.")
+        c.drawString(mg * mm, top_pt(y), "No student responses collected for this faculty member.")
         draw_footer(page_num)
     else:
         for g in comment_groups:
@@ -2964,7 +3009,7 @@ def _build_professor_pdf(profesor: str, curso: str, ed: dict, sat_row: dict) -> 
             if not g["items"]:
                 c.setFont("Helvetica", 8)
                 c.setFillColor(muted)
-                c.drawString(mg * mm, top_pt(y), "No comments for this question.")
+                c.drawString(mg * mm, top_pt(y), "No responses for this question.")
                 y += 6
                 continue
             for i, item in enumerate(g["items"]):
@@ -3008,6 +3053,7 @@ def page_faculty():
     fig.update_layout(margin=dict(t=20, r=20, b=30, l=46), legend=dict(orientation="h", x=0, y=1.15),
                        xaxis=dict(type="category"), plot_bgcolor="rgba(0,0,0,0)",
                        paper_bgcolor="rgba(0,0,0,0)", height=320)
+    _axis_titles(fig, "Year", "Students enrolled")
     st.plotly_chart(fig, use_container_width=True)
 
     c1, c2, c3 = st.columns(3)
@@ -3024,13 +3070,14 @@ def page_faculty():
                              marker=dict(color=PURPLE), text=[p["count"] for p in prog], textposition="outside"))
     fig2.update_layout(margin=dict(t=10, r=30, b=30, l=260), yaxis=dict(autorange="reversed"),
                         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=460)
+    _axis_titles(fig2, "Students enrolled", "Program")
     st.plotly_chart(fig2, use_container_width=True)
 
     st.markdown("---")
     st.markdown("### Undergraduate (PRE) Mobility")
     M = MOBILITY_DATA
     myears = [str(y["year"]) for y in M["byYear"]]
-    type_colors = {"Intercambio Internacional": BLUE, "Doble Titulación": PURPLE, "Pasantía de Investigación": GREEN}
+    type_colors = {"International Exchange": BLUE, "Double Degree": PURPLE, "Research Internship": GREEN}
     fig3 = go.Figure()
     for t, color in type_colors.items():
         fig3.add_trace(go.Bar(x=myears, y=[y["types"].get(t, 0) for y in M["byYear"]], name=t, marker=dict(color=color)))
@@ -3040,6 +3087,7 @@ def page_faculty():
     fig3.update_layout(margin=dict(t=26, r=16, b=30, l=40), barmode="stack",
                         legend=dict(orientation="h", x=0, y=1.18), plot_bgcolor="rgba(0,0,0,0)",
                         paper_bgcolor="rgba(0,0,0,0)", height=340)
+    _axis_titles(fig3, "Year", "Students")
     st.plotly_chart(fig3, use_container_width=True)
 
     st.markdown("### Graduate (EPOS) — International Weeks & Electives")
@@ -3054,6 +3102,7 @@ def page_faculty():
                            text=[f'{w["EPOS"]} EPOS' for w in W], textposition="inside"))
     fig4.update_layout(margin=dict(t=10, r=16, b=40, l=40), barmode="stack", showlegend=False,
                         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=300)
+    _axis_titles(fig4, "International week", "Students")
     st.plotly_chart(fig4, use_container_width=True)
 
     df_electivas = load_electivas()
@@ -3073,23 +3122,24 @@ def page_faculty():
     ))
     fig5.update_layout(margin=dict(t=10, r=30, b=30, l=170), yaxis=dict(autorange="reversed"),
                         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=max(240, 30 * len(area_list)))
+    _axis_titles(fig5, "Students enrolled", "Area")
     st.plotly_chart(fig5, use_container_width=True)
 
     st.markdown("---")
     st.markdown("### International-Exposure Gap Analysis")
     st.caption(
         "Share of currently enrolled students with at least one form of international "
-        "exposure (EIV, mobility, convocatoria, international weeks)."
+        "exposure (EIV, mobility, open calls, international weeks)."
     )
     pre_exp = S["preIntlExperience"]
     pos_eiv = d["df_listas"][d["df_listas"]["Categoría académica"] == "EPOS UASM"]["Código est"].dropna().nunique()
     pos_semanas = sum(w["MBA"] + w["EPOS"] for w in W)
 
     parts = [
-        {"label": "Escuela de Verano (EIV)", "pre": pre_exp["escuelaVerano"], "pos": pos_eiv, "color": PINK},
-        {"label": "Movilidad", "pre": pre_exp["movilidad"], "pos": MOBILITY_DATA["posUniqueLast5"], "color": BLUE},
-        {"label": "Convocatoria", "pre": pre_exp["convocatoria"], "pos": 0, "color": PURPLE},
-        {"label": "Semanas Internacionales", "pre": 0, "pos": pos_semanas, "color": GREEN},
+        {"label": "Summer School (EIV)", "pre": pre_exp["escuelaVerano"], "pos": pos_eiv, "color": PINK},
+        {"label": "Mobility", "pre": pre_exp["movilidad"], "pos": MOBILITY_DATA["posUniqueLast5"], "color": BLUE},
+        {"label": "Open call", "pre": pre_exp["convocatoria"], "pos": 0, "color": PURPLE},
+        {"label": "International Weeks", "pre": 0, "pos": pos_semanas, "color": GREEN},
     ]
     pre_with = sum(p["pre"] for p in parts)
     pos_with = sum(p["pos"] for p in parts)
@@ -3118,7 +3168,36 @@ def page_faculty():
     fig6.update_layout(margin=dict(t=10, r=16, b=30, l=46), barmode="stack",
                         legend=dict(orientation="h", x=0, y=1.2), yaxis=dict(ticksuffix="%", range=[0, 100]),
                         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=380)
+    _axis_titles(fig6, "Student level", "% of students")
     st.plotly_chart(fig6, use_container_width=True)
+
+
+# ── Videos testimoniales de la EIV ───────────────────────────────────────
+# Carpeta de Drive con los videos testimoniales (se define cuando se suban). Mientras esté vacía, la página
+# muestra un aviso. Opcional: EIV_TESTIMONIAL_VIDEOS = [{"title": "...", "id": "<id del archivo>"}] para fijarlos a mano.
+EIV_TESTIMONIAL_FOLDER_ID = ""
+EIV_TESTIMONIAL_VIDEOS: List[dict] = []
+
+
+@st.cache_data(ttl=600)
+def _testimonial_videos() -> List[dict]:
+    vids = [dict(v) for v in EIV_TESTIMONIAL_VIDEOS]
+    if EIV_TESTIMONIAL_FOLDER_ID:
+        token = _get_gspread_access_token()
+        if token:
+            try:
+                r = requests.get(
+                    "https://www.googleapis.com/drive/v3/files",
+                    headers={"Authorization": f"Bearer {token}"}, timeout=30,
+                    params={"q": f"'{EIV_TESTIMONIAL_FOLDER_ID}' in parents and mimeType contains 'video/' and trashed=false",
+                            "fields": "files(id,name)", "orderBy": "name", "pageSize": 50,
+                            "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"},
+                )
+                if r.ok:
+                    vids += [{"title": re.sub(r"\.[A-Za-z0-9]{2,4}$", "", f["name"]), "id": f["id"]} for f in r.json().get("files", [])]
+            except Exception:
+                pass
+    return vids
 
 
 # ── 16) PÁGINA — Conclusions ──────────────────────────────────────────────
@@ -3129,16 +3208,16 @@ def page_conclusions():
 
     st.markdown(f'<div style="font-size:30px;font-weight:700;color:{GREEN_H};margin:8px 0 18px;">Key Achievements</div>', unsafe_allow_html=True)
     achievements = [
-        ("Nivel muy top de profesores y universidades representantes.", ""),
-        ("Programa muy conocido entre profesores internacionales.",
-         "La convocatoria cerrada tuvo más de 100 propuestas para los 13 cursos finalmente escogidos."),
-        ("Apoya la internacionalización de la facultad y de la universidad",
-         "con actividades extra que se dan gracias a la escuela de verano: reuniones de área, reuniones con "
-         "profesores, cursos de educación ejecutiva, seminarios, etc."),
-        ("Principal vía para que los estudiantes cumplan su experiencia internacional.",
-         "Ayuda a cumplir el componente de internacionalización sin salir del campus para quienes no puedan "
-         "realizar un intercambio en el exterior. Es el programa top of mind de los estudiantes, y ayuda a "
-         "quienes cuentan con pocos ingresos a vivir una experiencia internacional."),
+        ("Top-tier level of visiting faculty and representative universities.", ""),
+        ("Program well known among international faculty.",
+         "The closed call received more than 100 proposals for the 13 courses finally selected."),
+        ("Supports the internationalization of the School and the University",
+         "through extra activities made possible by the Summer School: area meetings, faculty meetings, "
+         "executive education courses, seminars, etc."),
+        ("Main route for students to complete their international experience.",
+         "Helps meet the internationalization component without leaving campus for those who cannot do an "
+         "exchange abroad. It is the students' top-of-mind program, and it helps students with fewer "
+         "resources live an international experience."),
     ]
     for title, sub in achievements:
         sub_html = f'<div style="font-size:13.5px;color:{MUTED};margin-top:4px;">{sub}</div>' if sub else ""
@@ -3150,20 +3229,20 @@ def page_conclusions():
     st.markdown("---")
     st.markdown(f'<div style="font-size:30px;font-weight:700;color:{GREEN_H};margin:8px 0 18px;">Challenges</div>', unsafe_allow_html=True)
     challenges = [
-        ("Experiencia virtual vs. presencial.", ""),
-        ("Atracción de estudiantes internacionales.", ""),
-        ("Dispersión de notas.",
-         "Al final la tendencia es superar 4.5 y no hay pérdidas — la mayoría de quienes pierden retiran el "
-         "curso, o no pagaron y se les retira."),
-        ("Claridad de reglas y expectativas del curso con los profesores.",
-         "Reforzar con los profesores visitantes cómo se califica en Uniandes."),
-        ("Baja participación histórica en cursos de sostenibilidad.", ""),
-        ("Contar con un estudiante representante de pregrado",
-         "para escoger cursos que sean pertinentes y de valor para los estudiantes."),
-        ("El bootcamp se percibe como un curso totalmente diferente", "a los demás cursos de la escuela de verano."),
-        ("% de participación estratégica.",
-         "Importante para generar una buena participación en clase, sin llenar el curso con evaluaciones de "
-         "participación. máximo un 10% de la nota final."),
+        ("Virtual vs. in-person experience.", ""),
+        ("Attracting international students.", ""),
+        ("Grade dispersion.",
+         "In the end the trend is to exceed 4.5 and there are no failures — most of those who fail withdraw "
+         "from the course, or did not pay and are dropped."),
+        ("Clarity of course rules and expectations with faculty.",
+         "Reinforce with visiting faculty how grading works at Uniandes."),
+        ("Historically low participation in sustainability courses.", ""),
+        ("Having an undergraduate student representative",
+         "to choose courses that are relevant and valuable for students."),
+        ("The bootcamp is perceived as a totally different course", "from the other Summer School courses."),
+        ("Strategic participation grade (%).",
+         "Important to encourage good class participation without filling the course with participation "
+         "assessments: at most 10% of the final grade."),
     ]
     for title, sub in challenges:
         sub_html = f'<div style="font-size:13.5px;color:{MUTED};margin-top:4px;">{sub}</div>' if sub else ""
@@ -3171,6 +3250,27 @@ def page_conclusions():
             f'<div style="margin-bottom:22px;"><div style="font-size:17px;font-weight:700;color:{INK};">{title}</div>{sub_html}</div>',
             unsafe_allow_html=True,
         )
+
+    # ---- Testimonial videos ----
+    st.markdown("---")
+    st.markdown(f'<div style="font-size:30px;font-weight:700;color:{GREEN_H};margin:8px 0 18px;">EIV Testimonials</div>', unsafe_allow_html=True)
+    videos = _testimonial_videos()
+    if not videos:
+        _pending_card(
+            "Testimonial videos",
+            "The EIV testimonial videos will appear here once they are uploaded to the Drive folder "
+            "(set <code>EIV_TESTIMONIAL_FOLDER_ID</code> in the report code).",
+        )
+    else:
+        vcols = st.columns(2 if len(videos) > 1 else 1)
+        for i, v in enumerate(videos):
+            with vcols[i % len(vcols)]:
+                st.markdown(f"**{v['title']}**")
+                components.html(
+                    f'<iframe src="https://drive.google.com/file/d/{v["id"]}/preview" width="100%" height="360" '
+                    'style="border:0;border-radius:12px;" allow="autoplay; fullscreen" allowfullscreen></iframe>',
+                    height=372,
+                )
 
 
 # ── 17) NAVEGACIÓN ────────────────────────────────────────────────────────
@@ -3206,7 +3306,7 @@ if not IS_COVER:
             f'<div style="color:{INK};font-size:22px;font-weight:800;line-height:1.1;">EIV Analytics</div>',
             unsafe_allow_html=True,
         )
-        st.caption("International Summer School · Facultad de Administración")
+        st.caption("International Summer School · School of Management")
         with st.container(key="go_to_datacenter_btn"):
             st.page_link(pages[0], label="Go to Data Center", icon=":material/home:")
         st.markdown("---")
@@ -3243,7 +3343,7 @@ pg.run()
 
 st.markdown(
     f'<div style="text-align:center;padding:40px 0 10px;font-size:11.5px;color:{MUTED};'
-    'font-family:monospace;">International Summer School (EIV) · Facultad de Administración · '
+    'font-family:monospace;">International Summer School (EIV) · School of Management · '
     'Universidad de los Andes</div>',
     unsafe_allow_html=True,
 )
