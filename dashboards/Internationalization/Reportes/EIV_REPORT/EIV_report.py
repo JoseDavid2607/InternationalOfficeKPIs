@@ -3185,9 +3185,9 @@ EIV_TESTIMONIAL_VIDEOS: List[dict] = [   # respaldo: se muestran aunque la servi
 def _testimonial_videos() -> List[dict]:
     vids = [dict(v) for v in EIV_TESTIMONIAL_VIDEOS]
     if EIV_TESTIMONIAL_FOLDER_ID:
-        token = _get_gspread_access_token()
-        if token:
-            try:
+        try:
+            token = _get_gspread_access_token()
+            if token:
                 r = requests.get(
                     "https://www.googleapis.com/drive/v3/files",
                     headers={"Authorization": f"Bearer {token}"}, timeout=30,
@@ -3199,8 +3199,8 @@ def _testimonial_videos() -> List[dict]:
                     known = {v["id"] for v in vids}
                     vids += [{"title": re.sub(r"\.[A-Za-z0-9]{2,4}$", "", f["name"]), "id": f["id"]}
                              for f in r.json().get("files", []) if f["id"] not in known]
-            except Exception:
-                pass
+        except Exception:
+            pass
     return vids
 
 
