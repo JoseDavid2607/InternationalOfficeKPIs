@@ -3181,6 +3181,23 @@ EIV_TESTIMONIAL_VIDEOS: List[dict] = [   # respaldo: se muestran aunque la servi
 ]
 
 
+@st.cache_resource(ttl=3600, show_spinner=False)
+def _drive_video_bytes(file_id: str) -> Optional[bytes]:
+    """Descarga el video con la service account (una vez, compartido entre sesiones) para reproducirlo dentro
+    del reporte con st.video. None si la service account no tiene acceso al archivo."""
+    try:
+        token = _get_gspread_access_token()
+        if not token:
+            return None
+        r = requests.get(f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media&supportsAllDrives=true",
+                         headers={"Authorization": f"Bearer {token}"}, stream=True, timeout=(10, 300))
+        if r.status_code != 200:
+            return None
+        return b"".join(r.iter_content(chunk_size=1024 * 1024))
+    except Exception:
+        return None
+
+
 @st.cache_data(ttl=600)
 def _testimonial_videos() -> List[dict]:
     vids = [dict(v) for v in EIV_TESTIMONIAL_VIDEOS]
@@ -3192,12 +3209,12 @@ def _testimonial_videos() -> List[dict]:
                     "https://www.googleapis.com/drive/v3/files",
                     headers={"Authorization": f"Bearer {token}"}, timeout=30,
                     params={"q": f"'{EIV_TESTIMONIAL_FOLDER_ID}' in parents and mimeType contains 'video/' and trashed=false",
-                            "fields": "files(id,name)", "orderBy": "name", "pageSize": 50,
+                            "fields": "files(id,name,mimeType)", "orderBy": "name", "pageSize": 50,
                             "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"},
                 )
                 if r.ok:
                     known = {v["id"] for v in vids}
-                    vids += [{"title": re.sub(r"\.[A-Za-z0-9]{2,4}$", "", f["name"]), "id": f["id"]}
+                    vids += [{"title": re.sub(r"\.[A-Za-z0-9]{2,4}$", "", f["name"]), "id": f["id"], "mime": f.get("mimeType")}
                              for f in r.json().get("files", []) if f["id"] not in known]
         except Exception:
             pass
@@ -3245,12 +3262,17 @@ def page_conclusions():
         for i, v in enumerate(videos):
             with vcols[i % len(vcols)]:
                 st.markdown(f"**{v['title']}**")
-                components.html(
-                    f'<iframe src="https://drive.google.com/file/d/{v["id"]}/preview" width="100%" height="360" '
-                    'style="border:0;border-radius:12px;" allow="autoplay; fullscreen" allowfullscreen></iframe>',
-                    height=372,
-                )
-                st.link_button("Open video in Google Drive", f"https://drive.google.com/file/d/{v['id']}/view", icon=":material/open_in_new:")
+                with st.spinner("Loading video…"):
+                    data = _drive_video_bytes(v["id"])
+                if data:
+                    st.video(data, format=v.get("mime") or "video/mp4")   # se reproduce aquí mismo, sin iniciar sesión en Google
+                else:
+                    # Sin acceso de la service account: reproductor de Drive (necesita que el archivo sea público).
+                    components.html(
+                        f'<iframe src="https://drive.google.com/file/d/{v["id"]}/preview" width="100%" height="360" '
+                        'style="border:0;border-radius:12px;" allow="autoplay; fullscreen" allowfullscreen></iframe>',
+                        height=372,
+                    )
 
     st.markdown("---")
     st.markdown(f'<div style="font-size:30px;font-weight:700;color:{GREEN_H};margin:8px 0 18px;">Challenges</div>', unsafe_allow_html=True)
