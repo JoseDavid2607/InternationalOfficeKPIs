@@ -3250,6 +3250,7 @@ def page_conclusions():
                     'style="border:0;border-radius:12px;" allow="autoplay; fullscreen" allowfullscreen></iframe>',
                     height=372,
                 )
+                st.link_button("Open video in Google Drive", f"https://drive.google.com/file/d/{v['id']}/view", icon=":material/open_in_new:")
 
     st.markdown("---")
     st.markdown(f'<div style="font-size:30px;font-weight:700;color:{GREEN_H};margin:8px 0 18px;">Challenges</div>', unsafe_allow_html=True)
