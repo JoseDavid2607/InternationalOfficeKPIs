@@ -4276,6 +4276,30 @@ def page_qualifications():
 
         return pd.DataFrame(list(rows_data.values()))
 
+    def _swap_credit_input(key: str) -> float:
+        """Subtle input above the 'swaps needed' table: size of ONE swap, in credits
+        (default 4). It only drives this table; it is independent of the
+        'Course credits' field used by Add/Remove in the sidebar. The value is kept
+        in a separate session key so it survives switching between the Area / Field /
+        Program views (each view renders its own widget)."""
+        val = st.number_input(
+            "Credits per swap", min_value=0.5, max_value=30.0, step=0.5,
+            value=float(st.session_state.get("_swap_credits", 4.0)),
+            format="%g", key=key,
+            help=("One swap = move this many credits from one side to the other "
+                  "(e.g. one course of this size from S to P). "
+                  "Swaps needed = credits still missing to reach the target \u00f7 credits per swap, rounded up."),
+        )
+        st.session_state["_swap_credits"] = float(val)
+        return float(val)
+
+    def _swap_note(credits_each: float):
+        st.caption(
+            f"1 swap = {credits_each:g} credits moved from one side to the other "
+            f"(e.g. one {credits_each:g}-credit course S \u2192 P). "
+            "Swaps needed = missing credits \u00f7 credits per swap, rounded up."
+        )
+
     def _style_needed_red(df: pd.DataFrame, id_col: str):
         """Resalta en rojo cualquier celda numérica (de las columnas
         'Needed ...') cuyo valor sea mayor a 0 -- 'todavía hace falta
@@ -4468,11 +4492,15 @@ def page_qualifications():
                 with colT.container(key="qual_needed_center"):
                     # Controles: solo si Sensitivity ON se muestra el toggle
                     needed_mode = False
+                    swap_cr_area = 4.0
                     needed_scope = "Area"
                     if SENS["on"]:
-                        r1c1, r1c2 = st.columns([1.8, 1.6])
+                        r1c1, r1c2, r1c3 = st.columns([1.8, 1.6, 1.0])
                         with r1c1:
                             needed_mode = st.toggle("# N° of swaps needed for…", value=False, key="area_needed_mode", help="La tabla muestra, para %P, %SA y %OTHER a la vez, cuántos swaps de cursos (agregar 1 de un lado y quitar 1 del otro) hacen falta para llegar a la meta.")
+                        with r1c3:
+                            if needed_mode:
+                                swap_cr_area = _swap_credit_input("swap_credits_area")
                         if needed_mode:
                             with r1c2:
                                 needed_scope = st.radio(
@@ -4482,6 +4510,9 @@ def page_qualifications():
                                         "**Overall target**\n- %P > 75%\n- %SA > 40%\n- %OTHER < 10%"
                                     )
                                 )
+
+                    if needed_mode:
+                        _swap_note(swap_cr_area)
 
                     if not needed_mode:
                         metrics_tbl = build_percent_table("Academic Area", mod_agg_tipo, mod_agg_ps)
@@ -4524,7 +4555,7 @@ def page_qualifications():
                             "SP": float(base_sp.sum()), "IP": float(base_ip.sum()),
                             "OTHER": float(base_oth.sum())
                         }
-                        _cr = float(st.session_state.get("sens_credits", 4.0))
+                        _cr = swap_cr_area
                         snap_prefix = f"_ov_snap_area_{_slugify(sel_label)}_{_cr:g}"
 
                         need_tbl = _build_needed_table_single_scope(
@@ -4661,11 +4692,15 @@ def page_qualifications():
 
                 with colF_L:
                     needed_mode_f = False
+                    swap_cr_field = 4.0
                     needed_scope_f = "Area"
                     if SENS["on"]:
-                        r1c1, r1c2 = st.columns([1.8, 1.6])
+                        r1c1, r1c2, r1c3 = st.columns([1.8, 1.6, 1.0])
                         with r1c1:
                             needed_mode_f = st.toggle("# N° of swaps needed for…", value=False, key="field_needed_mode")
+                        with r1c3:
+                            if needed_mode_f:
+                                swap_cr_field = _swap_credit_input("swap_credits_field")
                         if needed_mode_f:
                             with r1c2:
                                 needed_scope_f = st.radio(
@@ -4675,6 +4710,9 @@ def page_qualifications():
                                         "**Overall target**\n- %P > 75%\n- %SA > 40%\n- %OTHER < 10%"
                                     )
                                 )
+
+                    if needed_mode_f:
+                        _swap_note(swap_cr_field)
 
                     if not needed_mode_f:
                         metrics_tbl_f = build_percent_table("Field", mod_agg_tipo, mod_agg_ps)
@@ -4716,7 +4754,7 @@ def page_qualifications():
                             "SP": float(base_sp.sum()), "IP": float(base_ip.sum()),
                             "OTHER": float(base_oth.sum())
                         }
-                        _cr = float(st.session_state.get("sens_credits", 4.0))
+                        _cr = swap_cr_field
                         snap_prefix = f"_ov_snap_field_{_slugify(sel_label)}_{_cr:g}"
 
                         need_tbl_f = _build_needed_table_single_scope(
@@ -4877,11 +4915,15 @@ def page_qualifications():
 
                 with colP_L:
                     needed_mode_p = False
+                    swap_cr_prog = 4.0
                     needed_scope_p = "Area"
                     if SENS.get("on"):
-                        r1c1, r1c2 = st.columns([1.8, 1.6])
+                        r1c1, r1c2, r1c3 = st.columns([1.8, 1.6, 1.0])
                         with r1c1:
                             needed_mode_p = st.toggle("# N° of swaps needed for…", value=False, key="prog_needed_mode")
+                        with r1c3:
+                            if needed_mode_p:
+                                swap_cr_prog = _swap_credit_input("swap_credits_prog")
                         if needed_mode_p:
                             with r1c2:
                                 needed_scope_p = st.radio(
@@ -4891,6 +4933,9 @@ def page_qualifications():
                                         "**Overall target**\n- %P > 75%\n- %SA > 40%\n- %OTHER < 10%"
                                     )
                                 )
+
+                    if needed_mode_p:
+                        _swap_note(swap_cr_prog)
 
                     if not needed_mode_p:
                         # Tabla de % por Programa (sin botón de impacto y sin total)
@@ -4934,7 +4979,7 @@ def page_qualifications():
                             "SP": float(base_sp.sum()), "IP": float(base_ip.sum()),
                             "OTHER": float(base_oth.sum())
                         }
-                        _cr = float(st.session_state.get("sens_credits", 4.0))
+                        _cr = swap_cr_prog
                         snap_prefix = f"_ov_snap_prog_{_slugify(sel_label)}_{_cr:g}"
 
                         need_tbl_p = _build_needed_table_single_scope(
