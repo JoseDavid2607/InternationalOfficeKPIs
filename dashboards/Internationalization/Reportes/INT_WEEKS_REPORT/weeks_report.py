@@ -6,6 +6,10 @@
 #  BD_presupuesto, roster y pagos desde BD_listas, encuesta desde
 #  BD_encuesta_curso), y misma identidad visual por socio (color, logo).
 #
+#  Everything shown to the user (UI, charts and PDFs) is in English; the
+#  survey source files are in Spanish, so labels are translated through the
+#  dictionaries in section 5b.
+#
 #  Las 4 fuentes NO exponen directamente la agregación que mostraba el HTML
 #  original (esa vino de un cálculo hecho aparte); esta app reconstruye esa
 #  agregación en Python a partir de los archivos crudos, para que quede
@@ -34,6 +38,7 @@ except ImportError as _e:
 import requests
 import os as _os
 import base64
+import re
 
 # ── 1) CONFIGURACIÓN GLOBAL ────────────────────────────────────────────────
 st.set_page_config(
@@ -161,6 +166,10 @@ st.markdown(
     f"background:{ACCENT} !important;color:#fff !important;border:none !important;"
     "text-decoration:none !important;font-weight:700 !important;height:50px !important;"
     f"box-shadow:0 3px 10px rgba(44,74,107,.28) !important;}}"
+    "div[class*='st-key-gen_report_btn_'] div[data-testid='stButton'] button{"
+    f"background:{ACCENT} !important;color:#fff !important;border:none !important;"
+    "font-weight:700 !important;height:50px !important;"
+    f"box-shadow:0 3px 10px rgba(44,74,107,.28) !important;}}"
     "div[class*='st-key-gen_report_btn_'] div[data-testid='stDownloadButton'] button:hover{"
     f"background:{ACCENT_DARK} !important;}}"
     "</style>",
@@ -194,7 +203,41 @@ def _pending_card(label: str, note: str = ""):
     )
 
 
+def _spacer(px: int):
+    st.markdown(f"<div style='height:{px}px;'></div>", unsafe_allow_html=True)
+
+
+def _axis_titles(fig, x: Optional[str] = None, y: Optional[str] = None):
+    """Axis titles on every chart (same convention as the EIV report)."""
+    if x:
+        fig.update_xaxes(title_text=x, title_font=dict(size=11, color=MUTED), title_standoff=8)
+    if y:
+        fig.update_yaxes(title_text=y, title_font=dict(size=11, color=MUTED), title_standoff=8)
+    return fig
+
+
+def _title(v) -> str:
+    """'MARCUS THIELL' -> 'Marcus Thiell' (source files store names in capitals)."""
+    return str(v).strip().title() if v is not None and not pd.isna(v) else ""
+
+
+def _num(v) -> float:
+    try:
+        f = float(v)
+        return 0.0 if pd.isna(f) else f
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@st.cache_data(show_spinner=False)
+def _b64_file(path: str) -> str:
+    """Base64 of a local image, cached so logos/photos/banner are not re-encoded on every rerun."""
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
 def _fmt_money(n) -> str:
+    """Amounts are always shown in COP (see the captions on each page)."""
     if n is None or (isinstance(n, float) and pd.isna(n)):
         return "$0"
     sign = "-" if n < 0 else ""
@@ -269,8 +312,7 @@ def _show_weeks_banner(width: Optional[int] = None, use_container_width: bool = 
                 break
     if not path:
         return
-    with open(path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode()
+    b64 = _b64_file(path)
     ext = "jpeg" if path.lower().endswith((".jpg", ".jpeg")) else "png"
     width_css = "100%" if use_container_width else f"{width}px"
     st.markdown(
@@ -366,16 +408,16 @@ def _download_drive_file_bytes(file_id: str) -> bytes:
     if not token:
         if not _GSPREAD_OK:
             st.error(
-                "📦 Falta instalar `google-auth` en el entorno "
-                f"(el import falló con: `{_GSPREAD_IMPORT_ERR}`)."
+                "📦 `google-auth` is not installed in this environment "
+                f"(import failed with: `{_GSPREAD_IMPORT_ERR}`)."
             )
         elif "gcp_service_account" not in st.secrets:
             st.error(
-                "🔑 No encuentro `st.secrets['gcp_service_account']`. Revisa en "
-                "Streamlit Cloud → tu app → Settings → Secrets."
+                "🔑 `st.secrets['gcp_service_account']` was not found. Check "
+                "Streamlit Cloud → your app → Settings → Secrets."
             )
         else:
-            st.error("🔑 Las credenciales de `gcp_service_account` no se pudieron usar para autenticar.")
+            st.error("🔑 The `gcp_service_account` credentials could not be used to authenticate.")
         st.stop()
 
     url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
@@ -394,9 +436,9 @@ def _download_drive_file_bytes(file_id: str) -> bytes:
         time.sleep(2)
 
     st.error(
-        f"🌐 No se pudo descargar el archivo de Drive ({file_id}) tras varios intentos: "
-        f"{last_err}\n\nVerifica que el archivo esté compartido con el correo de la "
-        "service account, con permiso de Editor."
+        f"🌐 Could not download the Drive file ({file_id}) after several attempts: "
+        f"{last_err}\n\nMake sure the file is shared with the service account email "
+        "(Viewer access is enough)."
     )
     st.stop()
 
@@ -463,27 +505,110 @@ def _week_meta(key: str, idx: int = 0) -> dict:
 # ── 5) CARGA DE HOJAS CRUDAS ─────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_raw_sheets():
-    raw_sem = io.BytesIO(_download_drive_file_bytes(SEMANAS_FILE_ID))
-    df_semanas = pd.read_excel(raw_sem, sheet_name="Semanas Internacionales")
-    df_semanas.columns = df_semanas.columns.str.strip()
+    """Reads the four source workbooks (each opened once) from Drive."""
+    def _sheet(xl: pd.ExcelFile, name: str) -> pd.DataFrame:
+        df = xl.parse(name)
+        df.columns = df.columns.str.strip()
+        return df
 
-    raw_lis = io.BytesIO(_download_drive_file_bytes(LISTAS_FILE_ID))
-    df_listas = pd.read_excel(raw_lis, sheet_name="listas")
-    df_listas.columns = df_listas.columns.str.strip()
+    xl_sem = pd.ExcelFile(io.BytesIO(_download_drive_file_bytes(SEMANAS_FILE_ID)))
+    xl_lis = pd.ExcelFile(io.BytesIO(_download_drive_file_bytes(LISTAS_FILE_ID)))
+    xl_pre = pd.ExcelFile(io.BytesIO(_download_drive_file_bytes(PRESUPUESTO_FILE_ID)))
+    xl_enc = pd.ExcelFile(io.BytesIO(_download_drive_file_bytes(ENCUESTA_FILE_ID)))
+    return (
+        _sheet(xl_sem, "Semanas Internacionales"), _sheet(xl_lis, "listas"),
+        _sheet(xl_pre, "budget"), _sheet(xl_pre, "TRM"),
+        _sheet(xl_enc, "frecuencias"), _sheet(xl_enc, "comentarios"),
+    )
 
-    raw_pre = io.BytesIO(_download_drive_file_bytes(PRESUPUESTO_FILE_ID))
-    df_budget = pd.read_excel(raw_pre, sheet_name="budget")
-    df_budget.columns = df_budget.columns.str.strip()
-    df_trm = pd.read_excel(raw_pre, sheet_name="TRM")
-    df_trm.columns = df_trm.columns.str.strip()
 
-    raw_enc = io.BytesIO(_download_drive_file_bytes(ENCUESTA_FILE_ID))
-    df_frec = pd.read_excel(raw_enc, sheet_name="frecuencias")
-    df_frec.columns = df_frec.columns.str.strip()
-    df_com = pd.read_excel(raw_enc, sheet_name="comentarios")
-    df_com.columns = df_com.columns.str.strip()
+# ── 5b) ENGLISH LABELS ────────────────────────────────────────────────────
+# The survey workbook is in Spanish (its English columns are #REF! errors), so
+# everything shown to the user is translated here. Unknown values fall back to
+# the original text, so a new question/aspect never breaks the report.
+ASPECT_EN = {
+    "Carga académica": "Academic workload",
+    "Coherencia": "Course coherence",
+    "Fomento de autonomía": "Fostering autonomy",
+    "Fomento de pensamiento crítico, discusión y participación": "Fostering critical thinking, discussion & participation",
+    "General": "Overall",
+    "Gestión de clase": "Class management",
+    "Participación de los estudiantes": "Student participation",
+    "Responsabilidades de los estudiantes": "Student responsibilities",
+    "Retroalimentación, monitoreo y criterios de calificación": "Feedback, monitoring & grading criteria",
+    "Trato a estudiantes": "Treatment of students",
+}
+OPTION_EN = {
+    "Totalmente en desacuerdo": "Strongly Disagree", "En desacuerdo": "Disagree",
+    "Ni de acuerdo ni en desacuerdo": "Neither agree nor disagree", "De acuerdo": "Agree",
+    "Totalmente de acuerdo": "Strongly Agree", "No aplica": "Not applicable",
+    "Nada": "Nothing", "Poco": "Low", "Mucho": "A lot", "Demasiado": "Too much",
+    "Ninguno": "None", "Algunos": "Some", "Todos": "All",
+}
+QUESTION_EN = {
+    "P458V20": "Do you feel the workload of this course has been excessive?",
+    "P1001": "The activities carried out contributed to achieving the course objectives.",
+    "P1003": "Were the objectives of this course met?",
+    "P212V06": "The assessments reflect the achievement of the course objectives.",
+    "P227V20": "The activities aim to consolidate what was learned and put it into practice in meaningful exercises.",
+    "P118": "The professor gives me confidence in my ability to perform well in the course.",
+    "P121": "The professor tries to understand how I see things before suggesting new ways of doing them.",
+    "P022V14": "The professor encourages students to question the concepts (theories, models, approaches, etc.) covered.",
+    "P329": "The professor invites students to question their own ideas.",
+    "P451V01": "The professor encourages students to support the arguments and conclusions of their work with logical rigor and evidence.",
+    "E008V01": "How likely are you to recommend taking this course with this professor?",
+    "P302": "The planned topics and activities are adequately delivered.",
+    "P456V01": "The professor organized the classes and course activities effectively for learning.",
+    "P1015": "The course had an atmosphere of trust to participate and ask questions, and differences of opinion were respected.",
+    "P1042": "The dynamics and activities of the synchronous sessions kept students involved, i.e. participating or focused.",
+    "P1006": "I felt motivated in the course.",
+    "P1007": "The instructions and expectations for activities and assignments were communicated clearly, precisely and with enough notice.",
+    "P1009": "I received constructive feedback from the professor that contributed to my learning process.",
+    "P495V01": "The feedback given by the professor is timely, relevant and clear.",
+    "P028V01": "The professor treats all students equally, without discrimination.",
+    "P511": "The professor is respectful to all students.",
+    # open-ended questions (sheet 'comentarios')
+    "P216": "What positive aspects would you highlight about the course?",
+    "P216V01": "What positive aspects would you highlight about the professor's teaching?",
+    "P217": "What would you improve about this course?",
+    "P217V01": "What recommendations would you give the professor to improve their teaching?",
+}
 
-    return df_semanas, df_listas, df_budget, df_trm, df_frec, df_com
+_PROGRAM_PREFIXES = [
+    (r"^maestr[ií]a\s+en\s+", "Master in "), (r"^maestr[ií]a\s+", "Master in "),
+    (r"^especializaci[oó]n\s+en\s+", "Specialization in "), (r"^especializaci[oó]n\s+", "Specialization in "),
+    (r"^doctorado\s+en\s+", "PhD in "), (r"^pregrado\s+en\s+", "Undergraduate in "),
+]
+_PROGRAM_TERMS = [
+    ("Administración Financiera", "Financial Management"), ("Administración de Empresas", "Business Administration"),
+    ("Inteligencia de Mercados", "Market Intelligence"), ("Cadena de Suministro", "Supply Chain"),
+    ("Administración", "Management"), ("Gerencia", "Management"), ("Gestión", "Management"),
+    ("Finanzas", "Finance"), ("Mercadeo", "Marketing"), ("Economía", "Economics"),
+    ("Ingeniería", "Engineering"), ("Analítica", "Analytics"), ("Negocios", "Business"),
+    ("Ejecutivo", "Executive"), ("Datos", "Data"),
+]
+
+
+def _prog_en(name) -> str:
+    """'Maestría en Administración' -> 'Master in Management' (program names come in Spanish)."""
+    if name is None or pd.isna(name) or not str(name).strip():
+        return "Unspecified"
+    out = str(name).strip()
+    for pat, repl in _PROGRAM_PREFIXES:
+        out, n = re.subn(pat, repl, out, flags=re.I)
+        if n:
+            break
+    for es, en in _PROGRAM_TERMS:
+        out = re.sub(es, en, out, flags=re.I)
+    return out
+
+
+def _week_name_en(name) -> str:
+    """'KLU POSGRADO 2026' -> 'KLU Graduate 2026'; 'GETULIO VARGAS 2026' -> 'Getulio Vargas 2026'."""
+    n = str(name).strip()
+    n = re.sub(r"posgrado", "Graduate", n, flags=re.I)
+    n = re.sub(r"pregrado", "Undergraduate", n, flags=re.I)
+    return " ".join(t if t.upper() in WEEK_VISUAL_META else t.title() if t.isupper() else t for t in n.split())
 
 
 COMMENT_QID_LABELS = {
@@ -501,8 +626,6 @@ def build_weeks() -> Tuple[List[dict], dict]:
     encuesta (BD_encuesta_curso), unidos por nombre de semana / profesor."""
     df_semanas, df_listas, df_budget, df_trm, df_frec, df_com = load_raw_sheets()
 
-    trm_map = dict(zip(df_trm["Moneda"].astype(str).str.strip(), df_trm["TRM"]))
-
     df_listas = df_listas.copy()
     df_listas["_key"] = df_listas["Producto"].astype(str).str.strip().str.upper().map(PRODUCT_TO_KEY)
     df_listas["_key"] = df_listas["_key"].fillna(df_listas["Producto"].astype(str).str.strip().str.upper())
@@ -514,7 +637,6 @@ def build_weeks() -> Tuple[List[dict], dict]:
     df_budget["_key"] = df_budget["international week"].map(_week_key_from_name)
 
     weeks: List[dict] = []
-    keys_ordered = df_semanas["_key"].tolist()
 
     for idx, (_, srow) in enumerate(df_semanas.iterrows()):
         key = srow["_key"]
@@ -536,8 +658,8 @@ def build_weeks() -> Tuple[List[dict], dict]:
                 if _codigo.endswith(".0"):
                     _codigo = _codigo[:-2]
             participants.append({
-                "nombre": p.get("Nombre"), "genero": p.get("Género"),
-                "codigo": _codigo, "programa": p.get("Programa") or "Unspecified",
+                "nombre": _title(p.get("Nombre")), "genero": p.get("Género"),
+                "codigo": _codigo, "programa": _prog_en(p.get("Programa")),
                 "tipoPrograma": p.get("Tipo programa"),
                 "pago1": pd.notna(p.get("Primer Pago")),
                 "pago2": pd.notna(p.get("Segundo Pago")),
@@ -568,7 +690,7 @@ def build_weeks() -> Tuple[List[dict], dict]:
             budget_lines.append({
                 "concepto": b.get("concepto"), "tipo": b.get("tipo"), "precio": b.get("precio"),
                 "moneda": b.get("moneda"), "cantidad": b.get("cantidad"),
-                "presupuestado": b.get("presupuestado"),
+                "presupuestado": _num(b.get("presupuestado")),
                 "ejecutado": b.get("ejecutado") if pd.notna(b.get("ejecutado")) else None,
             })
         ingresos = sum(b["presupuestado"] for b in budget_lines if b["tipo"] == "ingreso")
@@ -588,13 +710,17 @@ def build_weeks() -> Tuple[List[dict], dict]:
 
         for qid, qrows in f_rows.groupby("id_pregunta"):
             qtext = qrows["pregunta"].iloc[0]
-            aspecto = qrows["aspecto_evaluado"].iloc[0]
+            aspecto = ASPECT_EN.get(str(qrows["aspecto_evaluado"].iloc[0]).strip(), qrows["aspecto_evaluado"].iloc[0])
             qtype = qrows["opcion_respuesta_pregunta"].iloc[0]
             options: Dict[str, int] = {}
             for _, r in qrows.iterrows():
                 resp = str(r["respuesta"])
                 options[resp] = options.get(resp, 0) + int(r["respuestas_por_opcion"])
-            questions.append({"text": qtext, "aspect": aspecto, "type": qtype, "options": options})
+            # Scores are computed on the original (Spanish) keys; only the stored copy is translated.
+            questions.append({
+                "qid": qid, "text": QUESTION_EN.get(qid, qtext), "aspect": aspecto, "type": qtype,
+                "options": {OPTION_EN.get(k, k): v for k, v in options.items()},
+            })
 
             n_q = sum(options.values())
             if qtype == "acuerdo":
@@ -645,21 +771,9 @@ def build_weeks() -> Tuple[List[dict], dict]:
         # el número real de estudiantes que respondieron esa pregunta).
         c_rows = df_com[df_com["nombre_profesor"].astype(str).str.strip().str.upper() == prof_name.upper()]
         comment_groups = []
-        has_pregunta_col = "pregunta" in df_com.columns
         for qid, fallback_label in COMMENT_QID_LABELS.items():
             q_rows = c_rows[c_rows["id_pregunta"] == qid]
-            label = None
-            if has_pregunta_col:
-                # Texto exacto de la pregunta tal como está en la hoja
-                # 'comentarios' del Excel (columna 'pregunta'), sin
-                # abreviar. Si este profesor no tiene filas para este
-                # id_pregunta, se busca el texto en el resto de la hoja
-                # (la pregunta es la misma para todos los profesores).
-                src_rows = q_rows if not q_rows.empty else df_com[df_com["id_pregunta"] == qid]
-                if not src_rows.empty and pd.notna(src_rows["pregunta"].iloc[0]):
-                    label = str(src_rows["pregunta"].iloc[0]).strip()
-            if not label:
-                label = fallback_label
+            label = QUESTION_EN.get(qid, fallback_label)
             items = q_rows["respuesta"].fillna("NA").tolist()
             items = [str(x).strip() if str(x).strip() else "NA" for x in items]
             comment_groups.append({"label": label, "items": items, "n": len(items)})
@@ -673,8 +787,8 @@ def build_weeks() -> Tuple[List[dict], dict]:
         }
 
         weeks.append({
-            "key": key, "name": srow.get("International Week"), "course": srow.get("Nombre"),
-            "professor": prof_name, "location": srow.get("Ubicación"), "country": srow.get("País"),
+            "key": key, "name": _week_name_en(srow.get("International Week")), "course": srow.get("Nombre"),
+            "professor": _title(prof_name), "location": srow.get("Ubicación"), "country": srow.get("País"),
             "dates": srow.get("fechas"), "invoiceCurrency": srow.get("Moneda"),
             "invoiceValue": srow.get("Valor factura"), "invoiceAttendees": srow.get("Asistentes"),
             "registeredCount": registered_count, "abroadCount": abroad_count,
@@ -720,7 +834,7 @@ def page_cover():
             unsafe_allow_html=True,
         )
 
-        st.markdown("<div style='height:26px;'></div>", unsafe_allow_html=True)
+        _spacer(26)
         with st.container(key="cover_enter_btn"):
             if st.button("Enter the Report →", key="cover_enter", use_container_width=True):
                 st.switch_page(pages[1])
@@ -735,7 +849,7 @@ def page_cover():
             ("BD_semanas.xlsx", "Week metadata — professor, dates, location, invoice", SEMANAS_FILE_ID),
             ("BD_listas.xlsx", "Enrollment, payments & program catalog per week", LISTAS_FILE_ID),
             ("BD_presupuesto.xlsx", "Budget by concept — income & expenses, per week", PRESUPUESTO_FILE_ID),
-            ("BD_encuesta_curso.xlsx", "Course evaluation survey — frecuencias & comentarios", ENCUESTA_FILE_ID),
+            ("BD_encuesta_curso.xlsx", "Course evaluation survey — response frequencies & written responses", ENCUESTA_FILE_ID),
         ]
         for fname, desc, fid in files:
             fc1, fc2 = st.columns([5, 1])
@@ -746,11 +860,18 @@ def page_cover():
                     unsafe_allow_html=True,
                 )
             with fc2:
-                st.download_button(
-                    "", data=_download_drive_file_bytes(fid), file_name=fname,
-                    key=f"cover_dl_{fname}", use_container_width=True,
-                    icon=":material/download:",
-                )
+                # Files are only fetched from Drive when requested (keeps the cover fast).
+                if st.session_state.get(f"cover_ready_{fname}"):
+                    st.download_button(
+                        "", data=_download_drive_file_bytes(fid), file_name=fname,
+                        key=f"cover_dl_{fname}", use_container_width=True,
+                        icon=":material/download:",
+                    )
+                else:
+                    if st.button("", key=f"cover_get_{fname}", use_container_width=True,
+                                 icon=":material/download:", help="Fetch this file from Drive"):
+                        st.session_state[f"cover_ready_{fname}"] = True
+                        st.rerun()
         st.markdown(
             f'<div style="text-align:center;margin-top:14px;font-size:11.5px;color:{MUTED};">'
             f"{len(files)} sources loaded · {totals['weeks']} international weeks</div>",
@@ -801,7 +922,7 @@ def page_overview():
         "Graduate international immersions this year, each pairing a partner business school abroad with a School of Management cohort.",
     )
 
-    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+    _spacer(8)
     col1, col2, col3 = st.columns(3)
     with col1:
         _kpi("International Weeks", totals["weeks"])
@@ -813,12 +934,13 @@ def page_overview():
     col_fin, col_margin = st.columns([1, 2])
     with col_fin:
         st.markdown("##### Financial Balance")
+        st.caption("All amounts in COP.")
         _kpi("Total Income", _fmt_money(totals["totalIncome"]), "income")
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _spacer(10)
         _kpi("Total Expenses", _fmt_money(totals["totalExpense"]), "expense")
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _spacer(10)
         _kpi("Total Balance", _fmt_money(totals["totalBalance"]), "balance")
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _spacer(10)
         _kpi("Total Margin", f"{totals['marginPct']}%")
     with col_margin:
         st.markdown("##### Margin by Week")
@@ -830,8 +952,10 @@ def page_overview():
         ))
         fig.add_vline(x=totals["marginPct"], line_dash="dot", line_color=INK,
                        annotation_text=f'Total Margin: {totals["marginPct"]}%', annotation_font_size=9.5)
-        fig.update_layout(margin=dict(t=10, r=46, b=26, l=70), xaxis=dict(ticksuffix="%", gridcolor="#EFEBEE"),
-                           plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=180)
+        fig.update_layout(margin=dict(t=10, r=46, b=44, l=90), xaxis=dict(ticksuffix="%", gridcolor="#EFEBEE"),
+                           yaxis=dict(autorange="reversed"),
+                           plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=210)
+        _axis_titles(fig, "Margin (% of income)", "International week")
         st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("---")
@@ -909,13 +1033,14 @@ def page_overview():
                 y=programs_sorted, orientation="h", name=w["key"], marker=dict(color=w["color"]),
             ))
         fig_p.update_layout(
-            barmode="stack", margin=dict(t=6, r=16, b=26, l=200),
+            barmode="stack", margin=dict(t=6, r=16, b=44, l=220),
             legend=dict(orientation="h", x=0, y=1.12),
             yaxis=dict(tickfont=dict(size=10), automargin=True, autorange="reversed"),
             xaxis=dict(gridcolor="#EFEBEE"),
             plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            height=max(260, 34 * len(programs_sorted)),
+            height=max(280, 34 * len(programs_sorted)),
         )
+        _axis_titles(fig_p, "Participants (students abroad)", "Program")
         st.plotly_chart(fig_p, use_container_width=True)
     else:
         st.info("No program data available for this filter.")
@@ -946,8 +1071,7 @@ def page_week(key: str):
     logo_path = _partner_logo_path(w["key"])
     logo_html = ""
     if logo_path:
-        with open(logo_path, "rb") as f:
-            _logo_b64 = base64.b64encode(f.read()).decode()
+        _logo_b64 = _b64_file(logo_path)
         logo_html = (
             f'<img src="data:image/png;base64,{_logo_b64}" '
             f'style="height:80px;max-width:200px;object-fit:contain;'
@@ -956,8 +1080,7 @@ def page_week(key: str):
 
     prof_photo = _photo_path(w["professor"])
     if prof_photo:
-        with open(prof_photo, "rb") as f:
-            _prof_b64 = base64.b64encode(f.read()).decode()
+        _prof_b64 = _b64_file(prof_photo)
         _prof_ext = "jpeg" if prof_photo.lower().endswith((".jpg", ".jpeg")) else "png"
         prof_photo_html = (
             f'<img src="data:image/{_prof_ext};base64,{_prof_b64}" '
@@ -998,19 +1121,19 @@ def page_week(key: str):
         unsafe_allow_html=True,
     )
 
-    st.markdown("<div style='height:22px;'></div>", unsafe_allow_html=True)
+    _spacer(22)
     col_fin, col_att, col_map = st.columns([1, 1, 2])
     with col_fin:
         _kpi("Income", _fmt_money(w["ingresos"]), "income")
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _spacer(10)
         _kpi("Expenses", _fmt_money(w["egresos"]), "expense")
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _spacer(10)
         _kpi("Balance", _fmt_money(w["balance"]), "balance")
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _spacer(10)
         _kpi("Margin", f'{w["marginPct"]}%')
     with col_att:
         _kpi("Students Abroad", w["abroadCount"])
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        _spacer(10)
         _kpi("Registered, Did Not Travel", w["registeredCount"] - w["abroadCount"])
     with col_map:
         fig_geo = go.Figure()
@@ -1053,12 +1176,13 @@ def page_week(key: str):
             fig_pyr.add_annotation(xref="paper", x=1.03, xanchor="left", y=p, showarrow=False,
                                     text=f"Total: {t}", font=dict(size=9.5, color=MUTED))
         fig_pyr.update_layout(
-            barmode="overlay", margin=dict(t=10, r=90, b=26, l=190),
+            barmode="overlay", margin=dict(t=10, r=90, b=44, l=210),
             legend=dict(orientation="h", x=0, y=1.12),
             xaxis=dict(gridcolor="#EFEBEE", zeroline=True, zerolinecolor="#D8CFD5"),
             yaxis=dict(tickfont=dict(size=10.5), automargin=True, autorange="reversed"),
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=280,
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=300,
         )
+        _axis_titles(fig_pyr, "Participants (women ← | → men)", "Program")
         st.plotly_chart(fig_pyr, use_container_width=True)
     else:
         st.info("No enrolled/traveling participants for this week yet.")
@@ -1102,6 +1226,9 @@ def page_week(key: str):
     st.markdown("### Course Evaluation Survey")
     sv = w["survey"]
     st.caption(f'{sv["respondents"]} of {w["abroadCount"]} students abroad responded to the survey.')
+    has_survey = bool(sv["questions"]) or bool(sv["respondents"])
+    if not has_survey:
+        st.info("No survey data is available for this week yet.")
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
         _kpi("Students Responded", sv["respondents"])
@@ -1122,13 +1249,14 @@ def page_week(key: str):
             textposition="outside", cliponaxis=False,
         ))
         fig_asp.update_layout(
-            margin=dict(t=10, r=50, b=26, l=270), xaxis=dict(range=[1, 5.5], gridcolor="#EFEBEE"),
+            margin=dict(t=10, r=50, b=44, l=290), xaxis=dict(range=[1, 5.5], gridcolor="#EFEBEE"),
             yaxis=dict(tickfont=dict(size=10.5), automargin=True, autorange="reversed"),
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=280,
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=max(280, 30 * len(sv["aspects"]) + 70),
         )
+        _axis_titles(fig_asp, "Average score (1 = strongly disagree, 5 = strongly agree)", "Evaluated aspect")
         st.plotly_chart(fig_asp, use_container_width=True)
 
-    st.markdown("##### Comments")
+    st.markdown("##### Responses from students")
     ccols = st.columns(2)
     for i, g in enumerate(sv["commentGroups"]):
         with ccols[i % 2]:
@@ -1140,40 +1268,43 @@ def page_week(key: str):
                     )
                     st.markdown(quotes_html, unsafe_allow_html=True)
             else:
-                st.caption("No comments for this question.")
+                st.caption("No responses for this question.")
 
-    st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
-    # Misma lógica de EIV_report.py: cachea el PDF en session_state por
-    # semana, así solo se reconstruye cuando cambian los datos de esa
-    # semana en vez de en cada rerun de Streamlit.
-    pdf_key = w["key"]
-    cache = st.session_state.get("_weeks_pdf_cache", {})
-    if cache.get("key") != pdf_key:
-        with st.spinner("Preparing report…"):
-            pdf_bytes = _build_week_survey_pdf(w)
-        st.session_state["_weeks_pdf_cache"] = {"key": pdf_key, "data": pdf_bytes}
-        cache = st.session_state["_weeks_pdf_cache"]
-    col_l, col_mid, col_r = st.columns([1, 2, 1])
-    with col_mid:
-        with st.container(key=f"gen_report_btn_{w['key']}"):
-            st.download_button(
-                "Generate Evaluation Report", data=cache["data"],
-                file_name=f'ISS_{w["key"]}_Evaluation_Report.pdf', mime="application/pdf",
-                key=f'dl_pdf_{w["key"]}', use_container_width=True,
-                icon=":material/picture_as_pdf:",
-            )
+    _spacer(18)
+    if has_survey:
+        # The PDF is built only when requested (it is the heaviest step of this page) and the last
+        # one is kept in session_state, so switching weeks does not rebuild anything.
+        pdf_key = w["key"]
+        cache = st.session_state.get("_weeks_pdf_cache", {})
+        col_l, col_mid, col_r = st.columns([1, 2, 1])
+        with col_mid:
+            with st.container(key=f"gen_report_btn_{w['key']}"):
+                if cache.get("key") == pdf_key:
+                    st.download_button(
+                        "Download Evaluation Report", data=cache["data"],
+                        file_name=f'ISS_{w["key"]}_Evaluation_Report.pdf', mime="application/pdf",
+                        key=f'dl_pdf_{w["key"]}', use_container_width=True,
+                        icon=":material/picture_as_pdf:",
+                    )
+                elif st.button("Prepare Evaluation Report (PDF)", key=f"prep_pdf_{w['key']}",
+                               use_container_width=True, icon=":material/picture_as_pdf:"):
+                    with st.spinner("Preparing report…"):
+                        st.session_state["_weeks_pdf_cache"] = {"key": pdf_key, "data": _build_week_survey_pdf(w)}
+                    st.rerun()
 
 
-# ── 10) PÁGINA — Financial Detail ────────────────────────────────────────
+# ── 10) PAGE — Financial Detail ────────────────────────────────────────
 def page_financial():
     weeks, totals = build_weeks()
     _render_header(
         "Financial Detail",
         "Full budget by concept for every week — sourced from BD_presupuesto.xlsx. "
-        "\"Executed\" fills in once a line item is reconciled.",
+        "\"Executed\" fills in once a line item is reconciled. All amounts in COP.",
     )
+    _, _, _, df_trm, _, _ = load_raw_sheets()
+    trm_map = dict(zip(df_trm["Moneda"].astype(str).str.strip(), df_trm["TRM"]))
 
-    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+    _spacer(8)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         _kpi("Total Income", _fmt_money(totals["totalIncome"]), "income")
@@ -1191,10 +1322,11 @@ def page_financial():
     fig.add_trace(go.Bar(x=[w["key"] for w in weeks], y=[w["egresos"] for w in weeks],
                           name="Expenses", marker=dict(color=EXPENSE)))
     fig.update_layout(
-        barmode="group", margin=dict(t=20, r=10, b=30, l=90),
+        barmode="group", margin=dict(t=20, r=10, b=50, l=100),
         legend=dict(orientation="h", x=0, y=1.14), yaxis=dict(tickformat="$,.0f", gridcolor="#EFEBEE"),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=320,
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=340,
     )
+    _axis_titles(fig, "International week", "Amount (COP)")
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("##### Comparison")
@@ -1227,8 +1359,6 @@ def page_financial():
                      unsafe_allow_html=True)
         st.markdown(f'#### {w["name"]}')
         used_currencies = sorted(set(b["moneda"] for b in w["budgetLines"] if b["moneda"] != "COP"))
-        _, _, _, df_trm, _, _ = load_raw_sheets()
-        trm_map = dict(zip(df_trm["Moneda"].astype(str).str.strip(), df_trm["TRM"]))
         if used_currencies:
             trm_note = "TRM used: " + "  ·  ".join(f"{c} = {_fmt_money(trm_map.get(c, 0))}" for c in used_currencies)
         else:
@@ -1455,11 +1585,10 @@ def _build_week_survey_pdf(w: dict) -> bytes:
     (_build_professor_pdf): misma banda con logo+foto, mismas tarjetas KPI,
     mismas barras apiladas con leyenda por aspecto, misma barra NPS 0-10, y
     mismos comentarios paginados — mismo diseño y misma lógica de dibujo.
-    Dos diferencias reales frente a EIV: (1) International Weeks no maneja
+    Diferencia frente a EIV: International Weeks no maneja
     periodos de matrícula (GR/UG) — cada semana es un solo periodo, así que
-    se usa directo la rama de una sola columna; y (2) todo el texto del PDF
-    va en español (idioma original de la encuesta y del reporte de Weeks),
-    no en inglés."""
+    se usa directo la rama de una sola columna. Todo el texto del PDF va en
+    inglés (las etiquetas de la encuesta se traducen en build_weeks)."""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.lib import colors as rl_colors
@@ -1538,7 +1667,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
         c.setFont("Helvetica", 8)
         c.drawRightString(name_right_edge * mm, top_pt(22.5), w["dates"])
         c.setFont("Helvetica-Bold", 12)
-        c.drawString(mg * mm, top_pt(29.5), "EVALUACIÓN DEL CURSO")
+        c.drawString(mg * mm, top_pt(29.5), "COURSE EVALUATION")
 
     def draw_continuation_header():
         c.setFillColor(accent)
@@ -1559,7 +1688,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
         c.rect(0, 0, PW * mm, 10 * mm, fill=1, stroke=0)
         c.setFont("Helvetica", 7)
         c.setFillColor(muted)
-        c.drawString(12 * mm, 4 * mm, "International Weeks 2026 — Evaluación del Curso")
+        c.drawString(12 * mm, 4 * mm, "International Weeks 2026 — Course Evaluation")
         c.drawRightString((PW - 12) * mm, 4 * mm, str(page_num))
 
     page_num = 1
@@ -1600,10 +1729,10 @@ def _build_week_survey_pdf(w: dict) -> bytes:
     c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 6.5), w["name"])
     c.setFillColor(accent)
     c.setFont("Helvetica-Bold", 14)
-    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 12.8), f'{w["abroadCount"]} viajaron')
+    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 12.8), f'{w["abroadCount"]} traveled')
     c.setFillColor(muted)
     c.setFont("Helvetica-Oblique", 7)
-    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 17.3), f'{sv["respondents"]} respondieron la encuesta')
+    c.drawCentredString((mg + cW / 2) * mm, top_pt(y + 17.3), f'{sv["respondents"]} responded to the survey')
     y += 23 + 8
 
     # ---- KPIs de respuesta, en esta misma página 1 ----
@@ -1615,11 +1744,11 @@ def _build_week_survey_pdf(w: dict) -> bytes:
         y = 24.0
     stats = [
         (f'{sv["respondents"]} / {w["abroadCount"]}' if w["abroadCount"] else str(sv["respondents"]),
-         "Estudiantes que Respondieron"),
-        (f'{sv["responseRate"]}%', "Tasa de Respuesta"),
-        (f'{sv["avg"]:.2f} / 5.0' if sv["avg"] is not None else "N/A", "Satisfacción Promedio"),
-        (f'{sv["nps"]:.1f} / 10' if sv["npsN"] else "N/A", "Recomendación Promedio"),
-        (f'{sv["objectivesAllPct"]:.0f}%' if sv["objectivesN"] else "N/A", "Objetivos Cumplidos (Todos)"),
+         "Students Who Responded"),
+        (f'{sv["responseRate"]}%', "Response Rate"),
+        (f'{sv["avg"]:.2f} / 5.0' if sv["avg"] is not None else "N/A", "Average Satisfaction"),
+        (f'{sv["nps"]:.1f} / 10' if sv["npsN"] else "N/A", "Average Recommendation"),
+        (f'{sv["objectivesAllPct"]:.0f}%' if sv["objectivesN"] else "N/A", "Objectives Met (All)"),
     ]
     bw = cW / 5
     for i, (val, label) in enumerate(stats):
@@ -1635,7 +1764,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
     y += 32
     draw_footer(page_num)
 
-    # ---- Evaluación cuantitativa (barras apiladas por aspecto) ----
+    # ---- Quantitative evaluation (stacked bars per aspect) ----
     c.showPage()
     page_num += 1
     draw_continuation_header()
@@ -1695,7 +1824,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
         elif qtype == "carga" and wl_q is None:
             wl_q = q
 
-    section_bar("EVALUACIÓN CUANTITATIVA")
+    section_bar("QUANTITATIVE EVALUATION")
     for asp, qs in by_aspect.items():
         first_needed = 0.0
         if qs:
@@ -1722,19 +1851,19 @@ def _build_week_survey_pdf(w: dict) -> bytes:
         draw_continuation_header()
         y = 24.0
     if nps_q:
-        section_bar("RECOMENDACIÓN (0-10)")
+        section_bar("RECOMMENDATION (0-10)")
         y = _pdf_nps_bar(c, nps_q["options"], mg, y + 5, cW, 10, PH) + 8
     if obj_q:
-        section_bar("OBJETIVOS DEL CURSO")
+        section_bar("COURSE OBJECTIVES")
         y = _pdf_stacked_bar(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, 7, PH)
         y = _pdf_legend(c, obj_q["options"], OBJ_ORDER_PDF, OBJ_COLOR_PDF, mg, y, cW, PH) + 8
     if wl_q:
-        section_bar("CARGA ACADÉMICA")
+        section_bar("ACADEMIC WORKLOAD")
         y = _pdf_stacked_bar(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, 7, PH)
         y = _pdf_legend(c, wl_q["options"], WORKLOAD_ORDER_PDF, WORKLOAD_COLOR_PDF, mg, y, cW, PH)
     draw_footer(page_num)
 
-    # ---- Comentarios de los estudiantes ----
+    # ---- Responses from students ----
     # Esta sección siempre arranca en una página nueva, sin importar cuánto
     # espacio haya quedado libre después de la evaluación cuantitativa.
     c.showPage()
@@ -1753,7 +1882,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
 
     c.setFillColor(ink)
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(mg * mm, top_pt(y), "COMENTARIOS DE LOS ESTUDIANTES")
+    c.drawString(mg * mm, top_pt(y), "RESPONSES FROM STUDENTS")
     y += 7
 
     comment_groups = sv["commentGroups"]
@@ -1761,7 +1890,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
     if not with_items:
         c.setFont("Helvetica", 8)
         c.setFillColor(rl_colors.HexColor("#50484E"))
-        c.drawString(mg * mm, top_pt(y), "No se recogieron comentarios para esta semana.")
+        c.drawString(mg * mm, top_pt(y), "No student responses were collected for this week.")
         draw_footer(page_num)
     else:
         for g in comment_groups:
@@ -1790,7 +1919,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
             if not g["items"]:
                 c.setFont("Helvetica", 8)
                 c.setFillColor(muted)
-                c.drawString(mg * mm, top_pt(y), "No hay comentarios para esta pregunta.")
+                c.drawString(mg * mm, top_pt(y), "No responses for this question.")
                 y += 6
                 continue
             for i, item in enumerate(g["items"]):
@@ -1810,7 +1939,7 @@ def _build_week_survey_pdf(w: dict) -> bytes:
     return buf.getvalue()
 
 
-# ── 12) NAVEGACIÓN ────────────────────────────────────────────────────────
+# ── 12) NAVIGATION ────────────────────────────────────────────────────────
 # Mismo esqueleto que EIV_report.py: portada oculta el sidebar, nav superior
 # con page_link + popover "More...", y flechas laterales fijas para pasar
 # de sección. Solo las semanas llevan icono en el menú (la bandera del país
@@ -1852,7 +1981,7 @@ if not IS_COVER:
             'International Weeks</div>',
             unsafe_allow_html=True,
         )
-        st.caption("Facultad de Administración · Universidad de los Andes")
+        st.caption("School of Management · Universidad de los Andes")
         with st.container(key="go_to_datacenter_btn"):
             st.page_link(pages[0], label="Go to Data Center", icon=":material/home:")
         st.markdown("---")
@@ -1887,7 +2016,7 @@ pg.run()
 
 st.markdown(
     f'<div style="text-align:center;padding:40px 0 10px;font-size:11.5px;color:{MUTED};'
-    'font-family:monospace;">International Weeks · Facultad de Administración · '
+    'font-family:monospace;">International Weeks · School of Management · '
     'Universidad de los Andes</div>',
     unsafe_allow_html=True,
 )
