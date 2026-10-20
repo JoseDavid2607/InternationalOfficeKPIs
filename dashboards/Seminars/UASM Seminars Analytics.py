@@ -1,10 +1,17 @@
 # ===========================================================================
-#  UASM · Seminars Analytics · App multipágina
-#  Traducción 1:1 del reporte HTML "International Seminars" a Streamlit —
-#  mismas 4 secciones (Data Center, Dashboard, Seminar Search, Tables), mismo
-#  modelo de datos (Seminarios/Conferencistas/Participantes unidos por el ID
-#  "Seminario"), misma paleta de color por dominio (Seminars=teal,
-#  Speakers=blue, Participants=pink).
+#  UASM · Seminars Analytics · multipage app
+#  Same structure and visual language as the EIV and International Weeks
+#  reports (cover with data sources, floating top navigation with side arrows,
+#  English-only UI, axis titles on every chart).
+#
+#  Pages: Data Center (cover) · Dashboard · Seminar Search · Tables · Manage Data.
+#  Data model: Seminarios / Conferencistas / Participantes joined by the
+#  "Seminario" ID. Palette per domain: Seminars=teal, Speakers=blue,
+#  Participants=pink.
+#
+#  "Manage Data" writes new rows straight into the three Excel files in Drive
+#  (service account with Editor access), so the Excel files stay the single
+#  source of truth.
 # ===========================================================================
 from __future__ import annotations
 
@@ -28,6 +35,10 @@ except ImportError as _e:
     _GSPREAD_IMPORT_ERR = str(_e)
 
 import requests
+import os
+import base64
+import hmac
+from copy import copy
 
 # ── 1) CONFIGURACIÓN GLOBAL ────────────────────────────────────────────────
 st.set_page_config(
@@ -53,9 +64,9 @@ st.markdown(
     f"background:linear-gradient(135deg,{INK} 0%,{SEM} 100%);"
     "border-radius:12px;box-shadow:0 2px 8px rgba(14,165,160,.18);margin-bottom:14px;}}"
     f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
-    f"color:{SEM_SOFT};text-transform:uppercase;margin-bottom:2px;}}"
-    ".sh-title{font-size:26px;font-weight:800;color:#fff;text-align:center;line-height:1.2;}"
-    ".sh-sub{font-size:13px;color:rgba(255,255,255,.80);margin-top:4px;text-align:center;}"
+    f"color:{SEM_SOFT} !important;text-transform:uppercase;margin-bottom:2px;}}"
+    ".sh-title{font-size:26px !important;font-weight:800 !important;color:#fff !important;text-align:center !important;line-height:1.2 !important;margin:0 !important;padding:0 !important;}"
+    ".sh-sub{font-size:13px;color:rgba(255,255,255,.85) !important;margin-top:4px;text-align:center;}"
     f".kv{{font-size:26px;font-weight:700;line-height:1.1;font-family:monospace;}}"
     f".kl{{font-size:11px;font-weight:600;color:{MUTED};"
     "text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}}"
@@ -82,15 +93,59 @@ st.markdown(
     ".pending-card .tag{display:inline-block;font-family:monospace;font-size:10px;"
     "letter-spacing:.06em;text-transform:uppercase;color:#8B97AC;"
     "background:#EEF1F5;padding:3px 9px;border-radius:5px;margin-bottom:8px;}"
-    ".st-key-nav_toggle{position:fixed;top:0.25rem;left:50%;transform:translateX(-50%);"
-    "z-index:999999;width:70vw;max-width:900px;}"
+    ".st-key-cover_enter_btn div[data-testid='stButton'] button{"
+    f"background:{SEM} !important;border:none !important;color:#fff !important;"
+    "font-size:16px !important;font-weight:700 !important;height:52px !important;"
+    "box-shadow:0 4px 14px rgba(14,165,160,.28) !important;}"
+    f".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{{background:#0B8783 !important;}}"
+    ".st-key-nav_toggle{position:fixed !important;top:0.25rem;left:50%;transform:translateX(-50%);"
+    "z-index:999999;width:auto !important;max-width:96vw;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
-    "display:flex !important;flex-wrap:nowrap !important;width:100% !important;"
-    "justify-content:space-between !important;gap:8px !important;}"
-    ".st-key-nav_toggle div[data-testid='column']{width:auto !important;min-width:fit-content !important;flex:none !important;}"
+    "display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;width:auto !important;"
+    "justify-content:center !important;align-items:center !important;gap:14px !important;"
+    "overflow:visible;max-width:96vw;}"
+    ".st-key-nav_toggle div[data-testid='stHorizontalBlock'] > div{"
+    "flex:0 0 auto !important;width:auto !important;min-width:0 !important;}"
+    ".st-key-nav_toggle div[data-testid='column'], .st-key-nav_toggle div[data-testid='stColumn']{"
+    "width:auto !important;min-width:fit-content !important;flex:0 0 auto !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink']{width:auto !important;min-width:fit-content !important;overflow:visible !important;}"
-    ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;}"
+    ".st-key-nav_toggle div[data-testid='stPageLink'] a{white-space:nowrap !important;overflow:visible !important;text-overflow:unset !important;width:auto !important;min-width:fit-content !important;font-size:13px !important;padding:6px 4px !important;}"
     ".st-key-nav_toggle div[data-testid='stPageLink'] a p{white-space:nowrap !important;overflow:visible !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover']{width:auto !important;min-width:fit-content !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button{"
+    "background:transparent !important;border:none !important;box-shadow:none !important;"
+    f"color:{SEM} !important;font-size:13px !important;font-weight:400 !important;"
+    "height:auto !important;width:auto !important;min-width:fit-content !important;"
+    "padding:6px 4px !important;white-space:nowrap !important;}"
+    ".st-key-nav_toggle div[data-testid='stPopover'] button svg{display:none !important;}"
+    ".st-key-side_arrows{position:fixed !important;top:50%;left:0;right:0;transform:translateY(-50%);"
+    "z-index:999998;width:100%;pointer-events:none;}"
+    ".st-key-side_arrows div[data-testid='stHorizontalBlock']{"
+    "display:flex !important;flex-direction:row !important;width:100% !important;"
+    "justify-content:space-between !important;padding:0 6px;pointer-events:none;}"
+    ".st-key-side_arrows div[data-testid='column'], .st-key-side_arrows div[data-testid='stColumn']{"
+    "width:auto !important;flex:0 0 auto !important;pointer-events:auto;}"
+    ".st-key-side_arrows a{"
+    "display:flex !important;align-items:center;justify-content:center;"
+    "background:transparent !important;border:none !important;box-shadow:none !important;"
+    f"font-size:0 !important;font-weight:400;color:{SEM} !important;opacity:.55;text-decoration:none;"
+    "transition:opacity .15s ease;}"
+    ".st-key-side_arrows a p{font-size:26px !important;}"
+    ".st-key-side_arrows a span:first-child{display:none !important;}"
+    ".st-key-side_arrows a:hover{opacity:1;}"
+    ".block-container{padding-top:3.2rem !important;}"
+    ".st-key-go_to_datacenter_btn a{"
+    "display:flex !important;align-items:center;justify-content:center;gap:6px;"
+    f"background:{SEM} !important;border:none !important;border-radius:10px !important;"
+    "color:#fff !important;font-weight:700 !important;height:44px !important;text-decoration:none !important;}"
+    ".st-key-go_to_datacenter_btn a span{color:#fff !important;}"
+    ".st-key-go_to_datacenter_btn a:hover{background:#0B8783 !important;}"
+    ".hero{display:flex;flex-direction:column;align-items:center;gap:10px;padding:34px 24px 28px;"
+    f"background:linear-gradient(135deg,{INK} 0%,{SEM} 100%);border-radius:16px;"
+    "box-shadow:0 4px 18px rgba(14,165,160,.22);margin-bottom:6px;}"
+    ".hero img{height:62px;max-width:80%;object-fit:contain;}"
+    f".hero .h-super{{font-size:11px;font-weight:700;letter-spacing:3px;color:{SEM_SOFT} !important;text-transform:uppercase;}}"
+    ".hero .h-title{font-size:30px !important;font-weight:800 !important;color:#fff !important;text-align:center;line-height:1.15;}"
     "</style>",
     unsafe_allow_html=True,
 )
@@ -117,7 +172,7 @@ def _kpi(label: str, value, color: str = INK):
     )
 
 
-def _pending_card(label: str, note: str = ""):
+def _pending_card(label: str, note: str = ""):  # kept for parity with the other reports
     note_html = f"<br>{note}" if note else ""
     st.markdown(
         f'<div class="pending-card"><span class="tag">Coming soon</span>'
@@ -132,6 +187,44 @@ def _xlsx_bytes(df: pd.DataFrame, sheet_name: str = "Data") -> bytes:
         df.to_excel(w, index=False, sheet_name=sheet_name[:31])
     buf.seek(0)
     return buf.getvalue()
+
+
+def _spacer(px: int):
+    st.markdown(f"<div style='height:{px}px;'></div>", unsafe_allow_html=True)
+
+
+def _axis_titles(fig, x: Optional[str] = None, y: Optional[str] = None):
+    """Axis titles on every chart (same convention as the EIV / Weeks reports)."""
+    if x:
+        fig.update_xaxes(title_text=x, title_font=dict(size=11, color=MUTED), title_standoff=8)
+    if y:
+        fig.update_yaxes(title_text=y, title_font=dict(size=11, color=MUTED), title_standoff=8)
+    return fig
+
+
+def _find_asset_upwards(rel: str, max_up: int = 8) -> Optional[str]:
+    """Finds e.g. 'imagenes/UASM_logo.png' by walking up from this script / the CWD
+    (the folder lives at the repo root, several levels above this file)."""
+    seen = set()
+    for base in (os.path.dirname(os.path.abspath(__file__)), os.getcwd()):
+        cur = base
+        for _ in range(max_up + 1):
+            full = os.path.join(cur, rel)
+            if full not in seen:
+                seen.add(full)
+                if os.path.exists(full):
+                    return full
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+    return None
+
+
+@st.cache_data(show_spinner=False)
+def _b64_file(path: str) -> str:
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
 
 
 def count_by(items: List[dict], key_fn) -> List[Tuple[str, int]]:
@@ -180,16 +273,16 @@ def _download_drive_file_bytes(file_id: str) -> bytes:
     if not token:
         if not _GSPREAD_OK:
             st.error(
-                "📦 Falta instalar `google-auth` en el entorno "
-                f"(el import falló con: `{_GSPREAD_IMPORT_ERR}`)."
+                "📦 `google-auth` is not installed in this environment "
+                f"(import failed with: `{_GSPREAD_IMPORT_ERR}`)."
             )
         elif "gcp_service_account" not in st.secrets:
             st.error(
-                "🔑 No encuentro `st.secrets['gcp_service_account']`. Revisa en "
-                "Streamlit Cloud → tu app → Settings → Secrets."
+                "🔑 `st.secrets['gcp_service_account']` was not found. Check "
+                "Streamlit Cloud → your app → Settings → Secrets."
             )
         else:
-            st.error("🔑 Las credenciales de `gcp_service_account` no se pudieron usar para autenticar.")
+            st.error("🔑 The `gcp_service_account` credentials could not be used to authenticate.")
         st.stop()
 
     url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
@@ -208,9 +301,9 @@ def _download_drive_file_bytes(file_id: str) -> bytes:
         time.sleep(2)
 
     st.error(
-        f"🌐 No se pudo descargar el archivo de Drive ({file_id}) tras varios intentos: "
-        f"{last_err}\n\nVerifica que el archivo esté compartido con el correo de la "
-        "service account, con permiso de Editor."
+        f"🌐 Could not download the Drive file ({file_id}) after several attempts: "
+        f"{last_err}\n\nMake sure the file is shared with the service account email "
+        "(Editor access is needed for the Manage Data page)."
     )
     st.stop()
 
@@ -271,19 +364,73 @@ def fmt_date(date_val) -> Optional[str]:
         return None
 
 
-# Nacionalidad (español, tal como aparece en BD_conferencistas) -> centroide,
-# para el mapa de burbujas de Speakers. Idéntico a countryGeo del HTML.
-COUNTRY_GEO = {
-    "Alemania": (51.16, 10.45), "Argentina": (-38.42, -63.62), "Brazil": (-14.24, -51.93),
-    "Chile": (-35.68, -71.54), "China": (35.86, 104.20), "Colombia": (4.57, -74.30),
-    "Costa Rica": (9.75, -83.75), "Dinamarca": (56.26, 9.50), "Egipto": (26.82, 30.80),
-    "Eslovenia": (46.15, 14.99), "España": (40.46, -3.75), "Estados Unidos": (37.09, -95.71),
-    "Francia": (46.23, 2.21), "Grecia": (39.07, 21.82), "Holanda": (52.13, 5.29),
-    "India": (20.59, 78.96), "Iran": (32.43, 53.69), "Irlanda": (53.14, -7.69),
-    "Italia": (41.87, 12.57), "Mexico": (23.63, -102.55), "Peru": (-9.19, -75.02),
-    "Polonia": (51.92, 19.15), "Portugal": (39.40, -8.22), "Turquía": (38.96, 35.24),
-    "UK": (55.38, -3.44),
+# Source files mix Spanish and English country names ("Alemania", "Brazil", "UK"...).
+# Everything is shown in English; the map is keyed by the English name.
+COUNTRY_EN = {
+    "alemania": "Germany", "brasil": "Brazil", "canada": "Canada", "canadá": "Canada",
+    "dinamarca": "Denmark", "egipto": "Egypt", "eslovenia": "Slovenia", "españa": "Spain",
+    "estados unidos": "United States", "eeuu": "United States", "usa": "United States",
+    "francia": "France", "grecia": "Greece", "holanda": "Netherlands", "países bajos": "Netherlands",
+    "inglaterra": "United Kingdom", "uk": "United Kingdom", "reino unido": "United Kingdom",
+    "irlanda": "Ireland", "italia": "Italy", "mexico": "Mexico", "méxico": "Mexico", "peru": "Peru",
+    "perú": "Peru", "polonia": "Poland", "turquía": "Turkey", "turquia": "Turkey", "suiza": "Switzerland",
+    "suecia": "Sweden", "bélgica": "Belgium", "belgica": "Belgium", "japón": "Japan", "japon": "Japan",
+    "corea del sur": "South Korea", "rusia": "Russia", "noruega": "Norway", "finlandia": "Finland",
+    "hungría": "Hungary", "rumania": "Romania", "singapur": "Singapore", "sudáfrica": "South Africa",
+    "panamá": "Panama", "panama": "Panama", "iran": "Iran", "irán": "Iran", "estonia": "Estonia",
+    "australia": "Australia", "austria": "Austria", "israel": "Israel", "uruguay": "Uruguay",
+    "ecuador": "Ecuador", "venezuela": "Venezuela", "bolivia": "Bolivia", "paraguay": "Paraguay",
 }
+
+
+def country_en(v) -> str:
+    if v is None or (isinstance(v, float) and pd.isna(v)) or not str(v).strip():
+        return "Unknown"
+    t = str(v).strip()
+    return COUNTRY_EN.get(t.lower(), t)
+
+
+# English country name -> centroid, for the speaker bubble map.
+COUNTRY_GEO = {
+    "Germany": (51.16, 10.45), "Argentina": (-38.42, -63.62), "Brazil": (-14.24, -51.93),
+    "Chile": (-35.68, -71.54), "China": (35.86, 104.20), "Colombia": (4.57, -74.30),
+    "Costa Rica": (9.75, -83.75), "Denmark": (56.26, 9.50), "Egypt": (26.82, 30.80),
+    "Slovenia": (46.15, 14.99), "Spain": (40.46, -3.75), "United States": (37.09, -95.71),
+    "France": (46.23, 2.21), "Greece": (39.07, 21.82), "Netherlands": (52.13, 5.29),
+    "India": (20.59, 78.96), "Iran": (32.43, 53.69), "Ireland": (53.14, -7.69),
+    "Italy": (41.87, 12.57), "Mexico": (23.63, -102.55), "Peru": (-9.19, -75.02),
+    "Poland": (51.92, 19.15), "Portugal": (39.40, -8.22), "Turkey": (38.96, 35.24),
+    "United Kingdom": (55.38, -3.44), "Canada": (56.13, -106.35), "Switzerland": (46.82, 8.23),
+    "Sweden": (60.13, 18.64), "Belgium": (50.50, 4.47), "Japan": (36.20, 138.25),
+    "Australia": (-25.27, 133.78), "Austria": (47.52, 14.55), "Israel": (31.05, 34.85),
+    "Estonia": (58.60, 25.01), "Uruguay": (-32.52, -55.77), "Ecuador": (-1.83, -78.18),
+    "Venezuela": (6.42, -66.59), "Russia": (61.52, 105.32), "Norway": (60.47, 8.47),
+    "Finland": (61.92, 25.75), "South Korea": (35.91, 127.77), "Singapore": (1.35, 103.82),
+    "South Africa": (-30.56, 22.94), "Panama": (8.54, -80.78), "Romania": (45.94, 24.97),
+    "Hungary": (47.16, 19.50),
+}
+
+
+def location_en(v) -> str:
+    """'Hibrido' -> 'Hybrid', 'SD 809 y Zoom' -> 'SD 809 and Zoom'."""
+    if v is None or (isinstance(v, float) and pd.isna(v)) or not str(v).strip():
+        return "TBD"
+    t = str(v).strip()
+    t = re.sub(r"\bh[ií]brido\b", "Hybrid", t, flags=re.I)
+    t = re.sub(r"\s+y\s+", " and ", t)
+    return t
+
+
+def norm_spk_gender(g) -> str:
+    if g is None or (isinstance(g, float) and pd.isna(g)):
+        return "Unknown"
+    t = str(g).strip().lower()
+    if t in ("m", "male", "masculino", "hombre"):
+        return "Male"
+    if t in ("f", "female", "femenino", "mujer"):
+        return "Female"
+    return "Unknown"
+
 
 # Color por categoría de seminario — idéntico a CAT_COLORS del HTML.
 CAT_COLORS = {
@@ -309,9 +456,6 @@ CATEGORY_LOGOS = {
     "GHE": "GHE.png",
     "Grupo de Investigación Historia y Empresariado": "GHE.png",
 }
-
-import os
-import base64
 
 
 @st.cache_data(ttl=3600)
@@ -340,65 +484,100 @@ def cat_logo_tag(category: str, height: int = 22) -> str:
 # ── 5) CARGA + CONSTRUCCIÓN DEL DATASET (equivalente a buildDataset()) ─────
 @st.cache_data(ttl=300)
 def load_raw_sheets():
-    raw_s = io.BytesIO(_download_drive_file_bytes(SEMINARIOS_FILE_ID))
-    sem_df = pd.read_excel(raw_s, sheet_name="seminarios")
-    raw_c = io.BytesIO(_download_drive_file_bytes(CONFERENCISTAS_FILE_ID))
-    conf_df = pd.read_excel(raw_c, sheet_name="conferencistas")
-    raw_p = io.BytesIO(_download_drive_file_bytes(PARTICIPANTES_FILE_ID))
-    part_df = pd.read_excel(raw_p, sheet_name="participantes")
-    return sem_df, conf_df, part_df
+    """Reads the three source workbooks (each opened once) from Drive."""
+    def _read(file_id: str, sheet: str) -> pd.DataFrame:
+        df = pd.ExcelFile(io.BytesIO(_download_drive_file_bytes(file_id))).parse(sheet)
+        df.columns = df.columns.astype(str).str.strip()
+        return df
+    return (_read(SEMINARIOS_FILE_ID, "seminarios"), _read(CONFERENCISTAS_FILE_ID, "conferencistas"),
+            _read(PARTICIPANTES_FILE_ID, "participantes"))
+
+
+def _clean(v, default=None):
+    """Text cell -> stripped string; NaN / empty / 'NA' / Excel errors (#REF!) -> default."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return default
+    t = str(v).strip()
+    if not t or t.upper() == "NA" or t.startswith("#"):
+        return default
+    return t
+
+
+def _parse_date(v):
+    """Excel date or text ('19/3/2024', day first) -> Timestamp, else None."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    try:
+        if isinstance(v, str):
+            ts = pd.to_datetime(v.strip(), dayfirst=True, errors="coerce")
+        else:
+            ts = pd.Timestamp(v)
+        return None if pd.isna(ts) else ts
+    except Exception:
+        return None
+
+
+def _time_str(v) -> Optional[str]:
+    """Excel time / datetime / '9:00 AM' text / day fraction -> 'HH:MM'."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    try:
+        if isinstance(v, dt.time):
+            return f"{v.hour:02d}:{v.minute:02d}"
+        if isinstance(v, (int, float)) and 0 <= float(v) < 1:
+            mins = round(float(v) * 24 * 60)
+            return f"{mins // 60:02d}:{mins % 60:02d}"
+        t = pd.Timestamp(v) if not isinstance(v, str) else pd.to_datetime(v.strip(), errors="coerce")
+        if pd.isna(t):
+            return _clean(v)
+        return f"{t.hour:02d}:{t.minute:02d}"
+    except Exception:
+        return _clean(v)
 
 
 @st.cache_data(ttl=300)
 def build_dataset() -> List[dict]:
-    """Replica exacta de buildDataset() del HTML: une seminarios/conferencistas/
-    participantes por el ID 'Seminario', y desambigua automáticamente
-    cualquier ID duplicado (dato repetido por error de captura), igual que
-    el original — para cualquier cantidad de duplicados, no solo un caso
-    conocido."""
+    """Joins seminars / speakers / participants by the 'Seminario' ID. Duplicated IDs
+    (data-entry repeats) are disambiguated automatically: the second occurrence becomes
+    'ID (2)' and keeps no participants (they can't be split)."""
     sem_df, conf_df, part_df = load_raw_sheets()
 
     participants_by_sem: Dict[str, List[dict]] = {}
-    for _, r in part_df.iterrows():
-        sem = r.get("Seminario al que asistió")
-        nombre = r.get("Nombre")
-        if pd.isna(sem) or pd.isna(nombre):
+    for r in part_df.to_dict("records"):
+        sem = _clean(r.get("Seminario al que asistió"))
+        nombre = _clean(r.get("Nombre"))
+        if not sem or not nombre:
             continue
         participants_by_sem.setdefault(sem, []).append({
-            "nombre": str(nombre).strip(), "correo": r.get("Correo"),
+            "nombre": nombre, "correo": _clean(r.get("Correo"), ""),
             "genero": norm_genero(r.get("Género")), "tipo": norm_tipo(r.get("Tipo Asistente")),
             "modalidad": norm_modalidad(r.get("Modalidad")),
         })
 
-    def _clean_text_g(v, default="Unknown"):
-        if v is None or (isinstance(v, float) and pd.isna(v)):
-            return default
-        txt = str(v).strip()
-        return txt if txt else default
-
     speakers_by_sem: Dict[str, List[dict]] = {}
-    for _, r in conf_df.iterrows():
-        sem = r.get("Seminario que dirigió")
-        if pd.isna(sem) or pd.isna(r.get("Nombre Completo")):
+    for r in conf_df.to_dict("records"):
+        sem = _clean(r.get("Seminario que dirigió"))
+        # 'Nombre Completo' is a formula in the workbook (it can show #REF!), so fall back to Nombre + Apellido.
+        full = _clean(r.get("Nombre Completo")) or " ".join(
+            x for x in (_clean(r.get("Nombre")), _clean(r.get("Apellido"))) if x)
+        if not sem or not full:
             continue
         speakers_by_sem.setdefault(sem, []).append({
-            "nombre": _clean_text_g(r.get("Nombre Completo"), ""),
-            "genero": _clean_text_g(r.get("Genero")),
-            "nacionalidad": _clean_text_g(r.get("Nacionalidad")),
-            "universidad": _clean_text_g(r.get("Nombre Universidad origen")),
-            "paisUniversidad": _clean_text_g(r.get("País Universidad origen")),
-            "region": _clean_text_g(r.get("Ubicación")),
+            "nombre": full, "genero": norm_spk_gender(r.get("Genero")),
+            "nacionalidad": country_en(r.get("Nacionalidad")),
+            "universidad": _clean(r.get("Nombre Universidad origen"), "Unknown"),
+            "paisUniversidad": country_en(r.get("País Universidad origen")),
+            "region": _clean(r.get("Ubicación"), "Unknown"),
         })
 
     seen_ids: Dict[str, int] = {}
     seminars: List[dict] = []
-    for _, r in sem_df.iterrows():
-        raw_id = r.get("Seminario")
-        if pd.isna(raw_id):
+    for r in sem_df.to_dict("records"):
+        raw_id = _clean(r.get("Seminario"))
+        if not raw_id:
             continue
         seen_ids[raw_id] = seen_ids.get(raw_id, 0) + 1
-        sid = raw_id
-        data_note = None
+        sid, data_note = raw_id, None
         if seen_ids[raw_id] > 1:
             sid = f"{raw_id} ({seen_ids[raw_id]})"
             data_note = (
@@ -406,56 +585,36 @@ def build_dataset() -> List[dict]:
                 f"records could not be split automatically and are shown only under the "
                 f"first occurrence."
             )
-        def _clean_speaker(v):
-            if v is None or (isinstance(v, float) and pd.isna(v)):
-                return None
-            txt = str(v).strip()
-            if not txt or txt.upper() == "NA":
-                return None
-            return txt
-
-        speakers = [_clean_speaker(r.get(f"Conferencista {i}")) for i in range(1, 6)]
-        speakers = [s for s in speakers if s]
-
-        date_val = r.get("Fecha")
-        date_val = date_val if (date_val is not None and not pd.isna(date_val)) else None
-        hora_raw = r.get("Hora")
-        hora_str = None
-        if hora_raw is not None and not pd.isna(hora_raw):
-            try:
-                t = pd.Timestamp(hora_raw)
-                hora_str = f"{t.hour:02d}:{t.minute:02d}"
-            except Exception:
-                hora_str = str(hora_raw)
-
+        speakers = [x for x in (_clean(r.get(f"Conferencista {i}")) for i in range(1, 6)) if x]
+        ts = _parse_date(r.get("Fecha"))
+        year = r.get("Año")
+        try:
+            year = int(year) if year is not None and not pd.isna(year) else (ts.year if ts is not None else None)
+        except (TypeError, ValueError):
+            year = ts.year if ts is not None else None
         plist = participants_by_sem.get(raw_id, []) if seen_ids[raw_id] == 1 else []
-
-        def _clean_text(v, default=None):
-            if v is None or (isinstance(v, float) and pd.isna(v)):
-                return default
-            txt = str(v).strip()
-            return txt if txt else default
-
         seminars.append({
-            "id": sid, "categoria": _clean_text(r.get("Categoría"), "Other"),
-            "nombre": _clean_text(r.get("Nombre del seminario"), "Untitled seminar"),
-            "speakers": speakers, "fecha": fmt_date(date_val), "hora": hora_str,
-            "anio": r.get("Año"), "semestre": semester_of(date_val),
-            "modalidad": norm_modalidad(r.get("Modalidad")), "lugar": _clean_text(r.get("Lugar"), "TBD"),
-            "area": _clean_text(r.get("Área"), "Unknown"), "participantsCount": len(plist), "participants": plist,
+            "id": sid, "rawId": raw_id, "categoria": _clean(r.get("Categoría"), "Other"),
+            "nombre": _clean(r.get("Nombre del seminario"), "Untitled seminar"),
+            "speakers": speakers, "fecha": ts.strftime("%Y-%m-%d") if ts is not None else None,
+            "hora": _time_str(r.get("Hora")), "anio": year, "semestre": semester_of(ts),
+            "modalidad": norm_modalidad(r.get("Modalidad")), "lugar": location_en(r.get("Lugar")),
+            "area": _clean(r.get("Área"), "Unknown"), "participantsCount": len(plist), "participants": plist,
             "speakerDetails": speakers_by_sem.get(raw_id, []), "dataNote": data_note,
         })
     return seminars
 
 
 def all_speakers(seminars: List[dict]) -> List[dict]:
+    """Unique speakers (a speaker who led several seminars counts once)."""
     seen = set()
     out = []
     for s in seminars:
         for sp in s["speakerDetails"]:
-            if sp["nombre"] in seen:
+            key = sp["nombre"].strip().lower()
+            if key in seen:
                 continue
-            seen.add(sp["nombre"])
+            seen.add(key)
             out.append(sp)
     return out
 
@@ -488,7 +647,7 @@ def filtered_seminars(seminars: List[dict], year: str, semester: str) -> List[di
 
 def _donut(pairs: List[Tuple[str, int]], colors: List[str], show_all_labels: bool = False, height: int = 220):
     if not pairs:
-        st.info("No hay datos para este filtro.")
+        st.info("No data for this filter.")
         return
     labels = [p[0] for p in pairs]
     values = [p[1] for p in pairs]
@@ -506,9 +665,10 @@ def _donut(pairs: List[Tuple[str, int]], colors: List[str], show_all_labels: boo
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _hbar(pairs: List[Tuple[str, int]], color: str, height: int = 220):
+def _hbar(pairs: List[Tuple[str, int]], color: str, height: int = 220,
+          x_title: str = "Count", y_title: Optional[str] = None):
     if not pairs:
-        st.info("No hay datos para este filtro.")
+        st.info("No data for this filter.")
         return
     labels = [p[0] for p in pairs]
     values = [p[1] for p in pairs]
@@ -518,19 +678,21 @@ def _hbar(pairs: List[Tuple[str, int]], color: str, height: int = 220):
         textfont=dict(size=10.5, color=INK),
     ))
     fig.update_layout(
-        margin=dict(t=6, r=30, b=24, l=150),
+        margin=dict(t=6, r=30, b=44, l=150),
         xaxis=dict(gridcolor=LINE, tickfont=dict(color=INK_SOFT, size=9)),
         yaxis=dict(tickfont=dict(color=INK, size=10.5), automargin=True, autorange="reversed"),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=height,
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=height + 20,
     )
+    _axis_titles(fig, x_title, y_title)
     st.plotly_chart(fig, use_container_width=True)
 
 
 def _world_map(speakers: List[dict], focus_country: Optional[str] = None):
     by_nat = count_by(speakers, lambda s: s.get("nacionalidad"))
+    unmapped = sum(c for n, c in by_nat if n not in COUNTRY_GEO)
     by_nat = [(n, c) for n, c in by_nat if n in COUNTRY_GEO]
     if not by_nat:
-        st.info("No hay nacionalidades mapeables para este filtro.")
+        st.info("No mappable nationalities for this filter.")
         return
     lat = [COUNTRY_GEO[n][0] for n, _ in by_nat]
     lon = [COUNTRY_GEO[n][1] for n, _ in by_nat]
@@ -554,28 +716,72 @@ def _world_map(speakers: List[dict], focus_country: Optional[str] = None):
     fig.update_geos(**geo_kwargs)
     fig.update_layout(margin=dict(t=6, r=6, b=6, l=6), paper_bgcolor="rgba(0,0,0,0)", height=380)
     st.plotly_chart(fig, use_container_width=True)
+    if unmapped:
+        st.caption(f"{unmapped} speaker(s) with a nationality that is not drawn on the map (no coordinates defined).")
 
 
-# ── 6) PÁGINA — Data Center ─────────────────────────────────────────────
+# ── 6) PAGE — Data Center (cover) ────────────────────────────────────────
 def page_datacenter():
+    """Cover, same pattern as the EIV / Weeks reports: hero, title, 'Enter the Report',
+    and the list of data sources (files are fetched from Drive only when requested)."""
     seminars = build_dataset()
-    _render_header(
-        "Data Center",
-        "Verification of the sources powering this report. Every seminar/speaker/participant "
-        "is matched by the \"Seminario\" ID.",
+    logo = _find_asset_upwards("imagenes/UASM_logo_blanco.png")
+    logo_html = (f'<img src="data:image/png;base64,{_b64_file(logo)}" alt="UASM">' if logo else "")
+    st.markdown(
+        f'<div class="hero">{logo_html}<div class="h-super">UASM · Seminars Analytics</div>'
+        '<div class="h-title">International Seminars</div></div>',
+        unsafe_allow_html=True,
     )
-    files = [
-        ("BD_seminarios.xlsx", "Seminar catalog — category, speakers, date, modality, area"),
-        ("BD_conferencistas.xlsx", "Speaker profiles — gender, nationality, origin university"),
-        ("BD_participantes.xlsx", "Attendance roster — name, email, gender, type, modality"),
-    ]
-    for fname, desc in files:
-        st.markdown(f"**{fname}** — {desc}  \n:material/check_circle: Loaded")
-    st.markdown(f"**{len(files)} sources loaded** · {len(seminars)} seminars")
-    st.page_link(pages[1], label="Enter the Report →", icon=":material/arrow_forward:")
+    col_l, col_mid, col_r = st.columns([1, 2, 1])
+    with col_mid:
+        st.markdown(
+            f'<div style="text-align:center;font-size:18px;color:{MUTED};margin:14px auto 0;line-height:1.5;">'
+            "Seminars, speakers and participants across the Recruitment research, Visiting Scholars, "
+            "Ágora and GHE series — plus a Manage Data page to keep the Excel sources up to date.</div>",
+            unsafe_allow_html=True,
+        )
+        _spacer(26)
+        with st.container(key="cover_enter_btn"):
+            if st.button("Enter the Report →", key="cover_enter", use_container_width=True):
+                st.switch_page(pages[1])
+
+        st.markdown(
+            f'<div style="text-align:center;margin-top:34px;font-family:monospace;'
+            f'font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:{MUTED};">'
+            "Data sources used</div>",
+            unsafe_allow_html=True,
+        )
+        files = [
+            ("BD_seminarios.xlsx", "Seminar catalog — category, speakers, date, modality, area", SEMINARIOS_FILE_ID),
+            ("BD_conferencistas.xlsx", "Speaker profiles — gender, nationality, origin university", CONFERENCISTAS_FILE_ID),
+            ("BD_participantes.xlsx", "Attendance roster — name, email, gender, type, modality", PARTICIPANTES_FILE_ID),
+        ]
+        for fname, desc, fid in files:
+            fc1, fc2 = st.columns([5, 1])
+            with fc1:
+                st.markdown(
+                    f'<span style="font-size:12.5px;color:{INK};">{fname}</span><br>'
+                    f'<span style="font-size:11px;color:{MUTED};">{desc}</span>',
+                    unsafe_allow_html=True,
+                )
+            with fc2:
+                # Fetched from Drive only when requested (keeps the cover fast).
+                if st.session_state.get(f"cover_ready_{fname}"):
+                    st.download_button("", data=_download_drive_file_bytes(fid), file_name=fname,
+                                       key=f"cover_dl_{fname}", use_container_width=True,
+                                       icon=":material/download:")
+                elif st.button("", key=f"cover_get_{fname}", use_container_width=True,
+                               icon=":material/download:", help="Fetch this file from Drive"):
+                    st.session_state[f"cover_ready_{fname}"] = True
+                    st.rerun()
+        st.markdown(
+            f'<div style="text-align:center;margin-top:14px;font-size:11.5px;color:{MUTED};">'
+            f"{len(files)} sources loaded · {len(seminars)} seminars</div>",
+            unsafe_allow_html=True,
+        )
 
 
-# ── 7) PÁGINA — Dashboard ────────────────────────────────────────────────
+# ── 7) PAGE — Dashboard ────────────────────────────────────────────────
 def page_dashboard():
     seminars = build_dataset()
     years = sorted(set(str(s["anio"]) for s in seminars if s["anio"] is not None))
@@ -624,7 +830,7 @@ def page_dashboard():
         _donut(count_by(sems, lambda s: s["modalidad"]), [SEM, SPK, PAR, AMBER], height=230)
     with col_area:
         st.markdown("##### Area of Study")
-        _hbar(count_by(sems, lambda s: s["area"]), SEM, height=230)
+        _hbar(count_by(sems, lambda s: s["area"]), SEM, height=230, x_title="Seminars", y_title="Area")
 
     st.markdown("---")
 
@@ -634,7 +840,7 @@ def page_dashboard():
     with col1:
         _kpi("Speakers", len(speakers), SPK)
     with col2:
-        _kpi("Universities Represented", len(set(s["universidad"] for s in speakers)), SPK)
+        _kpi("Universities Represented", len(set(s["universidad"] for s in speakers if s["universidad"] != "Unknown")), SPK)
 
     col_g, col_r = st.columns(2)
     with col_g:
@@ -642,7 +848,7 @@ def page_dashboard():
         _donut(count_by(speakers, lambda s: s["genero"]), [SPK, PAR, MUTED], height=200)
     with col_r:
         st.markdown("##### By Origin Region")
-        _hbar(count_by(speakers, lambda s: s["region"]), SPK, height=200)
+        _hbar(count_by(speakers, lambda s: s["region"]), SPK, height=200, x_title="Speakers", y_title="Origin region")
 
     st.markdown("##### Speaker Nationalities & Universities")
     st.caption("Choose a country to focus the map and see its universities.")
@@ -691,13 +897,14 @@ def page_dashboard():
         _donut(count_by(parts, lambda p: p["modalidad"]), [SEM, SPK, AMBER], height=200)
     with col_pt:
         st.markdown("##### By Attendee Type")
-        _hbar(count_by(parts, lambda p: p["tipo"]), PAR, height=200)
+        _hbar(count_by(parts, lambda p: p["tipo"]), PAR, height=200, x_title="Participants", y_title="Attendee type")
 
     st.markdown("---")
-    _render_pdf_download(sems, speakers, parts, avg_part)
+    _render_pdf_download(sems, speakers, parts, avg_part,
+                         sig=f"{year}|{semester}|{len(sems)}|{len(parts)}|{len(speakers)}")
 
 
-# ── 8) PÁGINA — Seminar Search ──────────────────────────────────────────
+# ── 8) PAGE — Seminar Search ──────────────────────────────────────────
 def page_search():
     seminars = build_dataset()
     _render_header(
@@ -809,17 +1016,18 @@ def _render_seminar_detail(s: dict):
     st.markdown(f"##### Participants ({len(s['participants'])})")
     if s["participants"]:
         part_df = pd.DataFrame(s["participants"])[["nombre", "correo", "genero", "tipo", "modalidad"]]
-        part_df.columns = ["Nombre", "Correo", "Género", "Tipo Asistente", "Modalidad"]
+        part_df.columns = ["Name", "Email", "Gender", "Attendee Type", "Modality"]
     else:
-        part_df = pd.DataFrame(columns=["Nombre", "Correo", "Género", "Tipo Asistente", "Modalidad"])
+        part_df = pd.DataFrame(columns=["Name", "Email", "Gender", "Attendee Type", "Modality"])
     st.dataframe(part_df, use_container_width=True, hide_index=True)
     st.download_button(
         "Download as Excel", data=_xlsx_bytes(part_df, "Participants"),
         file_name=f"{s['id']}_participants.xlsx".replace(" ", "_"), key=f"dl_sem_{s['id']}",
+        icon=":material/download:",
     )
 
 
-# ── 9) PÁGINA — Tables ───────────────────────────────────────────────────
+# ── 9) PAGE — Tables ───────────────────────────────────────────────────
 def page_tables():
     seminars = build_dataset()
     years = sorted(set(str(s["anio"]) for s in seminars if s["anio"] is not None))
@@ -854,10 +1062,10 @@ def page_tables():
             rows_disp.append({
                 "Category": "", "Seminar": s["nombre"], "Speaker(s)": ", ".join(s["speakers"]) or "TBD",
                 "Date": s["fecha"] or "TBD", "Modality": s["modalidad"], "Area": s["area"],
-                "Participants": s["participantsCount"],
+                "Participants": str(s["participantsCount"]),
             })
         rows_disp.append({"Category": "", "Seminar": "", "Speaker(s)": "", "Date": "", "Modality": "",
-                           "Area": f"Total participants — {cat}", "Participants": cat_total})
+                           "Area": f"Total participants — {cat}", "Participants": str(cat_total)})
     df_seminars = pd.DataFrame(rows_disp)
     st.dataframe(df_seminars, use_container_width=True, hide_index=True, height=420)
 
@@ -969,7 +1177,7 @@ def _build_summary_pdf(sems: List[dict], speakers: List[dict], parts: List[dict]
         c.setFont("Helvetica-Bold", 15)
         c.drawString(mg, H - 15 * mm, title)
         c.setFont("Helvetica", 9)
-        c.drawString(mg, H - 21 * mm, "Facultad de Administración · Universidad de los Andes")
+        c.drawString(mg, H - 21 * mm, "School of Management · Universidad de los Andes")
 
     def section_title(text: str, color_hex: str, y: float) -> float:
         c.setFillColor(rl_colors.HexColor(color_hex))
@@ -1018,7 +1226,7 @@ def _build_summary_pdf(sems: List[dict], speakers: List[dict], parts: List[dict]
     y = section_title("SPEAKERS", SPK, y)
     kpi_box(mg, y, (cW - 8) / 2, 20 * mm, len(speakers), "Total Speakers", SPK)
     kpi_box(mg + (cW - 8) / 2 + 8, y, (cW - 8) / 2, 20 * mm,
-            len(set(s["universidad"] for s in speakers)), "Universities", SPK)
+            len(set(s["universidad"] for s in speakers if s["universidad"] != "Unknown")), "Universities", SPK)
     y -= 28 * mm
     y = pdf_list(count_by(speakers, lambda s: s["region"]), mg, y, cW)
 
@@ -1035,7 +1243,7 @@ def _build_summary_pdf(sems: List[dict], speakers: List[dict], parts: List[dict]
     # ---- Page 4+: Full seminar listing by category ----
     c.showPage()
     y = H - 20 * mm
-    c.setFillColor(rl_colors.HexColor("#241420"))
+    c.setFillColor(rl_colors.HexColor(INK))
     c.setFont("Helvetica-Bold", 11)
     c.drawString(mg, y, "SEMINARS — CATEGORY, SPEAKER(S) & TOTAL PARTICIPANTS")
     y -= 9 * mm
@@ -1054,14 +1262,14 @@ def _build_summary_pdf(sems: List[dict], speakers: List[dict], parts: List[dict]
         check_page(14 * mm)
         c.setFillColor(rl_colors.HexColor("#E6F7F5"))
         c.rect(mg, y - 5 * mm, cW, 7 * mm, fill=1, stroke=0)
-        c.setFillColor(rl_colors.HexColor("#241420"))
+        c.setFillColor(rl_colors.HexColor(INK))
         c.setFont("Helvetica-Bold", 8.5)
         c.drawString(mg + 3, y - 0.5 * mm, f"{cat.upper()} — {len(in_cat)} seminar{'s' if len(in_cat) != 1 else ''}")
         y -= 10 * mm
         for s in in_cat:
             check_page(12 * mm)
             c.setFont("Helvetica", 7.5)
-            c.setFillColor(rl_colors.HexColor("#241420"))
+            c.setFillColor(rl_colors.HexColor(INK))
             c.drawString(mg, y, str(s["nombre"])[:95])
             c.drawRightString(mg + cW, y, str(s["participantsCount"]))
             y -= 4.2 * mm
@@ -1087,51 +1295,563 @@ def _build_summary_pdf(sems: List[dict], speakers: List[dict], parts: List[dict]
     return buf.getvalue()
 
 
-def _render_pdf_download(sems, speakers, parts, avg_part):
-    try:
-        pdf_bytes = _build_summary_pdf(sems, speakers, parts, avg_part)
+def _render_pdf_download(sems, speakers, parts, avg_part, sig: str):
+    """The PDF is built only when requested; the last one is kept in session_state
+    (keyed by the current filters + data) so reruns don't rebuild it."""
+    cache = st.session_state.get("_sem_pdf_cache", {})
+    if cache.get("sig") == sig:
         st.download_button(
-            "📄 Generate PDF Report", data=pdf_bytes,
+            "Download PDF report", data=cache["data"],
             file_name="International_Seminars_Report.pdf", mime="application/pdf",
-            key="dl_summary_pdf", use_container_width=False,
+            key="dl_summary_pdf", icon=":material/picture_as_pdf:",
         )
-    except Exception as e:
-        st.caption(f"PDF export unavailable: {e}")
+    elif st.button("Prepare PDF report", key="prep_summary_pdf", icon=":material/picture_as_pdf:"):
+        with st.spinner("Preparing report…"):
+            try:
+                st.session_state["_sem_pdf_cache"] = {
+                    "sig": sig, "data": _build_summary_pdf(sems, speakers, parts, avg_part)}
+            except Exception as e:
+                st.error(f"PDF export unavailable: {e}")
+                return
+        st.rerun()
 
 
-# ── 11) NAVEGACIÓN ────────────────────────────────────────────────────────
+# ── 11) WRITE-BACK TO THE EXCEL FILES IN DRIVE ───────────────────────────
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+# One entry per source workbook: sheet name + how a row is identified (to avoid duplicates).
+WRITE_TARGETS = {
+    "seminar":     {"file_id": SEMINARIOS_FILE_ID,     "sheet": "seminarios"},
+    "speaker":     {"file_id": CONFERENCISTAS_FILE_ID, "sheet": "conferencistas"},
+    "participant": {"file_id": PARTICIPANTES_FILE_ID,  "sheet": "participantes"},
+}
+
+
+def _row_key(kind: str, rec: dict) -> tuple:
+    g = lambda k: str(rec.get(k) if rec.get(k) is not None and not (isinstance(rec.get(k), float) and pd.isna(rec.get(k))) else "").strip().lower()
+    if kind == "seminar":
+        return (g("Seminario"),)
+    if kind == "speaker":
+        full = g("Nombre Completo") if g("Nombre Completo") and not g("Nombre Completo").startswith("#") else f'{g("Nombre")} {g("Apellido")}'.strip()
+        return (full, g("Seminario que dirigió"))
+    return (g("Nombre"), g("Seminario al que asistió"))
+
+
+def _drive_token_or_raise() -> str:
+    token = _get_gspread_access_token()
+    if not token:
+        raise RuntimeError("Could not authenticate with the Google service account (check st.secrets['gcp_service_account']).")
+    return token
+
+
+def _drive_download_fresh(file_id: str) -> bytes:
+    """Uncached download — used right before writing so we never overwrite newer edits."""
+    r = requests.get(f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media&supportsAllDrives=true",
+                     headers={"Authorization": f"Bearer {_drive_token_or_raise()}"}, timeout=60)
+    if r.status_code != 200:
+        raise RuntimeError(f"Drive download failed (HTTP {r.status_code}): {r.text[:200]}")
+    return r.content
+
+
+def _drive_upload_xlsx(file_id: str, data: bytes) -> None:
+    """Replaces the content of an existing Drive file (same ID; Drive keeps the previous version
+    in File → Version history)."""
+    r = requests.patch(
+        f"https://www.googleapis.com/upload/drive/v3/files/{file_id}?uploadType=media&supportsAllDrives=true",
+        headers={"Authorization": f"Bearer {_drive_token_or_raise()}", "Content-Type": XLSX_MIME},
+        data=data, timeout=120,
+    )
+    if r.status_code != 200:
+        hint = " The service account needs Editor access to this file." if r.status_code in (403, 404) else ""
+        raise RuntimeError(f"Drive upload failed (HTTP {r.status_code}): {r.text[:200]}.{hint}")
+
+
+def _append_rows(xlsx: bytes, sheet: str, rows: List[dict], freeze_formulas: bool = False) -> bytes:
+    """Appends `rows` (dicts keyed by the sheet's header text) below the last data row, copying the
+    previous row's cell style. Existing cells are never modified, except when `freeze_formulas`
+    is set: formula cells are then replaced by their cached values (used only if saving would
+    otherwise lose values that the dashboard reads)."""
+    from openpyxl import load_workbook
+    from openpyxl.utils import range_boundaries, get_column_letter
+
+    wb = load_workbook(io.BytesIO(xlsx))
+    if sheet not in wb.sheetnames:
+        raise RuntimeError(f"Sheet '{sheet}' not found in the workbook (found: {', '.join(wb.sheetnames)}).")
+    ws = wb[sheet]
+    headers = {}
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(1, c).value
+        if v is not None and str(v).strip():
+            headers[str(v).strip()] = c
+    unknown = {k for r in rows for k in r} - set(headers)
+    if unknown:
+        raise RuntimeError(f"These columns are not in sheet '{sheet}': {', '.join(sorted(unknown))}")
+    ncols = max(headers.values())
+    last = 1
+    for r in range(ws.max_row, 1, -1):
+        if any(ws.cell(r, c).value not in (None, "") for c in range(1, ncols + 1)):
+            last = r
+            break
+
+    if freeze_formulas:
+        vals = load_workbook(io.BytesIO(xlsx), data_only=True)[sheet]
+        for r in range(2, last + 1):
+            for c in range(1, ncols + 1):
+                cell = ws.cell(r, c)
+                if isinstance(cell.value, str) and cell.value.startswith("="):
+                    cached = vals.cell(r, c).value
+                    if cached is not None and not (isinstance(cached, str) and cached.startswith("#")):
+                        cell.value = cached
+
+    for i, row in enumerate(rows, start=1):
+        r = last + i
+        for h, c in headers.items():
+            cell = ws.cell(r, c)
+            if last > 1:
+                cell._style = copy(ws.cell(last, c)._style)
+            val = row.get(h)
+            if val is None or val == "":
+                continue
+            cell.value = val
+            if isinstance(val, dt.datetime) and cell.number_format == "General":
+                cell.number_format = "d/m/yyyy"
+            elif isinstance(val, dt.date) and not isinstance(val, dt.datetime) and cell.number_format == "General":
+                cell.number_format = "d/m/yyyy"
+            elif isinstance(val, dt.time) and cell.number_format == "General":
+                cell.number_format = "h:mm AM/PM"
+
+    # Excel Tables / autofilters that end at the old last row must grow with the data.
+    for t in list(ws.tables.values()):
+        c1, r1, c2, r2 = range_boundaries(t.ref)
+        if r2 == last:
+            t.ref = f"{get_column_letter(c1)}{r1}:{get_column_letter(c2)}{last + len(rows)}"
+            if t.autoFilter is not None:
+                t.autoFilter.ref = t.ref
+    if ws.auto_filter and ws.auto_filter.ref:
+        c1, r1, c2, r2 = range_boundaries(ws.auto_filter.ref)
+        if r2 == last:
+            ws.auto_filter.ref = f"{get_column_letter(c1)}{r1}:{get_column_letter(c2)}{last + len(rows)}"
+
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def _lost_columns(old: bytes, new: bytes, sheet: str, n_new: int) -> List[str]:
+    """Columns whose values (as pandas/the dashboard reads them) would be lost or the row count wrong."""
+    a = pd.read_excel(io.BytesIO(old), sheet_name=sheet)
+    b = pd.read_excel(io.BytesIO(new), sheet_name=sheet)
+    if len(b) != len(a) + n_new:
+        raise RuntimeError(f"Row count check failed (expected {len(a) + n_new}, got {len(b)}). Nothing was saved.")
+    return [c for c in a.columns if c in b.columns and a[c].notna().sum() > b[c].iloc[:len(a)].notna().sum()]
+
+
+def commit_rows(kind: str, rows: List[dict]) -> dict:
+    """Appends rows to the Excel file of `kind` ('seminar' | 'speaker' | 'participant') in Drive.
+    Always re-reads the file first (fresh), skips rows that already exist, verifies the result
+    is readable with no lost values, uploads, and clears the dashboard caches."""
+    tgt = WRITE_TARGETS[kind]
+    fid, sheet = tgt["file_id"], tgt["sheet"]
+    old = _drive_download_fresh(fid)
+    existing = {_row_key(kind, rec) for rec in pd.read_excel(io.BytesIO(old), sheet_name=sheet).to_dict("records")}
+    fresh, skipped, seen = [], [], set()
+    for row in rows:
+        k = _row_key(kind, row)
+        if k in existing or k in seen:
+            skipped.append(" / ".join(x for x in k if x))
+            continue
+        seen.add(k)
+        fresh.append(row)
+    if not fresh:
+        return {"written": 0, "skipped": skipped, "frozen": False}
+
+    new = _append_rows(old, sheet, fresh)
+    lost = _lost_columns(old, new, sheet, len(fresh))
+    frozen = False
+    if lost:   # formulas whose cached values would disappear -> keep their current values instead
+        new = _append_rows(old, sheet, fresh, freeze_formulas=True)
+        lost = _lost_columns(old, new, sheet, len(fresh))
+        frozen = True
+        if lost:
+            raise RuntimeError(f"Saving would lose values in column(s): {', '.join(lost)}. Nothing was saved.")
+    _drive_upload_xlsx(fid, new)
+    for fn in (_download_drive_file_bytes, load_raw_sheets, build_dataset):
+        fn.clear()
+    return {"written": len(fresh), "skipped": skipped, "frozen": frozen}
+
+
+# ── 12) PAGE — Manage Data ───────────────────────────────────────────────
+EDITOR_SECRET = "seminars_editor_password"
+SEMINAR_PREFIX = {   # category -> ID prefix used in the workbook ("Visiting Scholars 12")
+    "Visiting Scholars Seminar Series": "Visiting Scholars",
+    "Recruitment research seminars": "Recruitment research",
+    "Ágora": "Ágora", "GHE": "GHE",
+}
+MODALITIES = ["On-Campus", "Online", "Hybrid"]
+ATTENDEE_TYPES = ["Professor", "PhD Student", "Student", "Administrative", "Visiting professor", "External"]
+REGIONS = ["Europe", "North America", "South America", "Asia", "Africa", "Oceania"]
+
+
+def _editor_unlocked() -> bool:
+    """If st.secrets['seminars_editor_password'] is set, the page asks for it (optional but recommended)."""
+    try:
+        pw = st.secrets.get(EDITOR_SECRET)
+    except Exception:
+        pw = None
+    if not pw or st.session_state.get("_sem_editor_ok"):
+        return True
+    with st.form("sem_editor_gate", border=False):
+        typed = st.text_input("Editor password", type="password")
+        go = st.form_submit_button("Unlock")
+    if go:
+        if hmac.compare_digest(str(typed), str(pw)):
+            st.session_state["_sem_editor_ok"] = True
+            st.rerun()
+        st.error("Wrong password.")
+    return False
+
+
+def _suggest_seminar_id(category: str, raw_ids: List[str]) -> str:
+    prefix = SEMINAR_PREFIX.get(category, category)
+    nums = []
+    for i in raw_ids:
+        m = re.fullmatch(re.escape(prefix) + r"\s+(\d+)", str(i).strip(), flags=re.I)
+        if m:
+            nums.append(int(m.group(1)))
+    return f"{prefix} {max(nums, default=0) + 1}"
+
+
+def _uniq(values) -> List[str]:
+    return sorted({str(v).strip() for v in values if v is not None and str(v).strip() and not str(v).startswith("#")
+                   and str(v).strip().upper() != "NA"})
+
+
+def _review_and_save(kind: str, title: str):
+    """Second step of every form: show exactly what will be appended and ask for confirmation."""
+    pend = st.session_state.get(f"pending_{kind}")
+    done = st.session_state.pop(f"saved_{kind}", None)
+    if done:
+        st.success(done["msg"])
+        for w in done.get("warnings", []):
+            st.warning(w)
+    if not pend:
+        return
+    st.markdown(f"##### Review — {title}")
+    st.caption("These rows will be appended at the end of the Excel file in Drive. Nothing is saved until you confirm.")
+    st.dataframe(pend["preview"], use_container_width=True, hide_index=True)
+    c1, c2, _ = st.columns([1, 1, 2])
+    if c2.button("Discard", key=f"discard_{kind}"):
+        st.session_state.pop(f"pending_{kind}", None)
+        st.rerun()
+    if c1.button("Confirm & save to Drive", key=f"confirm_{kind}", icon=":material/cloud_upload:"):
+        with st.spinner("Saving to Drive…"):
+            try:
+                res = commit_rows(kind, pend["rows"])
+            except Exception as e:
+                st.error(f"Not saved: {e}")
+                return
+        warnings = []
+        if res["skipped"]:
+            warnings.append("Skipped (already in the file): " + "; ".join(res["skipped"]))
+        if res["frozen"]:
+            warnings.append("Some formula cells in this workbook were converted to their current values so nothing is lost.")
+        warnings += pend.get("after_warnings", []) if res["written"] else []
+        msg = (f"Saved {res['written']} row(s) to {WRITE_TARGETS[kind]['sheet']}. The dashboard now includes them."
+               if res["written"] else "Nothing new to save — everything was already in the file.")
+        st.session_state[f"saved_{kind}"] = {"msg": msg, "warnings": warnings}
+        st.session_state.pop(f"pending_{kind}", None)
+        if kind == "seminar":
+            st.session_state["ns_ver"] = st.session_state.get("ns_ver", 0) + 1
+        elif kind == "speaker":
+            st.session_state["sp_ver"] = st.session_state.get("sp_ver", 0) + 1
+        if kind == "participant":   # empty the table for the next batch
+            st.session_state["pa_df"] = pd.DataFrame({"Name": [""] * 6, "Email": [""] * 6, "Gender": [None] * 6,
+                                                      "Attendee Type": [None] * 6, "Modality": [None] * 6})
+            st.session_state["pa_ver"] = st.session_state.get("pa_ver", 0) + 1
+        st.rerun()
+
+
+def page_manage():
+    _render_header(
+        "Manage Data",
+        "Add a seminar, a speaker, or participants. Rows are appended to the Excel files in Drive "
+        "(BD_seminarios / BD_conferencistas / BD_participantes) after you review them.",
+    )
+    if not _editor_unlocked():
+        return
+    st.caption("Drive keeps the previous version of each file (File → Version history), so any save can be rolled back there.")
+
+    seminars = build_dataset()
+    sem_df, conf_df, part_df = load_raw_sheets()
+    raw_ids = [str(x).strip() for x in sem_df["Seminario"].dropna()]
+    sem_opts = []
+    for sm in sorted(seminars, key=lambda x: x["fecha"] or "", reverse=True):
+        if sm["rawId"] not in [o[0] for o in sem_opts]:
+            sem_opts.append((sm["rawId"], f'{sm["rawId"]} — {sm["nombre"][:70]} ({sm["fecha"] or "TBD"})'))
+    sem_label = dict(sem_opts)
+
+    tab_sem, tab_spk, tab_par = st.tabs(["📅 New seminar", "🎤 Speaker", "👥 Participants"])
+
+    # ───────────────── New seminar ─────────────────
+    with tab_sem:
+        nv = st.session_state.get("ns_ver", 0)     # bumped after a save so the form starts clean
+        cats = _uniq(list(sem_df["Categoría"]) + list(SEMINAR_PREFIX))
+        c1, c2 = st.columns(2)
+        with c1:
+            category = st.selectbox("Category", cats, accept_new_options=True, key="ns_cat")
+            name = st.text_input("Seminar name", key=f"ns_name_{nv}")
+            speakers = st.multiselect("Speaker(s) — up to 5", _uniq(
+                [n for sm in seminars for n in sm["speakers"]]), accept_new_options=True, max_selections=5, key=f"ns_speakers_{nv}")
+            sid = st.text_input("Seminar ID (unique)", value=_suggest_seminar_id(category or "", raw_ids),
+                                key=f"ns_id_{category}_{len(raw_ids)}_{nv}", help="Used to link speakers and participants to this seminar.")
+        with c2:
+            d1, d2 = st.columns(2)
+            date = d1.date_input("Date", value=dt.date.today(), key="ns_date", format="DD/MM/YYYY")
+            tbd_time = d2.checkbox("Time to be defined", key="ns_time_tbd")
+            time_val = d2.time_input("Time", value=dt.time(12, 30), key="ns_time", disabled=tbd_time)
+            modality = st.selectbox("Modality", MODALITIES, key="ns_mod")
+            loc_default = "Virtual" if modality == "Online" else ""
+            place = st.text_input("Location", value=loc_default, key=f"ns_loc_{modality}", placeholder="e.g. SD 704")
+            area = st.selectbox("Area", _uniq(sem_df["Área"]), accept_new_options=True, key="ns_area")
+
+        if st.button("Review seminar", key="ns_review", icon=":material/fact_check:"):
+            errs = []
+            if not (category or "").strip(): errs.append("Category is required.")
+            if not name.strip(): errs.append("Seminar name is required.")
+            if not sid.strip(): errs.append("Seminar ID is required.")
+            elif sid.strip().lower() in {x.lower() for x in raw_ids}: errs.append(f'The ID "{sid.strip()}" already exists.')
+            if not (area or "").strip(): errs.append("Area is required.")
+            for e in errs:
+                st.error(e)
+            if not errs:
+                spk = (speakers + [None] * 5)[:5]
+                row = {
+                    "Seminario": sid.strip(), "Categoría": category.strip(), "Nombre del seminario": name.strip(),
+                    **{f"Conferencista {i + 1}": (spk[i] or "NA") for i in range(5)},
+                    "Fecha": dt.datetime.combine(date, dt.time()), "Hora": ("NA" if tbd_time else time_val),
+                    "Año": date.year, "Modalidad": modality, "Lugar": place.strip() or "TBD", "Área": area.strip(),
+                }
+                known = {sp["nombre"].strip().lower() for sm in seminars for sp in sm["speakerDetails"]}
+                missing = [n for n in speakers if n.strip().lower() not in known]
+                st.session_state["pending_seminar"] = {
+                    "rows": [row],
+                    "preview": pd.DataFrame([{
+                        "ID": row["Seminario"], "Category": row["Categoría"], "Seminar": row["Nombre del seminario"],
+                        "Speaker(s)": ", ".join(speakers) or "—", "Date": date.strftime("%d/%m/%Y"),
+                        "Time": "TBD" if tbd_time else time_val.strftime("%H:%M"), "Modality": modality,
+                        "Location": row["Lugar"], "Area": row["Área"],
+                    }]),
+                    "after_warnings": ([f'No speaker profile yet for: {", ".join(missing)}. Add it in the "Speaker" tab '
+                                        f'(select seminar "{sid.strip()}").'] if missing else []),
+                }
+        _review_and_save("seminar", "new seminar")
+
+    # ───────────────── Speaker ─────────────────
+    with tab_spk:
+        sv = st.session_state.get("sp_ver", 0)
+        mode = st.radio("What do you want to do?", ["New speaker", "Existing speaker — add another seminar"],
+                        horizontal=True, key="sp_mode")
+        led = st.multiselect("Seminar(s) led", [o[0] for o in sem_opts], format_func=lambda x: sem_label.get(x, x),
+                             key=f"sp_led_{sv}")
+        profile = {}
+        if mode.startswith("New"):
+            c1, c2 = st.columns(2)
+            with c1:
+                first = st.text_input("First name", key=f"sp_first_{sv}")
+                last = st.text_input("Last name", key=f"sp_last_{sv}")
+                gender = st.selectbox("Gender", ["Female", "Male"], key="sp_gender")
+                nat = st.selectbox("Nationality", _uniq(conf_df["Nacionalidad"]), accept_new_options=True,
+                                   format_func=country_en, key="sp_nat", index=None, placeholder="Select or type")
+                has_birth = st.checkbox("Add birth date", key="sp_has_birth")
+                birth = st.date_input("Birth date", value=dt.date(1980, 1, 1), min_value=dt.date(1920, 1, 1),
+                                      max_value=dt.date.today(), key="sp_birth", disabled=not has_birth, format="DD/MM/YYYY")
+            with c2:
+                uni = st.selectbox("Origin university", _uniq(conf_df["Nombre Universidad origen"]), accept_new_options=True,
+                                   key="sp_uni", index=None, placeholder="Select or type")
+                uni_c = st.selectbox("University country", _uniq(conf_df["País Universidad origen"]), accept_new_options=True,
+                                     format_func=country_en, key="sp_uni_c", index=None, placeholder="Select or type")
+                region = st.selectbox("Origin region", _uniq(list(conf_df["Ubicación"]) + REGIONS), accept_new_options=True,
+                                      key="sp_region", index=None, placeholder="Select or type")
+            full = f"{first.strip()} {last.strip()}".strip()
+        else:
+            known_spk = _uniq([sp["nombre"] for sm in seminars for sp in sm["speakerDetails"]])
+            chosen = st.selectbox("Speaker", known_spk, index=None, placeholder="Select a speaker", key=f"sp_existing_{sv}")
+            full = chosen or ""
+            if chosen:
+                prof = conf_df[conf_df.apply(lambda r: _row_key("speaker", r.to_dict())[0] == chosen.lower(), axis=1)]
+                profile = prof.iloc[0].to_dict() if len(prof) else {}
+                if profile:
+                    st.caption(f'Profile reused from the file: {_clean(profile.get("Nombre Universidad origen"), "—")} · '
+                               f'{country_en(profile.get("Nacionalidad"))} · {_clean(profile.get("Genero"), "—")}')
+
+        if st.button("Review speaker", key="sp_review", icon=":material/fact_check:"):
+            errs = []
+            if not full: errs.append("Speaker name is required." if not mode.startswith("New") else "First and last name are required.")
+            if mode.startswith("New") and not (first.strip() and last.strip()): errs.append("First and last name are required.")
+            if not led: errs.append("Select at least one seminar.")
+            if mode.startswith("New") and not (uni or "").strip(): errs.append("Origin university is required.")
+            if mode.startswith("New") and not (nat or "").strip(): errs.append("Nationality is required.")
+            for e in errs:
+                st.error(e)
+            if not errs:
+                rows = []
+                for sem_id in led:
+                    if mode.startswith("New"):
+                        base = {"Nombre": first.strip(), "Apellido": last.strip(), "Nombre Completo": full, "Genero": gender,
+                                "Nacionalidad": nat.strip(), "Fecha nacimiento": (dt.datetime.combine(birth, dt.time()) if has_birth else "NA"),
+                                "Nombre Universidad origen": uni.strip(), "País Universidad origen": (uni_c or "").strip() or "NA",
+                                "Ubicación": (region or "").strip() or "NA"}
+                    else:
+                        base = {k: (profile.get(k) if profile.get(k) is not None and not (isinstance(profile.get(k), float) and pd.isna(profile.get(k))) else "NA")
+                                for k in ["Nombre", "Apellido", "Genero", "Nacionalidad", "Nombre Universidad origen", "País Universidad origen", "Ubicación"]}
+                        base["Nombre Completo"] = full
+                        base["Fecha nacimiento"] = _clean(profile.get("Fecha nacimiento"), "NA") if not hasattr(profile.get("Fecha nacimiento"), "year") else profile.get("Fecha nacimiento")
+                    rows.append({**base, "Seminario que dirigió": sem_id})
+                st.session_state["pending_speaker"] = {
+                    "rows": rows,
+                    "preview": pd.DataFrame([{
+                        "Speaker": r["Nombre Completo"], "Gender": r["Genero"], "Nationality": country_en(r["Nacionalidad"]),
+                        "University": r["Nombre Universidad origen"], "Region": r["Ubicación"], "Seminar led": r["Seminario que dirigió"],
+                    } for r in rows]),
+                    "after_warnings": [],
+                }
+        _review_and_save("speaker", "speaker")
+
+    # ───────────────── Participants ─────────────────
+    with tab_par:
+        sem_pick = st.selectbox("Seminar attended", [o[0] for o in sem_opts], format_func=lambda x: sem_label.get(x, x),
+                                index=None, placeholder="Select the seminar", key="pa_sem")
+        d1, d2 = st.columns(2)
+        types = _uniq(list(part_df["Tipo Asistente"]) + ATTENDEE_TYPES)
+        def_type = d1.selectbox("Default attendee type", types, index=types.index("Professor") if "Professor" in types else 0, key="pa_deftype")
+        def_mod = d2.selectbox("Default modality", MODALITIES, key="pa_defmod")
+
+        st.session_state.setdefault("pa_ver", 0)
+        st.session_state.setdefault("pa_df", pd.DataFrame({"Name": [""] * 6, "Email": [""] * 6, "Gender": [None] * 6,
+                                                            "Attendee Type": [None] * 6, "Modality": [None] * 6}))
+        up = st.file_uploader("Or upload a list (.xlsx / .csv) with columns Name, Email, Gender, Attendee Type, Modality",
+                              type=["xlsx", "csv"], key="pa_upload")
+        if up is not None and st.session_state.get("pa_upload_sig") != (up.name, up.size):
+            try:
+                raw = pd.read_csv(up) if up.name.lower().endswith(".csv") else pd.read_excel(up)
+                alias = {"name": "Name", "nombre": "Name", "email": "Email", "correo": "Email", "e-mail": "Email",
+                         "gender": "Gender", "género": "Gender", "genero": "Gender", "sexo": "Gender",
+                         "attendee type": "Attendee Type", "tipo asistente": "Attendee Type", "type": "Attendee Type",
+                         "modality": "Modality", "modalidad": "Modality"}
+                raw.columns = [alias.get(str(c).strip().lower(), str(c).strip()) for c in raw.columns]
+                for c in ["Name", "Email", "Gender", "Attendee Type", "Modality"]:
+                    if c not in raw.columns:
+                        raw[c] = None
+                raw["Gender"] = raw["Gender"].map(lambda g: norm_genero(g) if g is not None and not pd.isna(g) else None).replace({"Unknown": None})
+                st.session_state["pa_df"] = raw[["Name", "Email", "Gender", "Attendee Type", "Modality"]].astype(object).where(raw.notna(), None)
+                st.session_state["pa_ver"] += 1
+                st.session_state["pa_upload_sig"] = (up.name, up.size)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Could not read that file: {e}")
+
+        edited = st.data_editor(
+            st.session_state["pa_df"], num_rows="dynamic", use_container_width=True, hide_index=True,
+            key=f"pa_editor_{st.session_state['pa_ver']}",
+            column_config={
+                "Name": st.column_config.TextColumn("Name", required=True),
+                "Email": st.column_config.TextColumn("Email"),
+                "Gender": st.column_config.SelectboxColumn("Gender", options=["M", "F"]),
+                "Attendee Type": st.column_config.SelectboxColumn("Attendee Type", options=types),
+                "Modality": st.column_config.SelectboxColumn("Modality", options=MODALITIES),
+            },
+        )
+        st.caption("Tip: you can paste a block of rows straight from Excel into the table. Blank type / modality use the defaults above.")
+
+        if st.button("Review participants", key="pa_review", icon=":material/fact_check:"):
+            errs, rows = [], []
+            if not sem_pick: errs.append("Select the seminar.")
+            names_seen = set()
+            for i, rec in enumerate(edited.to_dict("records"), start=1):
+                nm = _clean(rec.get("Name"))
+                if not nm:
+                    continue
+                email = _clean(rec.get("Email"), "")
+                if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+                    errs.append(f"Row {i}: '{email}' is not a valid email.")
+                if nm.lower() in names_seen:
+                    errs.append(f"Row {i}: '{nm}' appears twice in this list.")
+                names_seen.add(nm.lower())
+                rows.append({"Nombre": nm, "Correo": email or None, "Género": _clean(rec.get("Gender")),
+                             "Tipo Asistente": _clean(rec.get("Attendee Type")) or def_type,
+                             "Modalidad": _clean(rec.get("Modality")) or def_mod, "Seminario al que asistió": sem_pick})
+            if not rows: errs.append("Add at least one participant.")
+            for e in errs:
+                st.error(e)
+            if not errs:
+                st.session_state["pending_participant"] = {
+                    "rows": rows,
+                    "preview": pd.DataFrame([{"Seminar": r["Seminario al que asistió"], "Name": r["Nombre"], "Email": r["Correo"] or "",
+                                              "Gender": r["Género"] or "", "Attendee Type": r["Tipo Asistente"],
+                                              "Modality": r["Modalidad"]} for r in rows]),
+                    "after_warnings": [],
+                }
+        _review_and_save("participant", "participants")
+
+
+# ── 13) NAVIGATION ────────────────────────────────────────────────────────
+# Same skeleton as the EIV / Weeks reports: the cover hides the sidebar; the other pages get a
+# floating top navigation plus fixed side arrows to move between sections.
 pages = [
-    st.Page(page_datacenter, title="Data Center", icon="🗄️", url_path="datacenter", default=True),
+    st.Page(page_datacenter, title="Data Center", icon=":material/dashboard:", url_path="datacenter", default=True),
     st.Page(page_dashboard, title="Dashboard", icon="📊", url_path="dashboard"),
     st.Page(page_search, title="Seminar Search", icon="🔎", url_path="search"),
     st.Page(page_tables, title="Tables", icon="📋", url_path="tables"),
+    st.Page(page_manage, title="Manage Data", icon="✏️", url_path="manage"),
 ]
 pg = st.navigation(pages, position="hidden")
 IS_DATACENTER = pg is pages[0]
 nav_pages = pages[1:]
+_NAV_VISIBLE = 6
 
-with st.sidebar:
+if IS_DATACENTER:
     st.markdown(
-        f'<div style="color:{INK};font-size:22px;font-weight:800;line-height:1.1;cursor:pointer;">'
-        'UASM Seminars</div>',
+        "<style>section[data-testid='stSidebar']{display:none !important;}"
+        "div[data-testid='stSidebarCollapsedControl']{display:none !important;}</style>",
         unsafe_allow_html=True,
     )
-    st.caption("Facultad de Administración · International Seminars")
-    st.page_link(pages[0], label="Back to Data Center", icon=":material/home:")
-    st.markdown("---")
+else:
+    with st.sidebar:
+        st.markdown(
+            f'<div style="color:{INK};font-size:22px;font-weight:800;line-height:1.1;">UASM Seminars</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption("School of Management · International Seminars")
+        with st.container(key="go_to_datacenter_btn"):
+            st.page_link(pages[0], label="Go to Data Center", icon=":material/home:")
+        st.markdown("---")
 
-if not IS_DATACENTER:
     with st.container(key="nav_toggle"):
-        nav_cols = st.columns(len(nav_pages))
-        for col, page_obj in zip(nav_cols, nav_pages):
+        visible_pages = nav_pages[:_NAV_VISIBLE]
+        overflow_pages = nav_pages[_NAV_VISIBLE:]
+        nav_cols = st.columns(len(visible_pages) + (1 if overflow_pages else 0))
+        for col, page_obj in zip(nav_cols, visible_pages):
             with col:
                 st.page_link(page_obj)
+        if overflow_pages:
+            with nav_cols[-1]:
+                with st.popover("More...", use_container_width=False):
+                    for page_obj in overflow_pages:
+                        st.page_link(page_obj)
+
+    _idx = nav_pages.index(pg)
+    with st.container(key="side_arrows"):
+        arrow_l, arrow_r = st.columns(2)
+        with arrow_l:
+            st.page_link(nav_pages[_idx - 1], label="‹")
+        with arrow_r:
+            st.page_link(nav_pages[(_idx + 1) % len(nav_pages)], label="›")
 
 pg.run()
 
 st.markdown(
     f'<div style="text-align:center;padding:40px 0 10px;font-size:11.5px;color:{MUTED};'
-    'font-family:monospace;">International Seminars · Facultad de Administración · '
+    'font-family:monospace;">International Seminars · School of Management · '
     'Universidad de los Andes</div>',
     unsafe_allow_html=True,
 )
