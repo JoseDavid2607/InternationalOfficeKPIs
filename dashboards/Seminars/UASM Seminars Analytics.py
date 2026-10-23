@@ -1849,7 +1849,10 @@ def page_manage():
                                 key=f"pa_sem_{last_sem}")
         st.session_state.setdefault("pa_ver", 0)
         blank = lambda: pd.DataFrame({c: [None] * 6 for c in PART_COLS})
-        st.session_state.setdefault("pa_df", blank())
+        cur_df = st.session_state.get("pa_df")
+        if not isinstance(cur_df, pd.DataFrame) or list(cur_df.columns) != PART_COLS:   # e.g. state left by an older version
+            st.session_state["pa_df"] = blank()
+            st.session_state["pa_ver"] += 1
         types = _uniq(list(part_df["Tipo Asistente"]) + ATTENDEE_TYPES + [v for v in st.session_state["pa_df"]["Tipo Asistente"] if v])
 
         u1, u2 = st.columns([3, 2])
