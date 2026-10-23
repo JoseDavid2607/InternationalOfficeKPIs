@@ -1413,10 +1413,16 @@ def _update_row(xlsx: bytes, sheet: str, key_col: str, key_val: str, occurrence:
     return out.getvalue()
 
 
+# Columns whose cached values may disappear when openpyxl saves a formula: the dashboard doesn't depend on
+# them (speaker names fall back to Nombre + Apellido), so formulas there stay formulas.
+TOLERATED_LOSS = {"conferencistas": {"Nombre Completo"}}
+
+
 def _finish_write(fid: str, sheet: str, old: bytes, build, n_new: int, allowed=()) -> bool:
     """build(freeze) -> new workbook bytes. Verifies nothing the dashboard reads is lost
     (retrying once with formulas frozen to their cached values), uploads, clears caches.
     Returns True if formulas had to be frozen."""
+    allowed = set(allowed) | TOLERATED_LOSS.get(sheet, set())
     new = build(False)
     lost = [c for c in _lost_columns(old, new, sheet, n_new) if c not in allowed]
     frozen = False
@@ -1607,8 +1613,6 @@ def _save(kind: str, action, ok_msg: str, warnings=None) -> bool:
     warns = list(warnings or [])
     if res.get("skipped"):
         warns.append("Skipped (already in the file): " + "; ".join(res["skipped"]))
-    if res.get("frozen"):
-        warns.append("Some formula cells in this workbook were converted to their current values so nothing is lost.")
     msg = ok_msg if res.get("written") else "Nothing new to save — everything was already in the file."
     st.session_state[f"saved_{kind}"] = {"msg": msg, "warnings": warns if res.get("written") else warns}
     return True
