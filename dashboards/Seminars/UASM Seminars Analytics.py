@@ -62,14 +62,14 @@ st.markdown(
     f".suite-header{{display:flex;flex-direction:column;align-items:center;"
     "padding:16px 24px 12px;"
     f"background:linear-gradient(135deg,{INK} 0%,{SEM} 100%);"
-    "border-radius:12px;box-shadow:0 2px 8px rgba(14,165,160,.18);margin-bottom:14px;}}"
+    "border-radius:12px;box-shadow:0 2px 8px rgba(14,165,160,.18);margin-bottom:14px;}"
     f".sh-super{{font-size:11px;font-weight:700;letter-spacing:2px;"
-    f"color:{SEM_SOFT} !important;text-transform:uppercase;margin-bottom:2px;}}"
+    "color:#fff !important;text-transform:uppercase;margin-bottom:2px;}"
     ".sh-title{font-size:26px !important;font-weight:800 !important;color:#fff !important;text-align:center !important;line-height:1.2 !important;margin:0 !important;padding:0 !important;}"
     ".sh-sub{font-size:13px;color:rgba(255,255,255,.85) !important;margin-top:4px;text-align:center;}"
     f".kv{{font-size:26px;font-weight:700;line-height:1.1;font-family:monospace;}}"
     f".kl{{font-size:11px;font-weight:600;color:{MUTED};"
-    "text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}}"
+    "text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}"
     f"section[data-testid='stSidebar']{{background:{BG} !important;}}"
     "div[data-testid='stButton'] button{background:#FFFFFF !important;"
     f"border:1px solid {LINE} !important;border-radius:10px !important;"
@@ -82,7 +82,7 @@ st.markdown(
     f"color:{SEM} !important;font-size:13px !important;"
     "padding:0 !important;text-decoration:underline !important;}"
     f"thead th{{background:{SEM_SOFT} !important;color:{INK} !important;"
-    "font-weight:700 !important;}}"
+    "font-weight:700 !important;}"
     ".domain-badge{display:inline-flex;align-items:center;gap:8px;padding:4px 12px;"
     "border-radius:20px;font-size:12px;font-weight:700;margin-bottom:4px;}"
     f".domain-badge.sem{{background:{SEM_SOFT};color:{SEM};}}"
@@ -144,7 +144,7 @@ st.markdown(
     f"background:linear-gradient(135deg,{INK} 0%,{SEM} 100%);border-radius:16px;"
     "box-shadow:0 4px 18px rgba(14,165,160,.22);margin-bottom:6px;}"
     ".hero img{height:62px;max-width:80%;object-fit:contain;}"
-    f".hero .h-super{{font-size:11px;font-weight:700;letter-spacing:3px;color:{SEM_SOFT} !important;text-transform:uppercase;}}"
+    f".hero .h-super{{font-size:11px;font-weight:700;letter-spacing:3px;color:#fff !important;text-transform:uppercase;}}"
     ".hero .h-title{font-size:30px !important;font-weight:800 !important;color:#fff !important;text-align:center;line-height:1.15;}"
     "</style>",
     unsafe_allow_html=True,
@@ -594,7 +594,8 @@ def build_dataset() -> List[dict]:
             year = ts.year if ts is not None else None
         plist = participants_by_sem.get(raw_id, []) if seen_ids[raw_id] == 1 else []
         seminars.append({
-            "id": sid, "rawId": raw_id, "categoria": _clean(r.get("Categoría"), "Other"),
+            "id": sid, "rawId": raw_id, "occ": seen_ids[raw_id], "lugarRaw": _clean(r.get("Lugar")),
+            "categoria": _clean(r.get("Categoría"), "Other"),
             "nombre": _clean(r.get("Nombre del seminario"), "Untitled seminar"),
             "speakers": speakers, "fecha": ts.strftime("%Y-%m-%d") if ts is not None else None,
             "hora": _time_str(r.get("Hora")), "anio": year, "semestre": semester_of(ts),
@@ -1366,6 +1367,71 @@ def _drive_upload_xlsx(file_id: str, data: bytes) -> None:
         raise RuntimeError(f"Drive upload failed (HTTP {r.status_code}): {r.text[:200]}.{hint}")
 
 
+def _set_cell_value(cell, val) -> None:
+    """Writes a value; real dates / times get a readable format only if the cell has none."""
+    cell.value = val
+    if cell.number_format == "General":
+        if isinstance(val, dt.datetime) or (isinstance(val, dt.date) and not isinstance(val, dt.datetime)):
+            cell.number_format = "d/m/yyyy"
+        elif isinstance(val, dt.time):
+            cell.number_format = "h:mm AM/PM"
+
+
+def _update_row(xlsx: bytes, sheet: str, key_col: str, key_val: str, occurrence: int, values: dict,
+                freeze_formulas: bool = False) -> bytes:
+    """Changes only the given cells of ONE existing row (found by `key_col` == `key_val`,
+    nth occurrence). Everything else in the workbook is left as it is."""
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(xlsx))
+    ws = wb[sheet]
+    headers = {str(ws.cell(1, c).value).strip(): c for c in range(1, ws.max_column + 1) if ws.cell(1, c).value is not None}
+    missing = (set(values) | {key_col}) - set(headers)
+    if missing:
+        raise RuntimeError(f"These columns are not in sheet '{sheet}': {', '.join(sorted(missing))}")
+    target, seen = None, 0
+    for r in range(2, ws.max_row + 1):
+        if str(ws.cell(r, headers[key_col]).value or "").strip().lower() == key_val.strip().lower():
+            seen += 1
+            if seen == occurrence:
+                target = r
+                break
+    if target is None:
+        raise RuntimeError(f"'{key_val}' was not found in the file (it may have been changed or deleted by someone else).")
+    if freeze_formulas:
+        vals = load_workbook(io.BytesIO(xlsx), data_only=True)[sheet]
+        for r in range(2, ws.max_row + 1):
+            for c in headers.values():
+                cell = ws.cell(r, c)
+                if isinstance(cell.value, str) and cell.value.startswith("="):
+                    cached = vals.cell(r, c).value
+                    if cached is not None and not (isinstance(cached, str) and cached.startswith("#")):
+                        cell.value = cached
+    for col, val in values.items():
+        _set_cell_value(ws.cell(target, headers[col]), val)
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def _finish_write(fid: str, sheet: str, old: bytes, build, n_new: int, allowed=()) -> bool:
+    """build(freeze) -> new workbook bytes. Verifies nothing the dashboard reads is lost
+    (retrying once with formulas frozen to their cached values), uploads, clears caches.
+    Returns True if formulas had to be frozen."""
+    new = build(False)
+    lost = [c for c in _lost_columns(old, new, sheet, n_new) if c not in allowed]
+    frozen = False
+    if lost:
+        new = build(True)
+        lost = [c for c in _lost_columns(old, new, sheet, n_new) if c not in allowed]
+        frozen = True
+        if lost:
+            raise RuntimeError(f"Saving would lose values in column(s): {', '.join(lost)}. Nothing was saved.")
+    _drive_upload_xlsx(fid, new)
+    for fn in (_download_drive_file_bytes, load_raw_sheets, build_dataset):
+        fn.clear()
+    return frozen
+
+
 def _append_rows(xlsx: bytes, sheet: str, rows: List[dict], freeze_formulas: bool = False) -> bytes:
     """Appends `rows` (dicts keyed by the sheet's header text) below the last data row, copying the
     previous row's cell style. Existing cells are never modified, except when `freeze_formulas`
@@ -1412,13 +1478,7 @@ def _append_rows(xlsx: bytes, sheet: str, rows: List[dict], freeze_formulas: boo
             val = row.get(h)
             if val is None or val == "":
                 continue
-            cell.value = val
-            if isinstance(val, dt.datetime) and cell.number_format == "General":
-                cell.number_format = "d/m/yyyy"
-            elif isinstance(val, dt.date) and not isinstance(val, dt.datetime) and cell.number_format == "General":
-                cell.number_format = "d/m/yyyy"
-            elif isinstance(val, dt.time) and cell.number_format == "General":
-                cell.number_format = "h:mm AM/PM"
+            _set_cell_value(cell, val)
 
     # Excel Tables / autofilters that end at the old last row must grow with the data.
     for t in list(ws.tables.values()):
@@ -1465,19 +1525,18 @@ def commit_rows(kind: str, rows: List[dict]) -> dict:
     if not fresh:
         return {"written": 0, "skipped": skipped, "frozen": False}
 
-    new = _append_rows(old, sheet, fresh)
-    lost = _lost_columns(old, new, sheet, len(fresh))
-    frozen = False
-    if lost:   # formulas whose cached values would disappear -> keep their current values instead
-        new = _append_rows(old, sheet, fresh, freeze_formulas=True)
-        lost = _lost_columns(old, new, sheet, len(fresh))
-        frozen = True
-        if lost:
-            raise RuntimeError(f"Saving would lose values in column(s): {', '.join(lost)}. Nothing was saved.")
-    _drive_upload_xlsx(fid, new)
-    for fn in (_download_drive_file_bytes, load_raw_sheets, build_dataset):
-        fn.clear()
+    frozen = _finish_write(fid, sheet, old, lambda fz: _append_rows(old, sheet, fresh, freeze_formulas=fz), len(fresh))
     return {"written": len(fresh), "skipped": skipped, "frozen": frozen}
+
+
+def commit_update(kind: str, key_col: str, key_val: str, occurrence: int, values: dict) -> dict:
+    """Edits cells of one existing row (always on a fresh copy of the file)."""
+    tgt = WRITE_TARGETS[kind]
+    fid, sheet = tgt["file_id"], tgt["sheet"]
+    old = _drive_download_fresh(fid)
+    frozen = _finish_write(fid, sheet, old, lambda fz: _update_row(old, sheet, key_col, key_val, occurrence, values, fz),
+                           0, allowed=set(values))
+    return {"written": 1, "skipped": [], "frozen": frozen}
 
 
 # ── 12) PAGE — Manage Data ───────────────────────────────────────────────
@@ -1526,56 +1585,76 @@ def _uniq(values) -> List[str]:
                    and str(v).strip().upper() != "NA"})
 
 
-def _review_and_save(kind: str, title: str):
-    """Second step of every form: show exactly what will be appended and ask for confirmation."""
-    pend = st.session_state.get(f"pending_{kind}")
+PART_COLS = ["Nombre", "Correo", "Género", "Tipo Asistente", "Modalidad"]   # as in BD_participantes (+ the seminar column)
+
+
+def _show_saved(kind: str):
     done = st.session_state.pop(f"saved_{kind}", None)
     if done:
         st.success(done["msg"])
         for w in done.get("warnings", []):
             st.warning(w)
-    if not pend:
-        return
-    st.markdown(f"##### Review — {title}")
-    st.caption("These rows will be appended at the end of the Excel file in Drive. Nothing is saved until you confirm.")
-    st.dataframe(pend["preview"], use_container_width=True, hide_index=True)
-    c1, c2, _ = st.columns([1, 1, 2])
-    if c2.button("Discard", key=f"discard_{kind}"):
-        st.session_state.pop(f"pending_{kind}", None)
-        st.rerun()
-    if c1.button("Confirm & save to Drive", key=f"confirm_{kind}", icon=":material/cloud_upload:"):
-        with st.spinner("Saving to Drive…"):
-            try:
-                res = commit_rows(kind, pend["rows"])
-            except Exception as e:
-                st.error(f"Not saved: {e}")
-                return
-        warnings = []
-        if res["skipped"]:
-            warnings.append("Skipped (already in the file): " + "; ".join(res["skipped"]))
-        if res["frozen"]:
-            warnings.append("Some formula cells in this workbook were converted to their current values so nothing is lost.")
-        warnings += pend.get("after_warnings", []) if res["written"] else []
-        msg = (f"Saved {res['written']} row(s) to {WRITE_TARGETS[kind]['sheet']}. The dashboard now includes them."
-               if res["written"] else "Nothing new to save — everything was already in the file.")
-        st.session_state[f"saved_{kind}"] = {"msg": msg, "warnings": warnings}
-        st.session_state.pop(f"pending_{kind}", None)
-        if kind == "seminar":
-            st.session_state["ns_ver"] = st.session_state.get("ns_ver", 0) + 1
-        elif kind == "speaker":
-            st.session_state["sp_ver"] = st.session_state.get("sp_ver", 0) + 1
-        if kind == "participant":   # empty the table for the next batch
-            st.session_state["pa_df"] = pd.DataFrame({"Name": [""] * 6, "Email": [""] * 6, "Gender": [None] * 6,
-                                                      "Attendee Type": [None] * 6, "Modality": [None] * 6})
-            st.session_state["pa_ver"] = st.session_state.get("pa_ver", 0) + 1
-        st.rerun()
+
+
+def _save(kind: str, action, ok_msg: str, warnings=None) -> bool:
+    """Runs a Drive write, remembers the result for the next run (the page reruns right after)."""
+    with st.spinner("Saving to Drive…"):
+        try:
+            res = action()
+        except Exception as e:
+            st.error(f"Not saved: {e}")
+            return False
+    warns = list(warnings or [])
+    if res.get("skipped"):
+        warns.append("Skipped (already in the file): " + "; ".join(res["skipped"]))
+    if res.get("frozen"):
+        warns.append("Some formula cells in this workbook were converted to their current values so nothing is lost.")
+    msg = ok_msg if res.get("written") else "Nothing new to save — everything was already in the file."
+    st.session_state[f"saved_{kind}"] = {"msg": msg, "warnings": warns if res.get("written") else warns}
+    return True
+
+
+def _participants_template(types: List[str]) -> bytes:
+    """Empty .xlsx with exactly the columns the Drive file asks for (the seminar is chosen on the page),
+    with dropdowns for Género / Tipo Asistente / Modalidad."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from openpyxl.worksheet.datavalidation import DataValidation
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "participantes"
+    ws.append(PART_COLS)
+    for c in range(1, len(PART_COLS) + 1):
+        ws.cell(1, c).font = Font(bold=True)
+        ws.column_dimensions[chr(64 + c)].width = 30 if c <= 2 else 18
+    lists = wb.create_sheet("Lists")
+    for i, v in enumerate(types, start=1):
+        lists.cell(i, 1).value = v
+    for i, v in enumerate(MODALITIES, start=1):
+        lists.cell(i, 2).value = v
+    for i, v in enumerate(["M", "F"], start=1):
+        lists.cell(i, 3).value = v
+    specs = {"C": f"=Lists!$C$1:$C$2", "D": f"=Lists!$A$1:$A${max(len(types), 1)}", "E": f"=Lists!$B$1:$B${len(MODALITIES)}"}
+    for col, ref in specs.items():
+        dv = DataValidation(type="list", formula1=ref, allow_blank=True)
+        ws.add_data_validation(dv)
+        dv.add(f"{col}2:{col}1000")
+    lists.sheet_state = "hidden"
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _id_number(raw_id: str) -> int:
+    m = re.search(r"(\d+)\s*$", str(raw_id))
+    return int(m.group(1)) if m else -1
 
 
 def page_manage():
     _render_header(
         "Manage Data",
-        "Add a seminar, a speaker, or participants. Rows are appended to the Excel files in Drive "
-        "(BD_seminarios / BD_conferencistas / BD_participantes) after you review them.",
+        "Add or edit a seminar, add a speaker, or add participants. Changes are saved straight into the Excel "
+        "files in Drive (BD_seminarios / BD_conferencistas / BD_participantes).",
     )
     if not _editor_unlocked():
         return
@@ -1584,75 +1663,120 @@ def page_manage():
     seminars = build_dataset()
     sem_df, conf_df, part_df = load_raw_sheets()
     raw_ids = [str(x).strip() for x in sem_df["Seminario"].dropna()]
-    sem_opts = []
-    for sm in sorted(seminars, key=lambda x: x["fecha"] or "", reverse=True):
-        if sm["rawId"] not in [o[0] for o in sem_opts]:
-            sem_opts.append((sm["rawId"], f'{sm["rawId"]} — {sm["nombre"][:70]} ({sm["fecha"] or "TBD"})'))
+    firsts = {}
+    for sm in seminars:                      # one entry per raw ID (first occurrence)
+        firsts.setdefault(sm["rawId"].lower(), sm)
+    sem_opts = [(sm["rawId"], f'{sm["rawId"]} — {sm["nombre"][:70]} ({sm["fecha"] or "TBD"})')
+                for sm in sorted(firsts.values(), key=lambda x: x["fecha"] or "", reverse=True)]
+    sem_ids = [o[0] for o in sem_opts]
     sem_label = dict(sem_opts)
+    last_sem = st.session_state.get("last_seminar")      # the seminar created just before (pre-selected below)
+    if last_sem not in sem_label:
+        last_sem = None
 
-    tab_sem, tab_spk, tab_par = st.tabs(["📅 New seminar", "🎤 Speaker", "👥 Participants"])
+    tab_sem, tab_spk, tab_par = st.tabs(["📅 Seminar", "🎤 Speaker", "👥 Participants"])
 
-    # ───────────────── New seminar ─────────────────
+    # ───────────────── Seminar (new or edit) ─────────────────
     with tab_sem:
+        _show_saved("seminar")
         nv = st.session_state.get("ns_ver", 0)     # bumped after a save so the form starts clean
         cats = _uniq(list(sem_df["Categoría"]) + list(SEMINAR_PREFIX))
+        top1, top2 = st.columns(2)
+        category = top1.selectbox("Category", cats, accept_new_options=True, key="ns_cat")
+        category = (category or "").strip()
+
+        # Seminar ID right at the top: the suggested new ID first, then the earlier seminars of this category.
+        in_cat = sorted([sm for sm in firsts.values() if sm["categoria"].lower() == category.lower()],
+                        key=lambda x: (_id_number(x["rawId"]), x["fecha"] or ""), reverse=True)
+        new_id = _suggest_seminar_id(category, raw_ids)
+        id_labels = {new_id: f"{new_id}  ·  new seminar"}
+        id_labels.update({sm["rawId"]: f'{sm["rawId"]}  ·  {sm["nombre"][:55]} ({sm["fecha"] or "TBD"})' for sm in in_cat})
+        sel_id = top2.selectbox(
+            "Seminar ID", list(id_labels), format_func=lambda x: id_labels.get(x, x), accept_new_options=True,
+            key=f"ns_id_{category}_{len(raw_ids)}_{nv}",
+            help="The first option is a new seminar. Pick an earlier ID of this category to edit it. You can also type a custom ID.")
+        sel_id = (sel_id or "").strip()
+        cur = firsts.get(sel_id.lower())
+        editing = cur is not None and cur["categoria"].lower() == category.lower()
+        if editing:
+            st.caption(f'Editing **{cur["rawId"]}** — the ID can\'t be changed (speakers and participants are linked to it). '
+                       "Only the fields you change are written.")
+        ek = f"{category}|{sel_id}|{nv}"
+
         c1, c2 = st.columns(2)
         with c1:
-            category = st.selectbox("Category", cats, accept_new_options=True, key="ns_cat")
-            name = st.text_input("Seminar name", key=f"ns_name_{nv}")
-            speakers = st.multiselect("Speaker(s) — up to 5", _uniq(
-                [n for sm in seminars for n in sm["speakers"]]), accept_new_options=True, max_selections=5, key=f"ns_speakers_{nv}")
-            sid = st.text_input("Seminar ID (unique)", value=_suggest_seminar_id(category or "", raw_ids),
-                                key=f"ns_id_{category}_{len(raw_ids)}_{nv}", help="Used to link speakers and participants to this seminar.")
+            name = st.text_input("Seminar name", value=cur["nombre"] if editing else "", key=f"ns_name_{ek}")
+            known_spk = _uniq([n for sm in seminars for n in sm["speakers"]])
+            default_spk = list(cur["speakers"]) if editing else []
+            speakers = st.multiselect("Speaker(s) — up to 5", _uniq(known_spk + default_spk), default=default_spk,
+                                      accept_new_options=True, max_selections=5, key=f"ns_spk_{ek}")
+            areas = _uniq(list(sem_df["Área"]) + ([cur["area"]] if editing else []))
+            area = st.selectbox("Area", areas, accept_new_options=True, key=f"ns_area_{ek}",
+                                index=areas.index(cur["area"]) if editing and cur["area"] in areas else None,
+                                placeholder="Select or type")
         with c2:
             d1, d2 = st.columns(2)
-            date = d1.date_input("Date", value=dt.date.today(), key="ns_date", format="DD/MM/YYYY")
-            tbd_time = d2.checkbox("Time to be defined", key="ns_time_tbd")
-            time_val = d2.time_input("Time", value=dt.time(12, 30), key="ns_time", disabled=tbd_time)
-            modality = st.selectbox("Modality", MODALITIES, key="ns_mod")
-            loc_default = "Virtual" if modality == "Online" else ""
-            place = st.text_input("Location", value=loc_default, key=f"ns_loc_{modality}", placeholder="e.g. SD 704")
-            area = st.selectbox("Area", _uniq(sem_df["Área"]), accept_new_options=True, key="ns_area")
+            d0 = dt.date.fromisoformat(cur["fecha"]) if editing and cur["fecha"] else dt.date.today()
+            date = d1.date_input("Date", value=d0, key=f"ns_date_{ek}", format="DD/MM/YYYY")
+            t0 = dt.time(*map(int, cur["hora"].split(":"))) if editing and cur["hora"] else dt.time(12, 30)
+            time_val = d2.time_input("Time", value=t0, key=f"ns_time_{ek}")
+            mod0 = MODALITIES.index(cur["modalidad"]) if editing and cur["modalidad"] in MODALITIES else 0
+            modality = st.selectbox("Modality", MODALITIES, index=mod0, key=f"ns_mod_{ek}")
+            loc0 = (cur["lugarRaw"] or "") if editing else ("Virtual" if modality == "Online" else "")
+            place = st.text_input("Location", value=loc0, key=f"ns_loc_{ek}_{modality}", placeholder="e.g. SD 704")
 
-        if st.button("Review seminar", key="ns_review", icon=":material/fact_check:"):
+        if st.button("Save seminar", key="ns_save", icon=":material/save:"):
             errs = []
-            if not (category or "").strip(): errs.append("Category is required.")
+            if not category: errs.append("Category is required.")
+            if not sel_id: errs.append("Seminar ID is required.")
             if not name.strip(): errs.append("Seminar name is required.")
-            if not sid.strip(): errs.append("Seminar ID is required.")
-            elif sid.strip().lower() in {x.lower() for x in raw_ids}: errs.append(f'The ID "{sid.strip()}" already exists.')
             if not (area or "").strip(): errs.append("Area is required.")
             for e in errs:
                 st.error(e)
             if not errs:
-                spk = (speakers + [None] * 5)[:5]
-                row = {
-                    "Seminario": sid.strip(), "Categoría": category.strip(), "Nombre del seminario": name.strip(),
-                    **{f"Conferencista {i + 1}": (spk[i] or "NA") for i in range(5)},
-                    "Fecha": dt.datetime.combine(date, dt.time()), "Hora": ("NA" if tbd_time else time_val),
-                    "Año": date.year, "Modalidad": modality, "Lugar": place.strip() or "TBD", "Área": area.strip(),
-                }
+                spk5 = (speakers + [None] * 5)[:5]
                 known = {sp["nombre"].strip().lower() for sm in seminars for sp in sm["speakerDetails"]}
                 missing = [n for n in speakers if n.strip().lower() not in known]
-                st.session_state["pending_seminar"] = {
-                    "rows": [row],
-                    "preview": pd.DataFrame([{
-                        "ID": row["Seminario"], "Category": row["Categoría"], "Seminar": row["Nombre del seminario"],
-                        "Speaker(s)": ", ".join(speakers) or "—", "Date": date.strftime("%d/%m/%Y"),
-                        "Time": "TBD" if tbd_time else time_val.strftime("%H:%M"), "Modality": modality,
-                        "Location": row["Lugar"], "Area": row["Área"],
-                    }]),
-                    "after_warnings": ([f'No speaker profile yet for: {", ".join(missing)}. Add it in the "Speaker" tab '
-                                        f'(select seminar "{sid.strip()}").'] if missing else []),
-                }
-        _review_and_save("seminar", "new seminar")
+                spk_warn = ([f'No speaker profile yet for: {", ".join(missing)}. Add it in the "Speaker" tab.'] if missing else [])
+                if editing:
+                    upd = {}
+                    if name.strip() != cur["nombre"]: upd["Nombre del seminario"] = name.strip()
+                    if list(speakers) != list(cur["speakers"]):
+                        upd.update({f"Conferencista {i + 1}": (spk5[i] or "NA") for i in range(5)})
+                    if date.isoformat() != (cur["fecha"] or ""):
+                        upd["Fecha"] = dt.datetime.combine(date, dt.time()); upd["Año"] = date.year
+                    if (cur["hora"] is None and time_val != dt.time(12, 30)) or (cur["hora"] is not None and time_val.strftime("%H:%M") != cur["hora"]):
+                        upd["Hora"] = time_val
+                    if modality != cur["modalidad"]: upd["Modalidad"] = modality
+                    if place.strip() != (cur["lugarRaw"] or ""): upd["Lugar"] = place.strip() or "TBD"
+                    if area.strip() != cur["area"]: upd["Área"] = area.strip()
+                    if not upd:
+                        st.info("No changes to save.")
+                    elif _save("seminar", lambda: commit_update("seminar", "Seminario", cur["rawId"], cur["occ"], upd),
+                               f'Saved changes to {cur["rawId"]}: {", ".join(upd)}.', spk_warn):
+                        st.session_state["ns_ver"] = nv + 1
+                        st.rerun()
+                else:
+                    row = {
+                        "Seminario": sel_id, "Categoría": category, "Nombre del seminario": name.strip(),
+                        **{f"Conferencista {i + 1}": (spk5[i] or "NA") for i in range(5)},
+                        "Fecha": dt.datetime.combine(date, dt.time()), "Hora": time_val, "Año": date.year,
+                        "Modalidad": modality, "Lugar": place.strip() or "TBD", "Área": area.strip(),
+                    }
+                    if _save("seminar", lambda: commit_rows("seminar", [row]),
+                             f'Saved seminar "{sel_id}". It is now pre-selected in the Speaker and Participants tabs.', spk_warn):
+                        st.session_state["last_seminar"] = sel_id
+                        st.session_state["ns_ver"] = nv + 1
+                        st.rerun()
 
     # ───────────────── Speaker ─────────────────
     with tab_spk:
+        _show_saved("speaker")
         sv = st.session_state.get("sp_ver", 0)
         mode = st.radio("What do you want to do?", ["New speaker", "Existing speaker — add another seminar"],
                         horizontal=True, key="sp_mode")
-        led = st.multiselect("Seminar(s) led", [o[0] for o in sem_opts], format_func=lambda x: sem_label.get(x, x),
-                             key=f"sp_led_{sv}")
+        led = st.multiselect("Seminar(s) led", sem_ids, default=[last_sem] if last_sem else [],
+                             format_func=lambda x: sem_label.get(x, x), key=f"sp_led_{sv}_{last_sem}")
         profile = {}
         if mode.startswith("New"):
             c1, c2 = st.columns(2)
@@ -1684,13 +1808,15 @@ def page_manage():
                     st.caption(f'Profile reused from the file: {_clean(profile.get("Nombre Universidad origen"), "—")} · '
                                f'{country_en(profile.get("Nacionalidad"))} · {_clean(profile.get("Genero"), "—")}')
 
-        if st.button("Review speaker", key="sp_review", icon=":material/fact_check:"):
+        if st.button("Save speaker", key="sp_save", icon=":material/save:"):
             errs = []
-            if not full: errs.append("Speaker name is required." if not mode.startswith("New") else "First and last name are required.")
-            if mode.startswith("New") and not (first.strip() and last.strip()): errs.append("First and last name are required.")
+            if mode.startswith("New"):
+                if not (first.strip() and last.strip()): errs.append("First and last name are required.")
+                if not (uni or "").strip(): errs.append("Origin university is required.")
+                if not (nat or "").strip(): errs.append("Nationality is required.")
+            elif not full:
+                errs.append("Select the speaker.")
             if not led: errs.append("Select at least one seminar.")
-            if mode.startswith("New") and not (uni or "").strip(): errs.append("Origin university is required.")
-            if mode.startswith("New") and not (nat or "").strip(): errs.append("Nationality is required.")
             for e in errs:
                 st.error(e)
             if not errs:
@@ -1698,52 +1824,62 @@ def page_manage():
                 for sem_id in led:
                     if mode.startswith("New"):
                         base = {"Nombre": first.strip(), "Apellido": last.strip(), "Nombre Completo": full, "Genero": gender,
-                                "Nacionalidad": nat.strip(), "Fecha nacimiento": (dt.datetime.combine(birth, dt.time()) if has_birth else "NA"),
+                                "Nacionalidad": nat.strip(),
+                                "Fecha nacimiento": (dt.datetime.combine(birth, dt.time()) if has_birth else "NA"),
                                 "Nombre Universidad origen": uni.strip(), "País Universidad origen": (uni_c or "").strip() or "NA",
                                 "Ubicación": (region or "").strip() or "NA"}
                     else:
-                        base = {k: (profile.get(k) if profile.get(k) is not None and not (isinstance(profile.get(k), float) and pd.isna(profile.get(k))) else "NA")
-                                for k in ["Nombre", "Apellido", "Genero", "Nacionalidad", "Nombre Universidad origen", "País Universidad origen", "Ubicación"]}
+                        def _v(k):
+                            v = profile.get(k)
+                            return "NA" if v is None or (isinstance(v, float) and pd.isna(v)) else v
+                        base = {k: _v(k) for k in ["Nombre", "Apellido", "Genero", "Nacionalidad", "Fecha nacimiento",
+                                                   "Nombre Universidad origen", "País Universidad origen", "Ubicación"]}
                         base["Nombre Completo"] = full
-                        base["Fecha nacimiento"] = _clean(profile.get("Fecha nacimiento"), "NA") if not hasattr(profile.get("Fecha nacimiento"), "year") else profile.get("Fecha nacimiento")
                     rows.append({**base, "Seminario que dirigió": sem_id})
-                st.session_state["pending_speaker"] = {
-                    "rows": rows,
-                    "preview": pd.DataFrame([{
-                        "Speaker": r["Nombre Completo"], "Gender": r["Genero"], "Nationality": country_en(r["Nacionalidad"]),
-                        "University": r["Nombre Universidad origen"], "Region": r["Ubicación"], "Seminar led": r["Seminario que dirigió"],
-                    } for r in rows]),
-                    "after_warnings": [],
-                }
-        _review_and_save("speaker", "speaker")
+                if _save("speaker", lambda: commit_rows("speaker", rows),
+                         f'Saved {full} for {len(rows)} seminar(s): {", ".join(led)}.'):
+                    st.session_state["sp_ver"] = sv + 1
+                    st.rerun()
 
     # ───────────────── Participants ─────────────────
     with tab_par:
-        sem_pick = st.selectbox("Seminar attended", [o[0] for o in sem_opts], format_func=lambda x: sem_label.get(x, x),
-                                index=None, placeholder="Select the seminar", key="pa_sem")
-        d1, d2 = st.columns(2)
-        types = _uniq(list(part_df["Tipo Asistente"]) + ATTENDEE_TYPES)
-        def_type = d1.selectbox("Default attendee type", types, index=types.index("Professor") if "Professor" in types else 0, key="pa_deftype")
-        def_mod = d2.selectbox("Default modality", MODALITIES, key="pa_defmod")
-
+        _show_saved("participant")
+        sem_pick = st.selectbox("Seminar attended", sem_ids, format_func=lambda x: sem_label.get(x, x),
+                                index=sem_ids.index(last_sem) if last_sem else None, placeholder="Select the seminar",
+                                key=f"pa_sem_{last_sem}")
         st.session_state.setdefault("pa_ver", 0)
-        st.session_state.setdefault("pa_df", pd.DataFrame({"Name": [""] * 6, "Email": [""] * 6, "Gender": [None] * 6,
-                                                            "Attendee Type": [None] * 6, "Modality": [None] * 6}))
-        up = st.file_uploader("Or upload a list (.xlsx / .csv) with columns Name, Email, Gender, Attendee Type, Modality",
-                              type=["xlsx", "csv"], key="pa_upload")
+        blank = lambda: pd.DataFrame({c: [None] * 6 for c in PART_COLS})
+        st.session_state.setdefault("pa_df", blank())
+        types = _uniq(list(part_df["Tipo Asistente"]) + ATTENDEE_TYPES + [v for v in st.session_state["pa_df"]["Tipo Asistente"] if v])
+
+        u1, u2 = st.columns([3, 2])
+        with u1:
+            up = st.file_uploader("Upload the participants list (.xlsx / .csv)", type=["xlsx", "csv"], key="pa_upload")
+        with u2:
+            st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
+            st.download_button("Download template (.xlsx)", data=_participants_template(_uniq(list(part_df["Tipo Asistente"]) + ATTENDEE_TYPES)),
+                               file_name="BD_participantes_template.xlsx", mime=XLSX_MIME, icon=":material/download:", key="pa_template")
+            st.caption("Same columns as BD_participantes (the seminar is the one selected above).")
+
         if up is not None and st.session_state.get("pa_upload_sig") != (up.name, up.size):
             try:
                 raw = pd.read_csv(up) if up.name.lower().endswith(".csv") else pd.read_excel(up)
-                alias = {"name": "Name", "nombre": "Name", "email": "Email", "correo": "Email", "e-mail": "Email",
-                         "gender": "Gender", "género": "Gender", "genero": "Gender", "sexo": "Gender",
-                         "attendee type": "Attendee Type", "tipo asistente": "Attendee Type", "type": "Attendee Type",
-                         "modality": "Modality", "modalidad": "Modality"}
+                alias = {"name": "Nombre", "nombre": "Nombre", "email": "Correo", "correo": "Correo", "e-mail": "Correo",
+                         "gender": "Género", "género": "Género", "genero": "Género", "sexo": "Género",
+                         "attendee type": "Tipo Asistente", "tipo asistente": "Tipo Asistente", "type": "Tipo Asistente",
+                         "modality": "Modalidad", "modalidad": "Modalidad"}
                 raw.columns = [alias.get(str(c).strip().lower(), str(c).strip()) for c in raw.columns]
-                for c in ["Name", "Email", "Gender", "Attendee Type", "Modality"]:
+                if "Nombre" not in raw.columns:
+                    raise ValueError("the file needs a 'Nombre' column (use the template)")
+                for c in PART_COLS:
                     if c not in raw.columns:
                         raw[c] = None
-                raw["Gender"] = raw["Gender"].map(lambda g: norm_genero(g) if g is not None and not pd.isna(g) else None).replace({"Unknown": None})
-                st.session_state["pa_df"] = raw[["Name", "Email", "Gender", "Attendee Type", "Modality"]].astype(object).where(raw.notna(), None)
+                raw = raw[PART_COLS].astype(object).where(raw[PART_COLS].notna(), None)
+                raw["Género"] = raw["Género"].map(lambda g: {"M": "M", "F": "F"}.get(norm_genero(g)) if g is not None else None)
+                canon = {t.lower(): t for t in types}
+                raw["Tipo Asistente"] = raw["Tipo Asistente"].map(lambda t: canon.get(str(t).strip().lower(), str(t).strip()) if t is not None else None)
+                raw["Modalidad"] = raw["Modalidad"].map(lambda m: norm_modalidad(m) if m is not None else None).replace({"Unknown": None})
+                st.session_state["pa_df"] = raw.reset_index(drop=True)
                 st.session_state["pa_ver"] += 1
                 st.session_state["pa_upload_sig"] = (up.name, up.size)
                 st.rerun()
@@ -1754,44 +1890,41 @@ def page_manage():
             st.session_state["pa_df"], num_rows="dynamic", use_container_width=True, hide_index=True,
             key=f"pa_editor_{st.session_state['pa_ver']}",
             column_config={
-                "Name": st.column_config.TextColumn("Name", required=True),
-                "Email": st.column_config.TextColumn("Email"),
-                "Gender": st.column_config.SelectboxColumn("Gender", options=["M", "F"]),
-                "Attendee Type": st.column_config.SelectboxColumn("Attendee Type", options=types),
-                "Modality": st.column_config.SelectboxColumn("Modality", options=MODALITIES),
+                "Nombre": st.column_config.TextColumn("Nombre", required=True),
+                "Correo": st.column_config.TextColumn("Correo"),
+                "Género": st.column_config.SelectboxColumn("Género", options=["M", "F"]),
+                "Tipo Asistente": st.column_config.SelectboxColumn("Tipo Asistente", options=types),
+                "Modalidad": st.column_config.SelectboxColumn("Modalidad", options=MODALITIES),
             },
         )
-        st.caption("Tip: you can paste a block of rows straight from Excel into the table. Blank type / modality use the defaults above.")
+        st.caption("You can edit the table, add rows, or paste a block of rows from Excel. It refreshes whenever you upload a list.")
 
-        if st.button("Review participants", key="pa_review", icon=":material/fact_check:"):
-            errs, rows = [], []
+        if st.button("Save participants", key="pa_save", icon=":material/save:"):
+            errs, rows, names_seen = [], [], set()
             if not sem_pick: errs.append("Select the seminar.")
-            names_seen = set()
             for i, rec in enumerate(edited.to_dict("records"), start=1):
-                nm = _clean(rec.get("Name"))
+                nm = _clean(rec.get("Nombre"))
                 if not nm:
                     continue
-                email = _clean(rec.get("Email"), "")
+                email = _clean(rec.get("Correo"), "")
                 if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
                     errs.append(f"Row {i}: '{email}' is not a valid email.")
                 if nm.lower() in names_seen:
                     errs.append(f"Row {i}: '{nm}' appears twice in this list.")
                 names_seen.add(nm.lower())
-                rows.append({"Nombre": nm, "Correo": email or None, "Género": _clean(rec.get("Gender")),
-                             "Tipo Asistente": _clean(rec.get("Attendee Type")) or def_type,
-                             "Modalidad": _clean(rec.get("Modality")) or def_mod, "Seminario al que asistió": sem_pick})
+                typ, mod = _clean(rec.get("Tipo Asistente")), _clean(rec.get("Modalidad"))
+                if not typ or not mod:
+                    errs.append(f"Row {i} ({nm}): Tipo Asistente and Modalidad are required.")
+                rows.append({"Nombre": nm, "Correo": email or None, "Género": _clean(rec.get("Género")),
+                             "Tipo Asistente": typ, "Modalidad": mod, "Seminario al que asistió": sem_pick})
             if not rows: errs.append("Add at least one participant.")
             for e in errs:
                 st.error(e)
-            if not errs:
-                st.session_state["pending_participant"] = {
-                    "rows": rows,
-                    "preview": pd.DataFrame([{"Seminar": r["Seminario al que asistió"], "Name": r["Nombre"], "Email": r["Correo"] or "",
-                                              "Gender": r["Género"] or "", "Attendee Type": r["Tipo Asistente"],
-                                              "Modality": r["Modalidad"]} for r in rows]),
-                    "after_warnings": [],
-                }
-        _review_and_save("participant", "participants")
+            if not errs and _save("participant", lambda: commit_rows("participant", rows),
+                                  f'Saved {len(rows)} participant(s) for "{sem_pick}".'):
+                st.session_state["pa_df"] = blank()
+                st.session_state["pa_ver"] += 1
+                st.rerun()
 
 
 # ── 13) NAVIGATION ────────────────────────────────────────────────────────
