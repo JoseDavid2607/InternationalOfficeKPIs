@@ -879,6 +879,179 @@ def page_cover():
         )
 
 
+# ── 7b) EXCEL FOR THE INFOGRAPHIC (demographics only, no financials) ──────
+def _infographic_sections(weeks: List[dict], totals: dict) -> List[Tuple[str, str, List[Tuple[str, pd.DataFrame]]]]:
+    """Sheets for the marketing team: (sheet name, sheet note, [(section title, table)]).
+    Only participant demographics and survey results — nothing financial. 'Students who traveled'
+    = students with an enrollment (Matricula) recorded."""
+    def gender_counts(w):
+        f, m = w["gender"].get("F", 0), w["gender"].get("M", 0)
+        return f, m, max(w["abroadCount"] - f - m, 0)
+
+    def share(a, b):
+        return a / b if b else None
+
+    tot_f = sum(w["gender"].get("F", 0) for w in weeks)
+    tot_m = sum(w["gender"].get("M", 0) for w in weeks)
+    tot_abroad = sum(w["abroadCount"] for w in weeks)
+    tot_reg = sum(w["registeredCount"] for w in weeks)
+    not_traveled = max(tot_reg - tot_abroad, 0)
+    programs: Dict[str, Dict[str, int]] = {}
+    for w in weeks:
+        for prog, n in w["programas"].items():
+            programs.setdefault(prog, {})[w["key"]] = n
+    prog_total = {p: sum(v.values()) for p, v in programs.items()}
+    prog_sorted = sorted(prog_total, key=lambda p: (p == "Unspecified", -prog_total[p], p))   # "Unspecified" always last
+
+    # 1. Overview
+    big = max(weeks, key=lambda w: w["abroadCount"]) if weeks else None
+    top_prog = prog_sorted[0] if prog_sorted else None
+    overview = pd.DataFrame([
+        ("International weeks", len(weeks)),
+        ("Countries visited", totals["countries"]),
+        ("Students who traveled", tot_abroad),
+        ("Registered students who did not travel", not_traveled),
+        ("Women", tot_f), ("Men", tot_m),
+        ("% women (of students with gender recorded)", share(tot_f, tot_f + tot_m)),
+        ("% men (of students with gender recorded)", share(tot_m, tot_f + tot_m)),
+        ("Academic programs represented", len(programs)),
+        ("Survey responses received", sum(w["survey"]["respondents"] for w in weeks)),
+    ], columns=["Indicator", "Value"])
+    highlights = pd.DataFrame([
+        ("Week with the most students", f'{big["name"]} — {big["abroadCount"]} students' if big else "—"),
+        ("Program with the most students", f"{top_prog} — {prog_total[top_prog]} students" if top_prog else "—"),
+        ("Destinations", ", ".join(f'{w["location"]}, {w["country"]}' for w in weeks)),
+    ], columns=["Highlight", "Detail"])
+
+    # 2. By week
+    rows = []
+    for w in weeks:
+        f, m, _ = gender_counts(w)
+        rows.append({
+            "Partner": w["key"], "International week": w["name"], "Course": w["course"], "Faculty lead": w["professor"],
+            "City": w["location"], "Country": w["country"], "Dates": w["dates"],
+            "Students who traveled": w["abroadCount"], "Registered, did not travel": max(w["registeredCount"] - w["abroadCount"], 0),
+            "Women": f, "Men": m, "% women": share(f, f + m), "Programs represented": len(w["programas"]),
+        })
+    by_week = pd.DataFrame(rows)
+    by_week.loc[len(by_week)] = ["Total", "", "", "", "", "", "", tot_abroad, not_traveled, tot_f, tot_m,
+                                 share(tot_f, tot_f + tot_m), len(programs)]
+
+    # 3. Programs
+    prog_overall = pd.DataFrame([{
+        "Program": p, "Students": prog_total[p], "% of all students": share(prog_total[p], tot_abroad),
+        "Women": sum(w["programaGender"].get(p, {}).get("F", 0) for w in weeks),
+        "Men": sum(w["programaGender"].get(p, {}).get("M", 0) for w in weeks),
+    } for p in prog_sorted])
+    prog_week = pd.DataFrame([{"Program": p, **{w["key"]: programs[p].get(w["key"], 0) for w in weeks}, "Total": prog_total[p]}
+                              for p in prog_sorted])
+    prog_week.loc[len(prog_week)] = ["Total"] + [sum(programs[p].get(w["key"], 0) for p in prog_sorted) for w in weeks] + [sum(prog_total.values())]
+
+    # 4. Program type (MBA / EPOS ...)
+    types: Dict[str, Dict[str, int]] = {}
+    for w in weeks:
+        for p in w["participantsList"]:
+            if not p["matricula"]:
+                continue
+            t = str(p["tipoPrograma"]).strip() if p["tipoPrograma"] is not None and not pd.isna(p["tipoPrograma"]) else "Unspecified"
+            types.setdefault(t, {})[w["key"]] = types.get(t, {}).get(w["key"], 0) + 1
+    type_total = {t: sum(v.values()) for t, v in types.items()}
+    type_tbl = pd.DataFrame([{"Program type": t, **{w["key"]: types[t].get(w["key"], 0) for w in weeks}, "Total": type_total[t],
+                              "% of all students": share(type_total[t], tot_abroad)}
+                             for t in sorted(type_total, key=lambda t: (-type_total[t], t))])
+
+    # 5. Gender
+    gender_tbl = pd.DataFrame([{"Partner": w["key"], "Women": gender_counts(w)[0], "Men": gender_counts(w)[1],
+                                "Gender not recorded": gender_counts(w)[2], "Total": w["abroadCount"]} for w in weeks])
+    gender_tbl.loc[len(gender_tbl)] = ["Total", tot_f, tot_m, max(tot_abroad - tot_f - tot_m, 0), tot_abroad]
+
+    # 6. Destinations
+    dest = pd.DataFrame([{"Partner": w["key"], "City": w["location"], "Country": w["country"], "Dates": w["dates"],
+                          "Students who traveled": w["abroadCount"]} for w in weeks])
+
+    # 7. Survey results
+    survey = pd.DataFrame([{
+        "Partner": w["key"], "Students who responded": w["survey"]["respondents"],
+        "Response rate": (w["survey"]["responseRate"] / 100) if w["survey"]["respondents"] else None,
+        "Average satisfaction (1–5)": w["survey"]["avg"], "Would recommend (average, 0–10)": w["survey"]["nps"],
+        "Course objectives met, 'All' (%)": (w["survey"]["objectivesAllPct"] / 100) if w["survey"]["objectivesAllPct"] is not None else None,
+    } for w in weeks])
+    aspects = sorted({a["aspect"] for w in weeks for a in w["survey"]["aspects"]})
+    aspect_tbl = pd.DataFrame([{"Evaluated aspect (average 1–5)": asp,
+                                **{w["key"]: next((a["avg"] for a in w["survey"]["aspects"] if a["aspect"] == asp), None) for w in weeks}}
+                               for asp in aspects])
+
+    return [
+        ("1. Overview", "Headline numbers for the 2026 International Weeks. 'Students who traveled' = students with an enrollment recorded.",
+         [("Key figures", overview), ("Highlights", highlights)]),
+        ("2. By week", "One row per international week.", [("Participants by international week", by_week)]),
+        ("3. Programs", "Academic program of the students who traveled.",
+         [("Students by program (all weeks)", prog_overall), ("Students by program and week", prog_week)]),
+        ("4. Program type", "MBA / EPOS and other program types of the students who traveled.",
+         [("Students by program type and week", type_tbl)]),
+        ("5. Gender", "Students who traveled, by gender. 'Gender not recorded' keeps the totals consistent.",
+         [("Gender by week", gender_tbl)]),
+        ("6. Destinations", "Where each cohort traveled.", [("Destinations", dest)]),
+        ("7. Survey results", "Course evaluation survey (students who answered). Satisfaction is the average on a 1–5 scale.",
+         [("Survey summary by week", survey), ("Average score by aspect and week", aspect_tbl)]),
+    ]
+
+
+@st.cache_data(ttl=300)
+def infographic_xlsx() -> bytes:
+    """Clean, titled tables for the marketing team (no financial data)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    weeks, totals = build_weeks()
+    head_fill = PatternFill("solid", fgColor=ACCENT.lstrip("#"))
+    soft_fill = PatternFill("solid", fgColor=ACCENT_SOFT.lstrip("#"))
+    line = Border(bottom=Side(style="thin", color="D9D9D9"))
+    wb = Workbook()
+    wb.remove(wb.active)
+    for sheet, note, sections in _infographic_sections(weeks, totals):
+        ws = wb.create_sheet(sheet[:31])
+        ws["A1"] = f"International Weeks 2026 — {sheet.split('. ', 1)[-1]}"
+        ws["A1"].font = Font(bold=True, size=15, color=ACCENT.lstrip("#"))
+        ws["A2"] = note
+        ws["A2"].font = Font(italic=True, size=10, color="6E5C68")
+        row, widths = 4, {}
+        for title, df in sections:
+            ws.cell(row, 1, title).font = Font(bold=True, size=12)
+            row += 1
+            for c, col in enumerate(df.columns, start=1):
+                cell = ws.cell(row, c, col)
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = head_fill
+                cell.alignment = Alignment(wrap_text=True, vertical="center")
+                widths[c] = max(widths.get(c, 0), min(len(str(col)), 28) + 2)
+            row += 1
+            for rec in df.itertuples(index=False):
+                is_total = str(rec[0]) == "Total"
+                for c, val in enumerate(rec, start=1):
+                    if isinstance(val, float) and pd.isna(val):
+                        val = None
+                    cell = ws.cell(row, c, val)
+                    cell.border = line
+                    if is_total:
+                        cell.font = Font(bold=True)
+                        cell.fill = soft_fill
+                    if isinstance(val, float):
+                        name = str(df.columns[c - 1])
+                        pct = "%" in name or "rate" in name.lower() or (c == 2 and "%" in str(rec[0]))
+                        cell.number_format = "0.0%" if pct else "0.00"
+                    widths[c] = max(widths.get(c, 0), min(len(str(val)) if val is not None else 0, 60) + 2)
+                row += 1
+            row += 2
+        for c, wd in widths.items():
+            ws.column_dimensions[get_column_letter(c)].width = max(12, min(wd, 60))
+        ws.sheet_view.showGridLines = False
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # ── 8) PÁGINA — Overview ─────────────────────────────────────────────────
 def _partner_card(w: dict, show_link: bool = True):
     gender_txt = "   ".join(f'{"♀" if g == "F" else "♂"} {n}' for g, n in w["gender"].items())
@@ -922,6 +1095,13 @@ def page_overview():
         "Graduate international immersions this year, each pairing a partner business school abroad with a School of Management cohort.",
     )
 
+    dl_l, dl_r = st.columns([3, 1])
+    with dl_r:
+        st.download_button(
+            "Infographic data (Excel)", data=infographic_xlsx(), file_name="International_Weeks_2026_Infographic_Data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_infographic",
+            icon=":material/download:", use_container_width=True,
+            help="Demographic tables (no financials) for the marketing team: overview, by week, programs, program type, gender, destinations and survey results.")
     _spacer(8)
     col1, col2, col3 = st.columns(3)
     with col1:
