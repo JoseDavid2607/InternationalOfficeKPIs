@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 import re
 import io
@@ -1278,8 +1279,8 @@ def page_tables():
     st.markdown("---")
     st.markdown("### Download everything")
     label = _period_label(year, semester)
-    st.caption(f"One Excel file with all the tables above for {label} — organized in labeled sheets (read-me, summary, "
-               "seminars, speakers, participants) so the marketing team can build the infographic from it.")
+    st.caption(f"One Excel sheet with the tables above for {label}, in the layout the marketing team uses "
+               "(Seminarios · Conferencistas · Asistentes), ready to build the infographic.")
     with st.container(key="dl_pack"):
         st.download_button(
             "Download all tables for this period (Excel)",
@@ -1290,144 +1291,114 @@ def page_tables():
         )
 
 
+def _adjusted_average(counts: List[int]) -> Tuple[float, float, List[int]]:
+    """(real average, adjusted average, excluded values). The adjusted average leaves out seminars whose
+    attendance is an outlier (outside the Tukey fences, 1.5 x IQR) because they distort the average."""
+    if not counts:
+        return 0.0, 0.0, []
+    real = sum(counts) / len(counts)
+    if len(counts) < 4:
+        return real, real, []
+    q1, q3 = [float(x) for x in np.percentile(counts, [25, 75])]
+    lo, hi = q1 - 1.5 * (q3 - q1), q3 + 1.5 * (q3 - q1)
+    kept = [c for c in counts if lo <= c <= hi]
+    return real, (sum(kept) / len(kept) if kept else real), sorted(c for c in counts if not lo <= c <= hi)
+
+
 def period_pack_xlsx(sems: List[dict], speakers: List[dict], parts: List[dict], avg_part: float, period_label: str) -> bytes:
-    """One workbook with every table of the selected period, titled and organized for the marketing
-    team (who build the infographic from it)."""
+    """One sheet with every table of the selected period, in the layout marketing already uses: three
+    blocks (Seminarios / Conferencistas / Asistentes) of small '# tables'. Notes are in Spanish; table
+    titles and contents are in English."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
+
+    def na(v):
+        return "NA" if v in (None, "", "Unknown") else v
 
     gname = {"M": "Male", "F": "Female"}
-    sorted_sems = sorted(sems, key=lambda s: s["fecha"] or "")
+    thin = Side(style="thin", color="7F7F7F")
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    grey = PatternFill("solid", fgColor="D9D9D9")
+    fills = {"sem": PatternFill("solid", fgColor="FBE2D5"), "spk": PatternFill("solid", fgColor="E2EFDA"),
+             "par": PatternFill("solid", fgColor="DDEBF7")}
 
-    def fractions(pairs, label):
-        total = sum(n for _, n in pairs)
-        df = pd.DataFrame([{label: l, "Count": n, "Percent": (n / total) if total else None} for l, n in pairs])
-        df.loc[len(df)] = ["Total", total, 1.0 if total else None]
-        return df
-
-    def top(pairs):
-        return f"{pairs[0][0]} ({pairs[0][1]})" if pairs else "—"
-
-    cats = count_by(sems, lambda s: s["categoria"])
-    areas = count_by(sems, lambda s: s["area"])
-    mods = count_by(sems, lambda s: s["modalidad"])
-    nats = count_by(speakers, lambda s: s["nacionalidad"])
-    unis = count_by([x for x in speakers if x["universidad"] != "Unknown"], lambda s: s["universidad"])
-    best = max(sems, key=lambda s: s["participantsCount"], default=None)
-    unnamed = sum(1 for p in parts if p.get("sinNombre"))
-
-    summary = pd.DataFrame([
-        ("Seminars", len(sems)), ("Delivery formats", len(set(s["modalidad"] for s in sems))),
-        ("Speakers (unique)", len(speakers)),
-        ("Universities represented", len(set(x["universidad"] for x in speakers if x["universidad"] != "Unknown"))),
-        ("Participants (attendances)", len(parts)), ("Unique attendees (named, by email or name)", unique_attendees(parts)),
-        ("Attendances without a name", unnamed), ("Average participants per held seminar", avg_part),
-    ], columns=["Indicator", "Value"])
-    highlights = pd.DataFrame([
-        ("Category with most seminars", top(cats)), ("Area with most seminars", top(areas)),
-        ("Most common speaker nationality", top(nats)), ("University with most speakers", top(unis)),
-        ("Most attended seminar", f'{best["nombre"]} — {best["participantsCount"]} participants' if best and best["participantsCount"] else "—"),
-    ], columns=["Highlight", "Detail"])
-
-    sem_list = pd.DataFrame([{
-        "Category": s["categoria"], "ID": s["id"], "Seminar": s["nombre"], "Speaker(s)": ", ".join(s["speakers"]) or "TBD",
-        "Date": s["fecha"] or "TBD", "Time": s["hora"] or "", "Modality": s["modalidad"], "Location": s["lugar"],
-        "Area": s["area"], "Participants": s["participantsCount"]} for s in sorted_sems])
-    by_cat = pd.DataFrame([{
-        "Category": c, "Seminars": n, "Participants": sum(s["participantsCount"] for s in sems if s["categoria"] == c),
-    } for c, n in cats])
-    if len(by_cat):
-        by_cat["Avg. participants per seminar"] = by_cat.apply(lambda r: r["Participants"] / r["Seminars"] if r["Seminars"] else None, axis=1)
-        by_cat.loc[len(by_cat)] = ["Total", by_cat["Seminars"].sum(), by_cat["Participants"].sum(),
-                                   (by_cat["Participants"].sum() / by_cat["Seminars"].sum()) if by_cat["Seminars"].sum() else None]
-
-    led: Dict[str, int] = {}
-    for s_ in sems:
-        for sp in s_["speakerDetails"]:
-            led[_norm_name(sp["nombre"])] = led.get(_norm_name(sp["nombre"]), 0) + 1
-    spk_list = pd.DataFrame([{
-        "Speaker": x["nombre"], "Gender": x["genero"], "Nationality": x["nacionalidad"], "University": x["universidad"],
-        "University country": x["paisUniversidad"], "Origin region": x["region"], "Seminars led": led.get(_norm_name(x["nombre"]), 0),
-    } for x in sorted(speakers, key=lambda x: x["nombre"].lower())])
-
-    per_sem = pd.DataFrame([{"Seminar": s["nombre"], "ID": s["id"], "Date": s["fecha"] or "TBD", "Participants": s["participantsCount"]}
-                            for s in sorted(sems, key=lambda s: -s["participantsCount"])])
-    sheets = [
-        ("0. Read me", "How to use this file.", [
-            ("About this file", pd.DataFrame([
-                ("Report", "International Seminars — data pack for the infographic"), ("Period", period_label),
-                ("Generated", dt.date.today().isoformat()),
-                ("Participants", "Attendance records: a person who attended 3 seminars counts 3 times. 'Unique attendees' counts people once."),
-                ("Attendances without a name", "Recorded without a name; they are counted as participants (gender / type as recorded)."),
-                ("Average per seminar", "Only seminars already held that have attendance recorded."),
-            ], columns=["Item", "Detail"])),
-            ("Sheets in this file", pd.DataFrame([
-                ("1. Summary", "Key figures and highlights"), ("2. Seminars", "Seminar list + participants per category"),
-                ("3. Seminar summary", "Seminars by delivery format, category and area"), ("4. Speakers", "Speaker list"),
-                ("5. Speaker summary", "Speakers by origin region, gender, nationality and university"),
-                ("6. Participants", "Participants by modality, gender and attendee type + participants per seminar"),
-            ], columns=["Sheet", "What it contains"]))]),
-        ("1. Summary", f"Key figures — {period_label}.", [("Key figures", summary), ("Highlights", highlights)]),
-        ("2. Seminars", f"Seminar listing — {period_label}.", [("Seminar list", sem_list), ("Seminars and participants by category", by_cat)]),
-        ("3. Seminar summary", f"Seminars — {period_label}.", [
-            ("Seminars by delivery format", fractions(mods, "Delivery format")), ("Seminars by category", fractions(cats, "Category")),
-            ("Seminars by area of study", fractions(areas, "Area"))]),
-        ("4. Speakers", f"Unique speakers — {period_label}.", [("Speaker list", spk_list)]),
-        ("5. Speaker summary", f"Speakers — {period_label}.", [
-            ("Speakers by origin region", fractions(count_by(speakers, lambda s: s["region"]), "Region")),
-            ("Speakers by gender", fractions(count_by(speakers, lambda s: s["genero"]), "Gender")),
-            ("Speakers by nationality", fractions(nats, "Nationality")),
-            ("Speakers by university", fractions(unis, "University"))]),
-        ("6. Participants", f"Participants (attendances) — {period_label}.", [
-            ("Participants by modality", fractions(count_by(parts, lambda p: p["modalidad"]), "Modality")),
-            ("Participants by gender", fractions(count_by(parts, lambda p: gname.get(p["genero"], p["genero"])), "Gender")),
-            ("Participants by attendee type", fractions(count_by(parts, lambda p: p["tipo"]), "Attendee type")),
-            ("Participants per seminar", per_sem)]),
-    ]
-
-    head_fill = PatternFill("solid", fgColor=SEM.lstrip("#"))
-    soft_fill = PatternFill("solid", fgColor=SEM_SOFT.lstrip("#"))
-    line = Border(bottom=Side(style="thin", color="D9D9D9"))
     wb = Workbook()
-    wb.remove(wb.active)
-    for sheet, note, sections in sheets:
-        ws = wb.create_sheet(sheet[:31])
-        ws["A1"] = f"International Seminars — {sheet.split('. ', 1)[-1]}"
-        ws["A1"].font = Font(bold=True, size=15, color=SEM.lstrip("#"))
-        ws["A2"] = note
-        ws["A2"].font = Font(italic=True, size=10, color="5B6B85")
-        row, widths = 4, {}
-        for title, df in sections:
-            ws.cell(row, 1, title).font = Font(bold=True, size=12)
+    ws = wb.active
+    ws.title = "Tablas"
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions["A"].width = 44
+    ws.column_dimensions["B"].width = 16
+    row = 1
+
+    def block_title(text):
+        nonlocal row
+        ws.cell(row, 1, text).font = Font(bold=True, size=12, underline="single")
+        row += 1
+
+    def table(title, pairs, kind, header_right="#"):
+        """pairs: [(label, value)]; rows whose label is 'NA' are shaded grey."""
+        nonlocal row
+        for c, txt in ((1, title), (2, header_right)):
+            cell = ws.cell(row, c, txt)
+            cell.font = Font(bold=True)
+            cell.fill = fills[kind]
+            cell.border = box
+            cell.alignment = Alignment(horizontal="center" if c == 2 else "left")
+        row += 1
+        for label, val in pairs:
+            a, b = ws.cell(row, 1, label), ws.cell(row, 2, val)
+            for cell in (a, b):
+                cell.border = box
+                if label == "NA":
+                    cell.fill = grey
+            b.alignment = Alignment(horizontal="right")
+            if isinstance(val, float):
+                b.number_format = "0.0"
             row += 1
-            for c, col in enumerate(df.columns, start=1):
-                cell = ws.cell(row, c, col)
-                cell.font = Font(bold=True, color="FFFFFF")
-                cell.fill = head_fill
-                cell.alignment = Alignment(wrap_text=True, vertical="center")
-                widths[c] = max(widths.get(c, 0), min(len(str(col)), 28) + 2)
-            row += 1
-            for rec in df.itertuples(index=False):
-                is_total = str(rec[0]) == "Total"
-                for c, val in enumerate(rec, start=1):
-                    if isinstance(val, float) and pd.isna(val):
-                        val = None
-                    if hasattr(val, "item"):
-                        val = val.item()
-                    cell = ws.cell(row, c, val)
-                    cell.border = line
-                    if is_total:
-                        cell.font = Font(bold=True)
-                        cell.fill = soft_fill
-                    if isinstance(val, float):
-                        cell.number_format = "0.0%" if str(df.columns[c - 1]) == "Percent" else "0.0"
-                    widths[c] = max(widths.get(c, 0), min(len(str(val)) if val is not None else 0, 60) + 2)
-                row += 1
-            row += 2
-        for c, wd in widths.items():
-            ws.column_dimensions[get_column_letter(c)].width = max(12, min(wd, 60))
-        ws.sheet_view.showGridLines = False
+        row += 1
+
+    def pairs_of(items, key):
+        return [(na(k), n) for k, n in count_by(items, key)]
+
+    today = dt.date.today().isoformat()
+    held = [x for x in sems if x["fecha"] and x["fecha"] <= today and x["participantsCount"] > 0]
+
+    # ── Seminarios
+    block_title(f"Seminarios (Total {len(sems)}):")
+    table("Seminar Category", pairs_of(sems, lambda x: x["categoria"]), "sem")
+    table("Seminar Modality", pairs_of(sems, lambda x: x["modalidad"]), "sem")
+    table("Seminar Area", pairs_of(sems, lambda x: x["area"]), "sem")
+    row += 1
+
+    # ── Conferencistas
+    block_title(f"Conferencistas (Total {len(speakers)}):")
+    table("Origin of University", pairs_of(speakers, lambda x: x["region"]), "spk")
+    table("Speakers Nationality", pairs_of(speakers, lambda x: x["nacionalidad"]), "spk")
+    table("Speakers by gender", pairs_of(speakers, lambda x: x["genero"]), "spk")
+    row += 1
+
+    # ── Asistentes
+    block_title(f"Asistentes (Total {len(parts)}):")
+    table("Seminar", [(x["id"], x["participantsCount"]) for x in sorted(held, key=lambda x: (x["participantsCount"], x["fecha"]))],
+          "par", header_right="Participants")
+    real, adjusted, excluded = _adjusted_average([x["participantsCount"] for x in held])
+    for label, val in (("Promedio real", real), ("Promedio ajustado", adjusted)):
+        a, b = ws.cell(row, 1, label), ws.cell(row, 2, round(val, 1))
+        a.font = Font(bold=True)
+        for cell in (a, b):
+            cell.border = box
+        b.number_format = "0.0"
+        row += 1
+    out_names = [f'{x["id"]} ({x["participantsCount"]})' for x in held if x["participantsCount"] in excluded]
+    note = ("El promedio ajustado elimina seminarios con una cantidad de participantes atípica (fuera de 1,5 × el rango "
+            "intercuartílico) que puedan afectar el análisis y el reporte."
+            + (f" Excluidos: {', '.join(out_names)}." if out_names else " En este período no se excluyó ningún seminario."))
+    ws.cell(row, 1, note).alignment = Alignment(wrap_text=False)
+    row += 2
+    table("Seminar Attendance", pairs_of(parts, lambda p: p["modalidad"]), "par")
+    table("Participants by Gender", [(gname.get(k, "NA"), n) for k, n in count_by(parts, lambda p: p["genero"])], "par")
+    table("Participants Types", pairs_of(parts, lambda p: p["tipo"]), "par")
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
