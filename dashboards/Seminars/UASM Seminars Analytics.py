@@ -17,8 +17,6 @@ from __future__ import annotations
 
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
 import plotly.graph_objects as go
 import re
 import io
@@ -38,6 +36,7 @@ import requests
 import os
 import base64
 import hmac
+import unicodedata
 from copy import copy
 
 # ── 1) CONFIGURACIÓN GLOBAL ────────────────────────────────────────────────
@@ -316,11 +315,17 @@ def norm_modalidad(m) -> str:
     low = m.lower()
     if low == "on-campus":
         return "On-Campus"
-    if low == "online":
+    if low == "online" or "zoom" in low or low.startswith("virtual"):
         return "Online"
-    if low == "hybrid":
+    if low == "hybrid" or low.startswith(("híbrid", "hibrid")):
         return "Hybrid"
     return m
+
+
+def _norm_name(v) -> str:
+    """'José  Pérez' -> 'jose perez' (accent / case / spacing insensitive, for matching names)."""
+    t = unicodedata.normalize("NFKD", str(v or "")).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", " ", t.lower()).strip()
 
 
 def norm_tipo(t) -> str:
@@ -379,6 +384,7 @@ COUNTRY_EN = {
     "hungría": "Hungary", "rumania": "Romania", "singapur": "Singapore", "sudáfrica": "South Africa",
     "panamá": "Panama", "panama": "Panama", "iran": "Iran", "irán": "Iran", "estonia": "Estonia",
     "australia": "Australia", "austria": "Austria", "israel": "Israel", "uruguay": "Uruguay",
+    "azerbaiyan": "Azerbaijan", "azerbaiyán": "Azerbaijan", "nueva zelanda": "New Zealand",
     "ecuador": "Ecuador", "venezuela": "Venezuela", "bolivia": "Bolivia", "paraguay": "Paraguay",
 }
 
@@ -407,7 +413,7 @@ COUNTRY_GEO = {
     "Venezuela": (6.42, -66.59), "Russia": (61.52, 105.32), "Norway": (60.47, 8.47),
     "Finland": (61.92, 25.75), "South Korea": (35.91, 127.77), "Singapore": (1.35, 103.82),
     "South Africa": (-30.56, 22.94), "Panama": (8.54, -80.78), "Romania": (45.94, 24.97),
-    "Hungary": (47.16, 19.50),
+    "Hungary": (47.16, 19.50), "Azerbaijan": (40.14, 47.58), "New Zealand": (-40.90, 174.89),
 }
 
 
@@ -543,11 +549,20 @@ def build_dataset() -> List[dict]:
     sem_df, conf_df, part_df = load_raw_sheets()
 
     participants_by_sem: Dict[str, List[dict]] = {}
+    seen_part: Dict[str, set] = {}
+    dup_removed: Dict[str, int] = {}
     for r in part_df.to_dict("records"):
         sem = _clean(r.get("Seminario al que asistió"))
         nombre = _clean(r.get("Nombre"))
         if not sem or not nombre:
             continue
+        # The same person listed twice in one seminar (same email, or same name) counts once.
+        email = (_clean(r.get("Correo"), "") or "").lower()
+        key = email or _norm_name(nombre)
+        if key in seen_part.setdefault(sem, set()):
+            dup_removed[sem] = dup_removed.get(sem, 0) + 1
+            continue
+        seen_part[sem].add(key)
         participants_by_sem.setdefault(sem, []).append({
             "nombre": nombre, "correo": _clean(r.get("Correo"), ""),
             "genero": norm_genero(r.get("Género")), "tipo": norm_tipo(r.get("Tipo Asistente")),
@@ -594,13 +609,14 @@ def build_dataset() -> List[dict]:
             year = ts.year if ts is not None else None
         plist = participants_by_sem.get(raw_id, []) if seen_ids[raw_id] == 1 else []
         seminars.append({
-            "id": sid, "rawId": raw_id, "occ": seen_ids[raw_id], "lugarRaw": _clean(r.get("Lugar")),
+            "id": sid, "rawId": raw_id, "occ": seen_ids[raw_id], "dupRemoved": dup_removed.get(raw_id, 0) if seen_ids[raw_id] == 1 else 0, "lugarRaw": _clean(r.get("Lugar")),
             "categoria": _clean(r.get("Categoría"), "Other"),
-            "nombre": _clean(r.get("Nombre del seminario"), "Untitled seminar"),
+            "nombre": ("Title to be defined" if (_clean(r.get("Nombre del seminario"), "") or "").upper() == "TBD"
+                       else _clean(r.get("Nombre del seminario"), "Untitled seminar")),
             "speakers": speakers, "fecha": ts.strftime("%Y-%m-%d") if ts is not None else None,
             "hora": _time_str(r.get("Hora")), "anio": year, "semestre": semester_of(ts),
             "modalidad": norm_modalidad(r.get("Modalidad")), "lugar": location_en(r.get("Lugar")),
-            "area": _clean(r.get("Área"), "Unknown"), "participantsCount": len(plist), "participants": plist,
+            "area": ("To be defined" if (_clean(r.get("Área"), "") or "").upper() == "TBD" else _clean(r.get("Área"), "Unknown")), "participantsCount": len(plist), "participants": plist,
             "speakerDetails": speakers_by_sem.get(raw_id, []), "dataNote": data_note,
         })
     return seminars
@@ -625,6 +641,11 @@ def all_participants(seminars: List[dict]) -> List[dict]:
     for s in seminars:
         out.extend(s["participants"])
     return out
+
+
+def unique_attendees(parts: List[dict]) -> int:
+    """Distinct people: by email when there is one, otherwise by normalized name."""
+    return len({(p.get("correo") or "").lower() or _norm_name(p["nombre"]) for p in parts})
 
 
 def avg_held_participants(sems: List[dict]) -> float:
@@ -721,6 +742,61 @@ def _world_map(speakers: List[dict], focus_country: Optional[str] = None):
         st.caption(f"{unmapped} speaker(s) with a nationality that is not drawn on the map (no coordinates defined).")
 
 
+# ── 5b) DATA QUALITY CHECKS ──────────────────────────────────────────────
+@st.cache_data(ttl=300)
+def data_quality_report() -> List[dict]:
+    """Things in the Excel sources that make the dashboard wrong or incomplete, so they can be fixed at the source."""
+    seminars = build_dataset()
+    sem_df, conf_df, part_df = load_raw_sheets()
+    today = dt.date.today().isoformat()
+    out: List[dict] = []
+
+    def add(level, check, item, detail):
+        out.append({"Level": level, "Check": check, "Seminar / item": item, "Detail": detail})
+
+    ids = {sm["rawId"] for sm in seminars}
+    listed = {sm["rawId"]: {_norm_name(n) for n in sm["speakers"]} for sm in seminars if sm["occ"] == 1}
+    for sm in seminars:
+        if sm["occ"] > 1:
+            add("Error", "Duplicate seminar ID", sm["rawId"], f'"{sm["nombre"]}" reuses the ID — its participants and speakers can\'t be split.')
+        if not sm["fecha"]:
+            add("Error", "Seminar without a valid date", sm["id"], sm["nombre"])
+        if sm["nombre"] in ("Untitled seminar", "Title to be defined"):
+            add("Warning", "Seminar without a title", sm["id"], "Title is empty or 'TBD'.")
+        if sm["area"] in ("Unknown", "To be defined"):
+            add("Info", "Seminar without an area", sm["id"], "Counted as 'Unknown / To be defined' in the Area charts.")
+        if sm["modalidad"] not in ("On-Campus", "Online", "Hybrid"):
+            add("Warning", "Unrecognized modality", sm["id"], sm["modalidad"])
+        if sm["occ"] == 1 and sm["fecha"] and sm["fecha"] <= today and sm["participantsCount"] == 0:
+            add("Warning", "Held seminar without participants", sm["id"], f'{sm["nombre"][:70]} ({sm["fecha"]})')
+        if sm["dupRemoved"]:
+            add("Info", "Duplicate attendees ignored", sm["id"], f'{sm["dupRemoved"]} repeated row(s) (same email or name) were counted once.')
+        have = {_norm_name(x["nombre"]) for x in sm["speakerDetails"]}
+        for name in sm["speakers"]:
+            if _norm_name(name) not in have:
+                add("Warning", "Speaker without a profile", sm["id"], f"{name} has no row in BD_conferencistas for this seminar.")
+    for r in conf_df.to_dict("records"):
+        sem = _clean(r.get("Seminario que dirigió"))
+        name = _clean(r.get("Nombre Completo")) or " ".join(x for x in (_clean(r.get("Nombre")), _clean(r.get("Apellido"))) if x)
+        if not sem or not name:
+            continue
+        if sem not in ids:
+            add("Error", "Speaker profile points to a missing seminar", sem, f"{name}: no seminar with this ID in BD_seminarios.")
+        elif _norm_name(name) not in listed.get(sem, set()):
+            add("Warning", "Speaker profile doesn't match the seminar", sem, f"{name} is not listed as Conferencista in that seminar.")
+        if country_en(r.get("Nacionalidad")) not in COUNTRY_GEO and _clean(r.get("Nacionalidad")):
+            add("Info", "Nationality not on the map", name, str(r.get("Nacionalidad")))
+    unnamed = part_df[part_df["Nombre"].isna() & part_df["Seminario al que asistió"].notna()]
+    for sem, n in unnamed.groupby("Seminario al que asistió").size().items():
+        add("Warning", "Attendance rows without a name (not counted)", str(sem).strip(), f"{n} row(s) have no name, so they are left out of every count.")
+    bad_mod = part_df["Modalidad"].dropna().map(lambda m: norm_modalidad(m)).loc[lambda x: ~x.isin(["On-Campus", "Online", "Hybrid"])]
+    if len(bad_mod):
+        add("Warning", "Unrecognized attendee modality", "BD_participantes", ", ".join(sorted(set(map(str, bad_mod)))))
+    order = {"Error": 0, "Warning": 1, "Info": 2}
+    out.sort(key=lambda d: (order[d["Level"]], d["Check"], d["Seminar / item"]))
+    return out
+
+
 # ── 6) PAGE — Data Center (cover) ────────────────────────────────────────
 def page_datacenter():
     """Cover, same pattern as the EIV / Weeks reports: hero, title, 'Enter the Report',
@@ -780,6 +856,17 @@ def page_datacenter():
             f"{len(files)} sources loaded · {len(seminars)} seminars</div>",
             unsafe_allow_html=True,
         )
+        issues = data_quality_report()
+        n_err = sum(1 for i in issues if i["Level"] == "Error")
+        n_warn = sum(1 for i in issues if i["Level"] == "Warning")
+        with st.expander(f"Data quality checks — {n_err} errors · {n_warn} warnings · {len(issues) - n_err - n_warn} notes"):
+            if issues:
+                st.caption("Fix these in the Excel files (or on the Manage Data page) so the dashboard numbers are right.")
+                st.dataframe(pd.DataFrame(issues), use_container_width=True, hide_index=True, height=320)
+                st.download_button("Download list (Excel)", data=_xlsx_bytes(pd.DataFrame(issues), "DataQuality"),
+                                   file_name="Seminars_data_quality.xlsx", key="dl_dq", icon=":material/download:")
+            else:
+                st.success("No issues found.")
 
 
 # ── 7) PAGE — Dashboard ────────────────────────────────────────────────
@@ -870,11 +957,14 @@ def page_dashboard():
 
     # ---------------- Participants domain ----------------
     _domain_badge("👥 Participants", "par")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
-        _kpi("Participants", len(parts), PAR)
+        _kpi("Participants (attendances)", len(parts), PAR)
     with col2:
+        _kpi("Unique Attendees", unique_attendees(parts), PAR)
+    with col3:
         _kpi("Avg. Participants / Seminar", avg_part, PAR)
+    st.caption("A person who attended several seminars counts once in \"Unique Attendees\" (matched by email, or by name when there is no email).")
 
     gender_counts = count_by(parts, lambda p: p["genero"])
     icon_html = ""
@@ -1638,7 +1728,7 @@ def _participants_template(types: List[str]) -> bytes:
         lists.cell(i, 2).value = v
     for i, v in enumerate(["M", "F"], start=1):
         lists.cell(i, 3).value = v
-    specs = {"C": f"=Lists!$C$1:$C$2", "D": f"=Lists!$A$1:$A${max(len(types), 1)}", "E": f"=Lists!$B$1:$B${len(MODALITIES)}"}
+    specs = {"C": "=Lists!$C$1:$C$2", "D": f"=Lists!$A$1:$A${max(len(types), 1)}", "E": f"=Lists!$B$1:$B${len(MODALITIES)}"}
     for col, ref in specs.items():
         dv = DataValidation(type="list", formula1=ref, allow_blank=True)
         ws.add_data_validation(dv)
