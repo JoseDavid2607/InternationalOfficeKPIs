@@ -97,6 +97,11 @@ st.markdown(
     "font-size:16px !important;font-weight:700 !important;height:52px !important;"
     "box-shadow:0 4px 14px rgba(14,165,160,.28) !important;}"
     f".st-key-cover_enter_btn div[data-testid='stButton'] button:hover{{background:#0B8783 !important;}}"
+    ".st-key-dl_pack div[data-testid='stDownloadButton'] button{"
+    f"background:{SEM} !important;color:#fff !important;border:none !important;text-decoration:none !important;"
+    "font-size:16px !important;font-weight:700 !important;height:54px !important;padding:0 18px !important;"
+    "box-shadow:0 4px 14px rgba(14,165,160,.28) !important;}"
+    ".st-key-dl_pack div[data-testid='stDownloadButton'] button:hover{background:#0B8783 !important;}"
     ".st-key-nav_toggle{position:fixed !important;top:0.25rem;left:50%;transform:translateX(-50%);"
     "z-index:999999;width:auto !important;max-width:96vw;}"
     ".st-key-nav_toggle div[data-testid='stHorizontalBlock']{"
@@ -554,7 +559,13 @@ def build_dataset() -> List[dict]:
     for r in part_df.to_dict("records"):
         sem = _clean(r.get("Seminario al que asistió"))
         nombre = _clean(r.get("Nombre"))
-        if not sem or not nombre:
+        if not sem:
+            continue
+        if not nombre:   # attendance rows without a name still count (as unnamed attendees)
+            participants_by_sem.setdefault(sem, []).append({
+                "nombre": "(No name)", "correo": "", "sinNombre": True, "genero": norm_genero(r.get("Género")),
+                "tipo": norm_tipo(r.get("Tipo Asistente")), "modalidad": norm_modalidad(r.get("Modalidad")),
+            })
             continue
         # The same person listed twice in one seminar (same email, or same name) counts once.
         email = (_clean(r.get("Correo"), "") or "").lower()
@@ -645,7 +656,7 @@ def all_participants(seminars: List[dict]) -> List[dict]:
 
 def unique_attendees(parts: List[dict]) -> int:
     """Distinct people: by email when there is one, otherwise by normalized name."""
-    return len({(p.get("correo") or "").lower() or _norm_name(p["nombre"]) for p in parts})
+    return len({(p.get("correo") or "").lower() or _norm_name(p["nombre"]) for p in parts if not p.get("sinNombre")})
 
 
 def avg_held_participants(sems: List[dict]) -> float:
@@ -788,7 +799,7 @@ def data_quality_report() -> List[dict]:
             add("Info", "Nationality not on the map", name, str(r.get("Nacionalidad")))
     unnamed = part_df[part_df["Nombre"].isna() & part_df["Seminario al que asistió"].notna()]
     for sem, n in unnamed.groupby("Seminario al que asistió").size().items():
-        add("Warning", "Attendance rows without a name (not counted)", str(sem).strip(), f"{n} row(s) have no name, so they are left out of every count.")
+        add("Info", "Attendance rows without a name", str(sem).strip(), f"{n} row(s) are counted as unnamed attendees (gender / type as recorded).")
     bad_mod = part_df["Modalidad"].dropna().map(lambda m: norm_modalidad(m)).loc[lambda x: ~x.isin(["On-Campus", "Online", "Hybrid"])]
     if len(bad_mod):
         add("Warning", "Unrecognized attendee modality", "BD_participantes", ", ".join(sorted(set(map(str, bad_mod)))))
@@ -870,6 +881,39 @@ def page_datacenter():
 
 
 # ── 7) PAGE — Dashboard ────────────────────────────────────────────────
+def _upcoming_pending_section(sems: List[dict], period_label: str):
+    """First block of the dashboard: seminars still to happen in the period, plus held seminars
+    that have no attendance recorded yet."""
+    today = dt.date.today().isoformat()
+    upcoming = sorted([s for s in sems if s["fecha"] and s["fecha"] > today], key=lambda s: s["fecha"])
+    no_parts = sorted([s for s in sems if s["fecha"] and s["fecha"] <= today and s["participantsCount"] == 0 and s["occ"] == 1],
+                      key=lambda s: s["fecha"], reverse=True)
+    _domain_badge("🗓️ Upcoming & pending", "sem")
+    k1, k2, _ = st.columns([1, 1, 2])
+    with k1:
+        _kpi("Upcoming Seminars", len(upcoming), SEM)
+    with k2:
+        _kpi("Held, No Participants Recorded", len(no_parts), AMBER)
+    rows = [{"Status": "Upcoming", "Date": s["fecha"], "Time": s["hora"] or "", "ID": s["id"], "Seminar": s["nombre"],
+             "Category": s["categoria"], "Speaker(s)": ", ".join(s["speakers"]) or "TBD", "Modality": s["modalidad"],
+             "Location": s["lugar"]} for s in upcoming]
+    rows += [{"Status": "Held — no participants", "Date": s["fecha"], "Time": s["hora"] or "", "ID": s["id"], "Seminar": s["nombre"],
+              "Category": s["categoria"], "Speaker(s)": ", ".join(s["speakers"]) or "TBD", "Modality": s["modalidad"],
+              "Location": s["lugar"]} for s in no_parts]
+    if rows:
+        st.caption(f"{period_label}. Upcoming seminars first (soonest on top), then held seminars whose attendance is still empty.")
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, height=min(420, 38 + 35 * len(rows)))
+    else:
+        st.success(f"{period_label}: no upcoming seminars and no held seminar is missing its participants.")
+    st.markdown("---")
+
+
+def _period_label(year: str, semester: str) -> str:
+    y = "All years" if year == "all" else str(year)
+    sm = {"all": "both semesters", "S1": "S1 (Jan–Jun)", "S2": "S2 (Jul–Dec)"}[semester]
+    return f"{y} · {sm}"
+
+
 def page_dashboard():
     seminars = build_dataset()
     years = sorted(set(str(s["anio"]) for s in seminars if s["anio"] is not None))
@@ -886,6 +930,7 @@ def page_dashboard():
     )
 
     sems = filtered_seminars(seminars, year, semester)
+    _upcoming_pending_section(sems, _period_label(year, semester))
     speakers = all_speakers(sems)
     parts = all_participants(sems)
     avg_part = avg_held_participants(sems)
@@ -961,7 +1006,7 @@ def page_dashboard():
     with col1:
         _kpi("Participants (attendances)", len(parts), PAR)
     with col2:
-        _kpi("Unique Attendees", unique_attendees(parts), PAR)
+        _kpi("Unique Attendees (named)", unique_attendees(parts), PAR)
     with col3:
         _kpi("Avg. Participants / Seminar", avg_part, PAR)
     st.caption("A person who attended several seminars counts once in \"Unique Attendees\" (matched by email, or by name when there is no email).")
@@ -1056,21 +1101,6 @@ def page_search():
         selected = results[options.index(idx)]
         _render_seminar_detail(selected)
 
-    # ---- Upcoming seminars ----
-    upcoming = [s for s in seminars if s["fecha"] and s["fecha"] > today]
-    upcoming.sort(key=lambda s: s["fecha"])
-    if upcoming:
-        st.markdown("---")
-        st.markdown("### Upcoming Seminars")
-        st.caption("Not yet held — attendance isn't recorded, so these are shown separately from search.")
-        for s in upcoming:
-            speaker_str = f' · {", ".join(s["speakers"])}' if s["speakers"] else ""
-            st.markdown(
-                f'**{s["nombre"]}**  \n<span style="font-family:monospace;font-size:11px;color:{MUTED};">'
-                f'{s["categoria"]} · {s["fecha"]}{speaker_str}</span>',
-                unsafe_allow_html=True,
-            )
-
 
 def _render_seminar_detail(s: dict):
     st.markdown("---")
@@ -1131,7 +1161,7 @@ def page_tables():
     _render_header(
         "Tables",
         "Full seminar listing, plus grouped summaries for seminars, speakers, and participants "
-        "— each downloadable as Excel.",
+        "— each downloadable as Excel, or all together in one file at the bottom of the page.",
     )
 
     sems = filtered_seminars(seminars, year, semester)
@@ -1243,6 +1273,164 @@ def page_tables():
         st.dataframe(df, use_container_width=True, hide_index=True)
         st.download_button("Download as Excel", data=_xlsx_bytes(df, "Type"),
                             file_name="tblPartType.xlsx", key="dl_tbl_part_type")
+
+    # ---------------- One file with everything ----------------
+    st.markdown("---")
+    st.markdown("### Download everything")
+    label = _period_label(year, semester)
+    st.caption(f"One Excel file with all the tables above for {label} — organized in labeled sheets (read-me, summary, "
+               "seminars, speakers, participants) so the marketing team can build the infographic from it.")
+    with st.container(key="dl_pack"):
+        st.download_button(
+            "Download all tables for this period (Excel)",
+            data=period_pack_xlsx(sems, speakers, parts, avg_held_participants(sems), label),
+            file_name=f"International_Seminars_{label.split(' · ')[0].replace(' ', '_')}_{semester}_tables.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_pack_btn",
+            icon=":material/download:",
+        )
+
+
+def period_pack_xlsx(sems: List[dict], speakers: List[dict], parts: List[dict], avg_part: float, period_label: str) -> bytes:
+    """One workbook with every table of the selected period, titled and organized for the marketing
+    team (who build the infographic from it)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    gname = {"M": "Male", "F": "Female"}
+    sorted_sems = sorted(sems, key=lambda s: s["fecha"] or "")
+
+    def fractions(pairs, label):
+        total = sum(n for _, n in pairs)
+        df = pd.DataFrame([{label: l, "Count": n, "Percent": (n / total) if total else None} for l, n in pairs])
+        df.loc[len(df)] = ["Total", total, 1.0 if total else None]
+        return df
+
+    def top(pairs):
+        return f"{pairs[0][0]} ({pairs[0][1]})" if pairs else "—"
+
+    cats = count_by(sems, lambda s: s["categoria"])
+    areas = count_by(sems, lambda s: s["area"])
+    mods = count_by(sems, lambda s: s["modalidad"])
+    nats = count_by(speakers, lambda s: s["nacionalidad"])
+    unis = count_by([x for x in speakers if x["universidad"] != "Unknown"], lambda s: s["universidad"])
+    best = max(sems, key=lambda s: s["participantsCount"], default=None)
+    unnamed = sum(1 for p in parts if p.get("sinNombre"))
+
+    summary = pd.DataFrame([
+        ("Seminars", len(sems)), ("Delivery formats", len(set(s["modalidad"] for s in sems))),
+        ("Speakers (unique)", len(speakers)),
+        ("Universities represented", len(set(x["universidad"] for x in speakers if x["universidad"] != "Unknown"))),
+        ("Participants (attendances)", len(parts)), ("Unique attendees (named, by email or name)", unique_attendees(parts)),
+        ("Attendances without a name", unnamed), ("Average participants per held seminar", avg_part),
+    ], columns=["Indicator", "Value"])
+    highlights = pd.DataFrame([
+        ("Category with most seminars", top(cats)), ("Area with most seminars", top(areas)),
+        ("Most common speaker nationality", top(nats)), ("University with most speakers", top(unis)),
+        ("Most attended seminar", f'{best["nombre"]} — {best["participantsCount"]} participants' if best and best["participantsCount"] else "—"),
+    ], columns=["Highlight", "Detail"])
+
+    sem_list = pd.DataFrame([{
+        "Category": s["categoria"], "ID": s["id"], "Seminar": s["nombre"], "Speaker(s)": ", ".join(s["speakers"]) or "TBD",
+        "Date": s["fecha"] or "TBD", "Time": s["hora"] or "", "Modality": s["modalidad"], "Location": s["lugar"],
+        "Area": s["area"], "Participants": s["participantsCount"]} for s in sorted_sems])
+    by_cat = pd.DataFrame([{
+        "Category": c, "Seminars": n, "Participants": sum(s["participantsCount"] for s in sems if s["categoria"] == c),
+    } for c, n in cats])
+    if len(by_cat):
+        by_cat["Avg. participants per seminar"] = by_cat.apply(lambda r: r["Participants"] / r["Seminars"] if r["Seminars"] else None, axis=1)
+        by_cat.loc[len(by_cat)] = ["Total", by_cat["Seminars"].sum(), by_cat["Participants"].sum(),
+                                   (by_cat["Participants"].sum() / by_cat["Seminars"].sum()) if by_cat["Seminars"].sum() else None]
+
+    led: Dict[str, int] = {}
+    for s_ in sems:
+        for sp in s_["speakerDetails"]:
+            led[_norm_name(sp["nombre"])] = led.get(_norm_name(sp["nombre"]), 0) + 1
+    spk_list = pd.DataFrame([{
+        "Speaker": x["nombre"], "Gender": x["genero"], "Nationality": x["nacionalidad"], "University": x["universidad"],
+        "University country": x["paisUniversidad"], "Origin region": x["region"], "Seminars led": led.get(_norm_name(x["nombre"]), 0),
+    } for x in sorted(speakers, key=lambda x: x["nombre"].lower())])
+
+    per_sem = pd.DataFrame([{"Seminar": s["nombre"], "ID": s["id"], "Date": s["fecha"] or "TBD", "Participants": s["participantsCount"]}
+                            for s in sorted(sems, key=lambda s: -s["participantsCount"])])
+    sheets = [
+        ("0. Read me", "How to use this file.", [
+            ("About this file", pd.DataFrame([
+                ("Report", "International Seminars — data pack for the infographic"), ("Period", period_label),
+                ("Generated", dt.date.today().isoformat()),
+                ("Participants", "Attendance records: a person who attended 3 seminars counts 3 times. 'Unique attendees' counts people once."),
+                ("Attendances without a name", "Recorded without a name; they are counted as participants (gender / type as recorded)."),
+                ("Average per seminar", "Only seminars already held that have attendance recorded."),
+            ], columns=["Item", "Detail"])),
+            ("Sheets in this file", pd.DataFrame([
+                ("1. Summary", "Key figures and highlights"), ("2. Seminars", "Seminar list + participants per category"),
+                ("3. Seminar summary", "Seminars by delivery format, category and area"), ("4. Speakers", "Speaker list"),
+                ("5. Speaker summary", "Speakers by origin region, gender, nationality and university"),
+                ("6. Participants", "Participants by modality, gender and attendee type + participants per seminar"),
+            ], columns=["Sheet", "What it contains"]))]),
+        ("1. Summary", f"Key figures — {period_label}.", [("Key figures", summary), ("Highlights", highlights)]),
+        ("2. Seminars", f"Seminar listing — {period_label}.", [("Seminar list", sem_list), ("Seminars and participants by category", by_cat)]),
+        ("3. Seminar summary", f"Seminars — {period_label}.", [
+            ("Seminars by delivery format", fractions(mods, "Delivery format")), ("Seminars by category", fractions(cats, "Category")),
+            ("Seminars by area of study", fractions(areas, "Area"))]),
+        ("4. Speakers", f"Unique speakers — {period_label}.", [("Speaker list", spk_list)]),
+        ("5. Speaker summary", f"Speakers — {period_label}.", [
+            ("Speakers by origin region", fractions(count_by(speakers, lambda s: s["region"]), "Region")),
+            ("Speakers by gender", fractions(count_by(speakers, lambda s: s["genero"]), "Gender")),
+            ("Speakers by nationality", fractions(nats, "Nationality")),
+            ("Speakers by university", fractions(unis, "University"))]),
+        ("6. Participants", f"Participants (attendances) — {period_label}.", [
+            ("Participants by modality", fractions(count_by(parts, lambda p: p["modalidad"]), "Modality")),
+            ("Participants by gender", fractions(count_by(parts, lambda p: gname.get(p["genero"], p["genero"])), "Gender")),
+            ("Participants by attendee type", fractions(count_by(parts, lambda p: p["tipo"]), "Attendee type")),
+            ("Participants per seminar", per_sem)]),
+    ]
+
+    head_fill = PatternFill("solid", fgColor=SEM.lstrip("#"))
+    soft_fill = PatternFill("solid", fgColor=SEM_SOFT.lstrip("#"))
+    line = Border(bottom=Side(style="thin", color="D9D9D9"))
+    wb = Workbook()
+    wb.remove(wb.active)
+    for sheet, note, sections in sheets:
+        ws = wb.create_sheet(sheet[:31])
+        ws["A1"] = f"International Seminars — {sheet.split('. ', 1)[-1]}"
+        ws["A1"].font = Font(bold=True, size=15, color=SEM.lstrip("#"))
+        ws["A2"] = note
+        ws["A2"].font = Font(italic=True, size=10, color="5B6B85")
+        row, widths = 4, {}
+        for title, df in sections:
+            ws.cell(row, 1, title).font = Font(bold=True, size=12)
+            row += 1
+            for c, col in enumerate(df.columns, start=1):
+                cell = ws.cell(row, c, col)
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = head_fill
+                cell.alignment = Alignment(wrap_text=True, vertical="center")
+                widths[c] = max(widths.get(c, 0), min(len(str(col)), 28) + 2)
+            row += 1
+            for rec in df.itertuples(index=False):
+                is_total = str(rec[0]) == "Total"
+                for c, val in enumerate(rec, start=1):
+                    if isinstance(val, float) and pd.isna(val):
+                        val = None
+                    if hasattr(val, "item"):
+                        val = val.item()
+                    cell = ws.cell(row, c, val)
+                    cell.border = line
+                    if is_total:
+                        cell.font = Font(bold=True)
+                        cell.fill = soft_fill
+                    if isinstance(val, float):
+                        cell.number_format = "0.0%" if str(df.columns[c - 1]) == "Percent" else "0.0"
+                    widths[c] = max(widths.get(c, 0), min(len(str(val)) if val is not None else 0, 60) + 2)
+                row += 1
+            row += 2
+        for c, wd in widths.items():
+            ws.column_dimensions[get_column_letter(c)].width = max(12, min(wd, 60))
+        ws.sheet_view.showGridLines = False
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 # ── 10) PDF Summary Report ───────────────────────────────────────────────
@@ -1744,6 +1932,53 @@ def _id_number(raw_id: str) -> int:
     return int(m.group(1)) if m else -1
 
 
+def _recent_records(kind: str, n: int = 10):
+    """Last `n` rows of the Excel sheet (oldest of them first, newest at the bottom) in a tidy layout."""
+    sem_df, conf_df, part_df = load_raw_sheets()
+    src = {"seminar": sem_df, "speaker": conf_df, "participant": part_df}[kind]
+    tail = src.tail(n)
+    fmt_date = lambda v: (lambda ts: ts.strftime("%d/%m/%Y") if ts is not None else "")(_parse_date(v))
+    out = []
+    for idx, r in tail.iterrows():
+        row = {"Excel row": int(idx) + 2}
+        if kind == "seminar":
+            row.update({"ID": _clean(r.get("Seminario"), ""), "Category": _clean(r.get("Categoría"), ""),
+                        "Seminar": _clean(r.get("Nombre del seminario"), ""),
+                        "Speaker(s)": ", ".join(x for x in (_clean(r.get(f"Conferencista {i}")) for i in range(1, 6)) if x),
+                        "Date": fmt_date(r.get("Fecha")), "Time": _time_str(r.get("Hora")) or "",
+                        "Modality": _clean(r.get("Modalidad"), ""), "Location": _clean(r.get("Lugar"), ""), "Area": _clean(r.get("Área"), "")})
+        elif kind == "speaker":
+            full = _clean(r.get("Nombre Completo")) or " ".join(x for x in (_clean(r.get("Nombre")), _clean(r.get("Apellido"))) if x)
+            row.update({"Speaker": full, "Gender": _clean(r.get("Genero"), ""), "Nationality": _clean(r.get("Nacionalidad"), ""),
+                        "University": _clean(r.get("Nombre Universidad origen"), ""), "Univ. country": _clean(r.get("País Universidad origen"), ""),
+                        "Region": _clean(r.get("Ubicación"), ""), "Seminar led": _clean(r.get("Seminario que dirigió"), "")})
+        else:
+            row.update({"Seminar": _clean(r.get("Seminario al que asistió"), ""), "Name": _clean(r.get("Nombre"), "(no name)"),
+                        "Email": _clean(r.get("Correo"), ""), "Gender": _clean(r.get("Género"), ""),
+                        "Type": _clean(r.get("Tipo Asistente"), ""), "Modality": _clean(r.get("Modalidad"), "")})
+        out.append(row)
+    return pd.DataFrame(out), len(src)
+
+
+def _recent_block(kind: str, file_label: str):
+    """Shown under each form: the last 10 rows of the Excel file, so every save can be checked right away."""
+    st.markdown("---")
+    h1, h2 = st.columns([4, 1])
+    h1.markdown(f"##### Latest records in {file_label}")
+    if h2.button("Refresh", key=f"rf_{kind}", icon=":material/refresh:", use_container_width=True):
+        for fn in (_download_drive_file_bytes, load_raw_sheets, build_dataset):
+            fn.clear()
+        st.rerun()
+    df, total = _recent_records(kind)
+    if df.empty:
+        st.info("The file has no records yet.")
+        return
+    st.caption(f"Last {len(df)} of {total} rows — the most recently added is at the bottom (highlighted).")
+    last = len(df) - 1
+    styled = df.style.apply(lambda r: ["background-color:#E3F7F5;font-weight:600;" if r.name == last else ""] * len(r), axis=1)
+    st.dataframe(styled, use_container_width=True, hide_index=True, height=38 + 35 * len(df))
+
+
 def page_manage():
     _render_header(
         "Manage Data",
@@ -1863,6 +2098,8 @@ def page_manage():
                         st.session_state["ns_ver"] = nv + 1
                         st.rerun()
 
+        _recent_block("seminar", "BD_seminarios.xlsx")
+
     # ───────────────── Speaker ─────────────────
     with tab_spk:
         _show_saved("speaker")
@@ -1934,6 +2171,8 @@ def page_manage():
                          f'Saved {full} for {len(rows)} seminar(s): {", ".join(led)}.'):
                     st.session_state["sp_ver"] = sv + 1
                     st.rerun()
+
+        _recent_block("speaker", "BD_conferencistas.xlsx")
 
     # ───────────────── Participants ─────────────────
     with tab_par:
@@ -2022,6 +2261,7 @@ def page_manage():
                 st.session_state["pa_df"] = blank()
                 st.session_state["pa_ver"] += 1
                 st.rerun()
+        _recent_block("participant", "BD_participantes.xlsx")
 
 
 # ── 13) NAVIGATION ────────────────────────────────────────────────────────
@@ -2030,8 +2270,8 @@ def page_manage():
 pages = [
     st.Page(page_datacenter, title="Data Center", icon=":material/dashboard:", url_path="datacenter", default=True),
     st.Page(page_dashboard, title="Dashboard", icon="📊", url_path="dashboard"),
-    st.Page(page_search, title="Seminar Search", icon="🔎", url_path="search"),
     st.Page(page_tables, title="Tables", icon="📋", url_path="tables"),
+    st.Page(page_search, title="Seminar Search", icon="🔎", url_path="search"),
     st.Page(page_manage, title="Manage Data", icon="✏️", url_path="manage"),
 ]
 pg = st.navigation(pages, position="hidden")
