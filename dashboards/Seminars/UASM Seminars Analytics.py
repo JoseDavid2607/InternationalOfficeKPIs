@@ -1280,7 +1280,7 @@ def page_tables():
     st.markdown("### Download everything")
     label = _period_label(year, semester)
     st.caption(f"One Excel sheet with the tables above for {label}, in the layout the marketing team uses "
-               "(Seminarios · Conferencistas · Asistentes), ready to build the infographic.")
+               "(Seminarios · Conferencistas · Asistentes) plus a second sheet listing each speaker with university and seminar.")
     with st.container(key="dl_pack"):
         st.download_button(
             "Download all tables for this period (Excel)",
@@ -1398,6 +1398,30 @@ def period_pack_xlsx(sems: List[dict], speakers: List[dict], parts: List[dict], 
     table("Seminar Attendance", pairs_of(parts, lambda p: p["modalidad"]), "par")
     table("Participants by Gender", [(gname.get(k, "NA"), n) for k, n in count_by(parts, lambda p: p["genero"])], "par")
     table("Participants Types", pairs_of(parts, lambda p: p["tipo"]), "par")
+
+    # ── Second sheet: who spoke, from which university, in which seminar
+    ws2 = wb.create_sheet("Conferencistas")
+    ws2.sheet_view.showGridLines = False
+    cols = [("Speaker", 34), ("University", 46), ("Seminar", 60), ("Seminar ID", 26), ("Date", 13)]
+    for c, (name, width) in enumerate(cols, start=1):
+        cell = ws2.cell(1, c, name)
+        cell.font = Font(bold=True)
+        cell.fill = fills["spk"]
+        cell.border = box
+        ws2.column_dimensions[chr(64 + c)].width = width
+    r2 = 2
+    for sm in sorted(sems, key=lambda x: (x["fecha"] or "9999", x["id"])):
+        profiles = {_norm_name(p["nombre"]): p for p in sm["speakerDetails"]}
+        for name in sm["speakers"]:
+            prof = profiles.get(_norm_name(name))
+            uni = prof["universidad"] if prof else None
+            for c, val in enumerate([name, na(uni), sm["nombre"], sm["id"], sm["fecha"] or "TBD"], start=1):
+                cell = ws2.cell(r2, c, val)
+                cell.border = box
+                if val == "NA":
+                    cell.fill = grey
+            r2 += 1
+    ws2.freeze_panes = "A2"
 
     buf = io.BytesIO()
     wb.save(buf)
