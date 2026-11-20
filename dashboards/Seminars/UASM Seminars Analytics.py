@@ -1981,14 +1981,16 @@ def _recent_block(kind: str, file_label: str, shown: int = 10, keep: int = 500):
     rows = [f"<div class='rt-row{' rt-new' if i == len(df) - 1 else ''}'>{cells(rec, 'c')}</div>"
             for i, rec in enumerate(df.itertuples(index=False))]
     header = f"<div class='rt-row rt-head'>{cells(df.columns, 'h')}</div>"
-    box_h = 40 + 36 * min(shown, len(df))
+    row_h, head_h = 30, 34                     # thin single-line rows
+    box_h = head_h + row_h * min(shown, len(df)) + 2
     st.markdown(
         f"<style>.rt-wrap{{height:{box_h}px;overflow:auto;display:flex;flex-direction:column-reverse;"
         f"border:1px solid {LINE};border-radius:8px;font-size:13.5px;color:{INK};background:#fff;}}"
-        f".rt-row{{display:grid;grid-template-columns:{tpl};min-width:{total_w}px;flex:0 0 auto;border-bottom:1px solid #EEF1F6;}}"
-        f".rt-c,.rt-h{{padding:8px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}"
+        f".rt-row{{display:grid;grid-template-columns:{tpl};min-width:{total_w}px;flex:0 0 auto;height:{row_h}px;box-sizing:border-box;border-bottom:1px solid #EEF1F6;}}"
+        f".rt-c,.rt-h{{padding:0 12px;line-height:{row_h - 1}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}"
         f".rt-c:first-child,.rt-h:first-child{{text-align:right;color:{MUTED};}}"
-        f".rt-head{{position:sticky;top:0;z-index:2;background:#F3F6FA;font-weight:600;color:{INK_SOFT};}}"
+        f".rt-head{{position:sticky;top:0;z-index:2;height:{head_h}px;background:#F3F6FA;font-weight:600;color:{INK_SOFT};}}"
+        f".rt-head .rt-h{{line-height:{head_h - 1}px;}}"
         f".rt-new{{background:{SEM_SOFT};font-weight:600;}}</style>"
         f"<div class='rt-wrap'>{''.join(reversed(rows))}{header}</div>",
         unsafe_allow_html=True,
@@ -2197,7 +2199,7 @@ def page_manage():
                                 index=sem_ids.index(last_sem) if last_sem else None, placeholder="Select the seminar",
                                 key=f"pa_sem_{last_sem}")
         st.session_state.setdefault("pa_ver", 0)
-        blank = lambda: pd.DataFrame({c: [None] * 6 for c in PART_COLS})
+        blank = lambda: pd.DataFrame({c: ([""] if c in ("Nombre", "Correo") else [None]) * 6 for c in PART_COLS})
         cur_df = st.session_state.get("pa_df")
         if not isinstance(cur_df, pd.DataFrame) or list(cur_df.columns) != PART_COLS:   # e.g. state left by an older version
             st.session_state["pa_df"] = blank()
@@ -2231,6 +2233,8 @@ def page_manage():
                 canon = {t.lower(): t for t in types}
                 raw["Tipo Asistente"] = raw["Tipo Asistente"].map(lambda t: canon.get(str(t).strip().lower(), str(t).strip()) if t is not None else None)
                 raw["Modalidad"] = raw["Modalidad"].map(lambda m: norm_modalidad(m) if m is not None else None).replace({"Unknown": None})
+                for c in ("Nombre", "Correo"):   # text columns: blank, not "None"
+                    raw[c] = raw[c].map(lambda v: "" if v is None else v)
                 st.session_state["pa_df"] = raw.reset_index(drop=True)
                 st.session_state["pa_ver"] += 1
                 st.session_state["pa_upload_sig"] = (up.name, up.size)
