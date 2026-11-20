@@ -37,6 +37,7 @@ import requests
 import os
 import base64
 import hmac
+import html as _html
 import unicodedata
 from copy import copy
 
@@ -1955,8 +1956,9 @@ def _recent_records(kind: str, n: int = 10):
     return pd.DataFrame(out), len(src)
 
 
-def _recent_block(kind: str, file_label: str):
-    """Shown under each form: the last 10 rows of the Excel file, so every save can be checked right away."""
+def _recent_block(kind: str, file_label: str, shown: int = 10, keep: int = 500):
+    """Shown under each form: the Excel file's latest rows in a scrollable table that opens on the newest
+    records (bottom, highlighted) — scroll up to see the history — so every save can be checked right away."""
     st.markdown("---")
     h1, h2 = st.columns([4, 1])
     h1.markdown(f"##### Latest records in {file_label}")
@@ -1964,14 +1966,33 @@ def _recent_block(kind: str, file_label: str):
         for fn in (_download_drive_file_bytes, load_raw_sheets, build_dataset):
             fn.clear()
         st.rerun()
-    df, total = _recent_records(kind)
+    df, total = _recent_records(kind, keep)
     if df.empty:
         st.info("The file has no records yet.")
         return
-    st.caption(f"Last {len(df)} of {total} rows — the most recently added is at the bottom (highlighted).")
-    last = len(df) - 1
-    styled = df.style.apply(lambda r: ["background-color:#E3F7F5;font-weight:600;" if r.name == last else ""] * len(r), axis=1)
-    st.dataframe(styled, use_container_width=True, hide_index=True, height=38 + 35 * len(df))
+    older = f" Showing the last {len(df)}; scroll up for earlier ones." if total > len(df) else " Scroll up for earlier ones."
+    st.caption(f"{total} rows in the file. The most recently added is at the bottom (highlighted).{older}")
+    # Pure HTML/CSS (no iframe, no JS): a column-reverse flex box opens scrolled to its END, so the
+    # newest rows are visible first and the history is reached by scrolling up.
+    widths = [min(max(len(str(c)), *(len(str(v)) for v in df[c])) * 8 + 28, 380) for c in df.columns]
+    tpl = " ".join(f"{w}px" for w in widths)
+    total_w = sum(widths)
+    cells = lambda vals, tag: "".join(f"<div class='rt-{tag}'>{_html.escape(str(v))}</div>" for v in vals)
+    rows = [f"<div class='rt-row{' rt-new' if i == len(df) - 1 else ''}'>{cells(rec, 'c')}</div>"
+            for i, rec in enumerate(df.itertuples(index=False))]
+    header = f"<div class='rt-row rt-head'>{cells(df.columns, 'h')}</div>"
+    box_h = 40 + 36 * min(shown, len(df))
+    st.markdown(
+        f"<style>.rt-wrap{{height:{box_h}px;overflow:auto;display:flex;flex-direction:column-reverse;"
+        f"border:1px solid {LINE};border-radius:8px;font-size:13.5px;color:{INK};background:#fff;}}"
+        f".rt-row{{display:grid;grid-template-columns:{tpl};min-width:{total_w}px;flex:0 0 auto;border-bottom:1px solid #EEF1F6;}}"
+        f".rt-c,.rt-h{{padding:8px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}"
+        f".rt-c:first-child,.rt-h:first-child{{text-align:right;color:{MUTED};}}"
+        f".rt-head{{position:sticky;top:0;z-index:2;background:#F3F6FA;font-weight:600;color:{INK_SOFT};}}"
+        f".rt-new{{background:{SEM_SOFT};font-weight:600;}}</style>"
+        f"<div class='rt-wrap'>{''.join(reversed(rows))}{header}</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def page_manage():
