@@ -1972,27 +1972,26 @@ def _recent_block(kind: str, file_label: str, shown: int = 10, keep: int = 500):
         return
     older = f" Showing the last {len(df)}; scroll up for earlier ones." if total > len(df) else " Scroll up for earlier ones."
     st.caption(f"{total} rows in the file. The most recently added is at the bottom (highlighted).{older}")
-    # Pure HTML/CSS (no iframe, no JS): a column-reverse flex box opens scrolled to its END, so the
-    # newest rows are visible first and the history is reached by scrolling up.
-    widths = [min(max(len(str(c)), *(len(str(v)) for v in df[c])) * 8 + 28, 380) for c in df.columns]
-    tpl = " ".join(f"{w}px" for w in widths)
-    total_w = sum(widths)
-    cells = lambda vals, tag: "".join(f"<div class='rt-{tag}'>{_html.escape(str(v))}</div>" for v in vals)
-    rows = [f"<div class='rt-row{' rt-new' if i == len(df) - 1 else ''}'>{cells(rec, 'c')}</div>"
-            for i, rec in enumerate(df.itertuples(index=False))]
-    header = f"<div class='rt-row rt-head'>{cells(df.columns, 'h')}</div>"
-    row_h, head_h = 30, 34                     # thin single-line rows
-    box_h = head_h + row_h * min(shown, len(df)) + 2
+    # Pure HTML/CSS (no iframe, no JS): the table sits in a column-reverse flex box, which opens scrolled to
+    # its END — newest rows visible first, history reached by scrolling up. One thin line per record.
+    row_h = 30
+    box_h = (row_h + 1) * (min(shown, len(df)) + 1) + 22     # header + rows (1px border each) + horizontal scrollbar
+    esc = lambda v: _html.escape(str(v))
+    head = "".join(f"<th>{esc(c)}</th>" for c in df.columns)
+    body = "".join(
+        f"<tr class='{'rt-new' if i == len(df) - 1 else ''}'>" + "".join(f"<td>{esc(v)}</td>" for v in rec) + "</tr>"
+        for i, rec in enumerate(df.itertuples(index=False)))
     st.markdown(
         f"<style>.rt-wrap{{height:{box_h}px;overflow:auto;display:flex;flex-direction:column-reverse;"
-        f"border:1px solid {LINE};border-radius:8px;font-size:13.5px;color:{INK};background:#fff;}}"
-        f".rt-row{{display:grid;grid-template-columns:{tpl};min-width:{total_w}px;flex:0 0 auto;height:{row_h}px;box-sizing:border-box;border-bottom:1px solid #EEF1F6;}}"
-        f".rt-c,.rt-h{{padding:0 12px;line-height:{row_h - 1}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}"
-        f".rt-c:first-child,.rt-h:first-child{{text-align:right;color:{MUTED};}}"
-        f".rt-head{{position:sticky;top:0;z-index:2;height:{head_h}px;background:#F3F6FA;font-weight:600;color:{INK_SOFT};}}"
-        f".rt-head .rt-h{{line-height:{head_h - 1}px;}}"
-        f".rt-new{{background:{SEM_SOFT};font-weight:600;}}</style>"
-        f"<div class='rt-wrap'>{''.join(reversed(rows))}{header}</div>",
+        f"border:1px solid {LINE};border-radius:8px;background:#fff;}}"
+        f".rt-wrap table{{flex:0 0 auto;border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;"
+        f"font-size:13.5px;color:{INK};}}"
+        f".rt-wrap th,.rt-wrap td{{height:{row_h}px;box-sizing:border-box;padding:0 14px;line-height:{row_h - 1}px;"
+        f"white-space:nowrap;text-align:left;border-bottom:1px solid #EEF1F6;}}"
+        f".rt-wrap th{{position:sticky;top:0;z-index:2;background:#F3F6FA;font-weight:600;color:{INK_SOFT};}}"
+        f".rt-wrap td:first-child,.rt-wrap th:first-child{{text-align:right;color:{MUTED};}}"
+        f".rt-wrap tr.rt-new td{{background:{SEM_SOFT};font-weight:600;}}</style>"
+        f"<div class='rt-wrap'><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>",
         unsafe_allow_html=True,
     )
 
